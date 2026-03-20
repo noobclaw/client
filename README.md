@@ -373,4 +373,4 @@ Please include: a summary of changes, linked issue (if any), screenshots for UI 
 
 ---
 
-Built and maintained by [NoobClaw](https://www.noobclaw.com/). Authors: Taylor / Chris. Based on OpenClaw / Lobsterai.
+Built and maintained by [NoobClaw](https://www.noobclaw.com/). Authors: Taylor / Chris. Based on OpenClaw / NoobClaw.

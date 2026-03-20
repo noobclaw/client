@@ -198,8 +198,8 @@ function buildPathSearchRoots(cwd, requestEnv) {
     if (typeof requestEnv.SKILLS_ROOT === 'string') {
       pushRoot(requestEnv.SKILLS_ROOT);
     }
-    if (typeof requestEnv.LOBSTERAI_SKILLS_ROOT === 'string') {
-      pushRoot(requestEnv.LOBSTERAI_SKILLS_ROOT);
+    if (typeof requestEnv.NOOBCLAW_SKILLS_ROOT === 'string') {
+      pushRoot(requestEnv.NOOBCLAW_SKILLS_ROOT);
     }
   }
 
@@ -293,8 +293,8 @@ function resolveFallbackPath(filePath, searchRoots, requestEnv) {
   if (normalizedLower.startsWith(TMP_WORKSPACE_SKILLS_PREFIX) && requestEnv && typeof requestEnv === 'object') {
     const skillsRoot = typeof requestEnv.SKILLS_ROOT === 'string'
       ? requestEnv.SKILLS_ROOT
-      : typeof requestEnv.LOBSTERAI_SKILLS_ROOT === 'string'
-        ? requestEnv.LOBSTERAI_SKILLS_ROOT
+      : typeof requestEnv.NOOBCLAW_SKILLS_ROOT === 'string'
+        ? requestEnv.NOOBCLAW_SKILLS_ROOT
         : null;
     if (skillsRoot && path.isAbsolute(skillsRoot)) {
       const skillsCandidate = path.join(skillsRoot, normalized.slice(TMP_WORKSPACE_SKILLS_PREFIX.length));
@@ -339,8 +339,8 @@ function resolveSkillsRootFromEnv(requestEnv) {
   if (!requestEnv || typeof requestEnv !== 'object') return null;
   const skillsRoot = typeof requestEnv.SKILLS_ROOT === 'string'
     ? requestEnv.SKILLS_ROOT
-    : typeof requestEnv.LOBSTERAI_SKILLS_ROOT === 'string'
-      ? requestEnv.LOBSTERAI_SKILLS_ROOT
+    : typeof requestEnv.NOOBCLAW_SKILLS_ROOT === 'string'
+      ? requestEnv.NOOBCLAW_SKILLS_ROOT
       : null;
   if (!skillsRoot || !path.isAbsolute(skillsRoot)) return null;
   return skillsRoot;
@@ -746,7 +746,7 @@ function isPathWritable(targetPath) {
   if (!targetPath || !path.isAbsolute(targetPath)) return false;
   const probePath = path.join(
     targetPath,
-    `.lobsterai-mount-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+    `.noobclaw-mount-probe-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}`
   );
   try {
     fs.writeFileSync(probePath, 'ok');
