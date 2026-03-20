@@ -37,10 +37,34 @@ class NoobClawAuthService {
       setTimeout(() => {
         this.syncTokenToMain(savedToken);
         this.reportDeviceInfo(savedToken);
+        // Load cached avatar from local disk first (instant, no network)
+        this.loadCachedAvatar();
       }, 0);
       this.refreshBalance().catch(console.error);
       this.refreshAvatar().catch(console.error);
     }
+  }
+
+  // Load avatar from local disk cache (instant, no flicker)
+  private async loadCachedAvatar() {
+    try {
+      const localPath = await window.electron?.noobclaw?.getCachedAvatar();
+      if (localPath) {
+        this.state.avatarUrl = localPath;
+        this.notify();
+      }
+    } catch { /* ignore */ }
+  }
+
+  // Cache avatar image to local disk via main process
+  private async cacheAvatarToDisk(url: string) {
+    try {
+      const result = await window.electron?.noobclaw?.cacheAvatar(url);
+      if (result?.success && result.localPath) {
+        // Update to local path for instant loading next time
+        localStorage.setItem('noobclaw_cached_avatar_local', result.localPath);
+      }
+    } catch { /* ignore */ }
   }
 
   getState(): AuthState {
@@ -122,6 +146,8 @@ class NoobClawAuthService {
           this.state.avatarUrl = data.avatar_url;
           localStorage.setItem('noobclaw_avatar_url', data.avatar_url);
           this.notify();
+          // Cache to local disk in background for instant loading next time
+          this.cacheAvatarToDisk(data.avatar_url);
         }
       }
     } catch { /* ignore */ }

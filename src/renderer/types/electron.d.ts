@@ -418,6 +418,8 @@ interface IElectronAPI {
   noobclaw: {
     setAuthToken: (token: string | null) => Promise<{ success: boolean }>;
     getMacAddress: () => Promise<string | null>;
+    cacheAvatar: (url: string) => Promise<{ success: boolean; localPath: string | null }>;
+    getCachedAvatar: () => Promise<string | null>;
     onSsePayload: (callback: (payload: Record<string, unknown>) => void) => () => void;
   };
 }

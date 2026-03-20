@@ -334,6 +334,8 @@ contextBridge.exposeInMainWorld('electron', {
   noobclaw: {
     setAuthToken: (token: string | null) => ipcRenderer.invoke('noobclaw:set-auth-token', token),
     getMacAddress: () => ipcRenderer.invoke('noobclaw:get-mac-address') as Promise<string | null>,
+    cacheAvatar: (url: string) => ipcRenderer.invoke('noobclaw:cache-avatar', url) as Promise<{ success: boolean; localPath: string | null }>,
+    getCachedAvatar: () => ipcRenderer.invoke('noobclaw:get-cached-avatar') as Promise<string | null>,
     onSsePayload: (callback: (payload: Record<string, unknown>) => void) => {
       const handler = (_event: any, payload: Record<string, unknown>) => callback(payload);
       ipcRenderer.on('noobclaw:sse-payload', handler);

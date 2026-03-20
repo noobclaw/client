@@ -548,6 +548,16 @@ const getCoworkRunner = () => {
   if (!coworkRunner) {
     coworkRunner = new CoworkRunner(getCoworkStore());
 
+    // Provide AI assistant name from user config
+    coworkRunner.setAiAssistantNameProvider(() => {
+      try {
+        const config = getStore().get<any>('app_config');
+        return config?.aiAssistantName || 'Adia Laura';
+      } catch {
+        return 'Adia Laura';
+      }
+    });
+
     // Provide MCP server configuration to the runner
     coworkRunner.setMcpServerProvider(() => {
       return getMcpStore().getEnabledServers();
@@ -2040,6 +2050,52 @@ if (!gotTheLock) {
   ipcMain.handle('noobclaw:set-auth-token', (_event, token: string | null) => {
     setNoobClawAuthToken(token);
     return { success: true };
+  });
+
+  // NoobClaw: cache avatar image to local disk
+  ipcMain.handle('noobclaw:cache-avatar', async (_event, url: string) => {
+    try {
+      const cacheDir = path.join(app.getPath('userData'), 'cache');
+      if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir, { recursive: true });
+      const res = await (await import('node:https')).default;
+      const filePath = path.join(cacheDir, 'user-avatar.png');
+      // Download image
+      const fetchMod = await import('node:http' + (url.startsWith('https') ? 's' : ''));
+      const data = await new Promise<Buffer>((resolve, reject) => {
+        fetchMod.default.get(url, { timeout: 10000 }, (resp: any) => {
+          if (resp.statusCode && resp.statusCode >= 300 && resp.statusCode < 400 && resp.headers.location) {
+            // Follow redirect
+            fetchMod.default.get(resp.headers.location, { timeout: 10000 }, (resp2: any) => {
+              const chunks: Buffer[] = [];
+              resp2.on('data', (c: Buffer) => chunks.push(c));
+              resp2.on('end', () => resolve(Buffer.concat(chunks)));
+              resp2.on('error', reject);
+            }).on('error', reject);
+            return;
+          }
+          const chunks: Buffer[] = [];
+          resp.on('data', (c: Buffer) => chunks.push(c));
+          resp.on('end', () => resolve(Buffer.concat(chunks)));
+          resp.on('error', reject);
+        }).on('error', reject);
+      });
+      await fs.promises.writeFile(filePath, data);
+      return { success: true, localPath: `file://${filePath.replace(/\\/g, '/')}` };
+    } catch (err) {
+      console.error('[Main] Failed to cache avatar:', err);
+      return { success: false, localPath: null };
+    }
+  });
+
+  // NoobClaw: get cached avatar local path
+  ipcMain.handle('noobclaw:get-cached-avatar', () => {
+    try {
+      const filePath = path.join(app.getPath('userData'), 'cache', 'user-avatar.png');
+      if (fs.existsSync(filePath)) {
+        return `file://${filePath.replace(/\\/g, '/')}`;
+      }
+    } catch { /* ignore */ }
+    return null;
   });
 
   // NoobClaw: get device MAC address

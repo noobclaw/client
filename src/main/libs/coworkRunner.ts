@@ -511,6 +511,7 @@ export class CoworkRunner extends EventEmitter {
   private turnMemoryQueueKeys: Set<string> = new Set();
   private lastTurnMemoryKeyBySession: Map<string, string> = new Map();
   private drainingTurnMemoryQueue = false;
+  private aiAssistantNameProvider?: () => string;
   private mcpServerProvider?: () => Array<{
     name: string;
     transportType: string;
@@ -524,6 +525,14 @@ export class CoworkRunner extends EventEmitter {
   constructor(store: CoworkStore) {
     super();
     this.store = store;
+  }
+
+  setAiAssistantNameProvider(provider: () => string): void {
+    this.aiAssistantNameProvider = provider;
+  }
+
+  private resolveAiAssistantName(): string {
+    return this.aiAssistantNameProvider?.() || 'Adia Laura';
   }
 
   setMcpServerProvider(provider: () => Array<{
@@ -2219,7 +2228,7 @@ export class CoworkRunner extends EventEmitter {
     const windowsBundledRuntimePrompt = this.buildWindowsBundledRuntimePrompt();
     const memoryRecallPrompt = [
       '## Memory Strategy',
-      '- Historical retrieval is tool-first: when the user references previous chats, earlier outputs, prior decisions, or says "还记得/之前/上次/刚才", call `conversation_search` or `recent_chats` before answering.',
+      '- Historical retrieval is tool-first: when the user references previous chats, earlier outputs, or prior decisions, call `conversation_search` or `recent_chats` before answering.',
       '- Do not guess historical facts from partial context. If retrieval returns no evidence, explicitly say not found.',
       '- Do not call history tools for every request; only use them when historical context is required.',
       '- If retrieved history conflicts with the latest explicit user instruction, follow the latest explicit user instruction.',
@@ -2236,7 +2245,8 @@ export class CoworkRunner extends EventEmitter {
       ko: 'Korean', ja: 'Japanese', ru: 'Russian', fr: 'French', de: 'German',
     };
     const uiLang = this.store.getAppLanguageFull();
-    const uiLanguagePrompt = `<ui_language>${langMap[uiLang] || uiLang}</ui_language>`;
+    const langName = langMap[uiLang] || uiLang;
+    const uiLanguagePrompt = '';
     const trimmedBasePrompt = baseSystemPrompt?.trim();
     return [safetyPrompt, windowsEncodingPrompt, windowsBundledRuntimePrompt, memoryRecallPrompt.join('\n'), uiLanguagePrompt, trimmedBasePrompt]
       .filter((section): section is string => Boolean(section?.trim()))
@@ -2515,7 +2525,10 @@ export class CoworkRunner extends EventEmitter {
       this.store.updateSession(sessionId, { cwd: sessionCwd });
     }
 
-    const baseSystemPrompt = options.systemPrompt ?? session.systemPrompt;
+    const rawSystemPrompt = options.systemPrompt ?? session.systemPrompt;
+    // Replace {{AI_ASSISTANT_NAME}} placeholder with user-configured name
+    const aiName = this.resolveAiAssistantName();
+    const baseSystemPrompt = rawSystemPrompt.replace(/\{\{AI_ASSISTANT_NAME\}\}/g, aiName);
     const effectiveSystemPrompt = this.composeEffectiveSystemPrompt(
       baseSystemPrompt,
       this.normalizeWorkspaceRoot(activeSession.workspaceRoot, sessionCwd),

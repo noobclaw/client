@@ -817,6 +817,7 @@ const CopyButton: React.FC<{
 const UserMessageItem: React.FC<{ message: CoworkMessage; skills: Skill[]; onShowWallet?: () => void }> = React.memo(({ message, skills, onShowWallet }) => {
   const [isHovered, setIsHovered] = useState(false);
   const [expandedImage, setExpandedImage] = useState<string | null>(null);
+  const [avatarLoaded, setAvatarLoaded] = useState(false);
   const avatarUrl = noobClawAuth.getState().avatarUrl;
 
   // Get skills used for this message
@@ -838,15 +839,22 @@ const UserMessageItem: React.FC<{ message: CoworkMessage; skills: Skill[]; onSho
         <div className="pl-4 sm:pl-8 md:pl-12">
           <div className="flex items-start gap-3 flex-row-reverse">
             <div
-              className="flex flex-col items-center gap-0.5 flex-shrink-0 cursor-pointer"
+              className="flex flex-col items-center gap-0.5 flex-shrink-0 cursor-pointer relative"
               onClick={onShowWallet}
             >
-              {avatarUrl ? (
-                <img src={avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover shadow-sm" loading="eager" />
-              ) : (
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm">
+              {(!avatarUrl || !avatarLoaded) && (
+                <div className={`w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-sm${avatarUrl ? ' absolute' : ''}`}>
                   <span className="text-white text-xs font-bold">{i18nService.t('coworkUserAvatarMe')}</span>
                 </div>
+              )}
+              {avatarUrl && (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className={`w-8 h-8 rounded-full object-cover shadow-sm${avatarLoaded ? '' : ' invisible absolute'}`}
+                  loading="eager"
+                  onLoad={() => setAvatarLoaded(true)}
+                />
               )}
               <span className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary leading-none">{i18nService.t('coworkUserAvatarMe')}</span>
             </div>
@@ -1073,6 +1081,7 @@ const AssistantTurnBlock: React.FC<{
   aiAvatar,
   onAiAvatarClick,
 }) => {
+  const [aiAvatarLoaded, setAiAvatarLoaded] = useState(false);
   const visibleAssistantItems = getVisibleAssistantItems(turn.assistantItems);
 
   const renderSystemMessage = (message: CoworkMessage) => {
@@ -1132,11 +1141,22 @@ const AssistantTurnBlock: React.FC<{
       <div className="max-w-3xl mx-auto">
         <div className="flex items-start gap-3">
           <div
-            className="flex flex-col items-center flex-shrink-0 gap-0.5 cursor-pointer select-none"
+            className="flex flex-col items-center flex-shrink-0 gap-0.5 cursor-pointer select-none relative"
             onClick={onAiAvatarClick}
             title={aiName}
           >
-            <img src={aiAvatar || lauraAvatarUrl} alt={aiName} className="w-8 h-8 rounded-full shadow-sm object-cover" loading="eager" />
+            {!aiAvatarLoaded && (
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-sm absolute">
+                <span className="text-white text-xs font-bold">AI</span>
+              </div>
+            )}
+            <img
+              src={aiAvatar || lauraAvatarUrl}
+              alt={aiName}
+              className={`w-8 h-8 rounded-full shadow-sm object-cover${aiAvatarLoaded ? '' : ' invisible'}`}
+              loading="eager"
+              onLoad={() => setAiAvatarLoaded(true)}
+            />
             <span className="text-[10px] font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary leading-tight max-w-[4rem] truncate">{aiName}</span>
           </div>
           <div className="flex-1 min-w-0 px-4 py-3 space-y-3">
