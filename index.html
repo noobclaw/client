@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NoobClaw</title>
+    <script>
+      // 强制深色模式，在 React 挂载前立即生效，彻底避免白色闪烁
+      document.documentElement.classList.add('dark');
+      document.documentElement.style.backgroundColor = '#09090E';
+      document.documentElement.style.color = '#E8E8FF';
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/renderer/main.tsx"></script>
+  </body>
+</html>
