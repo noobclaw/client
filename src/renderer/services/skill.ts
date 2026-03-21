@@ -78,7 +78,7 @@ class SkillService {
     }
   }
 
-  async downloadSkill(source: string, meta?: { official?: boolean }): Promise<{ success: boolean; skills?: Skill[]; error?: string }> {
+  async downloadSkill(source: string, meta?: { official?: boolean; skillId?: string }): Promise<{ success: boolean; skills?: Skill[]; error?: string }> {
     try {
       // Resolve relative URLs (e.g. /uploads/skills/...) to full backend URLs
       let resolvedSource = source;

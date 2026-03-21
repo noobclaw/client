@@ -1,3 +1,5 @@
+ShowInstDetails show
+
 !macro customInit
   ; Best-effort: terminate a running app instance before install/uninstall
   ; to avoid NSIS "app cannot be closed" errors during upgrades.

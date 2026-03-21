@@ -13,7 +13,7 @@ contextBridge.exposeInMainWorld('electron', {
     list: () => ipcRenderer.invoke('skills:list'),
     setEnabled: (options: { id: string; enabled: boolean }) => ipcRenderer.invoke('skills:setEnabled', options),
     delete: (id: string) => ipcRenderer.invoke('skills:delete', id),
-    download: (source: string, meta?: { official?: boolean }) => ipcRenderer.invoke('skills:download', source, meta),
+    download: (source: string, meta?: { official?: boolean; skillId?: string }) => ipcRenderer.invoke('skills:download', source, meta),
     getRoot: () => ipcRenderer.invoke('skills:getRoot'),
     autoRoutingPrompt: () => ipcRenderer.invoke('skills:autoRoutingPrompt'),
     getConfig: (skillId: string) => ipcRenderer.invoke('skills:getConfig', skillId),

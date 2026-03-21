@@ -1136,7 +1136,7 @@ if (!gotTheLock) {
     }
   });
 
-  ipcMain.handle('skills:download', async (_event, source: string, meta?: { official?: boolean }) => {
+  ipcMain.handle('skills:download', async (_event, source: string, meta?: { official?: boolean; skillId?: string }) => {
     return getSkillManager().downloadSkill(source, meta);
   });
 

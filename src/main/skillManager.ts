@@ -1396,7 +1396,7 @@ export class SkillManager {
     return this.listSkills();
   }
 
-  async downloadSkill(source: string, meta?: { official?: boolean }): Promise<{ success: boolean; skills?: SkillRecord[]; error?: string }> {
+  async downloadSkill(source: string, meta?: { official?: boolean; skillId?: string }): Promise<{ success: boolean; skills?: SkillRecord[]; error?: string }> {
     let cleanupPath: string | null = null;
     try {
       const trimmed = source.trim();
@@ -1508,8 +1508,40 @@ export class SkillManager {
         return { success: false, error: 'No SKILL.md found in source' };
       }
 
-      for (const skillDir of skillDirs) {
-        const folderName = normalizeFolderName(path.basename(skillDir));
+      for (let idx = 0; idx < skillDirs.length; idx++) {
+        const skillDir = skillDirs[idx];
+        // Derive folder name priority:
+        // 1. meta.skillId from marketplace (e.g. "kucoin-spot", "bitget-trading") — only for single-skill installs
+        // 2. directory basename (from zip structure or git clone)
+        // 3. SKILL.md frontmatter `name`
+        // 4. timestamp fallback
+        const TEMP_DIR_NAMES = new Set(['remote-skill', 'github-archive', 'downloaded-skill', 'skill-md']);
+        let folderName = '';
+        if (meta?.skillId && skillDirs.length === 1) {
+          folderName = normalizeFolderName(meta.skillId);
+        }
+        if (!folderName) {
+          folderName = normalizeFolderName(path.basename(skillDir));
+        }
+        if (!folderName || TEMP_DIR_NAMES.has(folderName)) {
+          try {
+            const skillMdPath = path.join(skillDir, SKILL_FILE_NAME);
+            if (fs.existsSync(skillMdPath)) {
+              const raw = fs.readFileSync(skillMdPath, 'utf8');
+              const fmMatch = raw.match(/^---\s*\n([\s\S]*?)\n---/);
+              if (fmMatch) {
+                const fm = yaml.load(fmMatch[1]) as Record<string, unknown>;
+                if (typeof fm?.name === 'string' && fm.name.trim()) {
+                  folderName = normalizeFolderName(fm.name.trim()) || folderName;
+                }
+              }
+            }
+          } catch { /* ignore parse errors */ }
+        }
+        // Final fallback: if still generic, use a timestamp suffix
+        if (!folderName || TEMP_DIR_NAMES.has(folderName)) {
+          folderName = `skill-${Date.now()}`;
+        }
         const targetDir = resolveWithin(root, folderName);
         if (fs.existsSync(targetDir)) {
           // Skill already exists — overwrite (update) instead of creating duplicates

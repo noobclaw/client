@@ -329,7 +329,7 @@ const SkillsManager: React.FC = () => {
     setSkillActionError('');
     setInstallSuccessName(null);
     try {
-      const result = await skillService.downloadSkill(skill.url, skill.is_official ? { official: true } : undefined);
+      const result = await skillService.downloadSkill(skill.url, { official: skill.is_official || false, skillId: skill.id });
       if (!result.success) {
         setSkillActionError(result.error || i18nService.t('skillInstallFailed'));
         return;
@@ -360,7 +360,7 @@ const SkillsManager: React.FC = () => {
     try {
       for (let i = 0; i < toInstall.length; i++) {
         setPackInstallProgress({ current: i + 1, total: toInstall.length });
-        const result = await skillService.downloadSkill(toInstall[i].url, toInstall[i].is_official ? { official: true } : undefined);
+        const result = await skillService.downloadSkill(toInstall[i].url, { official: toInstall[i].is_official || false, skillId: toInstall[i].id });
         if (result.skills) {
           dispatch(setSkills(result.skills));
         }
