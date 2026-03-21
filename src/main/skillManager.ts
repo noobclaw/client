@@ -590,6 +590,13 @@ const listSkillDirs = (root: string): string[] => {
 
 const collectSkillDirsFromSource = (source: string): string[] => {
   const resolved = path.resolve(source);
+  console.info('[skill-manager] collectSkillDirsFromSource: resolved=', resolved);
+  const skillMdCheck = path.join(resolved, SKILL_FILE_NAME);
+  console.info('[skill-manager] collectSkillDirsFromSource: checking', skillMdCheck, 'exists=', fs.existsSync(skillMdCheck));
+  try {
+    const entries = fs.readdirSync(resolved);
+    console.info('[skill-manager] collectSkillDirsFromSource: entries=', JSON.stringify(entries.slice(0, 20)));
+  } catch (e) { console.warn('[skill-manager] collectSkillDirsFromSource: list failed:', e); }
   if (fs.existsSync(path.join(resolved, SKILL_FILE_NAME))) {
     return [resolved];
   }
@@ -985,7 +992,18 @@ const downloadZipUrl = async (zipUrl: string, tempRoot: string): Promise<string>
   const extractRoot = path.join(tempRoot, 'remote-skill');
   fs.writeFileSync(zipPath, buffer);
   fs.mkdirSync(extractRoot, { recursive: true });
+  console.info('[skill-manager] downloadZipUrl: zipSize=', buffer.length, 'extractRoot=', extractRoot);
   await extractZip(zipPath, { dir: extractRoot });
+
+  // Debug: list what was extracted
+  try {
+    const allExtracted = fs.readdirSync(extractRoot);
+    console.info('[skill-manager] downloadZipUrl: extracted entries=', JSON.stringify(allExtracted));
+    const skillMdPath = path.join(extractRoot, SKILL_FILE_NAME);
+    console.info('[skill-manager] downloadZipUrl: checking SKILL.md at', skillMdPath, 'exists=', fs.existsSync(skillMdPath));
+  } catch (e) {
+    console.warn('[skill-manager] downloadZipUrl: debug listing failed:', e);
+  }
 
   // If SKILL.md exists at root level, return directly — don't unwrap into a subdirectory
   if (fs.existsSync(path.join(extractRoot, SKILL_FILE_NAME))) {
