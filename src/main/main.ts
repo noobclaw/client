@@ -2817,14 +2817,6 @@ if (!gotTheLock) {
       console.error('[Main] initApp: syncBundledSkillsToUserData failed:', error);
     }
 
-    // Extract bundled zips (mingit.zip, python-win.zip) on first launch
-    try {
-      await extractBundledZips();
-      console.log('[Main] initApp: extractBundledZips done');
-    } catch (error) {
-      console.error('[Main] initApp: extractBundledZips failed:', error);
-    }
-
     try {
       const runtimeResult = await ensurePythonRuntimeReady();
       if (!runtimeResult.success) {
