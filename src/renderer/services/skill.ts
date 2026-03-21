@@ -1,5 +1,5 @@
 import { Skill, MarketplaceSkill, MarketTag, LocalSkillInfo, LocalizedText, SkillPack } from '../types/skill';
-import { getSkillStoreUrl } from './endpoints';
+import { getBackendApiUrl, getSkillStoreUrl } from './endpoints';
 import { i18nService } from './i18n';
 
 export function resolveLocalizedText(text: string | LocalizedText): string {
@@ -80,7 +80,12 @@ class SkillService {
 
   async downloadSkill(source: string, meta?: { official?: boolean }): Promise<{ success: boolean; skills?: Skill[]; error?: string }> {
     try {
-      const result = await window.electron.skills.download(source, meta);
+      // Resolve relative URLs (e.g. /uploads/skills/...) to full backend URLs
+      let resolvedSource = source;
+      if (source.startsWith('/')) {
+        resolvedSource = `${getBackendApiUrl()}${source}`;
+      }
+      const result = await window.electron.skills.download(resolvedSource, meta);
       if (result.success && result.skills) {
         this.skills = result.skills;
       }

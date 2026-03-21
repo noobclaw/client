@@ -807,6 +807,87 @@ const isRemoteZipUrl = (source: string): boolean => {
   }
 };
 
+/**
+ * Check if a URL is a generic HTTP(S) URL that could be a skill download
+ * (not ending in .zip or .md, and not a GitHub repo URL).
+ * These are typically admin-uploaded files served via backend proxy or R2.
+ */
+const isGenericHttpUrl = (source: string): boolean => {
+  try {
+    const url = new URL(source);
+    return (url.protocol === 'http:' || url.protocol === 'https:')
+      && !url.pathname.toLowerCase().endsWith('.zip')
+      && !url.pathname.toLowerCase().endsWith('.md')
+      && !['github.com', 'www.github.com'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+};
+
+/**
+ * Download a generic HTTP URL, detect whether it's a zip or md file by
+ * content-type header and magic bytes, then process accordingly.
+ */
+const downloadGenericUrl = async (url: string, tempRoot: string): Promise<string> => {
+  const response = await session.defaultSession.fetch(url, {
+    method: 'GET',
+    headers: { 'User-Agent': 'NoobClaw Skill Downloader' },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Download failed (${response.status} ${response.statusText})`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const contentType = (response.headers.get('content-type') || '').toLowerCase();
+  // Extract filename from Content-Disposition if present
+  const disposition = response.headers.get('content-disposition') || '';
+
+  // Detect zip by magic bytes (PK\x03\x04) or content-type
+  const isZip = (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B && buffer[2] === 0x03 && buffer[3] === 0x04)
+    || contentType.includes('zip')
+    || contentType.includes('octet-stream')
+    || disposition.toLowerCase().includes('.zip');
+
+  if (isZip) {
+    const zipPath = path.join(tempRoot, 'remote-skill.zip');
+    const extractRoot = path.join(tempRoot, 'remote-skill');
+    fs.writeFileSync(zipPath, buffer);
+    fs.mkdirSync(extractRoot, { recursive: true });
+    await extractZip(zipPath, { dir: extractRoot });
+
+    if (fs.existsSync(path.join(extractRoot, SKILL_FILE_NAME))) {
+      return extractRoot;
+    }
+
+    const extractedDirs = fs.readdirSync(extractRoot)
+      .map(entry => path.join(extractRoot, entry))
+      .filter(entryPath => {
+        try { return fs.statSync(entryPath).isDirectory(); }
+        catch { return false; }
+      });
+
+    if (extractedDirs.length === 1) {
+      return extractedDirs[0];
+    }
+
+    return extractRoot;
+  }
+
+  // Otherwise treat as a SKILL.md text file
+  const content = buffer.toString('utf8');
+  // Derive folder name from URL or frontmatter
+  let folderName = 'downloaded-skill';
+  const nameMatch = content.match(/^name:\s*(.+)/m);
+  if (nameMatch) {
+    folderName = nameMatch[1].trim().replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, '_').substring(0, 64) || folderName;
+  }
+  const skillDir = path.join(tempRoot, folderName);
+  fs.mkdirSync(skillDir, { recursive: true });
+  fs.writeFileSync(path.join(skillDir, SKILL_FILE_NAME), content, 'utf8');
+  return skillDir;
+};
+
 const isRemoteMdUrl = (source: string): boolean => {
   try {
     const cleaned = source.trim().replace(/\/+$/, ''); // Strip trailing slashes
@@ -905,6 +986,11 @@ const downloadZipUrl = async (zipUrl: string, tempRoot: string): Promise<string>
   fs.writeFileSync(zipPath, buffer);
   fs.mkdirSync(extractRoot, { recursive: true });
   await extractZip(zipPath, { dir: extractRoot });
+
+  // If SKILL.md exists at root level, return directly — don't unwrap into a subdirectory
+  if (fs.existsSync(path.join(extractRoot, SKILL_FILE_NAME))) {
+    return extractRoot;
+  }
 
   const extractedDirs = fs.readdirSync(extractRoot)
     .map(entry => path.join(extractRoot, entry))
@@ -1301,7 +1387,7 @@ export class SkillManager {
       }
 
       console.info('[skill-manager] downloadSkill called with source:', JSON.stringify(trimmed));
-      console.info('[skill-manager] isRemoteMdUrl:', isRemoteMdUrl(trimmed), 'isRemoteZipUrl:', isRemoteZipUrl(trimmed));
+      console.info('[skill-manager] isRemoteMdUrl:', isRemoteMdUrl(trimmed), 'isRemoteZipUrl:', isRemoteZipUrl(trimmed), 'isGenericHttpUrl:', isGenericHttpUrl(trimmed));
       const root = this.ensureSkillsRoot();
       let localSource = trimmed;
       if (fs.existsSync(localSource)) {
@@ -1328,6 +1414,12 @@ export class SkillManager {
         const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-zip-'));
         cleanupPath = tempRoot;
         localSource = await downloadZipUrl(trimmed, tempRoot);
+      } else if (isGenericHttpUrl(trimmed)) {
+        // Generic HTTP URL (e.g. admin-uploaded file without .zip/.md extension, R2 proxy, etc.)
+        console.info('[skill-manager] Detected generic HTTP URL, downloading and auto-detecting type:', trimmed);
+        const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-generic-'));
+        cleanupPath = tempRoot;
+        localSource = await downloadGenericUrl(trimmed, tempRoot);
       } else {
         const normalized = this.normalizeGitSource(trimmed);
         if (!normalized) {

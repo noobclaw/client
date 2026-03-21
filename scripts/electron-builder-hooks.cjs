@@ -1,7 +1,7 @@
 'use strict';
 
 const path = require('path');
-const { existsSync, mkdirSync, readdirSync, statSync } = require('fs');
+const { existsSync, mkdirSync, readdirSync, statSync, rmSync } = require('fs');
 const { spawnSync } = require('child_process');
 const { ensurePortableGit } = require('./setup-mingit.js');
 const { ensurePortablePythonRuntime, checkRuntimeHealth } = require('./setup-python-runtime.js');
@@ -263,6 +263,26 @@ async function afterPack(context) {
       );
     }
     console.log(`[electron-builder-hooks] Verified bundled Python runtime: ${pythonExe}`);
+
+    // Zip mingit and python-win, then delete originals to speed up NSIS install
+    const resDir = path.join(context.appOutDir, 'resources');
+    for (const name of ['mingit', 'python-win']) {
+      const folder = path.join(resDir, name);
+      const zipFile = path.join(resDir, `${name}.zip`);
+      if (!existsSync(folder)) continue;
+      console.log(`[electron-builder-hooks] Zipping ${name}/ -> ${name}.zip ...`);
+      // Use node script to zip - avoids powershell/tar issues on Windows
+      const zipScript = path.join(__dirname, '_zip-helper.cjs');
+      const result = spawnSync(process.execPath, [
+        zipScript, folder, zipFile,
+      ], { encoding: 'utf-8', timeout: 300000, windowsHide: true });
+      if (result.status !== 0) {
+        throw new Error(`Failed to zip ${name}: ${result.stderr || result.error}`);
+      }
+      console.log(`[electron-builder-hooks] Removing ${name}/ folder...`);
+      rmSync(folder, { recursive: true, force: true });
+      console.log(`[electron-builder-hooks] ${name}.zip created, folder removed.`);
+    }
   }
 
   if (isMacTarget(context)) {

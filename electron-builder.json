@@ -71,7 +71,7 @@
     "target": [
       "nsis"
     ],
-    "signAndEditExecutable": false,
+    "signAndEditExecutable": true,
     "icon": "build/icons/win/icon.ico",
     "extraResources": [
       {
