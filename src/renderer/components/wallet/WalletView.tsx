@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
@@ -983,9 +984,21 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                     <div>
                       <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletTreasuryWallet')}</p>
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs font-mono dark:text-claude-darkText text-claude-text flex-1 truncate">{paymentInfo?.treasuryWallet || 'Loading...'}</code>
-                        <button onClick={() => copyToClipboard(paymentInfo?.treasuryWallet || '')} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
+                      <div className="flex items-start gap-3">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <code className="text-xs font-mono dark:text-claude-darkText text-claude-text flex-1 truncate">{paymentInfo?.treasuryWallet || 'Loading...'}</code>
+                            <button onClick={() => copyToClipboard(paymentInfo?.treasuryWallet || '')} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
+                          </div>
+                        </div>
+                        {paymentInfo?.treasuryWallet && (
+                          <div className="flex flex-col items-center">
+                            <div className="bg-white p-1.5 rounded-lg">
+                              <QRCodeSVG value={paymentInfo.treasuryWallet} size={80} />
+                            </div>
+                            <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-1 text-center">{i18nService.t('walletScanQr')}</p>
+                          </div>
+                        )}
                       </div>
                     </div>
                     <div>
