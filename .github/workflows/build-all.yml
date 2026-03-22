@@ -1,9 +1,40 @@
-name: Build macOS
+name: Build All Platforms
 
 on:
   workflow_dispatch:
 
 jobs:
+  build-win-x64:
+    name: Windows (x64)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build & Package (Windows x64)
+        working-directory: client
+        run: npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoobClaw-win-x64
+          path: |
+            client/release/*.exe
+            !client/release/*-unpacked/**
+          retention-days: 30
+
   build-mac-x64:
     name: macOS Intel (x64)
     runs-on: macos-13
