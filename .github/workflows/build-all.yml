@@ -14,14 +14,11 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        working-directory: client
         run: npm ci
 
       - name: Build & Package (Windows x64)
-        working-directory: client
         run: npm run dist:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -31,8 +28,8 @@ jobs:
         with:
           name: NoobClaw-win-x64
           path: |
-            client/release/*.exe
-            !client/release/*-unpacked/**
+            release/*.exe
+            !release/*-unpacked/**
           retention-days: 30
 
   build-mac-x64:
@@ -45,14 +42,11 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        working-directory: client
         run: npm ci
 
       - name: Build & Package (x64)
-        working-directory: client
         run: npm run dist:mac:x64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -61,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NoobClaw-mac-x64
-          path: client/release/*.dmg
+          path: release/*.dmg
           retention-days: 30
 
   build-mac-arm64:
@@ -74,14 +68,11 @@ jobs:
         with:
           node-version: 24
           cache: 'npm'
-          cache-dependency-path: client/package-lock.json
 
       - name: Install dependencies
-        working-directory: client
         run: npm ci
 
       - name: Build & Package (arm64)
-        working-directory: client
         run: npm run dist:mac:arm64
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -90,5 +81,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: NoobClaw-mac-arm64
-          path: client/release/*.dmg
+          path: release/*.dmg
           retention-days: 30
