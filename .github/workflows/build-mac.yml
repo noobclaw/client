@@ -1,0 +1,63 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-mac-x64:
+    name: macOS Intel (x64)
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build & Package (x64)
+        working-directory: client
+        run: npm run dist:mac:x64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload x64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoobClaw-mac-x64
+          path: client/release/*.dmg
+          retention-days: 30
+
+  build-mac-arm64:
+    name: macOS Apple Silicon (arm64)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: 'npm'
+          cache-dependency-path: client/package-lock.json
+
+      - name: Install dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Build & Package (arm64)
+        working-directory: client
+        run: npm run dist:mac:arm64
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload arm64 DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoobClaw-mac-arm64
+          path: client/release/*.dmg
+          retention-days: 30

@@ -118,5 +118,6 @@
     "node_modules/node-nim/**",
     "node_modules/npm/**"
   ],
-  "asar": true
+  "asar": true,
+  "compression": "normal"
 }
