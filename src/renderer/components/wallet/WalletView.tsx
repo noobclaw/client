@@ -184,7 +184,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     const result = await noobClawApi.createOrder(bnbAmount);
     if (result?.order) {
       setPendingOrderNo(result.order.order_no);
-      setPendingBnbAmount(parseFloat(result.order.bnb_amount).toFixed(10));
+      setPendingBnbAmount(String(parseFloat(result.order.bnb_amount)));
       setPendingCreatedAt(result.order.created_at);
       setIsExpired(false);
       setStep('pay');
@@ -226,7 +226,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   const handleViewPendingOrder = (order: any) => {
     setPendingOrderNo(order.order_no);
-    setPendingBnbAmount(parseFloat(order.bnb_amount).toFixed(10));
+    setPendingBnbAmount(String(parseFloat(order.bnb_amount)));
     setPendingCreatedAt(order.created_at);
     setIsExpired(false);
     setStep('pay');
@@ -939,19 +939,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
           {step === 'pay' && (
             <div className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-              {/* Countdown timer */}
-              <div className={`mb-4 p-3 rounded-lg text-center ${isExpired ? 'bg-red-500/5 border border-red-500/20' : 'bg-primary/5 border border-primary/20'}`}>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">
-                  {i18nService.t('walletCountdownPrefix')}
-                </div>
-                <div className={`text-2xl font-mono font-bold ${isExpired ? 'text-red-400' : 'text-primary'}`}>
-                  {countdown || '0:30:00'}
-                </div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mt-1">
-                  {i18nService.t('walletCountdownSuffix')}
-                </div>
-              </div>
-
               {isExpired ? (
                 /* Expired state */
                 <div className="text-center py-4">
@@ -970,61 +957,50 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               ) : (
                 /* Payment info */
                 <>
-                  <h4 className="text-sm font-medium dark:text-claude-darkText text-claude-text mb-3">{i18nService.t('walletSendBnb')}</h4>
-                  <div className="space-y-3 mb-4">
-                    <div>
-                      <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletSendExactly')}</p>
-                      <div className="flex items-center gap-2">
-                        <code className="font-bold text-primary text-lg">{pendingBnbAmount} BNB</code>
-                        <button onClick={() => copyToClipboard(pendingBnbAmount)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
-                      </div>
-                      <p className="text-xs text-yellow-500 mt-1">
-                        {i18nService.t('walletExactAmountWarning')}
-                      </p>
-                    </div>
-                    <div>
-                      <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletTreasuryWallet')}</p>
-                      <div className="flex items-start gap-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2">
-                            <code className="text-xs font-mono dark:text-claude-darkText text-claude-text flex-1 truncate">{paymentInfo?.treasuryWallet || 'Loading...'}</code>
-                            <button onClick={() => copyToClipboard(paymentInfo?.treasuryWallet || '')} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
-                          </div>
-                        </div>
-                        {paymentInfo?.treasuryWallet && (
-                          <div className="flex flex-col items-center">
-                            <div className="bg-white p-1.5 rounded-lg">
-                              <QRCodeSVG value={paymentInfo.treasuryWallet} size={80} />
-                            </div>
-                            <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-1 text-center">{i18nService.t('walletScanQr')}</p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletOrderNo')}</p>
-                      <code className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{pendingOrderNo}</code>
+                  {/* Title */}
+                  <h4 className="text-sm font-bold dark:text-claude-darkText text-claude-text text-center mb-4">{i18nService.t('walletSendBnb')}</h4>
+
+                  {/* Amount */}
+                  <div className="text-center mb-1">
+                    <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletSendExactly')}</p>
+                    <div className="flex items-center justify-center gap-2">
+                      <code className="font-bold text-primary text-lg">{pendingBnbAmount} BNB</code>
+                      <button onClick={() => copyToClipboard(pendingBnbAmount)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
                     </div>
                   </div>
 
+                  {/* Treasury address label */}
+                  <p className="text-xs text-primary text-center mb-3">{i18nService.t('walletTreasuryWallet')}</p>
+
+                  {/* QR Code */}
+                  {paymentInfo?.treasuryWallet && (
+                    <div className="flex flex-col items-center mb-3">
+                      <div className="bg-white p-2.5 rounded-lg">
+                        <QRCodeSVG value={paymentInfo.treasuryWallet} size={160} />
+                      </div>
+                      <p className="text-xs text-primary mt-2">{i18nService.t('walletScanQr')}</p>
+                    </div>
+                  )}
+
+                  {/* Address */}
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all text-center">{paymentInfo?.treasuryWallet || 'Loading...'}</code>
+                    <button onClick={() => copyToClipboard(paymentInfo?.treasuryWallet || '')} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
+                  </div>
+
+                  {/* Tips */}
+                  <div className="mb-4 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                    <p>1. {i18nService.t('walletExactAmountWarning')}</p>
+                    <p>2. {i18nService.t('walletCountdownPrefix')} <span className="font-mono font-bold text-red-500">{countdown || '0:30:00'}</span> {i18nService.t('walletCountdownSuffix')}{i18nService.t('walletPaymentDeadlineNote')}</p>
+                    <p className="text-red-400/80">3. {i18nService.t('walletLossWarning')}</p>
+                  </div>
+
                   {/* Waiting indicator */}
-                  <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-3">
+                  <div className="mb-3 p-2.5 rounded-lg bg-primary/5 border border-primary/20 flex items-center gap-3">
                     <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
                     <p className="text-xs text-primary">
                       {i18nService.t('walletWaitingConfirmation')}
                     </p>
-                  </div>
-
-                  {/* Tips */}
-                  <div className="mb-4 space-y-1.5">
-                    <div className="flex items-start gap-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                      <span className="text-primary mt-0.5">*</span>
-                      <span>{i18nService.t('walletAutoConfirmNote')}</span>
-                    </div>
-                    <div className="flex items-start gap-2 text-xs text-red-400/80">
-                      <span className="text-red-400 mt-0.5">*</span>
-                      <span>{i18nService.t('walletTimeoutWarning')}</span>
-                    </div>
                   </div>
 
                   {/* Actions */}
