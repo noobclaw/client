@@ -74,9 +74,15 @@ const LuckyBag: React.FC = () => {
     window.addEventListener('noobclaw:lucky-bag', handler);
     return () => {
       window.removeEventListener('noobclaw:lucky-bag', handler);
-      if (lifetimeTimerRef.current) clearTimeout(lifetimeTimerRef.current);
     };
   }, [phase]);
+
+  // Cleanup timer on unmount only
+  useEffect(() => {
+    return () => {
+      if (lifetimeTimerRef.current) clearTimeout(lifetimeTimerRef.current);
+    };
+  }, []);
 
   // User clicks the lucky bag -> prize confirmed, display reward and call claim to confirm
   const handleOpen = useCallback(async () => {
