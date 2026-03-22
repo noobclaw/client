@@ -32,8 +32,6 @@ SKILLs/**/.server.pid
 SKILLs/**/.venv/
 SKILLs/**/node_modules/
 
-package-lock.json
-
 nul
 .work.env
 
