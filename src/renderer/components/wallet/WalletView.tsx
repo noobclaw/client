@@ -448,7 +448,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       <div>
                         <code className="text-xs font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{order.order_no}</code>
                         <div className="text-sm font-medium dark:text-claude-darkText text-claude-text mt-1">
-                          {parseFloat(order.bnb_amount).toFixed(10)} BNB
+                          {parseFloat(order.bnb_amount).toFixed(6)} BNB
                           <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {(order.tokens_purchased / 1_000_000).toFixed(1)}{i18nService.t('walletMTokenUnit')}</span>
                         </div>
                       </div>
