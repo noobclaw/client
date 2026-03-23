@@ -990,7 +990,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
                   {/* Tips */}
                   <div className="mb-4 space-y-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                    <p>1. {i18nService.t('walletExactAmountWarning')}</p>
+                    <p>1. <span className="text-yellow-500">{i18nService.t('walletExactAmountWarning')}</span></p>
+                    <p className="text-red-400 ml-3">{i18nService.t('walletFeeWarning')}</p>
                     <p>2. {i18nService.t('walletCountdownPrefix')} <span className="font-mono font-bold text-red-500">{countdown || '0:30:00'}</span> {i18nService.t('walletCountdownSuffix')}{i18nService.t('walletPaymentDeadlineNote')}</p>
                     <p className="text-red-400/80">3. {i18nService.t('walletLossWarning')}</p>
                   </div>

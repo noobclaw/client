@@ -923,6 +923,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletNoobCoinTotal: '（总计）',
     walletView: '查看',
     walletExactAmountWarning: '请务必转账精确金额，否则无法自动匹配，汇款可用您任何有BNB的钱包',
+    walletFeeWarning: '如果您从交易所汇出，务必注意扣除手续费后真实到账金额是否与上面数字相符',
     walletWaitingConfirmation: '等待转账确认中，转账后将自动到账...',
     // Web3
     web3TabIM: 'IM机器人',
@@ -1953,6 +1954,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletNoobCoinTotal: ' (Total)',
     walletView: 'View',
     walletExactAmountWarning: 'Please transfer the exact amount for automatic matching. You can use exchange apps or on-chain wallets to recharge.',
+    walletFeeWarning: 'If transferring from an exchange, make sure the actual amount received after fees matches the number above.',
     walletWaitingConfirmation: 'Waiting for transfer confirmation, credits will be added automatically...',
     // Web3
     web3TabIM: 'IM Bots',
