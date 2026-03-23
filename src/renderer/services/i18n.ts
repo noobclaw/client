@@ -2594,7 +2594,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: '點擊更換頭像',
     walletNoobCoinTotal: '（總計）',
     walletView: '查看',
-    walletExactAmountWarning: '請務必轉帳精確金額，否則無法自動匹配，用交易所APP或者鏈上錢包均可充值',
+    walletExactAmountWarning: '請務必轉帳精確金額，否則無法自動匹配，匯款可用您任何有BNB的錢包',
+    walletFeeWarning: '如果您從交易所匯出，務必注意扣除手續費後真實到帳金額是否與上面數字相符',
     walletWaitingConfirmation: '等待轉帳確認中，轉帳後將自動到帳...',
     // Web3
     web3TabIM: 'IM 機器人',
@@ -3234,7 +3235,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: '아바타 변경',
     walletNoobCoinTotal: ' (총계)',
     walletView: '보기',
-    walletExactAmountWarning: '자동 매칭을 위해 정확한 금액을 전송하세요. 거래소 앱 또는 온체인 지갑으로 충전 가능합니다.',
+    walletExactAmountWarning: '자동 매칭을 위해 정확한 금액을 전송하세요. BNB가 있는 모든 지갑을 사용할 수 있습니다.',
+    walletFeeWarning: '거래소에서 송금하는 경우, 수수료 공제 후 실제 입금 금액이 위 숫자와 일치하는지 반드시 확인하세요.',
     walletWaitingConfirmation: '전송 확인 대기 중, 크레딧이 자동으로 입금됩니다...',
     // Web3
     web3TabIM: 'IM 봇',
@@ -3874,7 +3876,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'アバターを変更',
     walletNoobCoinTotal: '（合計）',
     walletView: '表示',
-    walletExactAmountWarning: '自動マッチングのため正確な金額を送金してください。取引所アプリまたはオンチェーンウォレットで充電できます。',
+    walletExactAmountWarning: '自動マッチングのため正確な金額を送金してください。BNBのあるウォレットならどれでも使用できます。',
+    walletFeeWarning: '取引所から送金する場合、手数料控除後の実際の入金額が上記の数字と一致するか必ずご確認ください。',
     walletWaitingConfirmation: '送金確認待ち、クレジットは自動で入金されます...',
     // Web3
     web3TabIM: 'IM ボット',
@@ -4463,7 +4466,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Сменить аватар',
     walletNoobCoinTotal: ' (Всего)',
     walletView: 'Просмотр',
-    walletExactAmountWarning: 'Переведите точную сумму для автоматического сопоставления. Можно пополнить через биржевое приложение или ончейн-кошелёк.',
+    walletExactAmountWarning: 'Переведите точную сумму для автоматического сопоставления. Можно использовать любой кошелёк с BNB.',
+    walletFeeWarning: 'При переводе с биржи убедитесь, что фактическая сумма после вычета комиссии совпадает с указанной выше.',
     walletWaitingConfirmation: 'Ожидание подтверждения перевода, кредиты зачислятся автоматически...',
     // Web3
     web3TabIM: 'IM Боты',
@@ -5051,7 +5055,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Changer l\'avatar',
     walletNoobCoinTotal: ' (Total)',
     walletView: 'Voir',
-    walletExactAmountWarning: 'Veuillez transférer le montant exact pour le rapprochement automatique. Rechargez via une application d\'échange ou un portefeuille on-chain.',
+    walletExactAmountWarning: 'Veuillez transférer le montant exact pour le rapprochement automatique. Vous pouvez utiliser n\'importe quel portefeuille contenant du BNB.',
+    walletFeeWarning: 'Si vous transférez depuis un exchange, vérifiez que le montant réel reçu après déduction des frais correspond au montant indiqué ci-dessus.',
     walletWaitingConfirmation: 'En attente de confirmation, les crédits seront ajoutés automatiquement...',
     // Web3
     web3TabIM: 'Bots IM',
@@ -5638,7 +5643,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Avatar ändern',
     walletNoobCoinTotal: ' (Gesamt)',
     walletView: 'Anzeigen',
-    walletExactAmountWarning: 'Bitte den genauen Betrag für automatische Zuordnung überweisen. Aufladen über Börsen-Apps oder On-Chain-Wallets möglich.',
+    walletExactAmountWarning: 'Bitte den genauen Betrag für automatische Zuordnung überweisen. Sie können jede Wallet mit BNB verwenden.',
+    walletFeeWarning: 'Bei Überweisungen von einer Börse stellen Sie sicher, dass der tatsächlich eingegangene Betrag nach Abzug der Gebühren mit der oben genannten Zahl übereinstimmt.',
     walletWaitingConfirmation: 'Warte auf Überweisungsbestätigung, Credits werden automatisch gutgeschrieben...',
     // Web3
     web3TabIM: 'IM-Bots',
