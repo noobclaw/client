@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { noobClawApi } from '../../services/noobclawApi';
+import { i18nService } from '../../services/i18n';
 
 /* ────────────────────────────────────────────────────────────────
    LuckyBag — Lucky Bag Component
@@ -112,7 +113,7 @@ const LuckyBag: React.FC = () => {
       <div
         className={`nc-lucky-bag ${phase}`}
         onClick={handleOpen}
-        title="点击拆福袋！"
+        title={i18nService.t('luckyBagClickHint')}
       >
         {/* Glowing pulse ring */}
         {(phase === 'visible' || phase === 'entering') && (
@@ -190,13 +191,13 @@ const LuckyBag: React.FC = () => {
         {phase === 'miss' && (
           <div className="nc-lb-reward">
             <div className="nc-lb-reward-coin" style={{ opacity: 0.5 }}>🧧</div>
-            <div className="nc-lb-reward-amount" style={{ color: '#999', fontSize: 13, textShadow: 'none' }}>下次好运</div>
+            <div className="nc-lb-reward-amount" style={{ color: '#999', fontSize: 13, textShadow: 'none' }}>{i18nService.t('luckyBagMiss')}</div>
           </div>
         )}
 
         {/* Hint text */}
         {phase === 'visible' && (
-          <div className="nc-lb-hint">拆福袋</div>
+          <div className="nc-lb-hint">{i18nService.t('luckyBagOpen')}</div>
         )}
       </div>
     </div>
