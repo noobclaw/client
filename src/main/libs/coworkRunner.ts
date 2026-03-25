@@ -2254,18 +2254,36 @@ export class CoworkRunner extends EventEmitter {
       const browserStatus = getBrowserBridgeStatus();
       if (browserStatus.connected) {
         browserPrompt = [
-          '## Browser Automation (IMPORTANT)',
-          '- The NoobClaw Browser Assistant Chrome extension is CONNECTED and ready.',
-          '- When the user asks to open websites, browse pages, click elements, fill forms, read web content, or any browser-related task, you MUST use the browser_* tools (browser_navigate, browser_screenshot, browser_read_page, browser_click, browser_type, browser_scroll, browser_find, browser_fill, browser_get_text).',
-          '- Do NOT use Bash commands (curl, start chrome), Playwright, web-search skill, or any other method for browser tasks when browser_* tools are available.',
-          '- browser_* tools control the user\'s actual Chrome browser with their login sessions and cookies intact.',
+          '## Browser Automation Routing (IMPORTANT)',
+          '',
+          '### Tool Selection Rules — follow strictly:',
+          '1. **Needs login/user identity** (social media, email, e-commerce, admin panels, any site user is logged into) → MUST use `browser_*` tools',
+          '2. **Needs to interact with page UI** (click buttons, fill forms, scroll, navigate multi-step flows) → MUST use `browser_*` tools',
+          '3. **User wants to SEE the operation** ("open XX for me", "show me", "help me browse") → MUST use `browser_*` tools',
+          '4. **Simple search/lookup** (search for info, check a price, look up facts) → Use web-search skill',
+          '5. **Batch/background scraping** (scrape 100 pages, monitor changes, automated testing) → Use Playwright skill',
+          '',
+          '### browser_* tools (CONNECTED and ready):',
+          '- browser_navigate, browser_screenshot, browser_read_page, browser_click, browser_type, browser_scroll, browser_find, browser_fill, browser_get_text',
+          '- These control the user\'s REAL Chrome browser with their login sessions, cookies, and browsing history intact.',
+          '- Do NOT use Bash commands (curl, start chrome), Playwright, or web-search for tasks that match rules 1-3 above.',
+          '',
+          '### Workflow for browser_* tasks:',
+          '1. browser_navigate to the target URL',
+          '2. browser_screenshot to see the page',
+          '3. browser_read_page or browser_find to locate elements',
+          '4. browser_click / browser_type / browser_fill to interact',
+          '5. browser_screenshot again to verify result',
         ].join('\n');
       } else {
         browserPrompt = [
-          '## Browser Automation',
-          '- The NoobClaw Browser Assistant Chrome extension is NOT connected.',
-          '- If the user asks for browser tasks, suggest them to install and connect the NoobClaw Browser Assistant extension first.',
-          '- As a fallback, you may use Bash commands or web-search skill for simple tasks.',
+          '## Browser Automation Routing',
+          '',
+          '### NoobClaw Browser Assistant: NOT CONNECTED',
+          '- If the user asks to operate on websites requiring login or page interaction, suggest installing the NoobClaw Browser Assistant Chrome extension.',
+          '- For simple search/info queries → use web-search skill',
+          '- For batch scraping or automation → use Playwright skill',
+          '- As last resort for opening URLs → use Bash `start` command (Windows) or `open` (macOS)',
         ].join('\n');
       }
     } catch {}
