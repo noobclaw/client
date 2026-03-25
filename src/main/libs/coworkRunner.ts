@@ -3256,11 +3256,136 @@ export class CoworkRunner extends EventEmitter {
           )
         );
       }
+      // --- Browser automation tools ---
+      const { sendBrowserCommand, getBrowserBridgeStatus } = await import('./browserBridge');
+      const browserServerName = `browser-automation-${sessionId.slice(0, 8)}`;
+      const browserTools: any[] = [
+        tool(
+          'browser_screenshot',
+          'Take a screenshot of the current browser page. Returns a base64 image. Use this to see what is on the screen.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected. Please install and connect the NoobClaw Browser Assistant extension first.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('screenshot', {}, 60000);
+            return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
+          }
+        ),
+        tool(
+          'browser_read_page',
+          'Read the accessibility tree of the current page. Returns interactive elements with selectors. Use filter="interactive" to get only buttons/links/inputs.',
+          { filter: z.enum(['all', 'interactive']).optional(), selector: z.string().optional() },
+          async (args: { filter?: string; selector?: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('read_page', args);
+            return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+          }
+        ),
+        tool(
+          'browser_get_text',
+          'Extract the text content from the current page. Best for reading articles and text-heavy pages.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('get_text', {});
+            return { content: [{ type: 'text', text: data.text || '' }] } as any;
+          }
+        ),
+        tool(
+          'browser_click',
+          'Click an element on the page by CSS selector or coordinates [x, y].',
+          { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
+          async (args: { selector?: string; coordinate?: number[] }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            if (!args.selector && !args.coordinate) {
+              return { content: [{ type: 'text', text: 'Must provide selector or coordinate.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('click', args);
+            return { content: [{ type: 'text', text: data?.message || 'Clicked successfully.' }] } as any;
+          }
+        ),
+        tool(
+          'browser_type',
+          'Type text into the currently focused element or a specified element.',
+          { text: z.string(), selector: z.string().optional() },
+          async (args: { text: string; selector?: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('type', args);
+            return { content: [{ type: 'text', text: data?.message || 'Typed successfully.' }] } as any;
+          }
+        ),
+        tool(
+          'browser_navigate',
+          'Navigate to a URL in the current tab.',
+          { url: z.string() },
+          async (args: { url: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('navigate', args);
+            return { content: [{ type: 'text', text: `Navigated to ${data?.url || args.url}` }] } as any;
+          }
+        ),
+        tool(
+          'browser_scroll',
+          'Scroll the page up, down, left, or right.',
+          { direction: z.enum(['up', 'down', 'left', 'right']), amount: z.number().optional() },
+          async (args: { direction: string; amount?: number }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            await sendBrowserCommand('scroll', args);
+            return { content: [{ type: 'text', text: `Scrolled ${args.direction}.` }] } as any;
+          }
+        ),
+        tool(
+          'browser_find',
+          'Find elements on the page by natural language description (e.g. "search bar", "login button").',
+          { query: z.string() },
+          async (args: { query: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('find', args);
+            return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+          }
+        ),
+        tool(
+          'browser_fill',
+          'Fill a form input element with a value by CSS selector.',
+          { selector: z.string(), value: z.string() },
+          async (args: { selector: string; value: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return { content: [{ type: 'text', text: 'Chrome extension not connected.' }], isError: true } as any;
+            }
+            // Refuse password fields
+            if (args.selector.includes('password') || args.selector.includes('[type="password"]')) {
+              return { content: [{ type: 'text', text: 'Cannot interact with password fields for security reasons.' }], isError: true } as any;
+            }
+            const data = await sendBrowserCommand('fill', args);
+            return { content: [{ type: 'text', text: data?.message || 'Filled successfully.' }] } as any;
+          }
+        ),
+      ];
+
       options.mcpServers = {
         ...(options.mcpServers as Record<string, unknown> | undefined),
         [memoryServerName]: createSdkMcpServer({
           name: memoryServerName,
           tools: memoryTools,
+        }),
+        [browserServerName]: createSdkMcpServer({
+          name: browserServerName,
+          tools: browserTools,
         }),
       };
       let userMcpServerCount = 0;

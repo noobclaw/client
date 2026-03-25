@@ -13,6 +13,7 @@ import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
 import { ensureSandboxReady, getSandboxStatus, onSandboxProgress } from './libs/coworkSandboxRuntime';
 import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy, setScheduledTaskDeps } from './libs/coworkOpenAICompatProxy';
+import { startBrowserBridge, stopBrowserBridge, getBrowserBridgeStatus } from './libs/browserBridge';
 import { IMGatewayManager, IMPlatform, IMGatewayConfig } from './im';
 import { APP_NAME } from './appConstants';
 import { getSkillServiceManager } from './skillServices';
@@ -1274,6 +1275,16 @@ if (!gotTheLock) {
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to fetch marketplace' };
     }
+  });
+
+  // Browser Bridge IPC handlers
+  ipcMain.handle('browser-bridge:status', async () => {
+    return getBrowserBridgeStatus();
+  });
+
+  ipcMain.handle('browser-bridge:restart', async () => {
+    await stopBrowserBridge();
+    return startBrowserBridge();
   });
 
   // Cowork IPC handlers
@@ -2714,6 +2725,10 @@ if (!gotTheLock) {
       console.error('Failed to stop OpenAI compatibility proxy:', error);
     });
 
+    await stopBrowserBridge().catch((error) => {
+      console.error('Failed to stop browser bridge:', error);
+    });
+
     // Stop skill services.
     const skillServices = getSkillServiceManager();
     await skillServices.stopAll();
@@ -2850,6 +2865,10 @@ if (!gotTheLock) {
 
     await startCoworkOpenAICompatProxy().catch((error) => {
       console.error('Failed to start OpenAI compatibility proxy:', error);
+    });
+
+    await startBrowserBridge().catch((error) => {
+      console.error('Failed to start browser bridge:', error);
     });
 
     // Inject scheduled task dependencies into the proxy server
