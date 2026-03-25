@@ -13,7 +13,6 @@ let server: http.Server | null = null;
 let wss: any = null; // WebSocketServer
 let extensionSocket: any = null; // current connected extension
 let bridgePort: number | null = null;
-let bridgeToken: string = '';
 const pendingRequests = new Map<string, {
   resolve: (value: any) => void;
   reject: (reason: any) => void;
@@ -24,25 +23,21 @@ export function getBrowserBridgeStatus(): {
   running: boolean;
   port: number | null;
   connected: boolean;
-  token: string;
 } {
   return {
     running: server !== null,
     port: bridgePort,
     connected: extensionSocket !== null && extensionSocket.readyState === 1, // WebSocket.OPEN
-    token: bridgeToken,
   };
 }
 
-export async function startBrowserBridge(): Promise<{ port: number; token: string }> {
+export async function startBrowserBridge(): Promise<{ port: number }> {
   if (server) {
-    return { port: bridgePort!, token: bridgeToken };
+    return { port: bridgePort! };
   }
 
   // Dynamic import ws to avoid bundling issues
   const { WebSocketServer } = await import('ws');
-
-  bridgeToken = randomUUID().slice(0, 8);
 
   return new Promise((resolve, reject) => {
     const httpServer = http.createServer((_req, res) => {
@@ -61,22 +56,12 @@ export async function startBrowserBridge(): Promise<{ port: number; token: strin
       }
       extensionSocket = ws;
 
+      // Auto-accept connection (localhost-only, no token needed)
+      ws.send(JSON.stringify({ type: 'connected' }));
+
       ws.on('message', (data: any) => {
         try {
           const msg = JSON.parse(data.toString());
-
-          // Auth message
-          if (msg.type === 'auth') {
-            if (msg.token === bridgeToken) {
-              ws.send(JSON.stringify({ type: 'auth_ok' }));
-              console.log('[BrowserBridge] Extension authenticated');
-            } else {
-              ws.send(JSON.stringify({ type: 'auth_fail', error: 'Invalid token' }));
-              ws.close(1008, 'Invalid token');
-              extensionSocket = null;
-            }
-            return;
-          }
 
           // Pong (keepalive)
           if (msg.type === 'pong') return;
@@ -140,8 +125,8 @@ export async function startBrowserBridge(): Promise<{ port: number; token: strin
       bridgePort = addr.port;
       server = httpServer;
       wss = wsServer;
-      console.log(`[BrowserBridge] Started on ws://127.0.0.1:${bridgePort} (token: ${bridgeToken})`);
-      resolve({ port: bridgePort!, token: bridgeToken });
+      console.log(`[BrowserBridge] Started on ws://127.0.0.1:${bridgePort}`);
+      resolve({ port: bridgePort! });
     });
 
     httpServer.listen(12580, '127.0.0.1');
@@ -191,7 +176,7 @@ export function sendBrowserCommand(
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     if (!extensionSocket || extensionSocket.readyState !== 1) {
-      reject(new Error('Chrome extension not connected. Please install and connect the NoobClaw Browser Assistant extension.'));
+      reject(new Error('Browser assistant not connected. Install the NoobClaw Browser Assistant extension and make sure NoobClaw is running.'));
       return;
     }
 

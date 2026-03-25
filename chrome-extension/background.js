@@ -1,6 +1,7 @@
 /**
  * NoobClaw Browser Assistant — Background Service Worker
- * Maintains WebSocket connection to NoobClaw desktop client.
+ * Auto-connects to NoobClaw desktop client via WebSocket on localhost.
+ * No token needed — security is ensured by localhost-only binding.
  */
 
 let ws = null;
@@ -8,34 +9,18 @@ let connected = false;
 let reconnectTimer = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
+const DEFAULT_PORT = 12580;
 
-// Load saved config
-async function getConfig() {
-  const data = await chrome.storage.local.get(['port', 'token', 'autoConnect']);
-  return {
-    port: data.port || 12580,
-    token: data.token || '',
-    autoConnect: data.autoConnect !== false,
-  };
-}
-
-async function connect() {
-  const config = await getConfig();
-  if (!config.token) {
-    updateStatus('no_token');
-    return;
-  }
-
-  if (ws && ws.readyState <= 1) return; // already connecting/open
+function connect() {
+  if (ws && ws.readyState <= 1) return;
 
   updateStatus('connecting');
 
   try {
-    ws = new WebSocket(`ws://127.0.0.1:${config.port}`);
+    ws = new WebSocket(`ws://127.0.0.1:${DEFAULT_PORT}`);
 
     ws.onopen = () => {
-      console.log('[NoobClaw] Connected to bridge');
-      ws.send(JSON.stringify({ type: 'auth', token: config.token }));
+      console.log('[NoobClaw] Connected to desktop client');
       reconnectDelay = 1000;
     };
 
@@ -43,19 +28,14 @@ async function connect() {
       try {
         const msg = JSON.parse(event.data);
 
-        if (msg.type === 'auth_ok') {
+        // Connection confirmed
+        if (msg.type === 'connected') {
           connected = true;
           updateStatus('connected');
           return;
         }
 
-        if (msg.type === 'auth_fail') {
-          connected = false;
-          updateStatus('auth_fail');
-          ws.close();
-          return;
-        }
-
+        // Keepalive
         if (msg.type === 'ping') {
           ws.send(JSON.stringify({ type: 'pong' }));
           return;
@@ -78,11 +58,10 @@ async function connect() {
       scheduleReconnect();
     };
 
-    ws.onerror = (err) => {
-      console.error('[NoobClaw] WebSocket error:', err);
+    ws.onerror = () => {
+      // Will trigger onclose
     };
   } catch (err) {
-    console.error('[NoobClaw] Connect failed:', err);
     updateStatus('disconnected');
     scheduleReconnect();
   }
@@ -103,19 +82,26 @@ function disconnect() {
 
 function scheduleReconnect() {
   if (reconnectTimer) return;
-  reconnectTimer = setTimeout(async () => {
+  reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    const config = await getConfig();
-    if (config.autoConnect && config.token) {
-      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-      connect();
-    }
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+    connect();
   }, reconnectDelay);
 }
 
 function updateStatus(status) {
   chrome.storage.local.set({ connectionStatus: status });
-  // Notify popup if open
+  // Update badge
+  if (status === 'connected') {
+    chrome.action.setBadgeText({ text: '' });
+    chrome.action.setBadgeBackgroundColor({ color: '#00ff88' });
+  } else if (status === 'connecting') {
+    chrome.action.setBadgeText({ text: '...' });
+    chrome.action.setBadgeBackgroundColor({ color: '#ffc832' });
+  } else {
+    chrome.action.setBadgeText({ text: '!' });
+    chrome.action.setBadgeBackgroundColor({ color: '#ff5050' });
+  }
   chrome.runtime.sendMessage({ type: 'status_update', status }).catch(() => {});
 }
 
@@ -174,23 +160,16 @@ async function executeCommand(msg) {
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type === 'connect') {
-    chrome.storage.local.set({ port: msg.port, token: msg.token }, () => {
-      connect();
-    });
-    sendResponse({ ok: true });
-  } else if (msg.type === 'disconnect') {
-    disconnect();
-    sendResponse({ ok: true });
-  } else if (msg.type === 'get_status') {
+  if (msg.type === 'get_status') {
     sendResponse({ connected, status: connected ? 'connected' : 'disconnected' });
+  } else if (msg.type === 'reconnect') {
+    disconnect();
+    reconnectDelay = 1000;
+    connect();
+    sendResponse({ ok: true });
   }
   return true;
 });
 
 // Auto-connect on startup
-getConfig().then(config => {
-  if (config.autoConnect && config.token) {
-    connect();
-  }
-});
+connect();
