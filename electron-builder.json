@@ -33,6 +33,11 @@
       ]
     },
     {
+      "from": "chrome-extension",
+      "to": "chrome-extension",
+      "filter": ["**/*"]
+    },
+    {
       "from": "resources/tray",
       "to": "tray",
       "filter": [
