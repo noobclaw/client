@@ -6,6 +6,28 @@
 
 let ws = null;
 let connected = false;
+
+// Resize image to reduce token usage
+async function resizeImage(dataUrl, maxWidth) {
+  try {
+    const resp = await fetch(dataUrl);
+    const blob = await resp.blob();
+    const bmp = await createImageBitmap(blob);
+    if (bmp.width <= maxWidth) return dataUrl;
+    const scale = maxWidth / bmp.width;
+    const canvas = new OffscreenCanvas(maxWidth, Math.round(bmp.height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    const outBlob = await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.4 });
+    const buf = await outBlob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    return 'data:image/jpeg;base64,' + btoa(binary);
+  } catch {
+    return dataUrl;
+  }
+}
 let reconnectTimer = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
@@ -115,8 +137,10 @@ async function executeCommand(msg) {
     if (command === 'screenshot') {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('No active tab');
-      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 80 });
-      data = { image: dataUrl.split(',')[1] };
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 40 });
+      // Resize to max 800px width to reduce token usage
+      const resized = await resizeImage(dataUrl, 800);
+      data = { image: resized.split(',')[1] };
     } else if (command === 'navigate') {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('No active tab');

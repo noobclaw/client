@@ -2270,10 +2270,11 @@ export class CoworkRunner extends EventEmitter {
           '',
           '### Workflow for browser_* tasks:',
           '1. browser_navigate to the target URL',
-          '2. browser_screenshot to see the page',
-          '3. browser_read_page or browser_find to locate elements',
+          '2. browser_read_page to understand page structure and find interactive elements',
+          '3. browser_find to locate specific elements by description',
           '4. browser_click / browser_type / browser_fill to interact',
-          '5. browser_screenshot again to verify result',
+          '5. browser_get_text to read the result or verify',
+          '6. browser_screenshot ONLY when user explicitly asks to see the page (screenshot is shown to user but AI cannot see it)',
         ].join('\n');
       } else {
         browserPrompt = [
@@ -3302,14 +3303,20 @@ export class CoworkRunner extends EventEmitter {
       const browserTools: any[] = [
         tool(
           'browser_screenshot',
-          'Take a screenshot of the current browser page. Returns a base64 image. Use this to see what is on the screen.',
+          'Take a screenshot of the current browser page. The screenshot is saved locally and shown to the user. Since the AI model may not support image input, use browser_read_page or browser_get_text to understand page content instead.',
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
               return { content: [{ type: 'text', text: 'Browser assistant not connected. Please install the NoobClaw Browser Assistant Chrome extension and make sure NoobClaw is running. The extension auto-connects when both are active.' }], isError: true } as any;
             }
             const data = await sendBrowserCommand('screenshot', {}, 60000);
-            return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
+            // Save screenshot to temp file for user to see, but don't send raw image to AI (DeepSeek doesn't support images)
+            const fs = require('fs');
+            const path = require('path');
+            const os = require('os');
+            const tmpPath = path.join(os.tmpdir(), `noobclaw-screenshot-${Date.now()}.jpg`);
+            fs.writeFileSync(tmpPath, Buffer.from(data.image, 'base64'));
+            return { content: [{ type: 'text', text: `Screenshot saved to ${tmpPath}. The screenshot has been displayed to the user. To understand the page content, use browser_read_page or browser_get_text tools.` }] } as any;
           }
         ),
         tool(
