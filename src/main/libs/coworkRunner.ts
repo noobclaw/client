@@ -2247,8 +2247,30 @@ export class CoworkRunner extends EventEmitter {
     const uiLang = this.store.getAppLanguageFull();
     const langName = langMap[uiLang] || uiLang;
     const uiLanguagePrompt = '';
+    // Browser automation priority prompt
+    let browserPrompt = '';
+    try {
+      const { getBrowserBridgeStatus } = require('./browserBridge');
+      const browserStatus = getBrowserBridgeStatus();
+      if (browserStatus.connected) {
+        browserPrompt = [
+          '## Browser Automation (IMPORTANT)',
+          '- The NoobClaw Browser Assistant Chrome extension is CONNECTED and ready.',
+          '- When the user asks to open websites, browse pages, click elements, fill forms, read web content, or any browser-related task, you MUST use the browser_* tools (browser_navigate, browser_screenshot, browser_read_page, browser_click, browser_type, browser_scroll, browser_find, browser_fill, browser_get_text).',
+          '- Do NOT use Bash commands (curl, start chrome), Playwright, web-search skill, or any other method for browser tasks when browser_* tools are available.',
+          '- browser_* tools control the user\'s actual Chrome browser with their login sessions and cookies intact.',
+        ].join('\n');
+      } else {
+        browserPrompt = [
+          '## Browser Automation',
+          '- The NoobClaw Browser Assistant Chrome extension is NOT connected.',
+          '- If the user asks for browser tasks, suggest them to install and connect the NoobClaw Browser Assistant extension first.',
+          '- As a fallback, you may use Bash commands or web-search skill for simple tasks.',
+        ].join('\n');
+      }
+    } catch {}
     const trimmedBasePrompt = baseSystemPrompt?.trim();
-    return [safetyPrompt, windowsEncodingPrompt, windowsBundledRuntimePrompt, memoryRecallPrompt.join('\n'), uiLanguagePrompt, trimmedBasePrompt]
+    return [safetyPrompt, windowsEncodingPrompt, windowsBundledRuntimePrompt, memoryRecallPrompt.join('\n'), browserPrompt, uiLanguagePrompt, trimmedBasePrompt]
       .filter((section): section is string => Boolean(section?.trim()))
       .join('\n\n');
   }
