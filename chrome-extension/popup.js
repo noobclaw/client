@@ -25,9 +25,13 @@ function updateUI(status) {
   }
 }
 
-chrome.storage.local.get(['connectionStatus'], (data) => {
-  updateUI(data.connectionStatus || 'disconnected');
-});
+if (chrome.storage && chrome.storage.local) {
+  chrome.storage.local.get(['connectionStatus'], (data) => {
+    updateUI(data.connectionStatus || 'disconnected');
+  });
+} else {
+  updateUI('disconnected');
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'status_update') updateUI(msg.status);

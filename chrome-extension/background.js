@@ -90,7 +90,9 @@ function scheduleReconnect() {
 }
 
 function updateStatus(status) {
-  chrome.storage.local.set({ connectionStatus: status });
+  if (chrome.storage && chrome.storage.local) {
+    chrome.storage.local.set({ connectionStatus: status });
+  }
   // Update badge
   if (status === 'connected') {
     chrome.action.setBadgeText({ text: '' });

@@ -3,7 +3,7 @@
   "name": "NoobClaw Browser Assistant",
   "version": "1.0.0",
   "description": "Connects Chrome to NoobClaw AI for browser automation",
-  "permissions": ["activeTab", "scripting", "tabs"],
+  "permissions": ["activeTab", "scripting", "tabs", "storage"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
