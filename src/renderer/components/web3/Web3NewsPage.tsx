@@ -44,7 +44,7 @@ const Web3NewsPage: React.FC<Web3NewsPageProps> = ({
             </>
           )}
           <h1 className="text-sm font-semibold dark:text-claude-darkText text-claude-text flex items-center gap-2">
-            <span>{'\uD83D\uDD25'}</span> 行业热点
+            <span>{'\uD83D\uDD25'}</span> {i18nService.t('hotTopics')}
           </h1>
         </div>
         <WindowTitleBar inline />
