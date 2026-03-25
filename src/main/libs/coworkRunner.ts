@@ -3303,20 +3303,27 @@ export class CoworkRunner extends EventEmitter {
       const browserTools: any[] = [
         tool(
           'browser_screenshot',
-          'Take a screenshot of the current browser page. The screenshot is saved locally and shown to the user. Since the AI model may not support image input, use browser_read_page or browser_get_text to understand page content instead.',
+          'Take a screenshot of the current browser page. If the model supports vision, the image is returned directly. Otherwise the screenshot is saved locally for the user and you should use browser_read_page to understand page content.',
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
               return { content: [{ type: 'text', text: 'Browser assistant not connected. Please install the NoobClaw Browser Assistant Chrome extension and make sure NoobClaw is running. The extension auto-connects when both are active.' }], isError: true } as any;
             }
             const data = await sendBrowserCommand('screenshot', {}, 60000);
-            // Save screenshot to temp file for user to see, but don't send raw image to AI (DeepSeek doesn't support images)
+            // Check if current model supports vision (image input)
+            const apiConfig = getCurrentApiConfig();
+            const modelId = (apiConfig?.model || '').toLowerCase();
+            const supportsVision = /claude|gpt-4o|gpt-4-turbo|gemini|qwen-vl|glm-4v/i.test(modelId);
+            if (supportsVision) {
+              return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
+            }
+            // Non-vision model: save locally for user, AI uses text tools
             const fs = require('fs');
             const path = require('path');
             const os = require('os');
             const tmpPath = path.join(os.tmpdir(), `noobclaw-screenshot-${Date.now()}.jpg`);
             fs.writeFileSync(tmpPath, Buffer.from(data.image, 'base64'));
-            return { content: [{ type: 'text', text: `Screenshot saved to ${tmpPath}. The screenshot has been displayed to the user. To understand the page content, use browser_read_page or browser_get_text tools.` }] } as any;
+            return { content: [{ type: 'text', text: `Screenshot saved to ${tmpPath} and displayed to the user. To understand the page content, use browser_read_page or browser_get_text tools.` }] } as any;
           }
         ),
         tool(
