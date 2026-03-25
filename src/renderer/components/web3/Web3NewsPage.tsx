@@ -3,6 +3,7 @@ import Web3News from './Web3News';
 import WindowTitleBar from '../window/WindowTitleBar';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
+import { i18nService } from '../../services/i18n';
 
 interface Web3NewsPageProps {
   isSidebarCollapsed?: boolean;
