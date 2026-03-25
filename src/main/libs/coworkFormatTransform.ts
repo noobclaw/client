@@ -128,7 +128,8 @@ function convertMessageToOpenAI(role: string, content: unknown): Array<Record<st
   const contentParts: Array<Record<string, unknown>> = [];
   const toolCalls: Array<Record<string, unknown>> = [];
   const thinkingParts: string[] = [];
-  const seenToolCallIds = new Set<string>();
+  const seenToolUseIds = new Set<string>();
+  const seenToolResultIds = new Set<string>();
 
   for (const block of blocks) {
     const blockObj = toObject(block);
@@ -159,9 +160,9 @@ function convertMessageToOpenAI(role: string, content: unknown): Array<Record<st
 
     if (blockType === 'tool_use') {
       const id = toString(blockObj.id);
-      // Skip duplicate tool_call_id
-      if (seenToolCallIds.has(id)) continue;
-      seenToolCallIds.add(id);
+      // Skip duplicate tool_use id
+      if (seenToolUseIds.has(id)) continue;
+      seenToolUseIds.add(id);
       const name = toString(blockObj.name);
       const input = blockObj.input ?? {};
       const toolCall: Record<string, unknown> = {
@@ -195,9 +196,9 @@ function convertMessageToOpenAI(role: string, content: unknown): Array<Record<st
 
     if (blockType === 'tool_result') {
       const toolCallId = toString(blockObj.tool_use_id);
-      // Skip duplicate tool_call_id
-      if (seenToolCallIds.has(toolCallId)) continue;
-      seenToolCallIds.add(toolCallId);
+      // Skip duplicate tool_result id
+      if (seenToolResultIds.has(toolCallId)) continue;
+      seenToolResultIds.add(toolCallId);
       const toolContent = stringifyUnknown(blockObj.content);
       result.push({
         role: 'tool',
@@ -266,23 +267,24 @@ export function anthropicToOpenAI(body: unknown): Record<string, unknown> {
   }
 
   const sourceMessages = toArray(source.messages);
-  const globalSeenToolCallIds = new Set<string>();
+  const globalSeenToolUseIds = new Set<string>();
+  const globalSeenToolResultIds = new Set<string>();
   for (const item of sourceMessages) {
     const itemObj = toObject(item);
     const role = toString(itemObj.role) || 'user';
     const converted = convertMessageToOpenAI(role, itemObj.content);
     for (const msg of converted) {
-      // Deduplicate tool messages with same tool_call_id across all messages
+      // Deduplicate tool response messages with same tool_call_id across all messages
       if (msg.role === 'tool' && typeof msg.tool_call_id === 'string') {
-        if (globalSeenToolCallIds.has(msg.tool_call_id)) continue;
-        globalSeenToolCallIds.add(msg.tool_call_id);
+        if (globalSeenToolResultIds.has(msg.tool_call_id)) continue;
+        globalSeenToolResultIds.add(msg.tool_call_id);
       }
       // Deduplicate assistant tool_calls with same id
       if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
         msg.tool_calls = (msg.tool_calls as Array<Record<string, unknown>>).filter((tc) => {
           const id = typeof tc.id === 'string' ? tc.id : '';
-          if (globalSeenToolCallIds.has(id)) return false;
-          globalSeenToolCallIds.add(id);
+          if (globalSeenToolUseIds.has(id)) return false;
+          globalSeenToolUseIds.add(id);
           return true;
         });
       }
@@ -327,7 +329,22 @@ export function anthropicToOpenAI(body: unknown): Record<string, unknown> {
   }
 
   if (source.tool_choice !== undefined) {
-    output.tool_choice = source.tool_choice;
+    // Convert Anthropic tool_choice format to OpenAI format
+    const tc = toObject(source.tool_choice);
+    const tcType = toString(tc.type);
+    if (tcType === 'auto') {
+      output.tool_choice = 'auto';
+    } else if (tcType === 'any') {
+      output.tool_choice = 'required';
+    } else if (tcType === 'none') {
+      output.tool_choice = 'none';
+    } else if (tcType === 'tool' && tc.name) {
+      output.tool_choice = { type: 'function', function: { name: toString(tc.name) } };
+    } else if (typeof source.tool_choice === 'string') {
+      output.tool_choice = source.tool_choice;
+    } else {
+      output.tool_choice = 'auto';
+    }
   }
 
   return output;
