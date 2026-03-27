@@ -62,9 +62,7 @@
       "NSAppleEventsUsageDescription": "NoobClaw 需要使用 Apple Events 来控制 Calendar 应用执行自动化操作。"
     }
   },
-  "dmg": {
-    "sign": false
-  },
+  "dmg": {},
   "afterSign": "scripts/notarize.js",
   "protocols": [
     {
