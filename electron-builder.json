@@ -55,6 +55,9 @@
     "gatekeeperAssess": false,
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
+    "notarize": {
+      "teamId": "5D7Q94WC2A"
+    },
     "extendInfo": {
       "CFBundleIconName": "icon",
       "NSCalendarsUsageDescription": "NoobClaw 需要访问您的日历来帮助您查看和管理日程安排，例如查找事件、创建会议等。",
@@ -63,7 +66,6 @@
     }
   },
   "dmg": {},
-  "afterSign": "scripts/notarize.js",
   "protocols": [
     {
       "name": "NoobClaw",
