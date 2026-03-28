@@ -3299,6 +3299,22 @@ export class CoworkRunner extends EventEmitter {
       }
       // --- Browser automation tools ---
       const { sendBrowserCommand, getBrowserBridgeStatus } = await import('./browserBridge');
+      const browserNotConnectedResponse = () => ({
+        content: [{
+          type: 'text',
+          text: [
+            '⚠️ Browser assistant is not connected.',
+            '',
+            'To use browser automation:',
+            '1. Open Chrome browser',
+            '2. Install NoobClaw Browser Assistant extension (if not installed)',
+            '3. The extension auto-connects when Chrome and NoobClaw are both running',
+            '',
+            'Once connected, please retry your request.',
+          ].join('\n'),
+        }],
+        isError: true,
+      } as any);
       const browserServerName = `browser-automation-${sessionId.slice(0, 8)}`;
       const browserTools: any[] = [
         tool(
@@ -3307,7 +3323,7 @@ export class CoworkRunner extends EventEmitter {
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected. Please install the NoobClaw Browser Assistant Chrome extension and make sure NoobClaw is running. The extension auto-connects when both are active.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('screenshot', {}, 60000);
             // Check if current model supports vision (image input)
@@ -3332,7 +3348,7 @@ export class CoworkRunner extends EventEmitter {
           { filter: z.enum(['all', 'interactive']).optional(), selector: z.string().optional() },
           async (args: { filter?: string; selector?: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('read_page', args);
             return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
@@ -3344,7 +3360,7 @@ export class CoworkRunner extends EventEmitter {
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('get_text', {});
             return { content: [{ type: 'text', text: data.text || '' }] } as any;
@@ -3356,7 +3372,7 @@ export class CoworkRunner extends EventEmitter {
           { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
           async (args: { selector?: string; coordinate?: number[] }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             if (!args.selector && !args.coordinate) {
               return { content: [{ type: 'text', text: 'Must provide selector or coordinate.' }], isError: true } as any;
@@ -3371,7 +3387,7 @@ export class CoworkRunner extends EventEmitter {
           { text: z.string(), selector: z.string().optional() },
           async (args: { text: string; selector?: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('type', args);
             return { content: [{ type: 'text', text: data?.message || 'Typed successfully.' }] } as any;
@@ -3383,7 +3399,7 @@ export class CoworkRunner extends EventEmitter {
           { url: z.string() },
           async (args: { url: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('navigate', args);
             return { content: [{ type: 'text', text: `Navigated to ${data?.url || args.url}` }] } as any;
@@ -3395,7 +3411,7 @@ export class CoworkRunner extends EventEmitter {
           { direction: z.enum(['up', 'down', 'left', 'right']), amount: z.number().optional() },
           async (args: { direction: string; amount?: number }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             await sendBrowserCommand('scroll', args);
             return { content: [{ type: 'text', text: `Scrolled ${args.direction}.` }] } as any;
@@ -3407,7 +3423,7 @@ export class CoworkRunner extends EventEmitter {
           { query: z.string() },
           async (args: { query: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             const data = await sendBrowserCommand('find', args);
             return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
@@ -3419,7 +3435,7 @@ export class CoworkRunner extends EventEmitter {
           { selector: z.string(), value: z.string() },
           async (args: { selector: string; value: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return { content: [{ type: 'text', text: 'Browser assistant not connected.' }], isError: true } as any;
+              return browserNotConnectedResponse();
             }
             // Refuse password fields
             if (args.selector.includes('password') || args.selector.includes('[type="password"]')) {

@@ -4,15 +4,9 @@
   "version": "1.0.0",
   "description": "Connects Chrome to NoobClaw AI for browser automation",
   "permissions": ["activeTab", "scripting", "tabs", "storage"],
-  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [{
-    "matches": ["<all_urls>"],
-    "js": ["content.js"],
-    "run_at": "document_idle"
-  }],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

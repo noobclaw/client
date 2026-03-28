@@ -8,6 +8,7 @@
 
 import http from 'http';
 import { randomUUID } from 'crypto';
+import { BrowserWindow } from 'electron';
 
 let server: http.Server | null = null;
 let wss: any = null; // WebSocketServer
@@ -59,6 +60,10 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       // Auto-accept connection (localhost-only, no token needed)
       ws.send(JSON.stringify({ type: 'connected' }));
 
+      // Notify renderer and fire connection listeners (auto-retry)
+      notifyBridgeStatus(true);
+      fireConnectionListeners();
+
       ws.on('message', (data: any) => {
         try {
           const msg = JSON.parse(data.toString());
@@ -86,6 +91,7 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
         console.log('[BrowserBridge] Extension disconnected');
         if (extensionSocket === ws) {
           extensionSocket = null;
+          notifyBridgeStatus(false);
         }
         // Reject all pending requests
         for (const [id, pending] of pendingRequests) {
@@ -169,6 +175,33 @@ export async function stopBrowserBridge(): Promise<void> {
   });
 }
 
+function notifyBridgeStatus(connected: boolean) {
+  try {
+    const windows = BrowserWindow.getAllWindows();
+    for (const win of windows) {
+      win.webContents.send('browser-bridge:status', { connected });
+    }
+  } catch {}
+}
+
+// Listeners waiting for extension to connect (for auto-retry)
+const connectionListeners: Array<() => void> = [];
+
+export function onExtensionConnected(callback: () => void): () => void {
+  connectionListeners.push(callback);
+  return () => {
+    const idx = connectionListeners.indexOf(callback);
+    if (idx >= 0) connectionListeners.splice(idx, 1);
+  };
+}
+
+function fireConnectionListeners() {
+  const cbs = connectionListeners.splice(0);
+  for (const cb of cbs) {
+    try { cb(); } catch {}
+  }
+}
+
 export function sendBrowserCommand(
   command: string,
   params: Record<string, any> = {},
@@ -176,7 +209,7 @@ export function sendBrowserCommand(
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     if (!extensionSocket || extensionSocket.readyState !== 1) {
-      reject(new Error('Browser assistant not connected. Install the NoobClaw Browser Assistant extension and make sure NoobClaw is running.'));
+      reject(new Error('BROWSER_NOT_CONNECTED'));
       return;
     }
 

@@ -1054,6 +1054,16 @@ if (!gotTheLock) {
     }
   });
 
+  // Browser bridge status IPC
+  ipcMain.handle('browser-bridge:getStatus', async () => {
+    try {
+      const { getBrowserBridgeStatus } = await import('./libs/browserBridge');
+      return getBrowserBridgeStatus();
+    } catch {
+      return { running: false, port: null, connected: false };
+    }
+  });
+
   // Auto-launch IPC handlers
   // Use SQLite store as the source of truth for UI state, because
   // app.getLoginItemSettings() returns unreliable values on macOS and
