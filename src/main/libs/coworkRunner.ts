@@ -618,11 +618,11 @@ export class CoworkRunner extends EventEmitter {
     (async () => {
       try {
         const apiConfig = getCurrentApiConfig();
-        if (!apiConfig?.apiKey || !apiConfig?.baseUrl) return;
+        if (!apiConfig?.apiKey || !apiConfig?.baseURL) return;
 
         const extractionPrompt = getExtractionPrompt(lastUser.content, lastAssistant.content);
 
-        const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+        const response = await fetch(`${apiConfig.baseURL}/v1/chat/completions`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
