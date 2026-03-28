@@ -19,7 +19,10 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistant/dhmjehcfpjjliiknpahbnflgljinjdeo';
-const EXTENSION_ID = 'dhmjehcfpjjliiknpahbnflgljinjdeo';
+const EXTENSION_IDS = [
+  'dhmjehcfpjjliiknpahbnflgljinjdeo',  // Chrome Web Store
+  'nkgfcifmbbhjpegggaemohoedmcgklll',  // Local unpacked
+];
 
 let tcpServer: net.Server | null = null;
 let clientSocket: net.Socket | null = null;
@@ -109,9 +112,7 @@ export function registerNativeMessagingHost(): void {
       description: 'NoobClaw Browser Assistant Native Messaging Host',
       path: hostScriptPath,
       type: 'stdio',
-      allowed_origins: [
-        `chrome-extension://${EXTENSION_ID}/`,
-      ],
+      allowed_origins: EXTENSION_IDS.map(id => `chrome-extension://${id}/`),
     };
 
     // Ensure directory exists
@@ -198,7 +199,7 @@ export async function showExtensionPrompt(): Promise<void> {
     });
 
     if (result.response === 0) {
-      shell.openExternal(`chrome-extension://${EXTENSION_ID}/popup.html`);
+      shell.openExternal(`chrome-extension://${EXTENSION_IDS[0]}/popup.html`);
     }
   }
 }
