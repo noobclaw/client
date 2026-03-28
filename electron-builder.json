@@ -46,6 +46,11 @@
       "to": "com.noobclaw.browser.json"
     },
     {
+      "from": "resources/node-runtime",
+      "to": "node-runtime",
+      "filter": ["**/*"]
+    },
+    {
       "from": "resources/tray",
       "to": "tray",
       "filter": [

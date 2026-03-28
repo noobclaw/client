@@ -17,6 +17,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Bundle Node.js runtime for Native Messaging
+        shell: bash
+        run: |
+          mkdir -p resources/node-runtime
+          cp "$(which node)" resources/node-runtime/node.exe
+
       - name: Build & Package (Windows x64)
         run: npm run dist:win
         env:
@@ -60,6 +66,11 @@ jobs:
           security import /tmp/cert.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
           echo "CSC_LINK=/tmp/cert.p12" >> $GITHUB_ENV
+
+      - name: Bundle Node.js runtime for Native Messaging
+        run: |
+          mkdir -p resources/node-runtime
+          cp "$(which node)" resources/node-runtime/node
 
       - name: Build & Package (x64)
         run: npm run dist:mac:x64
@@ -106,6 +117,11 @@ jobs:
           security import /tmp/cert.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
           echo "CSC_LINK=/tmp/cert.p12" >> $GITHUB_ENV
+
+      - name: Bundle Node.js runtime for Native Messaging
+        run: |
+          mkdir -p resources/node-runtime
+          cp "$(which node)" resources/node-runtime/node
 
       - name: Build & Package (arm64)
         run: npm run dist:mac:arm64

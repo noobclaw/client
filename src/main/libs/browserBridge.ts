@@ -72,10 +72,10 @@ function getNativeHostManifestPath(): string {
 function getNativeHostScriptPath(): string {
   const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
   if (process.platform === 'win32') {
-    // Use a batch wrapper on Windows
     return path.join(resourcesPath, 'native-messaging-host.bat');
   }
-  return path.join(resourcesPath, 'native-messaging-host.js');
+  // macOS/Linux: use shell wrapper script
+  return path.join(resourcesPath, 'native-messaging-host.sh');
 }
 
 export function registerNativeMessagingHost(): void {
@@ -83,24 +83,23 @@ export function registerNativeMessagingHost(): void {
     const hostScriptPath = getNativeHostScriptPath();
     const manifestPath = getNativeHostManifestPath();
 
-    // Create batch wrapper for Windows (Chrome needs .bat/.exe, not .js)
-    if (process.platform === 'win32') {
-      const nodeExe = process.execPath.replace(/[^\\\/]+$/, 'node.exe');
-      // Use the bundled Node or system Node
-      const jsPath = hostScriptPath.replace('.bat', '.js');
-      const batContent = `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`;
+    // Create batch/shell wrapper (Chrome needs .bat/.exe on Windows, executable script on macOS/Linux)
+    const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+    const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
 
-      // Write .bat next to .js if not exists
+    if (process.platform === 'win32') {
+      const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
       const batPath = hostScriptPath;
-      const jsSource = path.join(process.resourcesPath || path.join(app.getAppPath(), 'resources'), 'native-messaging-host.js');
-      if (!fs.existsSync(batPath)) {
-        // Use Electron itself to run the host script
-        fs.writeFileSync(batPath, `@echo off\r\n"${process.execPath}" --no-sandbox "${jsSource}" %*\r\n`);
-      }
+      // Always rewrite to ensure correct paths
+      fs.writeFileSync(batPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
     } else {
-      // Make script executable on macOS/Linux
+      // macOS/Linux: create shell wrapper that uses bundled Node.js
+      const nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
+      const shPath = hostScriptPath;
+      fs.writeFileSync(shPath, `#!/bin/bash\n"${nodeExe}" "${jsSource}" "$@"\n`);
       try {
-        fs.chmodSync(hostScriptPath, '755');
+        fs.chmodSync(shPath, '755');
+        fs.chmodSync(nodeExe, '755');
       } catch {}
     }
 
