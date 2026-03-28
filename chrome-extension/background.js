@@ -1,10 +1,10 @@
 /**
  * NoobClaw Browser Assistant — Background Service Worker
- * Auto-connects to NoobClaw desktop client via WebSocket on localhost.
- * No token needed — security is ensured by localhost-only binding.
+ * Connects to NoobClaw desktop client via Native Messaging.
  */
 
-let ws = null;
+const NATIVE_HOST_NAME = 'com.noobclaw.browser';
+let port = null;
 let connected = false;
 
 // Resize image to reduce token usage
@@ -28,62 +28,57 @@ async function resizeImage(dataUrl, maxWidth) {
     return dataUrl;
   }
 }
+
 let reconnectTimer = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
-const DEFAULT_PORT = 12580;
 
 function connect() {
-  if (ws && ws.readyState <= 1) return;
+  if (port) return;
 
   updateStatus('connecting');
 
   try {
-    ws = new WebSocket(`ws://127.0.0.1:${DEFAULT_PORT}`);
+    port = chrome.runtime.connectNative(NATIVE_HOST_NAME);
 
-    ws.onopen = () => {
-      console.log('[NoobClaw] Connected to desktop client');
-      reconnectDelay = 1000;
-    };
-
-    ws.onmessage = async (event) => {
-      try {
-        const msg = JSON.parse(event.data);
-
-        // Connection confirmed
-        if (msg.type === 'connected') {
+    port.onMessage.addListener(async (msg) => {
+      // Bridge status from native host
+      if (msg.type === 'bridge_status') {
+        if (msg.connected) {
           connected = true;
+          reconnectDelay = 1000;
           updateStatus('connected');
-          return;
+        } else {
+          connected = false;
+          updateStatus('disconnected');
         }
-
-        // Keepalive
-        if (msg.type === 'ping') {
-          ws.send(JSON.stringify({ type: 'pong' }));
-          return;
-        }
-
-        // Command from NoobClaw
-        if (msg.id && msg.command) {
-          const result = await executeCommand(msg);
-          ws.send(JSON.stringify(result));
-        }
-      } catch (err) {
-        console.error('[NoobClaw] Message error:', err);
+        return;
       }
-    };
 
-    ws.onclose = () => {
+      // Pong (keepalive)
+      if (msg.type === 'pong') return;
+
+      // Command from NoobClaw
+      if (msg.id && msg.command) {
+        const result = await executeCommand(msg);
+        if (port) {
+          port.postMessage(result);
+        }
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      const error = chrome.runtime.lastError;
+      console.log('[NoobClaw] Native port disconnected:', error?.message || 'unknown');
+      port = null;
       connected = false;
       updateStatus('disconnected');
-      ws = null;
       scheduleReconnect();
-    };
+    });
 
-    ws.onerror = () => {
-      // Will trigger onclose
-    };
   } catch (err) {
+    console.error('[NoobClaw] Failed to connect native:', err);
+    port = null;
     updateStatus('disconnected');
     scheduleReconnect();
   }
@@ -94,9 +89,9 @@ function disconnect() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-  if (ws) {
-    ws.close(1000, 'User disconnect');
-    ws = null;
+  if (port) {
+    port.disconnect();
+    port = null;
   }
   connected = false;
   updateStatus('disconnected');
@@ -138,7 +133,6 @@ async function executeCommand(msg) {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('No active tab');
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 40 });
-      // Resize to max 800px width to reduce token usage
       const resized = await resizeImage(dataUrl, 800);
       data = { image: resized.split(',')[1] };
     } else if (command === 'navigate') {
@@ -184,6 +178,13 @@ async function executeCommand(msg) {
   }
 }
 
+// Keepalive ping every 25s
+setInterval(() => {
+  if (port && connected) {
+    port.postMessage({ type: 'ping' });
+  }
+}, 25000);
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'get_status') {
@@ -197,5 +198,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return true;
 });
 
+// Remove nativeMessaging from permissions since it's declared in manifest
 // Auto-connect on startup
 connect();

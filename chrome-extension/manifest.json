@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "NoobClaw Browser Assistant",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Connects Chrome to NoobClaw AI for browser automation",
-  "permissions": ["activeTab", "scripting", "tabs", "storage"],
+  "permissions": ["activeTab", "scripting", "tabs", "storage", "nativeMessaging"],
   "background": {
     "service_worker": "background.js"
   },

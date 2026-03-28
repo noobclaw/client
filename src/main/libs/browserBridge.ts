@@ -1,99 +1,270 @@
 /**
- * Browser Bridge — WebSocket server that connects to a Chrome extension
- * for AI-controlled browser automation.
+ * Browser Bridge — TCP server that connects to the Native Messaging Host
+ * which bridges Chrome extension communication.
  *
- * Lifecycle follows the same pattern as coworkOpenAICompatProxy.ts:
- * module-level state, exported start/stop/status functions.
+ * Architecture:
+ *   Chrome Extension <-> Native Messaging Host (stdin/stdout) <-> TCP <-> This bridge
+ *
+ * Also handles:
+ *   - Native messaging host registration (registry on Windows, plist on macOS)
+ *   - Extension installation detection
  */
 
-import http from 'http';
+import net from 'net';
+import path from 'path';
+import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog, shell } from 'electron';
 
-let server: http.Server | null = null;
-let wss: any = null; // WebSocketServer
-let extensionSocket: any = null; // current connected extension
+const NATIVE_HOST_NAME = 'com.noobclaw.browser';
+const TCP_PORT = 12581;
+const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistant/dhmjehcfpjjliiknpahbnflgljinjdeo';
+const EXTENSION_ID = 'dhmjehcfpjjliiknpahbnflgljinjdeo';
+
+let tcpServer: net.Server | null = null;
+let clientSocket: net.Socket | null = null;
 let bridgePort: number | null = null;
+
 const pendingRequests = new Map<string, {
   resolve: (value: any) => void;
   reject: (reason: any) => void;
   timer: ReturnType<typeof setTimeout>;
 }>();
 
+// --- Status ---
+
 export function getBrowserBridgeStatus(): {
   running: boolean;
   port: number | null;
   connected: boolean;
+  extensionInstalled: boolean;
 } {
   return {
-    running: server !== null,
+    running: tcpServer !== null,
     port: bridgePort,
-    connected: extensionSocket !== null && extensionSocket.readyState === 1, // WebSocket.OPEN
+    connected: clientSocket !== null && !clientSocket.destroyed,
+    extensionInstalled: isNativeHostRegistered(),
   };
 }
 
+// --- Native Messaging Host Registration ---
+
+function getNativeHostManifestPath(): string {
+  if (process.platform === 'win32') {
+    // Windows: manifest can be anywhere, pointed to by registry
+    return path.join(app.getPath('userData'), `${NATIVE_HOST_NAME}.json`);
+  } else if (process.platform === 'darwin') {
+    return path.join(
+      process.env.HOME || '~',
+      'Library/Application Support/Google/Chrome/NativeMessagingHosts',
+      `${NATIVE_HOST_NAME}.json`
+    );
+  } else {
+    // Linux
+    return path.join(
+      process.env.HOME || '~',
+      '.config/google-chrome/NativeMessagingHosts',
+      `${NATIVE_HOST_NAME}.json`
+    );
+  }
+}
+
+function getNativeHostScriptPath(): string {
+  const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+  if (process.platform === 'win32') {
+    // Use a batch wrapper on Windows
+    return path.join(resourcesPath, 'native-messaging-host.bat');
+  }
+  return path.join(resourcesPath, 'native-messaging-host.js');
+}
+
+export function registerNativeMessagingHost(): void {
+  try {
+    const hostScriptPath = getNativeHostScriptPath();
+    const manifestPath = getNativeHostManifestPath();
+
+    // Create batch wrapper for Windows (Chrome needs .bat/.exe, not .js)
+    if (process.platform === 'win32') {
+      const nodeExe = process.execPath.replace(/[^\\\/]+$/, 'node.exe');
+      // Use the bundled Node or system Node
+      const jsPath = hostScriptPath.replace('.bat', '.js');
+      const batContent = `@echo off\r\n"${process.execPath}" "${jsPath}" %*\r\n`;
+
+      // Write .bat next to .js if not exists
+      const batPath = hostScriptPath;
+      const jsSource = path.join(process.resourcesPath || path.join(app.getAppPath(), 'resources'), 'native-messaging-host.js');
+      if (!fs.existsSync(batPath)) {
+        // Use Electron itself to run the host script
+        fs.writeFileSync(batPath, `@echo off\r\n"${process.execPath}" --no-sandbox "${jsSource}" %*\r\n`);
+      }
+    } else {
+      // Make script executable on macOS/Linux
+      try {
+        fs.chmodSync(hostScriptPath, '755');
+      } catch {}
+    }
+
+    // Create manifest
+    const manifest = {
+      name: NATIVE_HOST_NAME,
+      description: 'NoobClaw Browser Assistant Native Messaging Host',
+      path: hostScriptPath,
+      type: 'stdio',
+      allowed_origins: [
+        `chrome-extension://${EXTENSION_ID}/`,
+      ],
+    };
+
+    // Ensure directory exists
+    const manifestDir = path.dirname(manifestPath);
+    if (!fs.existsSync(manifestDir)) {
+      fs.mkdirSync(manifestDir, { recursive: true });
+    }
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    // Windows: write registry key
+    if (process.platform === 'win32') {
+      try {
+        const { execSync } = require('child_process');
+        execSync(
+          `reg add "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}" /ve /t REG_SZ /d "${manifestPath}" /f`,
+          { stdio: 'ignore' }
+        );
+      } catch (err) {
+        console.error('[BrowserBridge] Failed to register native messaging host in registry:', err);
+      }
+    }
+
+    console.log(`[BrowserBridge] Native messaging host registered: ${manifestPath}`);
+  } catch (err) {
+    console.error('[BrowserBridge] Failed to register native messaging host:', err);
+  }
+}
+
+function isNativeHostRegistered(): boolean {
+  try {
+    if (process.platform === 'win32') {
+      const { execSync } = require('child_process');
+      const result = execSync(
+        `reg query "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}" /ve`,
+        { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' }
+      );
+      return result.includes(NATIVE_HOST_NAME);
+    } else {
+      const manifestPath = getNativeHostManifestPath();
+      return fs.existsSync(manifestPath);
+    }
+  } catch {
+    return false;
+  }
+}
+
+// --- Extension Installation Detection ---
+
+export function isExtensionInstalled(): boolean {
+  return isNativeHostRegistered();
+}
+
+export async function showExtensionPrompt(): Promise<void> {
+  const status = getBrowserBridgeStatus();
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) return;
+
+  if (!status.extensionInstalled) {
+    // Not installed — show install dialog
+    const result = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: 'NoobClaw',
+      message: 'Install NoobClaw in Chrome',
+      detail: 'This allows NoobClaw to work with websites directly in your browser. Only grant "always allow" for sites you trust.',
+      buttons: ['Open Chrome Web Store', 'Not now', "Don't ask again"],
+      defaultId: 0,
+      cancelId: 1,
+    });
+
+    if (result.response === 0) {
+      shell.openExternal(CHROME_STORE_URL);
+    }
+  } else if (!status.connected) {
+    // Installed but not connected
+    const result = await dialog.showMessageBox(win, {
+      type: 'warning',
+      title: 'NoobClaw',
+      message: 'Check your NoobClaw Chrome extension',
+      detail: 'The Chrome extension needs to be enabled and Chrome must be running. Open the extension settings to verify.',
+      buttons: ['Open Extension Settings', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
+
+    if (result.response === 0) {
+      shell.openExternal(`chrome-extension://${EXTENSION_ID}/popup.html`);
+    }
+  }
+}
+
+// --- TCP Server (for native messaging host connection) ---
+
 export async function startBrowserBridge(): Promise<{ port: number }> {
-  if (server) {
+  if (tcpServer) {
     return { port: bridgePort! };
   }
 
-  // Dynamic import ws to avoid bundling issues
-  const { WebSocketServer } = await import('ws');
+  // Register native messaging host on startup
+  registerNativeMessagingHost();
 
   return new Promise((resolve, reject) => {
-    const httpServer = http.createServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ status: 'NoobClaw Browser Bridge' }));
-    });
-
-    const wsServer = new WebSocketServer({ server: httpServer });
-
-    wsServer.on('connection', (ws: any) => {
-      console.log('[BrowserBridge] Extension connected');
+    const server = net.createServer((socket) => {
+      console.log('[BrowserBridge] Native messaging host connected');
 
       // Replace any existing connection
-      if (extensionSocket && extensionSocket.readyState === 1) {
-        extensionSocket.close(1000, 'Replaced by new connection');
+      if (clientSocket && !clientSocket.destroyed) {
+        clientSocket.destroy();
       }
-      extensionSocket = ws;
+      clientSocket = socket;
 
-      // Auto-accept connection (localhost-only, no token needed)
-      ws.send(JSON.stringify({ type: 'connected' }));
-
-      // Notify renderer and fire connection listeners (auto-retry)
+      // Notify renderer
       notifyBridgeStatus(true);
       fireConnectionListeners();
 
-      ws.on('message', (data: any) => {
-        try {
-          const msg = JSON.parse(data.toString());
+      let recvBuf = '';
+      socket.on('data', (data) => {
+        recvBuf += data.toString('utf8');
+        let newlineIdx;
+        while ((newlineIdx = recvBuf.indexOf('\n')) >= 0) {
+          const line = recvBuf.slice(0, newlineIdx);
+          recvBuf = recvBuf.slice(newlineIdx + 1);
+          if (!line.trim()) continue;
+          try {
+            const msg = JSON.parse(line);
 
-          // Pong (keepalive)
-          if (msg.type === 'pong') return;
+            if (msg.type === 'pong') return;
 
-          // Response to a command
-          if (msg.id && pendingRequests.has(msg.id)) {
-            const pending = pendingRequests.get(msg.id)!;
-            clearTimeout(pending.timer);
-            pendingRequests.delete(msg.id);
-            if (msg.success) {
-              pending.resolve(msg.data);
-            } else {
-              pending.reject(new Error(msg.error || 'Command failed'));
+            // Response to a command
+            if (msg.id && pendingRequests.has(msg.id)) {
+              const pending = pendingRequests.get(msg.id)!;
+              clearTimeout(pending.timer);
+              pendingRequests.delete(msg.id);
+              if (msg.success) {
+                pending.resolve(msg.data);
+              } else {
+                pending.reject(new Error(msg.error || 'Command failed'));
+              }
             }
+          } catch (err) {
+            console.error('[BrowserBridge] Failed to parse message:', err);
           }
-        } catch (err) {
-          console.error('[BrowserBridge] Failed to parse message:', err);
         }
       });
 
-      ws.on('close', () => {
-        console.log('[BrowserBridge] Extension disconnected');
-        if (extensionSocket === ws) {
-          extensionSocket = null;
+      socket.on('close', () => {
+        console.log('[BrowserBridge] Native messaging host disconnected');
+        if (clientSocket === socket) {
+          clientSocket = null;
           notifyBridgeStatus(false);
         }
-        // Reject all pending requests
+        // Reject all pending
         for (const [id, pending] of pendingRequests) {
           clearTimeout(pending.timer);
           pending.reject(new Error('Extension disconnected'));
@@ -101,79 +272,60 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
         }
       });
 
-      ws.on('error', (err: any) => {
-        console.error('[BrowserBridge] WebSocket error:', err.message);
+      socket.on('error', (err) => {
+        console.error('[BrowserBridge] Socket error:', err.message);
       });
     });
 
-    // Keepalive ping every 25s (Chrome kills service workers after 30s idle)
-    const keepaliveInterval = setInterval(() => {
-      if (extensionSocket && extensionSocket.readyState === 1) {
-        extensionSocket.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 25000);
-
-    wsServer.on('close', () => {
-      clearInterval(keepaliveInterval);
-    });
-
-    httpServer.on('error', (err: any) => {
+    server.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
-        // Try random port
-        httpServer.listen(0, '127.0.0.1');
+        server.listen(0, '127.0.0.1');
       } else {
         reject(err);
       }
     });
 
-    httpServer.on('listening', () => {
-      const addr = httpServer.address() as any;
+    server.on('listening', () => {
+      const addr = server.address() as net.AddressInfo;
       bridgePort = addr.port;
-      server = httpServer;
-      wss = wsServer;
-      console.log(`[BrowserBridge] Started on ws://127.0.0.1:${bridgePort}`);
-      resolve({ port: bridgePort! });
+      tcpServer = server;
+      console.log(`[BrowserBridge] TCP bridge started on 127.0.0.1:${bridgePort}`);
+      resolve({ port: bridgePort });
     });
 
-    httpServer.listen(12580, '127.0.0.1');
+    server.listen(TCP_PORT, '127.0.0.1');
   });
 }
 
 export async function stopBrowserBridge(): Promise<void> {
-  if (!server) return;
+  if (!tcpServer) return;
 
-  // Reject all pending requests
   for (const [id, pending] of pendingRequests) {
     clearTimeout(pending.timer);
     pending.reject(new Error('Bridge shutting down'));
     pendingRequests.delete(id);
   }
 
-  if (extensionSocket && extensionSocket.readyState === 1) {
-    extensionSocket.close(1000, 'Bridge shutting down');
-    extensionSocket = null;
+  if (clientSocket && !clientSocket.destroyed) {
+    clientSocket.destroy();
+    clientSocket = null;
   }
 
   return new Promise((resolve) => {
-    if (wss) {
-      wss.close(() => {
-        if (server) {
-          server.close(() => {
-            server = null;
-            wss = null;
-            bridgePort = null;
-            console.log('[BrowserBridge] Stopped');
-            resolve();
-          });
-        } else {
-          resolve();
-        }
+    if (tcpServer) {
+      tcpServer.close(() => {
+        tcpServer = null;
+        bridgePort = null;
+        console.log('[BrowserBridge] Stopped');
+        resolve();
       });
     } else {
       resolve();
     }
   });
 }
+
+// --- Notify renderer ---
 
 function notifyBridgeStatus(connected: boolean) {
   try {
@@ -184,7 +336,8 @@ function notifyBridgeStatus(connected: boolean) {
   } catch {}
 }
 
-// Listeners waiting for extension to connect (for auto-retry)
+// --- Connection listeners (for auto-retry) ---
+
 const connectionListeners: Array<() => void> = [];
 
 export function onExtensionConnected(callback: () => void): () => void {
@@ -202,13 +355,15 @@ function fireConnectionListeners() {
   }
 }
 
+// --- Send command to extension ---
+
 export function sendBrowserCommand(
   command: string,
   params: Record<string, any> = {},
   timeoutMs = 30000
 ): Promise<any> {
   return new Promise((resolve, reject) => {
-    if (!extensionSocket || extensionSocket.readyState !== 1) {
+    if (!clientSocket || clientSocket.destroyed) {
       reject(new Error('BROWSER_NOT_CONNECTED'));
       return;
     }
@@ -221,6 +376,6 @@ export function sendBrowserCommand(
 
     pendingRequests.set(id, { resolve, reject, timer });
 
-    extensionSocket.send(JSON.stringify({ id, command, params }));
+    clientSocket.write(JSON.stringify({ id, command, params }) + '\n');
   });
 }

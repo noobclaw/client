@@ -3298,23 +3298,19 @@ export class CoworkRunner extends EventEmitter {
         );
       }
       // --- Browser automation tools ---
-      const { sendBrowserCommand, getBrowserBridgeStatus } = await import('./browserBridge');
-      const browserNotConnectedResponse = () => ({
-        content: [{
-          type: 'text',
-          text: [
-            '⚠️ Browser assistant is not connected.',
-            '',
-            'To use browser automation:',
-            '1. Open Chrome browser',
-            '2. Install NoobClaw Browser Assistant extension (if not installed)',
-            '3. The extension auto-connects when Chrome and NoobClaw are both running',
-            '',
-            'Once connected, please retry your request.',
-          ].join('\n'),
-        }],
-        isError: true,
-      } as any);
+      const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt } = await import('./browserBridge');
+      const browserNotConnectedResponse = () => {
+        // Show native dialog to guide user (async, don't block)
+        showExtensionPrompt().catch(() => {});
+        const status = getBrowserBridgeStatus();
+        const msg = status.extensionInstalled
+          ? 'Browser extension is installed but not connected. A dialog has been shown to help reconnect. Please ensure Chrome is running with the extension enabled, then retry.'
+          : 'Browser extension is not installed. A dialog has been shown to guide installation. After installing, please retry.';
+        return {
+          content: [{ type: 'text', text: msg }],
+          isError: true,
+        } as any;
+      };
       const browserServerName = `browser-automation-${sessionId.slice(0, 8)}`;
       const browserTools: any[] = [
         tool(

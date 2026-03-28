@@ -38,6 +38,14 @@
       "filter": ["**/*"]
     },
     {
+      "from": "resources/native-messaging-host.js",
+      "to": "native-messaging-host.js"
+    },
+    {
+      "from": "resources/com.noobclaw.browser.json",
+      "to": "com.noobclaw.browser.json"
+    },
+    {
       "from": "resources/tray",
       "to": "tray",
       "filter": [
