@@ -15,6 +15,7 @@ import { coworkLog, getCoworkLogPath } from './coworkLogger';
 import { ensurePythonPipReady, ensurePythonRuntimeReady } from './pythonRuntime';
 import { cpRecursiveSync } from '../fsCompat';
 import { isQuestionLikeMemoryText, type CoworkMemoryGuardLevel } from './coworkMemoryExtractor';
+import { initKnowledgeGraph, queryRelevantContext, getExtractionPrompt, storeExtractionResult, type ExtractionResult } from './knowledgeGraph';
 import { z } from 'zod';
 import { ensureSandboxReady, getSandboxRuntimeInfoIfReady, type SandboxRuntimeInfo } from './coworkSandboxRuntime';
 import {
@@ -525,6 +526,8 @@ export class CoworkRunner extends EventEmitter {
   constructor(store: CoworkStore) {
     super();
     this.store = store;
+    // Initialize knowledge graph database
+    initKnowledgeGraph();
   }
 
   setAiAssistantNameProvider(provider: () => string): void {
@@ -592,6 +595,68 @@ export class CoworkRunner extends EventEmitter {
       enqueuedAt: Date.now(),
     });
     void this.drainTurnMemoryQueue();
+  }
+
+  private extractKnowledgeGraphAsync(sessionId: string): void {
+    const session = this.store.getSession(sessionId);
+    if (!session || session.messages.length === 0) return;
+
+    const lastUser = [...session.messages].reverse().find(m => m.type === 'user' && m.content?.trim());
+    const lastAssistant = [...session.messages].reverse().find(m => {
+      if (m.type !== 'assistant') return false;
+      if (!m.content?.trim()) return false;
+      if (m.metadata?.isThinking) return false;
+      return true;
+    });
+
+    if (!lastUser || !lastAssistant) return;
+
+    // Skip very short or trivial messages
+    if (lastUser.content.length < 10) return;
+
+    // Run extraction asynchronously — never block the main flow
+    (async () => {
+      try {
+        const apiConfig = getCurrentApiConfig();
+        if (!apiConfig?.apiKey || !apiConfig?.baseUrl) return;
+
+        const extractionPrompt = getExtractionPrompt(lastUser.content, lastAssistant.content);
+
+        const response = await fetch(`${apiConfig.baseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiConfig.apiKey}`,
+          },
+          body: JSON.stringify({
+            model: apiConfig.model || 'deepseek-chat',
+            messages: [{ role: 'user', content: extractionPrompt }],
+            max_tokens: 500,
+            temperature: 0,
+            stream: false,
+          }),
+          signal: AbortSignal.timeout(10000),
+        });
+
+        if (!response.ok) return;
+
+        const data = await response.json() as any;
+        const content = data.choices?.[0]?.message?.content?.trim();
+        if (!content) return;
+
+        // Parse JSON from response (handle markdown code blocks)
+        const jsonStr = content.replace(/^```json?\s*/i, '').replace(/\s*```$/, '');
+        const result: ExtractionResult = JSON.parse(jsonStr);
+
+        if (result.entities?.length || result.relations?.length || result.memories?.length) {
+          storeExtractionResult(result);
+          console.log(`[KnowledgeGraph] Extracted: ${result.entities?.length || 0} entities, ${result.relations?.length || 0} relations, ${result.memories?.length || 0} memories`);
+        }
+      } catch (err) {
+        // Silent fail — knowledge graph extraction is non-critical
+        console.debug('[KnowledgeGraph] Extraction failed (non-critical):', (err as Error).message);
+      }
+    })();
   }
 
   private getSandboxUnavailableFallbackNotice(errorMessage: string): string {
@@ -2583,6 +2648,12 @@ export class CoworkRunner extends EventEmitter {
       const promptPrefix = this.buildPromptPrefix();
       let effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
 
+      // Inject knowledge graph context
+      const graphContext = queryRelevantContext(prompt);
+      if (graphContext) {
+        effectivePrompt = `<knowledge_context>\n${graphContext}\n</knowledge_context>\n\n${effectivePrompt}`;
+      }
+
       // If the session already has messages (restarted after stop), inject
       // conversation history so the model retains context from prior turns.
       const currentSession = this.store.getSession(sessionId);
@@ -2674,7 +2745,14 @@ export class CoworkRunner extends EventEmitter {
 
     try {
       const promptPrefix = this.buildPromptPrefix();
-      const effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
+      let effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
+
+      // Inject knowledge graph context
+      const graphContext = queryRelevantContext(prompt);
+      if (graphContext) {
+        effectivePrompt = `<knowledge_context>\n${graphContext}\n</knowledge_context>\n\n${effectivePrompt}`;
+      }
+
       await this.runClaudeCode(activeSession, effectivePrompt, sessionCwd, effectiveSystemPrompt, options.imageAttachments);
     } catch (error) {
       console.error('Cowork continue error:', error);
@@ -3765,6 +3843,7 @@ export class CoworkRunner extends EventEmitter {
       if (session?.status !== 'error') {
         this.store.updateSession(sessionId, { status: 'completed' });
         this.applyTurnMemoryUpdatesForSession(sessionId);
+        this.extractKnowledgeGraphAsync(sessionId);
         this.emit('complete', sessionId, activeSession.claudeSessionId);
       }
     } catch (error) {
@@ -4404,6 +4483,7 @@ export class CoworkRunner extends EventEmitter {
             if (session?.status !== 'error' && session?.status !== 'completed') {
               this.store.updateSession(sessionId, { status: 'completed' });
               this.applyTurnMemoryUpdatesForSession(sessionId);
+              this.extractKnowledgeGraphAsync(sessionId);
               this.emit('complete', sessionId, activeSession.claudeSessionId);
             }
             resolve({ status: 'ok' });
@@ -5056,6 +5136,7 @@ export class CoworkRunner extends EventEmitter {
         if (session?.status !== 'error' && session?.status !== 'completed') {
           this.store.updateSession(sessionId, { status: 'completed' });
           this.applyTurnMemoryUpdatesForSession(sessionId);
+          this.extractKnowledgeGraphAsync(sessionId);
           this.emit('complete', sessionId, activeSession.claudeSessionId);
         }
         // Signal turn completion — keep VM alive for multi-turn sandbox sessions
