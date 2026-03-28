@@ -939,6 +939,12 @@ const scheduleReload = (reason: string, webContents?: WebContents) => {
 // Register noobclaw:// deep link protocol (for web wallet login callback)
 app.setAsDefaultProtocolClient('noobclaw');
 
+// macOS: handle deep link via open-url event
+app.on('open-url', (event, url) => {
+  event.preventDefault();
+  handleDeepLink(url);
+});
+
 function handleDeepLink(url: string) {
   try {
     const parsed = new URL(url);
