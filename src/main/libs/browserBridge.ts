@@ -22,8 +22,7 @@ const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-brow
 const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/noobclaw-browser-assistant/';
 const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
 const EXTENSION_IDS = [
-  'dhmjehcfpjjliiknpahbnflgljinjdeo',  // Chrome Web Store
-  'nkgfcifmbbhjpegggaemohoedmcgklll',  // Local unpacked
+  'dhmjehcfpjjliiknpahbnflgljinjdeo',  // Fixed ID (key in manifest.json)
 ];
 
 type BrowserType = 'chrome' | 'edge' | 'firefox';
