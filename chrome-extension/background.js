@@ -169,8 +169,8 @@ async function executeCommand(msg) {
 
     if (command === 'screenshot') {
       const tab = await getActiveTab();
-      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 30 });
-      const resized = await resizeImage(dataUrl, 720);
+      const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 25 });
+      const resized = await resizeImage(dataUrl, 640);
       data = { image: resized.split(',')[1] };
     } else if (command === 'navigate') {
       const tab = await getActiveTab();
