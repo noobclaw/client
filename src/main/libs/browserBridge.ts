@@ -166,18 +166,96 @@ export function isExtensionInstalled(): boolean {
   return isNativeHostRegistered();
 }
 
+const extensionPromptTexts: Record<string, {
+  title: string; installMsg: string; installDetail: string;
+  reconnectMsg: string; reconnectDetail: string;
+  btnLocal: string; btnStore: string; btnNotNow: string;
+  btnSettings: string; btnCancel: string;
+}> = {
+  en: {
+    title: 'NoobClaw Browser Assistant',
+    installMsg: 'Enable AI Browser Automation',
+    installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real Chrome with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
+    reconnectMsg: 'Chrome Extension Not Connected',
+    reconnectDetail: 'The extension is installed but Chrome is not connected. Make sure Chrome is running with the NoobClaw extension enabled.',
+    btnLocal: 'Install with Local Extension',
+    btnStore: 'Install from Chrome Store',
+    btnNotNow: 'Not now',
+    btnSettings: 'Open Extension Settings',
+    btnCancel: 'Cancel',
+  },
+  zh: {
+    title: 'NoobClaw 浏览器助手',
+    installMsg: '启用 AI 浏览器自动化',
+    installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的 Chrome 及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
+    reconnectMsg: 'Chrome 扩展未连接',
+    reconnectDetail: '扩展已安装但 Chrome 未连接。请确保 Chrome 正在运行且 NoobClaw 扩展已启用。',
+    btnLocal: '一键安装本地扩展',
+    btnStore: '从 Chrome 商店安装',
+    btnNotNow: '暂不安装',
+    btnSettings: '打开扩展设置',
+    btnCancel: '取消',
+  },
+  'zh-TW': {
+    title: 'NoobClaw 瀏覽器助手',
+    installMsg: '啟用 AI 瀏覽器自動化',
+    installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• AI 像真人一樣操作瀏覽器 — 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候 24 小時自動化瀏覽\n• 所有資料留在本地',
+    reconnectMsg: 'Chrome 擴充功能未連線',
+    reconnectDetail: '擴充功能已安裝但 Chrome 未連線。請確保 Chrome 正在運行且 NoobClaw 擴充功能已啟用。',
+    btnLocal: '一鍵安裝本地擴充功能',
+    btnStore: '從 Chrome 商店安裝',
+    btnNotNow: '暫不安裝',
+    btnSettings: '開啟擴充功能設定',
+    btnCancel: '取消',
+  },
+  ja: {
+    title: 'NoobClaw ブラウザアシスタント',
+    installMsg: 'AIブラウザ自動化を有効にする',
+    installDetail: 'NoobClaw ブラウザアシスタントをインストールして、AIに実際のChromeブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはすべてローカル',
+    reconnectMsg: 'Chrome拡張機能が未接続',
+    reconnectDetail: '拡張機能はインストール済みですが、Chromeが接続されていません。',
+    btnLocal: 'ローカル拡張機能をインストール',
+    btnStore: 'Chrome ストアからインストール',
+    btnNotNow: '後で',
+    btnSettings: '拡張機能の設定を開く',
+    btnCancel: 'キャンセル',
+  },
+  ko: {
+    title: 'NoobClaw 브라우저 어시스턴트',
+    installMsg: 'AI 브라우저 자동화 활성화',
+    installDetail: 'NoobClaw 브라우저 어시스턴트를 설치하여 AI가 실제 Chrome 브라우저를 사람처럼 제어하도록 하세요.\n\n• 봇 탐지 없음\n• 로그인된 계정으로 작동\n• 24시간 자동화\n• 모든 데이터는 로컬에 저장',
+    reconnectMsg: 'Chrome 확장 프로그램 미연결',
+    reconnectDetail: '확장 프로그램이 설치되었지만 Chrome이 연결되지 않았습니다.',
+    btnLocal: '로컬 확장 프로그램 설치',
+    btnStore: 'Chrome 스토어에서 설치',
+    btnNotNow: '나중에',
+    btnSettings: '확장 프로그램 설정 열기',
+    btnCancel: '취소',
+  },
+};
+
+function getPromptTexts() {
+  const locale = app.getLocale().toLowerCase();
+  if (locale.startsWith('zh-tw') || locale.startsWith('zh-hant')) return extensionPromptTexts['zh-TW'];
+  if (locale.startsWith('zh')) return extensionPromptTexts.zh;
+  if (locale.startsWith('ja')) return extensionPromptTexts.ja;
+  if (locale.startsWith('ko')) return extensionPromptTexts.ko;
+  return extensionPromptTexts.en;
+}
+
 export async function showExtensionPrompt(): Promise<void> {
   const status = getBrowserBridgeStatus();
   const win = BrowserWindow.getFocusedWindow();
   if (!win) return;
+  const t = getPromptTexts();
 
   if (!status.extensionInstalled) {
     const result = await dialog.showMessageBox(win, {
       type: 'info',
-      title: 'NoobClaw Browser Assistant',
-      message: 'Enable AI Browser Automation',
-      detail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real Chrome with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
-      buttons: ['Launch Chrome with Extension', 'Open Chrome Web Store', 'Not now'],
+      title: t.title,
+      message: t.installMsg,
+      detail: t.installDetail,
+      buttons: [t.btnLocal, t.btnStore, t.btnNotNow],
       defaultId: 0,
       cancelId: 2,
     });
@@ -190,10 +268,10 @@ export async function showExtensionPrompt(): Promise<void> {
   } else if (!status.connected) {
     const result = await dialog.showMessageBox(win, {
       type: 'warning',
-      title: 'NoobClaw Browser Assistant',
-      message: 'Chrome Extension Not Connected',
-      detail: 'The extension is installed but Chrome is not connected. Make sure Chrome is running with the NoobClaw extension enabled.',
-      buttons: ['Launch Chrome with Extension', 'Open Extension Settings', 'Cancel'],
+      title: t.title,
+      message: t.reconnectMsg,
+      detail: t.reconnectDetail,
+      buttons: [t.btnLocal, t.btnSettings, t.btnCancel],
       defaultId: 0,
       cancelId: 2,
     });
