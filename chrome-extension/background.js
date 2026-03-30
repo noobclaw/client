@@ -192,6 +192,47 @@ async function executeCommand(msg) {
       await injectContentScript(tab.id);
       const updated = await chrome.tabs.get(tab.id);
       data = { url: updated.url, title: updated.title };
+    } else if (command === 'tab_create') {
+      const tab = await chrome.tabs.create({ url: params.url || 'about:blank' });
+      data = { tabId: tab.id, url: tab.url };
+    } else if (command === 'tab_close') {
+      if (params.tabId) {
+        await chrome.tabs.remove(params.tabId);
+      } else {
+        const tab = await getActiveTab();
+        await chrome.tabs.remove(tab.id);
+      }
+      data = { message: 'Tab closed' };
+    } else if (command === 'tab_list') {
+      const tabs = await chrome.tabs.query({});
+      data = { tabs: tabs.map(t => ({ id: t.id, url: t.url, title: t.title, active: t.active })) };
+    } else if (command === 'tab_switch') {
+      if (params.tabId) {
+        await chrome.tabs.update(params.tabId, { active: true });
+        data = { message: `Switched to tab ${params.tabId}` };
+      } else {
+        data = { error: 'tabId is required' };
+      }
+    } else if (command === 'resize_window') {
+      const tab = await getActiveTab();
+      const win = await chrome.windows.get(tab.windowId);
+      await chrome.windows.update(win.id, {
+        width: params.width || win.width,
+        height: params.height || win.height,
+      });
+      data = { message: `Resized to ${params.width}x${params.height}` };
+    } else if (command === 'go_back') {
+      const tab = await getActiveTab();
+      await chrome.tabs.goBack(tab.id);
+      data = { message: 'Navigated back' };
+    } else if (command === 'go_forward') {
+      const tab = await getActiveTab();
+      await chrome.tabs.goForward(tab.id);
+      data = { message: 'Navigated forward' };
+    } else if (command === 'reload') {
+      const tab = await getActiveTab();
+      await chrome.tabs.reload(tab.id);
+      data = { message: 'Page reloaded' };
     } else {
       // Forward to content script
       const tab = await getActiveTab();

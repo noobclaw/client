@@ -3637,6 +3637,216 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
+        tool(
+          'browser_javascript',
+          'Execute JavaScript code in the current page context. Returns the result of the last expression. Use for reading page state, DOM queries, or debugging.',
+          { code: z.string() },
+          async (args: { code: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('javascript', args);
+              return { content: [{ type: 'text', text: data?.result || data?.error || 'executed' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_javascript error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_drag',
+          'Drag an element from one position to another.',
+          { from_selector: z.string(), to_selector: z.string().optional(), to_coordinate: z.array(z.number()).optional() },
+          async (args: any) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('drag', args);
+              return { content: [{ type: 'text', text: data?.message || 'Dragged.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_drag error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_double_click',
+          'Double-click an element by CSS selector or coordinates.',
+          { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
+          async (args: any) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('double_click', args);
+              return { content: [{ type: 'text', text: data?.message || 'Double-clicked.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_double_click error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_right_click',
+          'Right-click an element to open context menu.',
+          { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
+          async (args: any) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('right_click', args);
+              return { content: [{ type: 'text', text: data?.message || 'Right-clicked.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_right_click error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_scroll_to',
+          'Scroll a specific element into view.',
+          { selector: z.string() },
+          async (args: { selector: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('scroll_to', args);
+              return { content: [{ type: 'text', text: data?.message || 'Scrolled to element.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_scroll_to error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_tab_create',
+          'Create a new browser tab, optionally with a URL.',
+          { url: z.string().optional() },
+          async (args: { url?: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('tab_create', args);
+              return { content: [{ type: 'text', text: `New tab created: ${data?.url || 'blank'}` }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_tab_create error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_tab_close',
+          'Close a browser tab by ID, or the current tab if no ID given.',
+          { tabId: z.number().optional() },
+          async (args: { tabId?: number }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('tab_close', args);
+              return { content: [{ type: 'text', text: data?.message || 'Tab closed.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_tab_close error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_tab_list',
+          'List all open browser tabs with their IDs, URLs, and titles.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('tab_list', {});
+              return { content: [{ type: 'text', text: JSON.stringify(data?.tabs || [], null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_tab_list error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_tab_switch',
+          'Switch to a specific tab by ID.',
+          { tabId: z.number() },
+          async (args: { tabId: number }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('tab_switch', args);
+              return { content: [{ type: 'text', text: data?.message || 'Switched tab.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_tab_switch error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_go_back',
+          'Navigate back in browser history.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('go_back', {});
+              return { content: [{ type: 'text', text: data?.message || 'Navigated back.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_go_back error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_go_forward',
+          'Navigate forward in browser history.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('go_forward', {});
+              return { content: [{ type: 'text', text: data?.message || 'Navigated forward.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_go_forward error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_reload',
+          'Reload the current page.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('reload', {});
+              return { content: [{ type: 'text', text: data?.message || 'Page reloaded.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_reload error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_read_console',
+          'Read browser console messages (log, warn, error). Filter by level or regex pattern.',
+          { level: z.string().optional(), pattern: z.string().optional(), limit: z.number().optional() },
+          async (args: any) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('read_console', args);
+              return { content: [{ type: 'text', text: JSON.stringify(data?.logs || [], null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_read_console error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_page_info',
+          'Get page metadata: URL, title, dimensions, scroll position, counts of forms/links/images.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('get_page_info', {});
+              return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_page_info error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_resize',
+          'Resize the browser window.',
+          { width: z.number(), height: z.number() },
+          async (args: { width: number; height: number }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('resize_window', args);
+              return { content: [{ type: 'text', text: data?.message || 'Resized.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_resize error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
       ];
 
       options.mcpServers = {

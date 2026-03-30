@@ -49,6 +49,30 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'get_url':
           result = { url: window.location.href, title: document.title };
           break;
+        case 'javascript':
+          result = await executeJavascript(params);
+          break;
+        case 'drag':
+          result = dragElement(params);
+          break;
+        case 'read_console':
+          result = readConsole(params);
+          break;
+        case 'get_cookies':
+          result = { cookies: document.cookie };
+          break;
+        case 'double_click':
+          result = doubleClickElement(params);
+          break;
+        case 'right_click':
+          result = rightClickElement(params);
+          break;
+        case 'scroll_to':
+          result = scrollToElement(params);
+          break;
+        case 'get_page_info':
+          result = getPageInfo();
+          break;
         default:
           result = { error: `Unknown command: ${command}` };
       }
@@ -294,6 +318,107 @@ function selectOption(params) {
   el.value = option.value;
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return { message: `Selected "${option.text}"` };
+}
+
+async function executeJavascript(params) {
+  try {
+    const fn = new Function(params.code);
+    const result = await fn();
+    return { result: result !== undefined ? String(result) : 'undefined' };
+  } catch (e) {
+    return { error: e.message || String(e) };
+  }
+}
+
+function dragElement(params) {
+  const fromEl = params.from_selector ? document.querySelector(params.from_selector) : null;
+  let toEl = params.to_selector ? document.querySelector(params.to_selector) : null;
+  if (!fromEl) return { error: 'Source element not found' };
+
+  const fromRect = fromEl.getBoundingClientRect();
+  const startX = fromRect.x + fromRect.width / 2;
+  const startY = fromRect.y + fromRect.height / 2;
+  let endX, endY;
+  if (toEl) {
+    const toRect = toEl.getBoundingClientRect();
+    endX = toRect.x + toRect.width / 2;
+    endY = toRect.y + toRect.height / 2;
+  } else if (params.to_coordinate) {
+    endX = params.to_coordinate[0];
+    endY = params.to_coordinate[1];
+  } else {
+    return { error: 'Must provide to_selector or to_coordinate' };
+  }
+
+  fromEl.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, clientY: startY, bubbles: true }));
+  fromEl.dispatchEvent(new MouseEvent('mousemove', { clientX: endX, clientY: endY, bubbles: true }));
+  fromEl.dispatchEvent(new MouseEvent('mouseup', { clientX: endX, clientY: endY, bubbles: true }));
+  return { message: `Dragged from (${Math.round(startX)},${Math.round(startY)}) to (${Math.round(endX)},${Math.round(endY)})` };
+}
+
+const consoleLogs = [];
+const originalConsole = { log: console.log, warn: console.warn, error: console.error, info: console.info };
+['log', 'warn', 'error', 'info'].forEach(level => {
+  console[level] = (...args) => {
+    consoleLogs.push({ level, message: args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '), timestamp: Date.now() });
+    if (consoleLogs.length > 200) consoleLogs.shift();
+    originalConsole[level](...args);
+  };
+});
+
+function readConsole(params) {
+  let logs = consoleLogs;
+  if (params?.level) logs = logs.filter(l => l.level === params.level);
+  if (params?.pattern) {
+    const re = new RegExp(params.pattern, 'i');
+    logs = logs.filter(l => re.test(l.message));
+  }
+  const limit = params?.limit || 50;
+  return { logs: logs.slice(-limit) };
+}
+
+function doubleClickElement(params) {
+  let el;
+  if (params.selector) el = document.querySelector(params.selector);
+  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  if (!el) return { error: 'Element not found' };
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  return { message: `Double-clicked ${el.tagName.toLowerCase()}` };
+}
+
+function rightClickElement(params) {
+  let el;
+  if (params.selector) el = document.querySelector(params.selector);
+  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  if (!el) return { error: 'Element not found' };
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+  return { message: `Right-clicked ${el.tagName.toLowerCase()}` };
+}
+
+function scrollToElement(params) {
+  const el = params.selector ? document.querySelector(params.selector) : null;
+  if (!el) return { error: 'Element not found' };
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  return { message: `Scrolled to ${el.tagName.toLowerCase()}` };
+}
+
+function getPageInfo() {
+  return {
+    url: window.location.href,
+    title: document.title,
+    width: document.documentElement.scrollWidth,
+    height: document.documentElement.scrollHeight,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+    scrollX: window.scrollX,
+    scrollY: window.scrollY,
+    forms: document.forms.length,
+    links: document.links.length,
+    images: document.images.length,
+    scripts: document.scripts.length,
+  };
 }
 
 function getSelector(el) {
