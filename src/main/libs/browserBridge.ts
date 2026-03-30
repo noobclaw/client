@@ -238,8 +238,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserMsg: 'No supported browser found',
     noBrowserDetail: 'NoobClaw Browser Assistant requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
     btnDownloadChrome: 'Download Chrome',
-    guideMsg: 'Extension page opened',
-    guideDetail: 'The extension page has been opened and the path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Turn on "Developer mode" (top right corner)\n2. Click "Load unpacked"\n3. Paste the path (already copied) and confirm\n\nPath: {path}',
+    guideMsg: 'Install Browser Extension',
+    guideDetail: 'The extension path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Open Chrome browser, type chrome://extensions/ in the address bar and press Enter\n2. Turn on "Developer mode" (top right corner)\n3. Click "Load unpacked"\n4. Paste the path (already copied) and confirm\n\nPath: {path}',
   },
   zh: {
     title: 'NoobClaw 浏览器助手',
@@ -252,8 +252,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserMsg: '未检测到支持的浏览器',
     noBrowserDetail: 'NoobClaw 浏览器助手需要 Chrome、Edge 或 Firefox。请先下载安装 Google Chrome。',
     btnDownloadChrome: '下载 Chrome',
-    guideMsg: '扩展页面已打开',
-    guideDetail: '已打开浏览器扩展页面，扩展路径已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开右上角「开发者模式」开关\n2. 点击「加载已解压的扩展程序」\n3. 在路径栏粘贴（已复制到剪贴板）并确认\n\n路径：{path}',
+    guideMsg: '安装浏览器扩展',
+    guideDetail: '扩展路径已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开 Chrome 浏览器，在地址栏输入 chrome://extensions/ 并回车\n2. 打开右上角「开发者模式」开关\n3. 点击「加载已解压的扩展程序」\n4. 在路径栏粘贴（已复制到剪贴板）并确认\n\n路径：{path}',
   },
   'zh-TW': {
     title: 'NoobClaw 瀏覽器助手',
@@ -267,7 +267,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: '請先下載安裝 Google Chrome。',
     btnDownloadChrome: '下載 Chrome',
     guideMsg: '擴充功能頁面已開啟',
-    guideDetail: '已開啟瀏覽器擴充功能頁面，路徑已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 開啟右上角「開發人員模式」\n2. 點擊「載入未封裝項目」\n3. 貼上路徑（已複製到剪貼簿）並確認\n\n路徑：{path}',
+    guideDetail: '擴展路徑已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 打開 Chrome 瀏覽器，在地址欄輸入 chrome://extensions/ 並按 Enter\n2. 開啟右上角「開發人員模式」\n3. 點擊「載入未封裝項目」\n4. 貼上路徑（已複製到剪貼簿）並確認\n\n路徑：{path}',
   },
   ja: {
     title: 'NoobClaw ブラウザアシスタント',
@@ -281,7 +281,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: 'Google Chromeをインストールしてください。',
     btnDownloadChrome: 'Chromeをダウンロード',
     guideMsg: '拡張機能ページを開きました',
-    guideDetail: 'ブラウザの拡張機能ページを開きました。パスはクリップボードにコピー済みです。\n\n手順：\n1. 右上の「デベロッパーモード」をオン\n2. 「パッケージ化されていない拡張機能を読み込む」をクリック\n3. パスを貼り付けて確認\n\nパス：{path}',
+    guideDetail: 'パスはクリップボードにコピー済みです。\n\n手順：\n1. Chrome ブラウザを開き、アドレスバーに chrome://extensions/ と入力して Enter\n2. 右上の「デベロッパーモード」をオン\n3. 「パッケージ化されていない拡張機能を読み込む」をクリック\n4. パスを貼り付けて確認\n\nパス：{path}',
   },
   ko: {
     title: 'NoobClaw 브라우저 어시스턴트',
@@ -295,7 +295,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: 'Google Chrome을 설치해 주세요.',
     btnDownloadChrome: 'Chrome 다운로드',
     guideMsg: '확장 프로그램 페이지 열림',
-    guideDetail: '브라우저 확장 프로그램 페이지가 열렸습니다. 경로가 클립보드에 복사되었습니다.\n\n다음 단계를 따르세요:\n1. 오른쪽 상단 "개발자 모드" 활성화\n2. "압축해제된 확장 프로그램을 로드합니다" 클릭\n3. 경로 붙여넣기(이미 복사됨) 후 확인\n\n경로: {path}',
+    guideDetail: '경로가 클립보드에 복사되었습니다.\n\n다음 단계를 따르세요:\n1. Chrome 브라우저를 열고 주소창에 chrome://extensions/ 입력 후 Enter\n2. 오른쪽 상단 "개발자 모드" 활성화\n3. "압축해제된 확장 프로그램을 로드합니다" 클릭\n4. 경로 붙여넣기(이미 복사됨) 후 확인\n\n경로: {path}',
   },
 };
 
