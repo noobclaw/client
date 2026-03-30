@@ -31,6 +31,24 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'fill':
           result = fillInput(params);
           break;
+        case 'hover':
+          result = hoverElement(params);
+          break;
+        case 'keypress':
+          result = pressKey(params);
+          break;
+        case 'wait_for':
+          result = await waitForElement(params);
+          break;
+        case 'get_value':
+          result = getElementValue(params);
+          break;
+        case 'select_option':
+          result = selectOption(params);
+          break;
+        case 'get_url':
+          result = { url: window.location.href, title: document.title };
+          break;
         default:
           result = { error: `Unknown command: ${command}` };
       }
@@ -203,6 +221,79 @@ function fillInput(params) {
   el.dispatchEvent(new Event('input', { bubbles: true }));
   el.dispatchEvent(new Event('change', { bubbles: true }));
   return { message: `Filled ${el.tagName.toLowerCase()} with value` };
+}
+
+function hoverElement(params) {
+  const el = params.selector ? document.querySelector(params.selector) : null;
+  if (!el) return { error: 'Element not found' };
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
+  el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  return { message: `Hovered ${el.tagName.toLowerCase()}` };
+}
+
+function pressKey(params) {
+  const target = params.selector ? document.querySelector(params.selector) : document.activeElement || document.body;
+  const key = params.key || 'Enter';
+  const keyMap = {
+    'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
+    'Tab': { key: 'Tab', code: 'Tab', keyCode: 9 },
+    'Escape': { key: 'Escape', code: 'Escape', keyCode: 27 },
+    'Backspace': { key: 'Backspace', code: 'Backspace', keyCode: 8 },
+    'Delete': { key: 'Delete', code: 'Delete', keyCode: 46 },
+    'ArrowUp': { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 },
+    'ArrowDown': { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
+    'ArrowLeft': { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 },
+    'ArrowRight': { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    'Space': { key: ' ', code: 'Space', keyCode: 32 },
+  };
+  const k = keyMap[key] || { key, code: key, keyCode: 0 };
+  const opts = { key: k.key, code: k.code, keyCode: k.keyCode, bubbles: true, cancelable: true };
+  target.dispatchEvent(new KeyboardEvent('keydown', opts));
+  target.dispatchEvent(new KeyboardEvent('keypress', opts));
+  target.dispatchEvent(new KeyboardEvent('keyup', opts));
+  return { message: `Pressed ${key}` };
+}
+
+async function waitForElement(params) {
+  const timeout = params.timeout || 5000;
+  const selector = params.selector;
+  if (!selector) return { error: 'selector is required' };
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const el = document.querySelector(selector);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      return { found: true, selector, bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) } };
+    }
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return { found: false, selector, error: `Element ${selector} not found within ${timeout}ms` };
+}
+
+function getElementValue(params) {
+  const el = params.selector ? document.querySelector(params.selector) : null;
+  if (!el) return { error: 'Element not found' };
+  return {
+    tag: el.tagName.toLowerCase(),
+    value: el.value !== undefined ? el.value : null,
+    text: (el.textContent || '').trim().slice(0, 500),
+    checked: el.checked !== undefined ? el.checked : null,
+    selected: el.tagName === 'SELECT' ? el.options[el.selectedIndex]?.text : null,
+    href: el.getAttribute('href'),
+    src: el.getAttribute('src'),
+    attributes: Object.fromEntries(Array.from(el.attributes).map(a => [a.name, a.value])),
+  };
+}
+
+function selectOption(params) {
+  const el = params.selector ? document.querySelector(params.selector) : null;
+  if (!el || el.tagName !== 'SELECT') return { error: 'SELECT element not found' };
+  const option = Array.from(el.options).find(o => o.value === params.value || o.text.trim() === params.value);
+  if (!option) return { error: `Option "${params.value}" not found` };
+  el.value = option.value;
+  el.dispatchEvent(new Event('change', { bubbles: true }));
+  return { message: `Selected "${option.text}"` };
 }
 
 function getSelector(el) {

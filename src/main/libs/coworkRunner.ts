@@ -3567,6 +3567,76 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
+        tool(
+          'browser_hover',
+          'Hover over an element to trigger dropdown menus or tooltips.',
+          { selector: z.string() },
+          async (args: { selector: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('hover', args);
+              return { content: [{ type: 'text', text: data?.message || 'Hovered.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_hover error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_keypress',
+          'Press a keyboard key (Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Space).',
+          { key: z.string(), selector: z.string().optional() },
+          async (args: { key: string; selector?: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('keypress', args);
+              return { content: [{ type: 'text', text: data?.message || 'Key pressed.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_keypress error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_wait_for',
+          'Wait for an element to appear on the page (useful after navigation or dynamic loading).',
+          { selector: z.string(), timeout: z.number().optional() },
+          async (args: { selector: string; timeout?: number }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('wait_for', args);
+              return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_wait_for error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_get_value',
+          'Get the current value, text, attributes of an element by CSS selector.',
+          { selector: z.string() },
+          async (args: { selector: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('get_value', args);
+              return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_get_value error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_get_url',
+          'Get the current page URL and title.',
+          {},
+          async () => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('get_url', {});
+              return { content: [{ type: 'text', text: `URL: ${data?.url}\nTitle: ${data?.title}` }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_get_url error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
       ];
 
       options.mcpServers = {
