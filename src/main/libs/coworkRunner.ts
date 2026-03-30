@@ -2346,10 +2346,10 @@ export class CoworkRunner extends EventEmitter {
           '## Browser Automation Routing (IMPORTANT)',
           '',
           '### NoobClaw Browser Assistant: NOT CONNECTED',
-          '- When the user asks ANYTHING related to browsers or websites (open, browse, navigate, search on a site, click, fill, etc.):',
-          '  → You MUST first try calling `browser_navigate` tool. The system will automatically show an install/reconnect dialog to the user.',
-          '  → Do NOT use Bash commands like `start chrome`, `open -a Chrome`, or `xdg-open` to open browsers.',
-          '  → Do NOT skip directly to web-search or Playwright as alternatives.',
+          '- When user asks to "open browser" or "open a website":',
+          '  → Use `browser_navigate` with the URL. It will automatically open the default browser even without extension.',
+          '- When user asks to interact with a webpage (click, type, scroll, screenshot, read content):',
+          '  → These require the browser extension. Tell the user to install/connect the NoobClaw Browser Assistant extension first.',
           '- For simple factual search queries (not involving opening a browser) → use web-search skill',
           '- For batch scraping or background automation → use Playwright skill',
         ].join('\n');
@@ -3080,19 +3080,6 @@ export class CoworkRunner extends EventEmitter {
         if (resolvedName === 'Bash') {
           const command = this.extractToolCommand(resolvedInput);
 
-          // Intercept browser launch commands — redirect to browser_navigate tool
-          const browserLaunchRe = /^(start\s+(chrome|msedge|firefox|brave|""?\s*https?:)|open\s+(-a\s+)?(chrome|safari|firefox|"?https?:)|xdg-open\s+https?:)/i;
-          if (browserLaunchRe.test(command.trim())) {
-            try {
-              const { showExtensionPrompt } = await import('./browserBridge');
-              await showExtensionPrompt();
-            } catch {}
-            return {
-              behavior: 'deny',
-              message: 'Browser operations should use the browser_navigate tool instead of Bash commands. The system has prompted the user to connect the NoobClaw Browser Assistant extension. Please retry using browser_navigate.',
-            };
-          }
-
           const pythonRuntimeCheck = await this.ensureWindowsPythonRuntimeForCommand(sessionId, command);
           if (!pythonRuntimeCheck.ok) {
             const reason = pythonRuntimeCheck.reason || 'Python runtime unavailable.';
@@ -3394,14 +3381,8 @@ export class CoworkRunner extends EventEmitter {
       // --- Browser automation tools ---
       const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt } = await import('./browserBridge');
       const browserNotConnectedResponse = () => {
-        // Show native dialog to guide user (async, don't block)
-        showExtensionPrompt().catch(() => {});
-        const status = getBrowserBridgeStatus();
-        const msg = status.extensionInstalled
-          ? 'Browser extension is installed but not connected. A dialog has been shown to help reconnect. Please ensure Chrome is running with the extension enabled, then retry.'
-          : 'Browser extension is not installed. A dialog has been shown to guide installation. After installing, please retry.';
         return {
-          content: [{ type: 'text', text: msg }],
+          content: [{ type: 'text', text: 'Browser extension is not connected. This operation requires the NoobClaw Browser Assistant extension. Please ensure Chrome is running and the extension is enabled, then retry. If not installed, go to Settings or use browser_navigate to open a URL first.' }],
           isError: true,
         } as any;
       };
@@ -3533,11 +3514,18 @@ export class CoworkRunner extends EventEmitter {
         ),
         tool(
           'browser_navigate',
-          'Navigate to a URL in the current tab.',
+          'Navigate to a URL in the current tab. If the browser extension is not connected, this will open the URL in the default browser.',
           { url: z.string() },
           async (args: { url: string }) => {
             if (!getBrowserBridgeStatus().connected) {
-              return browserNotConnectedResponse();
+              // Fallback: open URL in default browser via shell
+              try {
+                const { shell } = await import('electron');
+                await shell.openExternal(args.url || 'https://www.google.com');
+                return { content: [{ type: 'text', text: `Opened ${args.url} in default browser. Note: browser extension is not connected, so advanced operations (click, type, screenshot) are not available. To enable full browser automation, install the NoobClaw Browser Assistant extension.` }] } as any;
+              } catch (e: any) {
+                return { content: [{ type: 'text', text: `Failed to open browser: ${e.message}` }], isError: true } as any;
+              }
             }
             try {
               const data = await sendBrowserCommand('navigate', args);
