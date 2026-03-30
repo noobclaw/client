@@ -381,7 +381,7 @@ const App: React.FC = () => {
         { id: 'noobclawai-chat', name: 'NoobClawAI-Chat', provider: 'NoobClaw', providerKey: 'noobclawAI' },
         { id: 'noobclawai-reasoner', name: 'NoobClawAI-Reasoner', provider: 'NoobClaw', providerKey: 'noobclawAI' },
       ]));
-      dispatch(setSelectedModel({ id: 'noobclawai-chat', name: 'NoobClawAI-Chat', provider: 'NoobClaw', providerKey: 'noobclawAI' }));
+      dispatch(setSelectedModel({ id: 'noobclawai-reasoner', name: 'NoobClawAI-Reasoner', provider: 'NoobClaw', providerKey: 'noobclawAI' }));
     } else if (config.providers) {
       const allModels: { id: string; name: string; provider?: string; providerKey?: string; supportsImage?: boolean }[] = [];
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
