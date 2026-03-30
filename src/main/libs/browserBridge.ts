@@ -19,10 +19,69 @@ import { app, BrowserWindow, dialog, shell } from 'electron';
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistant/dhmjehcfpjjliiknpahbnflgljinjdeo';
+const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/noobclaw-browser-assistant/';
+const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
 const EXTENSION_IDS = [
   'dhmjehcfpjjliiknpahbnflgljinjdeo',  // Chrome Web Store
   'nkgfcifmbbhjpegggaemohoedmcgklll',  // Local unpacked
 ];
+
+type BrowserType = 'chrome' | 'edge' | 'firefox';
+
+interface DetectedBrowser {
+  type: BrowserType;
+  name: string;
+  path: string;
+  storeUrl: string;
+}
+
+function detectBrowsers(): DetectedBrowser[] {
+  const browsers: DetectedBrowser[] = [];
+
+  if (process.platform === 'win32') {
+    const chromePaths = [
+      path.join(process.env['PROGRAMFILES'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env['LOCALAPPDATA'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ];
+    const edgePaths = [
+      path.join(process.env['PROGRAMFILES'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Microsoft', 'Edge', 'Application', 'msedge.exe'),
+    ];
+    const firefoxPaths = [
+      path.join(process.env['PROGRAMFILES'] || '', 'Mozilla Firefox', 'firefox.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Mozilla Firefox', 'firefox.exe'),
+    ];
+
+    const chromePath = chromePaths.find(p => fs.existsSync(p));
+    if (chromePath) browsers.push({ type: 'chrome', name: 'Google Chrome', path: chromePath, storeUrl: CHROME_STORE_URL });
+
+    const edgePath = edgePaths.find(p => fs.existsSync(p));
+    if (edgePath) browsers.push({ type: 'edge', name: 'Microsoft Edge', path: edgePath, storeUrl: EDGE_STORE_URL });
+
+    const firefoxPath = firefoxPaths.find(p => fs.existsSync(p));
+    if (firefoxPath) browsers.push({ type: 'firefox', name: 'Firefox', path: firefoxPath, storeUrl: FIREFOX_STORE_URL });
+
+  } else if (process.platform === 'darwin') {
+    if (fs.existsSync('/Applications/Google Chrome.app')) {
+      browsers.push({ type: 'chrome', name: 'Google Chrome', path: '/Applications/Google Chrome.app', storeUrl: CHROME_STORE_URL });
+    }
+    if (fs.existsSync('/Applications/Microsoft Edge.app')) {
+      browsers.push({ type: 'edge', name: 'Microsoft Edge', path: '/Applications/Microsoft Edge.app', storeUrl: EDGE_STORE_URL });
+    }
+    if (fs.existsSync('/Applications/Firefox.app')) {
+      browsers.push({ type: 'firefox', name: 'Firefox', path: '/Applications/Firefox.app', storeUrl: FIREFOX_STORE_URL });
+    }
+  } else {
+    // Linux
+    const { execSync } = require('child_process');
+    try { execSync('which google-chrome', { stdio: 'pipe' }); browsers.push({ type: 'chrome', name: 'Google Chrome', path: 'google-chrome', storeUrl: CHROME_STORE_URL }); } catch {}
+    try { execSync('which microsoft-edge', { stdio: 'pipe' }); browsers.push({ type: 'edge', name: 'Microsoft Edge', path: 'microsoft-edge', storeUrl: EDGE_STORE_URL }); } catch {}
+    try { execSync('which firefox', { stdio: 'pipe' }); browsers.push({ type: 'firefox', name: 'Firefox', path: 'firefox', storeUrl: FIREFOX_STORE_URL }); } catch {}
+  }
+
+  return browsers; // Chrome first by default
+}
 
 let tcpServer: net.Server | null = null;
 let clientSocket: net.Socket | null = null;
@@ -52,24 +111,31 @@ export function getBrowserBridgeStatus(): {
 
 // --- Native Messaging Host Registration ---
 
-function getNativeHostManifestPath(): string {
+function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: string; regKey?: string }[] {
+  const home = process.env.HOME || '~';
+  const results: { browser: BrowserType; manifestPath: string; regKey?: string }[] = [];
+
   if (process.platform === 'win32') {
-    // Windows: manifest can be anywhere, pointed to by registry
-    return path.join(app.getPath('userData'), `${NATIVE_HOST_NAME}.json`);
+    const basePath = path.join(app.getPath('userData'), `${NATIVE_HOST_NAME}.json`);
+    results.push(
+      { browser: 'chrome', manifestPath: basePath, regKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
+      { browser: 'edge', manifestPath: basePath, regKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
+    );
   } else if (process.platform === 'darwin') {
-    return path.join(
-      process.env.HOME || '~',
-      'Library/Application Support/Google/Chrome/NativeMessagingHosts',
-      `${NATIVE_HOST_NAME}.json`
+    results.push(
+      { browser: 'chrome', manifestPath: path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
+      { browser: 'edge', manifestPath: path.join(home, 'Library/Application Support/Microsoft Edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
+      { browser: 'firefox', manifestPath: path.join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
     );
   } else {
-    // Linux
-    return path.join(
-      process.env.HOME || '~',
-      '.config/google-chrome/NativeMessagingHosts',
-      `${NATIVE_HOST_NAME}.json`
+    results.push(
+      { browser: 'chrome', manifestPath: path.join(home, '.config/google-chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
+      { browser: 'edge', manifestPath: path.join(home, '.config/microsoft-edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
+      { browser: 'firefox', manifestPath: path.join(home, '.mozilla/native-messaging-hosts', `${NATIVE_HOST_NAME}.json`) },
     );
   }
+
+  return results;
 }
 
 function getNativeHostScriptPath(): string {
@@ -84,80 +150,75 @@ function getNativeHostScriptPath(): string {
 export function registerNativeMessagingHost(): void {
   try {
     const hostScriptPath = getNativeHostScriptPath();
-    const manifestPath = getNativeHostManifestPath();
-
-    // Create batch/shell wrapper (Chrome needs .bat/.exe on Windows, executable script on macOS/Linux)
     const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
     const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
 
+    // Create batch/shell wrapper
     if (process.platform === 'win32') {
       const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
-      const batPath = hostScriptPath;
-      // Always rewrite to ensure correct paths
-      fs.writeFileSync(batPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
+      fs.writeFileSync(hostScriptPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
     } else {
-      // macOS/Linux: create shell wrapper that uses bundled Node.js
       const nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
-      const shPath = hostScriptPath;
-      fs.writeFileSync(shPath, `#!/bin/bash\n"${nodeExe}" "${jsSource}" "$@"\n`);
-      try {
-        fs.chmodSync(shPath, '755');
-        fs.chmodSync(nodeExe, '755');
-      } catch {}
+      fs.writeFileSync(hostScriptPath, `#!/bin/bash\n"${nodeExe}" "${jsSource}" "$@"\n`);
+      try { fs.chmodSync(hostScriptPath, '755'); fs.chmodSync(nodeExe, '755'); } catch {}
     }
 
-    // Create manifest
-    const manifest = {
-      name: NATIVE_HOST_NAME,
-      description: 'NoobClaw Browser Assistant Native Messaging Host',
-      path: hostScriptPath,
-      type: 'stdio',
-      allowed_origins: EXTENSION_IDS.map(id => `chrome-extension://${id}/`),
-    };
+    // Register for all browsers
+    const allPaths = getNativeHostManifestPaths();
+    const { execSync } = require('child_process');
 
-    // Ensure directory exists
-    const manifestDir = path.dirname(manifestPath);
-    if (!fs.existsSync(manifestDir)) {
-      fs.mkdirSync(manifestDir, { recursive: true });
-    }
-
-    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-
-    // Windows: write registry key
-    if (process.platform === 'win32') {
+    for (const { browser, manifestPath, regKey } of allPaths) {
       try {
-        const { execSync } = require('child_process');
-        execSync(
-          `reg add "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}" /ve /t REG_SZ /d "${manifestPath}" /f`,
-          { stdio: 'ignore' }
-        );
+        // Firefox uses "allowed_extensions" instead of "allowed_origins"
+        const manifest: any = {
+          name: NATIVE_HOST_NAME,
+          description: 'NoobClaw Browser Assistant Native Messaging Host',
+          path: hostScriptPath,
+          type: 'stdio',
+        };
+        if (browser === 'firefox') {
+          manifest.allowed_extensions = ['noobclaw-browser-assistant@noobclaw.com'];
+        } else {
+          manifest.allowed_origins = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
+        }
+
+        const manifestDir = path.dirname(manifestPath);
+        if (!fs.existsSync(manifestDir)) {
+          fs.mkdirSync(manifestDir, { recursive: true });
+        }
+        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+        // Windows: write registry key for Chrome and Edge
+        if (process.platform === 'win32' && regKey) {
+          try {
+            execSync(`reg add "${regKey}" /ve /t REG_SZ /d "${manifestPath}" /f`, { stdio: 'ignore' });
+          } catch {}
+        }
+
+        console.log(`[BrowserBridge] Registered native messaging host for ${browser}: ${manifestPath}`);
       } catch (err) {
-        console.error('[BrowserBridge] Failed to register native messaging host in registry:', err);
+        console.error(`[BrowserBridge] Failed to register for ${browser}:`, err);
       }
     }
-
-    console.log(`[BrowserBridge] Native messaging host registered: ${manifestPath}`);
   } catch (err) {
     console.error('[BrowserBridge] Failed to register native messaging host:', err);
   }
 }
 
 function isNativeHostRegistered(): boolean {
-  try {
-    if (process.platform === 'win32') {
-      const { execSync } = require('child_process');
-      const result = execSync(
-        `reg query "HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}" /ve`,
-        { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' }
-      );
-      return result.includes(NATIVE_HOST_NAME);
-    } else {
-      const manifestPath = getNativeHostManifestPath();
-      return fs.existsSync(manifestPath);
-    }
-  } catch {
-    return false;
+  const allPaths = getNativeHostManifestPaths();
+  for (const { manifestPath, regKey } of allPaths) {
+    try {
+      if (process.platform === 'win32' && regKey) {
+        const { execSync } = require('child_process');
+        const result = execSync(`reg query "${regKey}" /ve`, { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
+        if (result.includes(NATIVE_HOST_NAME)) return true;
+      } else if (fs.existsSync(manifestPath)) {
+        return true;
+      }
+    } catch {}
   }
+  return false;
 }
 
 // --- Extension Installation Detection ---
@@ -166,71 +227,86 @@ export function isExtensionInstalled(): boolean {
   return isNativeHostRegistered();
 }
 
-const extensionPromptTexts: Record<string, {
-  title: string; installMsg: string; installDetail: string;
-  reconnectMsg: string; reconnectDetail: string;
-  btnLocal: string; btnStore: string; btnNotNow: string;
-  btnSettings: string; btnCancel: string;
-}> = {
+const extensionPromptTexts: Record<string, Record<string, string>> = {
   en: {
     title: 'NoobClaw Browser Assistant',
     installMsg: 'Enable AI Browser Automation',
-    installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real Chrome with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
-    reconnectMsg: 'Chrome Extension Not Connected',
-    reconnectDetail: 'The extension is installed but Chrome is not connected. Make sure Chrome is running with the NoobClaw extension enabled.',
+    installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real browser with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
+    reconnectMsg: 'Browser Extension Not Connected',
+    reconnectDetail: 'The extension is installed but the browser is not connected. Make sure your browser is running with the NoobClaw extension enabled.',
     btnLocal: 'Install with Local Extension',
-    btnStore: 'Install from Chrome Store',
+    btnStore: 'Install from Extension Store',
     btnNotNow: 'Not now',
     btnSettings: 'Open Extension Settings',
     btnCancel: 'Cancel',
+    chooseBrowserMsg: 'Choose a browser',
+    noBrowserMsg: 'No supported browser found',
+    noBrowserDetail: 'NoobClaw Browser Assistant requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
+    btnDownloadChrome: 'Download Chrome',
   },
   zh: {
     title: 'NoobClaw 浏览器助手',
     installMsg: '启用 AI 浏览器自动化',
-    installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的 Chrome 及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
-    reconnectMsg: 'Chrome 扩展未连接',
-    reconnectDetail: '扩展已安装但 Chrome 未连接。请确保 Chrome 正在运行且 NoobClaw 扩展已启用。',
+    installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的浏览器及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
+    reconnectMsg: '浏览器扩展未连接',
+    reconnectDetail: '扩展已安装但浏览器未连接。请确保浏览器正在运行且 NoobClaw 扩展已启用。',
     btnLocal: '一键安装本地扩展',
-    btnStore: '从 Chrome 商店安装',
+    btnStore: '从应用商店安装',
     btnNotNow: '暂不安装',
     btnSettings: '打开扩展设置',
     btnCancel: '取消',
+    chooseBrowserMsg: '选择浏览器',
+    noBrowserMsg: '未检测到支持的浏览器',
+    noBrowserDetail: 'NoobClaw 浏览器助手需要 Chrome、Edge 或 Firefox。请先下载安装 Google Chrome。',
+    btnDownloadChrome: '下载 Chrome',
   },
   'zh-TW': {
     title: 'NoobClaw 瀏覽器助手',
     installMsg: '啟用 AI 瀏覽器自動化',
-    installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• AI 像真人一樣操作瀏覽器 — 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候 24 小時自動化瀏覽\n• 所有資料留在本地',
-    reconnectMsg: 'Chrome 擴充功能未連線',
-    reconnectDetail: '擴充功能已安裝但 Chrome 未連線。請確保 Chrome 正在運行且 NoobClaw 擴充功能已啟用。',
+    installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候自動化\n• 資料留在本地',
+    reconnectMsg: '瀏覽器擴充功能未連線',
+    reconnectDetail: '擴充功能已安裝但瀏覽器未連線。',
     btnLocal: '一鍵安裝本地擴充功能',
-    btnStore: '從 Chrome 商店安裝',
+    btnStore: '從應用商店安裝',
     btnNotNow: '暫不安裝',
     btnSettings: '開啟擴充功能設定',
     btnCancel: '取消',
+    chooseBrowserMsg: '選擇瀏覽器',
+    noBrowserMsg: '未偵測到支援的瀏覽器',
+    noBrowserDetail: '請先下載安裝 Google Chrome。',
+    btnDownloadChrome: '下載 Chrome',
   },
   ja: {
     title: 'NoobClaw ブラウザアシスタント',
     installMsg: 'AIブラウザ自動化を有効にする',
-    installDetail: 'NoobClaw ブラウザアシスタントをインストールして、AIに実際のChromeブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはすべてローカル',
-    reconnectMsg: 'Chrome拡張機能が未接続',
-    reconnectDetail: '拡張機能はインストール済みですが、Chromeが接続されていません。',
+    installDetail: 'AIにブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはローカル',
+    reconnectMsg: 'ブラウザ拡張機能が未接続',
+    reconnectDetail: '拡張機能はインストール済みですが、ブラウザが接続されていません。',
     btnLocal: 'ローカル拡張機能をインストール',
-    btnStore: 'Chrome ストアからインストール',
+    btnStore: 'ストアからインストール',
     btnNotNow: '後で',
     btnSettings: '拡張機能の設定を開く',
     btnCancel: 'キャンセル',
+    chooseBrowserMsg: 'ブラウザを選択',
+    noBrowserMsg: '対応ブラウザが見つかりません',
+    noBrowserDetail: 'Google Chromeをインストールしてください。',
+    btnDownloadChrome: 'Chromeをダウンロード',
   },
   ko: {
     title: 'NoobClaw 브라우저 어시스턴트',
     installMsg: 'AI 브라우저 자동화 활성화',
-    installDetail: 'NoobClaw 브라우저 어시스턴트를 설치하여 AI가 실제 Chrome 브라우저를 사람처럼 제어하도록 하세요.\n\n• 봇 탐지 없음\n• 로그인된 계정으로 작동\n• 24시간 자동화\n• 모든 데이터는 로컬에 저장',
-    reconnectMsg: 'Chrome 확장 프로그램 미연결',
-    reconnectDetail: '확장 프로그램이 설치되었지만 Chrome이 연결되지 않았습니다.',
+    installDetail: 'AI가 브라우저를 사람처럼 제어합니다.\n\n• 봇 탐지 없음\n• 로그인 계정으로 작동\n• 24시간 자동화\n• 로컬 저장',
+    reconnectMsg: '브라우저 확장 프로그램 미연결',
+    reconnectDetail: '확장 프로그램이 설치되었지만 연결되지 않았습니다.',
     btnLocal: '로컬 확장 프로그램 설치',
-    btnStore: 'Chrome 스토어에서 설치',
+    btnStore: '스토어에서 설치',
     btnNotNow: '나중에',
     btnSettings: '확장 프로그램 설정 열기',
     btnCancel: '취소',
+    chooseBrowserMsg: '브라우저 선택',
+    noBrowserMsg: '지원 브라우저를 찾을 수 없습니다',
+    noBrowserDetail: 'Google Chrome을 설치해 주세요.',
+    btnDownloadChrome: 'Chrome 다운로드',
   },
 };
 
@@ -261,9 +337,11 @@ export async function showExtensionPrompt(): Promise<void> {
     });
 
     if (result.response === 0) {
-      launchChromeWithExtension();
+      await launchBrowserWithExtension();
     } else if (result.response === 1) {
-      shell.openExternal(CHROME_STORE_URL);
+      const browsers = detectBrowsers();
+      const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
+      shell.openExternal(storeUrl);
     }
   } else if (!status.connected) {
     const result = await dialog.showMessageBox(win, {
@@ -277,44 +355,71 @@ export async function showExtensionPrompt(): Promise<void> {
     });
 
     if (result.response === 0) {
-      launchChromeWithExtension();
+      await launchBrowserWithExtension();
     } else if (result.response === 1) {
       shell.openExternal(`chrome-extension://${EXTENSION_IDS[0]}/popup.html`);
     }
   }
 }
 
-function launchChromeWithExtension(): void {
-  const { execFile } = require('child_process');
+async function launchBrowserWithExtension(specificBrowser?: DetectedBrowser): Promise<void> {
+  const browsers = detectBrowsers();
+
+  if (browsers.length === 0) {
+    const t = getPromptTexts();
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) {
+      await dialog.showMessageBox(win, {
+        type: 'warning',
+        title: t.title,
+        message: t.noBrowserMsg || 'No supported browser found',
+        detail: t.noBrowserDetail || 'This extension requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
+        buttons: [t.btnDownloadChrome || 'Download Chrome', t.btnCancel],
+        defaultId: 0,
+        cancelId: 1,
+      }).then(result => {
+        if (result.response === 0) {
+          shell.openExternal('https://www.google.com/chrome/');
+        }
+      });
+    }
+    return;
+  }
+
+  let browser = specificBrowser || browsers[0]; // Default: first detected (Chrome priority)
+
+  // If multiple browsers and no specific one requested, let user choose
+  if (!specificBrowser && browsers.length > 1) {
+    const win = BrowserWindow.getFocusedWindow();
+    if (win) {
+      const t = getPromptTexts();
+      const result = await dialog.showMessageBox(win, {
+        type: 'question',
+        title: t.title,
+        message: t.chooseBrowserMsg || 'Choose a browser',
+        buttons: [...browsers.map(b => b.name), t.btnCancel],
+        defaultId: 0,
+        cancelId: browsers.length,
+      });
+      if (result.response >= browsers.length) return;
+      browser = browsers[result.response];
+    }
+  }
+
   const extensionPath = path.join(app.getAppPath(), '..', 'chrome-extension');
+  const { execFile } = require('child_process');
 
   if (process.platform === 'win32') {
-    // Try common Chrome paths on Windows
-    const chromePaths = [
-      path.join(process.env['PROGRAMFILES'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-      path.join(process.env['LOCALAPPDATA'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    ];
-    const chromePath = chromePaths.find(p => fs.existsSync(p));
-    if (chromePath) {
-      execFile(chromePath, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
-    } else {
-      shell.openExternal('https://www.google.com/chrome/');
-    }
+    execFile(browser.path, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
   } else if (process.platform === 'darwin') {
     const { execSync } = require('child_process');
     try {
-      execSync(`open -a "Google Chrome" --args --load-extension="${extensionPath}"`, { stdio: 'ignore' });
-    } catch {
-      shell.openExternal('https://www.google.com/chrome/');
-    }
+      execSync(`open -a "${browser.path}" --args --load-extension="${extensionPath}"`, { stdio: 'ignore' });
+    } catch {}
   } else {
-    const { execSync } = require('child_process');
     try {
-      execSync(`google-chrome --load-extension="${extensionPath}" &`, { stdio: 'ignore' });
-    } catch {
-      shell.openExternal('https://www.google.com/chrome/');
-    }
+      execFile(browser.path, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
+    } catch {}
   }
 }
 
