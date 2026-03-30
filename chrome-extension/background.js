@@ -124,20 +124,56 @@ function updateStatus(status) {
   chrome.runtime.sendMessage({ type: 'status_update', status }).catch(() => {});
 }
 
+async function getActiveTab() {
+  // Try lastFocusedWindow first (works even when Chrome is in background)
+  let [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  if (tab?.id) return tab;
+  // Fallback: any active tab in any window
+  [tab] = await chrome.tabs.query({ active: true });
+  if (tab?.id) return tab;
+  throw new Error('No active tab. Please open a tab in Chrome.');
+}
+
+async function injectContentScript(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content.js'],
+    });
+  } catch (e) {
+    // Already injected or restricted page (chrome://, edge://, etc.)
+  }
+  // Wait a bit for content script to initialize
+  await new Promise(r => setTimeout(r, 100));
+}
+
+async function sendToContentScript(tabId, command, params, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await chrome.tabs.sendMessage(tabId, { command, params });
+    } catch (e) {
+      if (i < retries && e.message?.includes('Receiving end does not exist')) {
+        // Content script not ready, re-inject and retry
+        await injectContentScript(tabId);
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 async function executeCommand(msg) {
   const { id, command, params } = msg;
   try {
     let data;
 
     if (command === 'screenshot') {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab');
+      const tab = await getActiveTab();
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 40 });
       const resized = await resizeImage(dataUrl, 800);
       data = { image: resized.split(',')[1] };
     } else if (command === 'navigate') {
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab');
+      const tab = await getActiveTab();
       let url = params.url;
       if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
       await chrome.tabs.update(tab.id, { url });
@@ -152,24 +188,15 @@ async function executeCommand(msg) {
         chrome.tabs.onUpdated.addListener(listener);
         setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, 10000);
       });
+      // Inject content script on new page
+      await injectContentScript(tab.id);
       const updated = await chrome.tabs.get(tab.id);
       data = { url: updated.url, title: updated.title };
     } else {
       // Forward to content script
-      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab');
-
-      // Ensure content script is injected
-      try {
-        await chrome.scripting.executeScript({
-          target: { tabId: tab.id },
-          files: ['content.js'],
-        });
-      } catch (e) {
-        // Already injected or restricted page
-      }
-
-      data = await chrome.tabs.sendMessage(tab.id, { command, params });
+      const tab = await getActiveTab();
+      await injectContentScript(tab.id);
+      data = await sendToContentScript(tab.id, command, params);
     }
 
     return { id, success: true, data: data || {} };
