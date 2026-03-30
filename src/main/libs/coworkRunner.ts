@@ -2339,7 +2339,7 @@ export class CoworkRunner extends EventEmitter {
           '3. browser_find to locate specific elements by description',
           '4. browser_click / browser_type / browser_fill to interact',
           '5. browser_get_text to read the result or verify',
-          '6. browser_screenshot ONLY when user explicitly asks to see the page (screenshot is shown to user but AI cannot see it)',
+          '6. browser_screenshot to see the page visually. If the model supports vision, you will receive the image directly and can analyze it to find elements, understand layout, and make decisions. Use screenshots frequently to verify your actions.',
         ].join('\n');
       } else {
         browserPrompt = [
@@ -3419,7 +3419,7 @@ export class CoworkRunner extends EventEmitter {
             // Check if current model supports vision (image input)
             const apiConfig = getCurrentApiConfig();
             const modelId = (apiConfig?.model || '').toLowerCase();
-            const supportsVision = /claude|gpt-4o|gpt-4-turbo|gemini|qwen-vl|glm-4v/i.test(modelId);
+            const supportsVision = /claude|gpt-4o|gpt-4-turbo|gpt-4-vision|gemini|qwen-vl|qwen3|qwen2\.5-vl|glm-4v|glm-4-plus|minimax|moonshot|kimi|yi-vision|internvl|cogvlm|step-1v|doubao/i.test(modelId);
             if (supportsVision) {
               return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
             }
