@@ -244,7 +244,7 @@ export const defaultConfig: AppConfig = {
       { id: 'deepseek-chat', name: 'DeepSeek Chat', supportsImage: false },
       { id: 'deepseek-reasoner', name: 'DeepSeek Reasoner', supportsImage: false },
     ],
-    defaultModel: 'deepseek-chat',
+    defaultModel: 'noobclawai-reasoner',
     defaultModelProvider: 'noobclawAI',
   },
   providers: {

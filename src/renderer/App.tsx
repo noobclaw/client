@@ -131,10 +131,15 @@ const App: React.FC = () => {
 
         if (resolvedModels.length > 0) {
           dispatch(setAvailableModels(resolvedModels));
+          // Migrate old default: deepseek-chat / noobclawai-chat → noobclawai-reasoner
+          let defaultModelId = config.model.defaultModel;
+          if (defaultModelId === 'deepseek-chat' || defaultModelId === 'noobclawai-chat') {
+            defaultModelId = 'noobclawai-reasoner';
+          }
           const preferredModel = resolvedModels.find(
-            model => model.id === config.model.defaultModel
+            model => model.id === defaultModelId
               && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-          ) ?? resolvedModels[0];
+          ) ?? resolvedModels.find(m => m.id === 'noobclawai-reasoner') ?? resolvedModels[0];
           dispatch(setSelectedModel(preferredModel));
         }
         

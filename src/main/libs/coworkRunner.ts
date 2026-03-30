@@ -3524,6 +3524,11 @@ export class CoworkRunner extends EventEmitter {
           { url: z.string() },
           async (args: { url: string }) => {
             if (!getBrowserBridgeStatus().connected) {
+              // Show install prompt (only once per session)
+              if (!extensionPromptShown) {
+                extensionPromptShown = true;
+                showExtensionPrompt().catch(() => {});
+              }
               // Fallback: open URL in default browser via shell
               try {
                 const { shell } = await import('electron');
