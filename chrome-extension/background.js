@@ -136,6 +136,12 @@ async function getActiveTab() {
 
 async function injectContentScript(tabId) {
   try {
+    // Check if already injected
+    const [result] = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: () => window.__noobclaw_injected === true,
+    });
+    if (result?.result) return; // Already injected
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js'],

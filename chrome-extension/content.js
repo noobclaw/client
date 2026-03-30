@@ -1,7 +1,8 @@
 /**
  * NoobClaw Browser Assistant — Content Script
- * Handles DOM operations: read, click, type, scroll, find, fill, get_text.
  */
+if (window.__noobclaw_injected) { /* skip */ } else {
+window.__noobclaw_injected = true;
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const { command, params } = msg;
@@ -499,3 +500,4 @@ function tripleClickElement(params) {
   el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 3 }));
   return { message: `Triple-clicked ${el.tagName.toLowerCase()}` };
 }
+} // end __noobclaw_injected guard
