@@ -3879,6 +3879,34 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
+        tool(
+          'browser_upload_file',
+          'Upload a file to a file input element on the page. Provide the file as base64 data. This bypasses the native file picker dialog.',
+          { selector: z.string().optional(), fileData: z.string(), fileName: z.string(), mimeType: z.string().optional() },
+          async (args: { selector?: string; fileData: string; fileName: string; mimeType?: string }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('upload_file', args);
+              return { content: [{ type: 'text', text: data?.message || data?.error || 'Upload attempted.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_upload_file error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
+        tool(
+          'browser_triple_click',
+          'Triple-click an element to select all text in it.',
+          { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
+          async (args: { selector?: string; coordinate?: number[] }) => {
+            if (!getBrowserBridgeStatus().connected) return browserNotConnectedResponse();
+            try {
+              const data = await sendBrowserCommand('triple_click', args);
+              return { content: [{ type: 'text', text: data?.message || 'Triple-clicked.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_triple_click error: ${e.message}` }], isError: true } as any;
+            }
+          }
+        ),
       ];
 
       options.mcpServers = {

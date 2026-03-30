@@ -233,6 +233,12 @@ async function executeCommand(msg) {
       const tab = await getActiveTab();
       await chrome.tabs.reload(tab.id);
       data = { message: 'Page reloaded' };
+    } else if (command === 'list_tabs') {
+      const tabs = await chrome.tabs.query({ currentWindow: true });
+      data = { tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, active: t.active })) };
+    } else if (command === 'get_tab_info') {
+      const tab = await getActiveTab();
+      data = { id: tab.id, title: tab.title, url: tab.url, status: tab.status };
     } else {
       // Forward to content script
       const tab = await getActiveTab();

@@ -73,6 +73,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'get_page_info':
           result = getPageInfo();
           break;
+        case 'upload_file':
+          result = uploadFile(params);
+          break;
+        case 'triple_click':
+          result = tripleClickElement(params);
+          break;
         default:
           result = { error: `Unknown command: ${command}` };
       }
@@ -449,4 +455,47 @@ function getSelector(el) {
     current = parent;
   }
   return parts.join(' > ');
+}
+
+function uploadFile(params) {
+  const selector = params.selector || params.ref;
+  let input;
+  if (selector) {
+    input = document.querySelector(selector);
+  } else {
+    input = document.querySelector('input[type="file"]');
+  }
+  if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+    return { error: 'No file input found. Provide a selector for the file input element.' };
+  }
+  if (!params.fileData || !params.fileName) {
+    return { error: 'fileData (base64) and fileName are required.' };
+  }
+  try {
+    const byteChars = atob(params.fileData);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const mimeType = params.mimeType || 'application/octet-stream';
+    const file = new File([byteArray], params.fileName, { type: mimeType });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return { message: `Uploaded ${params.fileName} (${byteArray.length} bytes)` };
+  } catch (e) {
+    return { error: `Upload failed: ${e.message}` };
+  }
+}
+
+function tripleClickElement(params) {
+  let el;
+  if (params.selector) el = document.querySelector(params.selector);
+  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  if (!el) return { error: 'Element not found' };
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 3 }));
+  return { message: `Triple-clicked ${el.tagName.toLowerCase()}` };
 }
