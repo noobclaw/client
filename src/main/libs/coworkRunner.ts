@@ -2343,13 +2343,15 @@ export class CoworkRunner extends EventEmitter {
         ].join('\n');
       } else {
         browserPrompt = [
-          '## Browser Automation Routing',
+          '## Browser Automation Routing (IMPORTANT)',
           '',
           '### NoobClaw Browser Assistant: NOT CONNECTED',
-          '- If the user asks to operate on websites requiring login or page interaction, suggest installing the NoobClaw Browser Assistant Chrome extension.',
-          '- For simple search/info queries → use web-search skill',
-          '- For batch scraping or automation → use Playwright skill',
-          '- As last resort for opening URLs → use Bash `start` command (Windows) or `open` (macOS)',
+          '- When the user asks ANYTHING related to browsers or websites (open, browse, navigate, search on a site, click, fill, etc.):',
+          '  → You MUST first try calling `browser_navigate` tool. The system will automatically show an install/reconnect dialog to the user.',
+          '  → Do NOT use Bash commands like `start chrome`, `open -a Chrome`, or `xdg-open` to open browsers.',
+          '  → Do NOT skip directly to web-search or Playwright as alternatives.',
+          '- For simple factual search queries (not involving opening a browser) → use web-search skill',
+          '- For batch scraping or background automation → use Playwright skill',
         ].join('\n');
       }
     } catch {}
@@ -3077,6 +3079,20 @@ export class CoworkRunner extends EventEmitter {
 
         if (resolvedName === 'Bash') {
           const command = this.extractToolCommand(resolvedInput);
+
+          // Intercept browser launch commands — redirect to browser_navigate tool
+          const browserLaunchRe = /^(start\s+(chrome|msedge|firefox|brave|""?\s*https?:)|open\s+(-a\s+)?(chrome|safari|firefox|"?https?:)|xdg-open\s+https?:)/i;
+          if (browserLaunchRe.test(command.trim())) {
+            try {
+              const { showExtensionPrompt } = await import('./browserBridge');
+              await showExtensionPrompt();
+            } catch {}
+            return {
+              behavior: 'deny',
+              message: 'Browser operations should use the browser_navigate tool instead of Bash commands. The system has prompted the user to connect the NoobClaw Browser Assistant extension. Please retry using browser_navigate.',
+            };
+          }
+
           const pythonRuntimeCheck = await this.ensureWindowsPythonRuntimeForCommand(sessionId, command);
           if (!pythonRuntimeCheck.ok) {
             const reason = pythonRuntimeCheck.reason || 'Python runtime unavailable.';
