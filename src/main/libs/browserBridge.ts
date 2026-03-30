@@ -232,81 +232,71 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw Browser Assistant',
     installMsg: 'Enable AI Browser Automation',
     installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real browser with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
-    reconnectMsg: 'Browser Extension Not Connected',
-    reconnectDetail: 'The extension is installed but the browser is not connected. Make sure your browser is running with the NoobClaw extension enabled.',
     btnLocal: 'Install with Local Extension',
     btnStore: 'Install from Extension Store',
     btnNotNow: 'Not now',
-    btnSettings: 'Open Extension Settings',
     btnCancel: 'Cancel',
-    chooseBrowserMsg: 'Choose a browser',
     noBrowserMsg: 'No supported browser found',
     noBrowserDetail: 'NoobClaw Browser Assistant requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
     btnDownloadChrome: 'Download Chrome',
+    guideMsg: 'Extension page opened',
+    guideDetail: 'The extension page has been opened and the path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Turn on "Developer mode" (top right corner)\n2. Click "Load unpacked"\n3. Paste the path (already copied) and confirm\n\nPath: {path}',
   },
   zh: {
     title: 'NoobClaw 浏览器助手',
     installMsg: '启用 AI 浏览器自动化',
     installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的浏览器及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
-    reconnectMsg: '浏览器扩展未连接',
-    reconnectDetail: '扩展已安装但浏览器未连接。请确保浏览器正在运行且 NoobClaw 扩展已启用。',
     btnLocal: '一键安装本地扩展',
     btnStore: '从应用商店安装',
     btnNotNow: '暂不安装',
-    btnSettings: '打开扩展设置',
     btnCancel: '取消',
-    chooseBrowserMsg: '选择浏览器',
     noBrowserMsg: '未检测到支持的浏览器',
     noBrowserDetail: 'NoobClaw 浏览器助手需要 Chrome、Edge 或 Firefox。请先下载安装 Google Chrome。',
     btnDownloadChrome: '下载 Chrome',
+    guideMsg: '扩展页面已打开',
+    guideDetail: '已打开浏览器扩展页面，扩展路径已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开右上角「开发者模式」开关\n2. 点击「加载已解压的扩展程序」\n3. 在路径栏粘贴（已复制到剪贴板）并确认\n\n路径：{path}',
   },
   'zh-TW': {
     title: 'NoobClaw 瀏覽器助手',
     installMsg: '啟用 AI 瀏覽器自動化',
     installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候自動化\n• 資料留在本地',
-    reconnectMsg: '瀏覽器擴充功能未連線',
-    reconnectDetail: '擴充功能已安裝但瀏覽器未連線。',
     btnLocal: '一鍵安裝本地擴充功能',
     btnStore: '從應用商店安裝',
     btnNotNow: '暫不安裝',
-    btnSettings: '開啟擴充功能設定',
     btnCancel: '取消',
-    chooseBrowserMsg: '選擇瀏覽器',
     noBrowserMsg: '未偵測到支援的瀏覽器',
     noBrowserDetail: '請先下載安裝 Google Chrome。',
     btnDownloadChrome: '下載 Chrome',
+    guideMsg: '擴充功能頁面已開啟',
+    guideDetail: '已開啟瀏覽器擴充功能頁面，路徑已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 開啟右上角「開發人員模式」\n2. 點擊「載入未封裝項目」\n3. 貼上路徑（已複製到剪貼簿）並確認\n\n路徑：{path}',
   },
   ja: {
     title: 'NoobClaw ブラウザアシスタント',
     installMsg: 'AIブラウザ自動化を有効にする',
     installDetail: 'AIにブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはローカル',
-    reconnectMsg: 'ブラウザ拡張機能が未接続',
-    reconnectDetail: '拡張機能はインストール済みですが、ブラウザが接続されていません。',
     btnLocal: 'ローカル拡張機能をインストール',
     btnStore: 'ストアからインストール',
     btnNotNow: '後で',
-    btnSettings: '拡張機能の設定を開く',
     btnCancel: 'キャンセル',
-    chooseBrowserMsg: 'ブラウザを選択',
     noBrowserMsg: '対応ブラウザが見つかりません',
     noBrowserDetail: 'Google Chromeをインストールしてください。',
     btnDownloadChrome: 'Chromeをダウンロード',
+    guideMsg: '拡張機能ページを開きました',
+    guideDetail: 'ブラウザの拡張機能ページを開きました。パスはクリップボードにコピー済みです。\n\n手順：\n1. 右上の「デベロッパーモード」をオン\n2. 「パッケージ化されていない拡張機能を読み込む」をクリック\n3. パスを貼り付けて確認\n\nパス：{path}',
   },
   ko: {
     title: 'NoobClaw 브라우저 어시스턴트',
     installMsg: 'AI 브라우저 자동화 활성화',
     installDetail: 'AI가 브라우저를 사람처럼 제어합니다.\n\n• 봇 탐지 없음\n• 로그인 계정으로 작동\n• 24시간 자동화\n• 로컬 저장',
-    reconnectMsg: '브라우저 확장 프로그램 미연결',
-    reconnectDetail: '확장 프로그램이 설치되었지만 연결되지 않았습니다.',
     btnLocal: '로컬 확장 프로그램 설치',
     btnStore: '스토어에서 설치',
     btnNotNow: '나중에',
-    btnSettings: '확장 프로그램 설정 열기',
     btnCancel: '취소',
-    chooseBrowserMsg: '브라우저 선택',
     noBrowserMsg: '지원 브라우저를 찾을 수 없습니다',
     noBrowserDetail: 'Google Chrome을 설치해 주세요.',
     btnDownloadChrome: 'Chrome 다운로드',
+    guideMsg: '확장 프로그램 페이지 열림',
+    guideDetail: '브라우저 확장 프로그램 페이지가 열렸습니다. 경로가 클립보드에 복사되었습니다.\n\n다음 단계를 따르세요:\n1. 오른쪽 상단 "개발자 모드" 활성화\n2. "압축해제된 확장 프로그램을 로드합니다" 클릭\n3. 경로 붙여넣기(이미 복사됨) 후 확인\n\n경로: {path}',
   },
 };
 
@@ -320,106 +310,91 @@ function getPromptTexts() {
 }
 
 export async function showExtensionPrompt(): Promise<void> {
-  const status = getBrowserBridgeStatus();
   const win = BrowserWindow.getFocusedWindow();
   if (!win) return;
   const t = getPromptTexts();
 
-  if (!status.extensionInstalled) {
-    const result = await dialog.showMessageBox(win, {
-      type: 'info',
-      title: t.title,
-      message: t.installMsg,
-      detail: t.installDetail,
-      buttons: [t.btnLocal, t.btnStore, t.btnNotNow],
-      defaultId: 0,
-      cancelId: 2,
-    });
+  // Unified dialog — same for "not installed" and "installed but not connected"
+  const result = await dialog.showMessageBox(win, {
+    type: 'info',
+    title: t.title,
+    message: t.installMsg,
+    detail: t.installDetail,
+    buttons: [t.btnLocal, t.btnStore, t.btnNotNow],
+    defaultId: 0,
+    cancelId: 2,
+  });
 
-    if (result.response === 0) {
-      await launchBrowserWithExtension();
-    } else if (result.response === 1) {
-      const browsers = detectBrowsers();
-      const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
-      shell.openExternal(storeUrl);
-    }
-  } else if (!status.connected) {
-    const result = await dialog.showMessageBox(win, {
-      type: 'warning',
-      title: t.title,
-      message: t.reconnectMsg,
-      detail: t.reconnectDetail,
-      buttons: [t.btnLocal, t.btnSettings, t.btnCancel],
-      defaultId: 0,
-      cancelId: 2,
-    });
-
-    if (result.response === 0) {
-      await launchBrowserWithExtension();
-    } else if (result.response === 1) {
-      shell.openExternal(`chrome-extension://${EXTENSION_IDS[0]}/popup.html`);
-    }
+  if (result.response === 0) {
+    await installLocalExtension();
+  } else if (result.response === 1) {
+    const browsers = detectBrowsers();
+    const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
+    shell.openExternal(storeUrl);
   }
 }
 
-async function launchBrowserWithExtension(specificBrowser?: DetectedBrowser): Promise<void> {
+async function installLocalExtension(): Promise<void> {
+  const { clipboard } = require('electron');
   const browsers = detectBrowsers();
+  const win = BrowserWindow.getFocusedWindow();
+  const t = getPromptTexts();
 
   if (browsers.length === 0) {
-    const t = getPromptTexts();
-    const win = BrowserWindow.getFocusedWindow();
     if (win) {
-      await dialog.showMessageBox(win, {
+      const result = await dialog.showMessageBox(win, {
         type: 'warning',
         title: t.title,
-        message: t.noBrowserMsg || 'No supported browser found',
-        detail: t.noBrowserDetail || 'This extension requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
-        buttons: [t.btnDownloadChrome || 'Download Chrome', t.btnCancel],
+        message: t.noBrowserMsg,
+        detail: t.noBrowserDetail,
+        buttons: [t.btnDownloadChrome, t.btnCancel],
         defaultId: 0,
         cancelId: 1,
-      }).then(result => {
-        if (result.response === 0) {
-          shell.openExternal('https://www.google.com/chrome/');
-        }
       });
+      if (result.response === 0) {
+        shell.openExternal('https://www.google.com/chrome/');
+      }
     }
     return;
   }
 
-  let browser = specificBrowser || browsers[0]; // Default: first detected (Chrome priority)
+  // Get extension path
+  const extensionPath = path.join(
+    process.resourcesPath || path.join(app.getAppPath(), '..'),
+    'chrome-extension'
+  );
 
-  // If multiple browsers and no specific one requested, let user choose
-  if (!specificBrowser && browsers.length > 1) {
-    const win = BrowserWindow.getFocusedWindow();
-    if (win) {
-      const t = getPromptTexts();
-      const result = await dialog.showMessageBox(win, {
-        type: 'question',
-        title: t.title,
-        message: t.chooseBrowserMsg || 'Choose a browser',
-        buttons: [...browsers.map(b => b.name), t.btnCancel],
-        defaultId: 0,
-        cancelId: browsers.length,
-      });
-      if (result.response >= browsers.length) return;
-      browser = browsers[result.response];
-    }
-  }
+  // Copy path to clipboard
+  clipboard.writeText(extensionPath);
 
-  const extensionPath = path.join(app.getAppPath(), '..', 'chrome-extension');
-  const { execFile } = require('child_process');
+  // Open chrome://extensions page
+  const browser = browsers[0];
+  const extensionsUrl = browser.type === 'firefox'
+    ? 'about:debugging#/runtime/this-firefox'
+    : browser.type === 'edge'
+      ? 'edge://extensions'
+      : 'chrome://extensions';
 
   if (process.platform === 'win32') {
-    execFile(browser.path, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
+    const { execFile } = require('child_process');
+    execFile(browser.path, [extensionsUrl], { detached: true, stdio: 'ignore' });
   } else if (process.platform === 'darwin') {
     const { execSync } = require('child_process');
-    try {
-      execSync(`open -a "${browser.path}" --args --load-extension="${extensionPath}"`, { stdio: 'ignore' });
-    } catch {}
+    try { execSync(`open -a "${browser.path}" "${extensionsUrl}"`, { stdio: 'ignore' }); } catch {}
   } else {
-    try {
-      execFile(browser.path, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
-    } catch {}
+    const { execFile } = require('child_process');
+    try { execFile(browser.path, [extensionsUrl], { detached: true, stdio: 'ignore' }); } catch {}
+  }
+
+  // Show instructions
+  if (win) {
+    await dialog.showMessageBox(win, {
+      type: 'info',
+      title: t.title,
+      message: t.guideMsg,
+      detail: t.guideDetail.replace('{path}', extensionPath),
+      buttons: ['OK'],
+    });
   }
 }
 
