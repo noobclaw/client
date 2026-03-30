@@ -2343,15 +2343,16 @@ export class CoworkRunner extends EventEmitter {
         ].join('\n');
       } else {
         browserPrompt = [
-          '## Browser Automation Routing (IMPORTANT)',
+          '## Browser Automation Routing (CRITICAL - MUST FOLLOW)',
           '',
           '### NoobClaw Browser Assistant: NOT CONNECTED',
-          '- When user asks to "open browser" or "open a website":',
-          '  → Use `browser_navigate` with the URL. It will automatically open the default browser even without extension.',
-          '- When user asks to interact with a webpage (click, type, scroll, screenshot, read content):',
-          '  → These require the browser extension. Tell the user to install/connect the NoobClaw Browser Assistant extension first.',
-          '- For simple factual search queries (not involving opening a browser) → use web-search skill',
-          '- For batch scraping or background automation → use Playwright skill',
+          '- For ANY browser-related request (open, browse, navigate, scroll, click, search on a website, etc.):',
+          '  → You MUST call `browser_navigate` first. Do NOT skip this step.',
+          '  → Do NOT use Playwright skill, web-search skill, or Bash commands as alternatives.',
+          '  → Do NOT read Playwright SKILL.md or attempt to use npx/playwright.',
+          '  → The system will automatically handle the connection and show install dialogs if needed.',
+          '- ONLY use web-search for simple text search queries that do not involve opening a browser.',
+          '- NEVER use Playwright unless the user explicitly asks for "playwright" or "headless browser".',
         ].join('\n');
       }
     } catch {}
