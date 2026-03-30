@@ -172,34 +172,70 @@ export async function showExtensionPrompt(): Promise<void> {
   if (!win) return;
 
   if (!status.extensionInstalled) {
-    // Not installed — show install dialog
     const result = await dialog.showMessageBox(win, {
       type: 'info',
-      title: 'NoobClaw',
-      message: 'Install NoobClaw in Chrome',
-      detail: 'This allows NoobClaw to work with websites directly in your browser. Only grant "always allow" for sites you trust.',
-      buttons: ['Open Chrome Web Store', 'Not now', "Don't ask again"],
+      title: 'NoobClaw Browser Assistant',
+      message: 'Enable AI Browser Automation',
+      detail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real Chrome with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
+      buttons: ['Launch Chrome with Extension', 'Open Chrome Web Store', 'Not now'],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: 2,
     });
 
     if (result.response === 0) {
+      launchChromeWithExtension();
+    } else if (result.response === 1) {
       shell.openExternal(CHROME_STORE_URL);
     }
   } else if (!status.connected) {
-    // Installed but not connected
     const result = await dialog.showMessageBox(win, {
       type: 'warning',
-      title: 'NoobClaw',
-      message: 'Check your NoobClaw Chrome extension',
-      detail: 'The Chrome extension needs to be enabled and Chrome must be running. Open the extension settings to verify.',
-      buttons: ['Open Extension Settings', 'Cancel'],
+      title: 'NoobClaw Browser Assistant',
+      message: 'Chrome Extension Not Connected',
+      detail: 'The extension is installed but Chrome is not connected. Make sure Chrome is running with the NoobClaw extension enabled.',
+      buttons: ['Launch Chrome with Extension', 'Open Extension Settings', 'Cancel'],
       defaultId: 0,
-      cancelId: 1,
+      cancelId: 2,
     });
 
     if (result.response === 0) {
+      launchChromeWithExtension();
+    } else if (result.response === 1) {
       shell.openExternal(`chrome-extension://${EXTENSION_IDS[0]}/popup.html`);
+    }
+  }
+}
+
+function launchChromeWithExtension(): void {
+  const { execFile } = require('child_process');
+  const extensionPath = path.join(app.getAppPath(), '..', 'chrome-extension');
+
+  if (process.platform === 'win32') {
+    // Try common Chrome paths on Windows
+    const chromePaths = [
+      path.join(process.env['PROGRAMFILES'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+      path.join(process.env['LOCALAPPDATA'] || '', 'Google', 'Chrome', 'Application', 'chrome.exe'),
+    ];
+    const chromePath = chromePaths.find(p => fs.existsSync(p));
+    if (chromePath) {
+      execFile(chromePath, [`--load-extension=${extensionPath}`], { detached: true, stdio: 'ignore' });
+    } else {
+      shell.openExternal('https://www.google.com/chrome/');
+    }
+  } else if (process.platform === 'darwin') {
+    const { execSync } = require('child_process');
+    try {
+      execSync(`open -a "Google Chrome" --args --load-extension="${extensionPath}"`, { stdio: 'ignore' });
+    } catch {
+      shell.openExternal('https://www.google.com/chrome/');
+    }
+  } else {
+    const { execSync } = require('child_process');
+    try {
+      execSync(`google-chrome --load-extension="${extensionPath}" &`, { stdio: 'ignore' });
+    } catch {
+      shell.openExternal('https://www.google.com/chrome/');
     }
   }
 }
