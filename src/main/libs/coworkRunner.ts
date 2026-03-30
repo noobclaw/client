@@ -3440,8 +3440,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            const data = await sendBrowserCommand('read_page', args);
-            return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            try {
+              const data = await sendBrowserCommand('read_page', args);
+              return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_read_page error: ${e.message}. Try again or use browser_get_text instead.` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3452,8 +3456,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            const data = await sendBrowserCommand('get_text', {});
-            return { content: [{ type: 'text', text: data.text || '' }] } as any;
+            try {
+              const data = await sendBrowserCommand('get_text', {});
+              return { content: [{ type: 'text', text: data.text || '' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_get_text error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3467,8 +3475,12 @@ export class CoworkRunner extends EventEmitter {
             if (!args.selector && !args.coordinate) {
               return { content: [{ type: 'text', text: 'Must provide selector or coordinate.' }], isError: true } as any;
             }
-            const data = await sendBrowserCommand('click', args);
-            return { content: [{ type: 'text', text: data?.message || 'Clicked successfully.' }] } as any;
+            try {
+              const data = await sendBrowserCommand('click', args);
+              return { content: [{ type: 'text', text: data?.message || 'Clicked successfully.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_click error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3479,8 +3491,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            const data = await sendBrowserCommand('type', args);
-            return { content: [{ type: 'text', text: data?.message || 'Typed successfully.' }] } as any;
+            try {
+              const data = await sendBrowserCommand('type', args);
+              return { content: [{ type: 'text', text: data?.message || 'Typed successfully.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_type error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3491,8 +3507,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            const data = await sendBrowserCommand('navigate', args);
-            return { content: [{ type: 'text', text: `Navigated to ${data?.url || args.url}` }] } as any;
+            try {
+              const data = await sendBrowserCommand('navigate', args);
+              return { content: [{ type: 'text', text: `Navigated to ${data?.url || args.url}` }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_navigate error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3503,8 +3523,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            await sendBrowserCommand('scroll', args);
-            return { content: [{ type: 'text', text: `Scrolled ${args.direction}.` }] } as any;
+            try {
+              await sendBrowserCommand('scroll', args);
+              return { content: [{ type: 'text', text: `Scrolled ${args.direction}.` }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_scroll error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3515,8 +3539,12 @@ export class CoworkRunner extends EventEmitter {
             if (!getBrowserBridgeStatus().connected) {
               return browserNotConnectedResponse();
             }
-            const data = await sendBrowserCommand('find', args);
-            return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            try {
+              const data = await sendBrowserCommand('find', args);
+              return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_find error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
@@ -3531,8 +3559,12 @@ export class CoworkRunner extends EventEmitter {
             if (args.selector.includes('password') || args.selector.includes('[type="password"]')) {
               return { content: [{ type: 'text', text: 'Cannot interact with password fields for security reasons.' }], isError: true } as any;
             }
-            const data = await sendBrowserCommand('fill', args);
-            return { content: [{ type: 'text', text: data?.message || 'Filled successfully.' }] } as any;
+            try {
+              const data = await sendBrowserCommand('fill', args);
+              return { content: [{ type: 'text', text: data?.message || 'Filled successfully.' }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_fill error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
       ];
