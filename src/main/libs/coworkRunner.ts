@@ -3419,7 +3419,9 @@ export class CoworkRunner extends EventEmitter {
             // Check if current model supports vision (image input)
             const apiConfig = getCurrentApiConfig();
             const modelId = (apiConfig?.model || '').toLowerCase();
-            const supportsVision = /claude|gpt-4o|gpt-4-turbo|gpt-4-vision|gemini|qwen-vl|qwen3|qwen2\.5-vl|glm-4v|glm-4-plus|minimax|moonshot|kimi|yi-vision|internvl|cogvlm|step-1v|doubao/i.test(modelId);
+            // Default to vision-enabled; only exclude known text-only models
+            const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r/i;
+            const supportsVision = !textOnlyModels.test(modelId);
             if (supportsVision) {
               return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
             }
@@ -3430,6 +3432,36 @@ export class CoworkRunner extends EventEmitter {
             const tmpPath = path.join(os.tmpdir(), `noobclaw-screenshot-${Date.now()}.jpg`);
             fs.writeFileSync(tmpPath, Buffer.from(data.image, 'base64'));
             return { content: [{ type: 'text', text: `Screenshot saved to ${tmpPath} and displayed to the user. To understand the page content, use browser_read_page or browser_get_text tools.` }] } as any;
+          }
+        ),
+        tool(
+          'browser_observe',
+          'PREFERRED tool for understanding a page. Takes a screenshot AND reads interactive DOM elements in one call. Returns both the visual screenshot (for layout understanding) and the DOM tree (for precise selectors). Always use this before clicking or interacting with page elements.',
+          { filter: z.enum(['all', 'interactive']).optional() },
+          async (args: { filter?: string }) => {
+            if (!getBrowserBridgeStatus().connected) {
+              return browserNotConnectedResponse();
+            }
+            try {
+              const [screenshotData, domData] = await Promise.all([
+                sendBrowserCommand('screenshot', {}, 60000),
+                sendBrowserCommand('read_page', { filter: args.filter || 'interactive' }),
+              ]);
+              const apiConfig = getCurrentApiConfig();
+              const modelId = (apiConfig?.model || '').toLowerCase();
+              const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r/i;
+              const supportsVision = !textOnlyModels.test(modelId);
+              const domText = JSON.stringify(domData, null, 2);
+              if (supportsVision) {
+                return { content: [
+                  { type: 'image', data: screenshotData.image, mimeType: 'image/jpeg' },
+                  { type: 'text', text: `Interactive elements on page:\n${domText}` },
+                ] } as any;
+              }
+              return { content: [{ type: 'text', text: `Interactive elements on page:\n${domText}` }] } as any;
+            } catch (e: any) {
+              return { content: [{ type: 'text', text: `browser_observe error: ${e.message}` }], isError: true } as any;
+            }
           }
         ),
         tool(
