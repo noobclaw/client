@@ -11,6 +11,7 @@ import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setNoobClawAuthToken } from './libs/claudeSettings';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
+import { classifyIntent } from './libs/intentClassifier';
 import { ensureSandboxReady, getSandboxStatus, onSandboxProgress } from './libs/coworkSandboxRuntime';
 import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy, setScheduledTaskDeps } from './libs/coworkOpenAICompatProxy';
 import { startBrowserBridge, stopBrowserBridge, getBrowserBridgeStatus } from './libs/browserBridge';
@@ -1372,10 +1373,32 @@ if (!gotTheLock) {
       // This ensures the frontend receives the correct status immediately
       coworkStoreInstance.updateSession(session.id, { status: 'running' });
 
+      // Run intent classification to auto-inject the most relevant SKILL.md.
+      // Only runs when user hasn't manually selected a skill.
+      // Fails silently — original systemPrompt is used as fallback.
+      let enrichedSystemPrompt: string | undefined;
+      try {
+        const hasManualSkill = (options.activeSkillIds?.length ?? 0) > 0;
+        const enabledSkills = getSkillManager().listSkills()
+          .filter(s => s.enabled)
+          .map(s => ({ id: s.id, name: s.name, description: s.description }));
+        const intentResult = await classifyIntent(options.prompt, enabledSkills, hasManualSkill);
+        if (intentResult.skillIds.length > 0) {
+          const injected = getSkillManager().getSkillInjectionContent(intentResult.skillIds);
+          if (injected) {
+            enrichedSystemPrompt = `${injected}\n\n${systemPrompt}`.trim();
+            console.log(`[intent] classified as [${intentResult.skillIds.join(', ')}] via ${intentResult.source}`);
+          }
+        }
+      } catch (err) {
+        console.warn('[intent] classification failed, using original systemPrompt:', err);
+      }
+
       // Start the session asynchronously (skip initial user message since we already added it)
       runner.startSession(session.id, options.prompt, {
         skipInitialUserMessage: true,
         skillIds: options.activeSkillIds,
+        systemPrompt: enrichedSystemPrompt,
         workspaceRoot: selectedWorkspaceRoot,
         confirmationMode: config.dangerouslySkipPermissions ? 'text' : 'modal',
         imageAttachments: options.imageAttachments,
@@ -1411,8 +1434,29 @@ if (!gotTheLock) {
         imageAttachmentsNames: options.imageAttachments?.map(a => a.name),
       });
       const runner = getCoworkRunner();
+
+      // Run intent classification for follow-up messages too.
+      let continueSystemPrompt = options.systemPrompt;
+      try {
+        const hasManualSkill = (options.activeSkillIds?.length ?? 0) > 0;
+        const enabledSkills = getSkillManager().listSkills()
+          .filter(s => s.enabled)
+          .map(s => ({ id: s.id, name: s.name, description: s.description }));
+        const intentResult = await classifyIntent(options.prompt, enabledSkills, hasManualSkill);
+        if (intentResult.skillIds.length > 0) {
+          const injected = getSkillManager().getSkillInjectionContent(intentResult.skillIds);
+          if (injected) {
+            const base = options.systemPrompt || '';
+            continueSystemPrompt = `${injected}\n\n${base}`.trim();
+            console.log(`[intent] continue classified as [${intentResult.skillIds.join(', ')}] via ${intentResult.source}`);
+          }
+        }
+      } catch (err) {
+        console.warn('[intent] continue classification failed:', err);
+      }
+
       runner.continueSession(options.sessionId, options.prompt, {
-        systemPrompt: options.systemPrompt,
+        systemPrompt: continueSystemPrompt,
         skillIds: options.activeSkillIds,
         imageAttachments: options.imageAttachments,
       }).catch(error => {

@@ -1365,6 +1365,39 @@ export class SkillManager {
     ].join('\n');
   }
 
+  /**
+   * Read SKILL.md for each given skill ID, strip code blocks and frontmatter,
+   * and return a single injected prompt string ready for system prompt prepending.
+   * Returns empty string if no valid content found.
+   */
+  getSkillInjectionContent(skillIds: string[]): string {
+    const skills = this.listSkills();
+    const parts: string[] = [];
+    for (const skillId of skillIds) {
+      const skill = skills.find(s => s.id === skillId);
+      if (!skill?.skillPath) continue;
+      try {
+        const raw = fs.readFileSync(skill.skillPath, 'utf8');
+        // Strip YAML frontmatter
+        const withoutFrontmatter = raw.replace(/^---[\s\S]*?---\s*/m, '');
+        // Strip code blocks to save tokens (AI knows how to write the code itself)
+        const stripped = withoutFrontmatter.replace(/```[\s\S]*?```/gm, '[code example omitted]').trim();
+        if (stripped) {
+          parts.push(`## Active Skill: ${skill.name}\n\n${stripped}`);
+        }
+      } catch {
+        // skip unreadable skills
+      }
+    }
+    if (parts.length === 0) return '';
+    return [
+      '## INJECTED SKILL INSTRUCTIONS (MANDATORY)',
+      'The following skill was automatically selected for this request. You MUST follow its workflow and guidelines.',
+      '',
+      ...parts,
+    ].join('\n');
+  }
+
   setSkillEnabled(id: string, enabled: boolean): SkillRecord[] {
     const state = this.loadSkillStateMap();
     state[id] = { enabled };
