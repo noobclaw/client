@@ -106,10 +106,18 @@ powershell -NoProfile -NonInteractive -Command '$x = 500; $y = 300; $delta = 3; 
 
 For scroll **down**, use negative delta: `$delta = -3`
 
-**macOS:**
+**macOS — scroll via keyboard (most reliable):**
 ```bash
-# Scroll down 3 units
-osascript -e 'tell application "System Events" to scroll down by 3'
+# Scroll down (repeat key_code 125 = Down arrow)
+osascript -e 'tell application "System Events" to repeat 5 times' -e 'key code 125' -e 'end repeat'
+```
+```bash
+# Or: Page Down
+osascript -e 'tell application "System Events" to key code 121'
+```
+```bash
+# Or: Page Up
+osascript -e 'tell application "System Events" to key code 116'
 ```
 
 ---
@@ -182,14 +190,7 @@ powershell -NoProfile -NonInteractive -Command 'Add-Type -AssemblyName Microsoft
 
 **Windows — maximize a window:**
 ```bash
-powershell -NoProfile -NonInteractive -Command 'Add-Type @"
-using System;
-using System.Runtime.InteropServices;
-public class WM {
-  [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-  [DllImport("user32.dll")] public static extern IntPtr FindWindow(string c, string t);
-}
-"@ -ErrorAction SilentlyContinue; $hwnd = [WM]::FindWindow($null, "WeChat"); [WM]::ShowWindow($hwnd, 3); Write-Host "Maximized"'
+powershell -NoProfile -NonInteractive -Command 'Add-Type -TypeDefinition "using System; using System.Runtime.InteropServices; public class WM { [DllImport(\"user32.dll\")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow); [DllImport(\"user32.dll\")] public static extern IntPtr FindWindow(string c, string t); }" -ErrorAction SilentlyContinue; $hwnd = [WM]::FindWindow($null, "WeChat"); [WM]::ShowWindow($hwnd, 3); Write-Host "Maximized"'
 ```
 
 **macOS:**
