@@ -155,17 +155,49 @@ function getText() {
   return { text: target.innerText.trim().slice(0, 50000) };
 }
 
-function clickElement(params) {
-  let el;
+function resolveElement(params) {
   if (params.selector) {
-    el = document.querySelector(params.selector);
-  } else if (params.coordinate) {
-    el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+    // Try normal DOM first, then pierce one level of shadow DOM
+    let el = document.querySelector(params.selector);
+    if (!el) {
+      for (const host of document.querySelectorAll('*')) {
+        if (host.shadowRoot) {
+          el = host.shadowRoot.querySelector(params.selector);
+          if (el) break;
+        }
+      }
+    }
+    return el;
   }
+  if (params.coordinate) {
+    return document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  }
+  return null;
+}
+
+function fireMouseSequence(el, extra = {}) {
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, ...extra };
+  el.dispatchEvent(new MouseEvent('mouseover',  init));
+  el.dispatchEvent(new MouseEvent('mouseenter', { ...init, bubbles: false }));
+  el.dispatchEvent(new MouseEvent('mousemove',  init));
+  el.dispatchEvent(new MouseEvent('mousedown',  init));
+  el.focus && el.focus({ preventScroll: true });
+  el.dispatchEvent(new MouseEvent('mouseup',    init));
+  el.dispatchEvent(new MouseEvent('click',      init));
+}
+
+function clickElement(params) {
+  const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
 
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.click();
+  // Scroll into view synchronously (instant), then fire full event sequence
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  fireMouseSequence(el);
+  // Fallback: also call native .click() for elements that only listen to it
+  if (typeof el.click === 'function') el.click();
   return { message: `Clicked ${el.tagName.toLowerCase()}` };
 }
 
@@ -385,22 +417,29 @@ function readConsole(params) {
 }
 
 function doubleClickElement(params) {
-  let el;
-  if (params.selector) el = document.querySelector(params.selector);
-  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  fireMouseSequence(el, { detail: 1 });
+  fireMouseSequence(el, { detail: 2 });
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  el.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, detail: 2 }));
   return { message: `Double-clicked ${el.tagName.toLowerCase()}` };
 }
 
 function rightClickElement(params) {
-  let el;
-  if (params.selector) el = document.querySelector(params.selector);
-  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 2, buttons: 2 };
+  el.dispatchEvent(new MouseEvent('mousedown',   init));
+  el.dispatchEvent(new MouseEvent('mouseup',     init));
+  el.dispatchEvent(new MouseEvent('contextmenu', init));
   return { message: `Right-clicked ${el.tagName.toLowerCase()}` };
 }
 
@@ -490,14 +529,12 @@ function uploadFile(params) {
 }
 
 function tripleClickElement(params) {
-  let el;
-  if (params.selector) el = document.querySelector(params.selector);
-  else if (params.coordinate) el = document.elementFromPoint(params.coordinate[0], params.coordinate[1]);
+  const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 2 }));
-  el.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 3 }));
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  fireMouseSequence(el, { detail: 1 });
+  fireMouseSequence(el, { detail: 2 });
+  fireMouseSequence(el, { detail: 3 });
   return { message: `Triple-clicked ${el.tagName.toLowerCase()}` };
 }
 } // end __noobclaw_injected guard

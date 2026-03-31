@@ -41,24 +41,55 @@ screencapture -x screenshot.png
 
 ### Mouse Control
 
-**Windows (PowerShell):**
-```powershell
-# Move mouse to coordinates
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(500, 300)
+**Windows — always use this single atomic script (move + click in one call, DPI-aware, uses SendInput):**
+```bash
+powershell -NoProfile -NonInteractive -Command '
+$x = 500; $y = 300  # <-- replace with target coordinates
 
-# Click
-Add-Type -MemberDefinition '[DllImport("user32.dll")] public static extern void mouse_event(int flags, int dx, int dy, int data, int info);' -Name Win32 -Namespace System
-[System.Win32]::mouse_event(0x02, 0, 0, 0, 0)  # Left down
-[System.Win32]::mouse_event(0x04, 0, 0, 0, 0)  # Left up
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public class NativeMouse {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT { public uint type; public MOUSEINPUT mi; }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT { public int dx; public int dy; public uint mouseData; public uint dwFlags; public uint time; public IntPtr dwExtraInfo; }
+    [DllImport("user32.dll")] public static extern uint SendInput(uint n, INPUT[] inp, int size);
+    [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
+    [DllImport("user32.dll")] public static extern int GetSystemMetrics(int n);
+}
+"@ -ErrorAction SilentlyContinue
+
+[NativeMouse]::SetProcessDPIAware()
+$screenW = [NativeMouse]::GetSystemMetrics(0)
+$screenH = [NativeMouse]::GetSystemMetrics(1)
+$nx = [int](($x * 65535) / $screenW)
+$ny = [int](($y * 65535) / $screenH)
+
+$move  = New-Object NativeMouse+INPUT; $move.type = 0; $move.mi.dx = $nx; $move.mi.dy = $ny; $move.mi.dwFlags = 0x8001
+$down  = New-Object NativeMouse+INPUT; $down.type = 0; $down.mi.dwFlags = 0x0002
+$up    = New-Object NativeMouse+INPUT; $up.type   = 0; $up.mi.dwFlags   = 0x0004
+
+[NativeMouse]::SendInput(1, @($move), [System.Runtime.InteropServices.Marshal]::SizeOf($move))
+Start-Sleep -Milliseconds 50
+[NativeMouse]::SendInput(2, @($down, $up), [System.Runtime.InteropServices.Marshal]::SizeOf($down))
+Write-Host "Clicked at ($x, $y)"
+'
 ```
+
+**Notes:**
+- Replace `$x = 500; $y = 300` with the actual coordinates from screenshot analysis
+- `SetProcessDPIAware()` + `65535` normalization handles all DPI scaling (100%, 125%, 150%, 200%)
+- Move and click are sent in one atomic sequence — no window to interfere between steps
+- `Add-Type -ErrorAction SilentlyContinue` prevents failure if already defined in the same session
 
 **macOS:**
 ```bash
-# Using cliclick (install: brew install cliclick)
-cliclick c:500,300    # Click at coordinates
-cliclick m:500,300    # Move to coordinates
-cliclick t:"hello"    # Type text
+# Move and click in one command — no cliclick needed
+osascript -e 'tell application "System Events" to click at {500, 300}'
+
+# Or using built-in screencapture coordinates
+cliclick c:500,300    # if cliclick is available (brew install cliclick)
 ```
 
 ### Keyboard Input
