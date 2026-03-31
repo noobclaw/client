@@ -231,8 +231,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw Browser Assistant',
     installMsg: 'Enable AI Browser Automation',
     installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real browser with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
-    btnLocal: 'Install with Local Extension',
-    btnStore: 'Install from Extension Store',
+    btnStore: 'Install from Chrome Store',
+    btnLocal: 'Install Local Extension',
     btnNotNow: 'Not now',
     btnCancel: 'Cancel',
     noBrowserMsg: 'No supported browser found',
@@ -245,8 +245,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw 浏览器助手',
     installMsg: '启用 AI 浏览器自动化',
     installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的浏览器及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
-    btnLocal: '一键安装本地扩展',
-    btnStore: '从应用商店安装',
+    btnStore: '从Chrome商店安装',
+    btnLocal: '安装本地扩展',
     btnNotNow: '暂不安装',
     btnCancel: '取消',
     noBrowserMsg: '未检测到支持的浏览器',
@@ -259,8 +259,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw 瀏覽器助手',
     installMsg: '啟用 AI 瀏覽器自動化',
     installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候自動化\n• 資料留在本地',
-    btnLocal: '一鍵安裝本地擴充功能',
-    btnStore: '從應用商店安裝',
+    btnStore: '從Chrome商店安裝',
+    btnLocal: '安裝本地擴充功能',
     btnNotNow: '暫不安裝',
     btnCancel: '取消',
     noBrowserMsg: '未偵測到支援的瀏覽器',
@@ -273,8 +273,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw ブラウザアシスタント',
     installMsg: 'AIブラウザ自動化を有効にする',
     installDetail: 'AIにブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはローカル',
+    btnStore: 'Chromeストアからインストール',
     btnLocal: 'ローカル拡張機能をインストール',
-    btnStore: 'ストアからインストール',
     btnNotNow: '後で',
     btnCancel: 'キャンセル',
     noBrowserMsg: '対応ブラウザが見つかりません',
@@ -287,8 +287,8 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     title: 'NoobClaw 브라우저 어시스턴트',
     installMsg: 'AI 브라우저 자동화 활성화',
     installDetail: 'AI가 브라우저를 사람처럼 제어합니다.\n\n• 봇 탐지 없음\n• 로그인 계정으로 작동\n• 24시간 자동화\n• 로컬 저장',
+    btnStore: 'Chrome 스토어에서 설치',
     btnLocal: '로컬 확장 프로그램 설치',
-    btnStore: '스토어에서 설치',
     btnNotNow: '나중에',
     btnCancel: '취소',
     noBrowserMsg: '지원 브라우저를 찾을 수 없습니다',
@@ -308,29 +308,55 @@ function getPromptTexts() {
   return extensionPromptTexts.en;
 }
 
-export async function showExtensionPrompt(): Promise<void> {
+/**
+ * Show extension install prompt. Returns:
+ * - 'installed': user chose to install
+ * - 'cancelled': user chose "not now"
+ */
+export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> {
   const win = BrowserWindow.getFocusedWindow();
-  if (!win) return;
+  if (!win) return 'cancelled';
   const t = getPromptTexts();
 
-  // Unified dialog — same for "not installed" and "installed but not connected"
   const result = await dialog.showMessageBox(win, {
     type: 'info',
     title: t.title,
     message: t.installMsg,
     detail: t.installDetail,
-    buttons: [t.btnLocal, t.btnStore, t.btnNotNow],
+    buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
     defaultId: 0,
     cancelId: 2,
   });
 
   if (result.response === 0) {
-    await installLocalExtension();
-  } else if (result.response === 1) {
+    // Chrome Store
     const browsers = detectBrowsers();
     const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
     shell.openExternal(storeUrl);
+    return 'installed';
+  } else if (result.response === 1) {
+    // Local extension
+    await installLocalExtension();
+    return 'installed';
   }
+  return 'cancelled';
+}
+
+/**
+ * Check if extension was ever installed (local marker file)
+ */
+export function wasExtensionEverInstalled(): boolean {
+  try {
+    const markerPath = path.join(app.getPath('userData'), '.browser-extension-installed');
+    return fs.existsSync(markerPath);
+  } catch { return false; }
+}
+
+export function markExtensionInstalled(): void {
+  try {
+    const markerPath = path.join(app.getPath('userData'), '.browser-extension-installed');
+    fs.writeFileSync(markerPath, new Date().toISOString());
+  } catch {}
 }
 
 async function installLocalExtension(): Promise<void> {
@@ -420,6 +446,7 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       // Notify renderer
       notifyBridgeStatus(true);
       fireConnectionListeners();
+      markExtensionInstalled();
 
       let recvBuf = '';
       socket.on('data', (data) => {

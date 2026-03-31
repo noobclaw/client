@@ -2347,12 +2347,11 @@ export class CoworkRunner extends EventEmitter {
           '',
           '### NoobClaw Browser Assistant: NOT CONNECTED',
           '- For ANY browser-related request (open, browse, navigate, scroll, click, search on a website, etc.):',
-          '  → You MUST call `browser_navigate` first. Do NOT skip this step.',
-          '  → Do NOT use Playwright skill, web-search skill, or Bash commands as alternatives.',
-          '  → Do NOT read Playwright SKILL.md or attempt to use npx/playwright.',
-          '  → The system will automatically handle the connection and show install dialogs if needed.',
-          '- ONLY use web-search for simple text search queries that do not involve opening a browser.',
-          '- NEVER use Playwright unless the user explicitly asks for "playwright" or "headless browser".',
+          '  → You MUST call browser_* tools first (e.g. browser_navigate). Do NOT skip this step.',
+          '  → The system will automatically show install dialogs if needed.',
+          '  → If the tool returns "User declined installation" or "failed 3 times", THEN you may use Playwright, web-search, or Bash as fallback.',
+          '  → If the tool returns "User is installing" or "not connected, please wait", ask the user to confirm and retry. Do NOT fallback yet.',
+          '  → Do NOT read Playwright SKILL.md or use npx/playwright unless the above conditions are met.',
         ].join('\n');
       }
     } catch {}
@@ -3380,18 +3379,56 @@ export class CoworkRunner extends EventEmitter {
         );
       }
       // --- Browser automation tools ---
-      const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt } = await import('./browserBridge');
-      let extensionPromptShown = false;
-      const browserNotConnectedResponse = () => {
-        // Show install/reconnect dialog (only once per session)
-        if (!extensionPromptShown) {
-          extensionPromptShown = true;
-          showExtensionPrompt().catch(() => {});
+      const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, wasExtensionEverInstalled } = await import('./browserBridge');
+      let browserFailCount = 0;
+      const browserNotConnectedResponse = async () => {
+        const everInstalled = wasExtensionEverInstalled();
+
+        if (!everInstalled) {
+          // Never installed → show install dialog, wait for user choice
+          const choice = await showExtensionPrompt();
+          if (choice === 'cancelled') {
+            return {
+              content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
+              isError: true,
+            } as any;
+          }
+          // User chose to install → tell AI to wait
+          return {
+            content: [{ type: 'text', text: 'User is installing the browser extension. Please wait for the user to confirm installation is complete, then retry the browser operation.' }],
+            isError: true,
+          } as any;
         }
+
+        // Installed before but not connected → text prompt only
         return {
-          content: [{ type: 'text', text: 'Browser extension is not connected. A dialog has been shown to help you install or reconnect. After installing, please retry.' }],
+          content: [{ type: 'text', text: 'Browser extension is installed but not connected. Please ensure Chrome/Edge is running and the NoobClaw extension is enabled. Tell the user to check and confirm, then retry.' }],
           isError: true,
         } as any;
+      };
+
+      const browserToolWrapper = async (fn: () => Promise<any>) => {
+        if (!getBrowserBridgeStatus().connected) {
+          return browserNotConnectedResponse();
+        }
+        try {
+          const result = await fn();
+          browserFailCount = 0;
+          return result;
+        } catch (e: any) {
+          browserFailCount++;
+          if (browserFailCount >= 3) {
+            browserFailCount = 0;
+            return {
+              content: [{ type: 'text', text: `Browser operation failed 3 times: ${e.message}. You may now use Playwright skill, web-search skill, or Bash commands as alternatives.` }],
+              isError: true,
+            } as any;
+          }
+          return {
+            content: [{ type: 'text', text: `Browser operation failed (attempt ${browserFailCount}/3): ${e.message}. Please retry.` }],
+            isError: true,
+          } as any;
+        }
       };
       const browserServerName = `browser-automation-${sessionId.slice(0, 8)}`;
       const browserTools: any[] = [
