@@ -453,7 +453,6 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       // Notify renderer
       notifyBridgeStatus(true);
       fireConnectionListeners();
-      markExtensionInstalled();
 
       let recvBuf = '';
       socket.on('data', (data) => {
