@@ -2230,6 +2230,14 @@ export class CoworkRunner extends EventEmitter {
       '- If a Bash command returns garbled/mojibake text (e.g. Chinese characters appear as "ÖÐ¹ú" or "ÂÒÂë"), it means the console code page was reset. Fix it by prepending `chcp.com 65001 > /dev/null 2>&1 &&` to the command.',
       '- For PowerShell commands, use `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` if output is garbled.',
       '- Always prefer UTF-8 when reading or writing files on Windows (e.g. `Get-Content -Encoding UTF8`, `iconv`, `python -X utf8`).',
+      '',
+      '## Windows PowerShell Invocation Policy',
+      '- The Bash tool on Windows uses Git Bash. Bash will glob-expand `*`, interpret `$var`, and parse `{}` BEFORE the command runs.',
+      '- NEVER embed a PowerShell command directly in bash as a raw string (e.g. `powershell -Command Get-Process | Where-Object { $_.Name -like "*foo*" }` will fail because bash expands `$_` and `*foo*`).',
+      "- ALWAYS wrap the entire PowerShell command in single quotes when calling from bash: `powershell.exe -NoProfile -NonInteractive -Command 'Get-Process | Where-Object { $_.Name -like \"*foo*\" }'`",
+      '- Single quotes in bash prevent ALL variable expansion and glob expansion, so PowerShell receives the command exactly as written.',
+      '- If the PowerShell command itself contains single quotes, write it to a temporary `.ps1` file first, then execute: `powershell.exe -NoProfile -NonInteractive -File /tmp/cmd.ps1`',
+      '- Prefer writing `.ps1` files for any multi-line or complex PowerShell logic to avoid all escaping issues.',
     ].join('\n');
   }
 
