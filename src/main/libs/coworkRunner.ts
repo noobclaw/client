@@ -3381,6 +3381,7 @@ export class CoworkRunner extends EventEmitter {
       // --- Browser automation tools ---
       const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, wasExtensionEverInstalled } = await import('./browserBridge');
       let browserFailCount = 0;
+      let extensionPromptShown = false;
       const browserNotConnectedResponse = async () => {
         const everInstalled = wasExtensionEverInstalled();
 

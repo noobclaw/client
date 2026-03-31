@@ -503,7 +503,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
           <div className="flex justify-center">
             <a
               href="#"
-              onClick={(e) => { e.preventDefault(); window.electron?.shell?.openExternal?.('https://github.com/noobclaw'); }}
+              onClick={(e) => { e.preventDefault(); window.electron?.shell?.openExternal?.('https://github.com/noobclaw/client'); }}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-full dark:bg-emerald-500/10 bg-emerald-50 border dark:border-emerald-500/20 border-emerald-200 hover:opacity-80 transition-opacity cursor-pointer"
             >
               <span className="text-base">{'\uD83D\uDEE1\uFE0F'}</span>
