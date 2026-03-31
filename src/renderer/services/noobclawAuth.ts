@@ -184,7 +184,7 @@ class NoobClawAuthService {
 
   openWebsiteLogin() {
     // Dynamically read: points to localhost:3001 for local testing, noobclaw.com for production
-    const websiteUrl = getWebsiteUrl();
+    const websiteUrl = getWebsiteUrl() + '?action=connect&from=app';
     // Open in default browser via electron
     if (typeof window !== 'undefined' && (window as any).electron) {
       (window as any).electron.shell.openExternal(websiteUrl);
