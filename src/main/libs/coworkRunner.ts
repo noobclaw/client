@@ -3379,21 +3379,30 @@ export class CoworkRunner extends EventEmitter {
         );
       }
       // --- Browser automation tools ---
-      const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, wasExtensionEverInstalled } = await import('./browserBridge');
+      const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, isExtensionInstalled } = await import('./browserBridge');
       let browserFailCount = 0;
       let extensionPromptShown = false;
       const browserNotConnectedResponse = async () => {
-        // Always show install/reconnect dialog
-        const choice = await showExtensionPrompt();
-        if (choice === 'cancelled') {
+        const installed = isExtensionInstalled();
+
+        if (!installed) {
+          // Not installed → show install dialog
+          const choice = await showExtensionPrompt();
+          if (choice === 'cancelled') {
+            return {
+              content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
+              isError: true,
+            } as any;
+          }
           return {
-            content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
+            content: [{ type: 'text', text: 'User is installing the browser extension. Please wait for the user to confirm installation is complete, then retry the browser operation.' }],
             isError: true,
           } as any;
         }
-        // User chose to install → tell AI to wait
+
+        // Installed but not connected → text prompt, no dialog
         return {
-          content: [{ type: 'text', text: 'User is installing the browser extension. Please wait for the user to confirm installation is complete, then retry the browser operation.' }],
+          content: [{ type: 'text', text: 'Browser extension is installed but not connected. Please ensure Chrome/Edge is running and the NoobClaw extension is enabled, then retry.' }],
           isError: true,
         } as any;
       };

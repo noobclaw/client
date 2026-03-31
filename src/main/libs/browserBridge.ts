@@ -343,20 +343,31 @@ export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> 
 }
 
 /**
- * Check if extension was ever installed (local marker file)
+ * Check if extension is actually installed by looking at Chrome's extension directory
  */
-export function wasExtensionEverInstalled(): boolean {
+export function isExtensionInstalled(): boolean {
+  const EXTENSION_ID = 'dhmjehcfpjjliiknpahbnflgljinjdeo';
   try {
-    const markerPath = path.join(app.getPath('userData'), '.browser-extension-installed');
-    return fs.existsSync(markerPath);
+    const homeDir = require('os').homedir();
+    let extDirs: string[] = [];
+    if (process.platform === 'win32') {
+      extDirs = [
+        path.join(homeDir, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Extensions', EXTENSION_ID),
+        path.join(homeDir, 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Extensions', EXTENSION_ID),
+      ];
+    } else if (process.platform === 'darwin') {
+      extDirs = [
+        path.join(homeDir, 'Library', 'Application Support', 'Google', 'Chrome', 'Default', 'Extensions', EXTENSION_ID),
+        path.join(homeDir, 'Library', 'Application Support', 'Microsoft Edge', 'Default', 'Extensions', EXTENSION_ID),
+      ];
+    } else {
+      extDirs = [
+        path.join(homeDir, '.config', 'google-chrome', 'Default', 'Extensions', EXTENSION_ID),
+        path.join(homeDir, '.config', 'microsoft-edge', 'Default', 'Extensions', EXTENSION_ID),
+      ];
+    }
+    return extDirs.some(dir => fs.existsSync(dir));
   } catch { return false; }
-}
-
-export function markExtensionInstalled(): void {
-  try {
-    const markerPath = path.join(app.getPath('userData'), '.browser-extension-installed');
-    fs.writeFileSync(markerPath, new Date().toISOString());
-  } catch {}
 }
 
 async function installLocalExtension(): Promise<void> {
