@@ -222,10 +222,6 @@ function isNativeHostRegistered(): boolean {
 
 // --- Extension Installation Detection ---
 
-export function isExtensionInstalled(): boolean {
-  return isNativeHostRegistered();
-}
-
 const extensionPromptTexts: Record<string, Record<string, string>> = {
   en: {
     title: 'NoobClaw Browser Assistant',
