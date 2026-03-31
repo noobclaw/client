@@ -201,23 +201,47 @@ function clickElement(params) {
   return { message: `Clicked ${el.tagName.toLowerCase()}` };
 }
 
+function setNativeValue(el, value) {
+  // React/Vue override the native setter, so we must go through the original descriptor
+  const proto = Object.getPrototypeOf(el);
+  const descriptor = Object.getOwnPropertyDescriptor(proto, 'value');
+  if (descriptor && descriptor.set) {
+    descriptor.set.call(el, value);
+  } else {
+    el.value = value;
+  }
+}
+
 function typeText(params) {
-  let el = params.selector ? document.querySelector(params.selector) : document.activeElement;
+  let el = params.selector ? resolveElement(params) : document.activeElement;
   if (!el) return { error: 'No element to type into' };
 
   el.focus();
-  for (const char of params.text) {
-    el.dispatchEvent(new KeyboardEvent('keydown', { key: char, bubbles: true }));
-    el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true }));
-    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-      el.value += char;
-    } else if (el.isContentEditable) {
-      document.execCommand('insertText', false, char);
+  el.click();
+
+  if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+    const current = el.value || '';
+    setNativeValue(el, current + params.text);
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  } else if (el.isContentEditable) {
+    el.focus();
+    // Use Selection API for contenteditable (works in React rich-text editors)
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('insertText', false, params.text);
+  } else {
+    // Fallback: dispatch individual keydown/keypress/keyup
+    for (const char of params.text) {
+      el.dispatchEvent(new KeyboardEvent('keydown',  { key: char, bubbles: true, cancelable: true }));
+      el.dispatchEvent(new KeyboardEvent('keypress', { key: char, bubbles: true, cancelable: true }));
+      el.dispatchEvent(new KeyboardEvent('keyup',    { key: char, bubbles: true, cancelable: true }));
     }
-    el.dispatchEvent(new KeyboardEvent('keyup', { key: char, bubbles: true }));
   }
-  el.dispatchEvent(new Event('input', { bubbles: true }));
-  el.dispatchEvent(new Event('change', { bubbles: true }));
   return { message: `Typed ${params.text.length} characters` };
 }
 
@@ -262,7 +286,7 @@ function findElements(params) {
 }
 
 function fillInput(params) {
-  const el = document.querySelector(params.selector);
+  const el = resolveElement(params);
   if (!el) return { error: `Element not found: ${params.selector}` };
 
   // Security: refuse password fields
@@ -270,15 +294,15 @@ function fillInput(params) {
     return { error: 'Cannot interact with password fields for security reasons.' };
   }
 
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  el.focus();
+
   if (el.tagName === 'SELECT') {
     const option = Array.from(el.options).find(o => o.value === params.value || o.text === params.value);
-    if (option) {
-      el.value = option.value;
-    } else {
-      el.value = params.value;
-    }
+    el.value = option ? option.value : params.value;
   } else {
-    el.value = params.value;
+    // React/Vue-compatible: use native setter so framework state updates
+    setNativeValue(el, params.value);
   }
 
   el.dispatchEvent(new Event('input', { bubbles: true }));
@@ -287,16 +311,21 @@ function fillInput(params) {
 }
 
 function hoverElement(params) {
-  const el = params.selector ? document.querySelector(params.selector) : null;
+  const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
-  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.dispatchEvent(new MouseEvent('mouseenter', { bubbles: true }));
-  el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+  el.scrollIntoView({ behavior: 'instant', block: 'center' });
+  const rect = el.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+  el.dispatchEvent(new MouseEvent('mouseover',  init));
+  el.dispatchEvent(new MouseEvent('mouseenter', { ...init, bubbles: false }));
+  el.dispatchEvent(new MouseEvent('mousemove',  init));
   return { message: `Hovered ${el.tagName.toLowerCase()}` };
 }
 
 function pressKey(params) {
-  const target = params.selector ? document.querySelector(params.selector) : document.activeElement || document.body;
+  const target = params.selector ? resolveElement(params) : document.activeElement || document.body;
   const key = params.key || 'Enter';
   const keyMap = {
     'Enter': { key: 'Enter', code: 'Enter', keyCode: 13 },
@@ -370,8 +399,8 @@ async function executeJavascript(params) {
 }
 
 function dragElement(params) {
-  const fromEl = params.from_selector ? document.querySelector(params.from_selector) : null;
-  let toEl = params.to_selector ? document.querySelector(params.to_selector) : null;
+  const fromEl = params.from_selector ? resolveElement({ selector: params.from_selector }) : null;
+  const toEl   = params.to_selector   ? resolveElement({ selector: params.to_selector })   : null;
   if (!fromEl) return { error: 'Source element not found' };
 
   const fromRect = fromEl.getBoundingClientRect();
@@ -383,15 +412,33 @@ function dragElement(params) {
     endX = toRect.x + toRect.width / 2;
     endY = toRect.y + toRect.height / 2;
   } else if (params.to_coordinate) {
-    endX = params.to_coordinate[0];
-    endY = params.to_coordinate[1];
+    [endX, endY] = params.to_coordinate;
   } else {
     return { error: 'Must provide to_selector or to_coordinate' };
   }
 
-  fromEl.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, clientY: startY, bubbles: true }));
-  fromEl.dispatchEvent(new MouseEvent('mousemove', { clientX: endX, clientY: endY, bubbles: true }));
-  fromEl.dispatchEvent(new MouseEvent('mouseup', { clientX: endX, clientY: endY, bubbles: true }));
+  // Start: mousedown + HTML5 dragstart
+  const dt = new DataTransfer();
+  fromEl.dispatchEvent(new MouseEvent('mousedown', { clientX: startX, clientY: startY, bubbles: true, cancelable: true }));
+  fromEl.dispatchEvent(new DragEvent('dragstart',  { clientX: startX, clientY: startY, bubbles: true, cancelable: true, dataTransfer: dt }));
+
+  // Intermediate steps: mousemove + drag + dragover on whatever is under cursor
+  const STEPS = 6;
+  for (let i = 1; i <= STEPS; i++) {
+    const ix = startX + (endX - startX) * (i / STEPS);
+    const iy = startY + (endY - startY) * (i / STEPS);
+    const overEl = document.elementFromPoint(ix, iy) || fromEl;
+    fromEl.dispatchEvent(new MouseEvent('mousemove', { clientX: ix, clientY: iy, bubbles: true }));
+    fromEl.dispatchEvent(new DragEvent('drag',       { clientX: ix, clientY: iy, bubbles: true, dataTransfer: dt }));
+    overEl.dispatchEvent(new DragEvent('dragover',   { clientX: ix, clientY: iy, bubbles: true, cancelable: true, dataTransfer: dt }));
+  }
+
+  // End: drop + dragend + mouseup
+  const dropTarget = toEl || document.elementFromPoint(endX, endY) || fromEl;
+  dropTarget.dispatchEvent(new DragEvent('drop',   { clientX: endX, clientY: endY, bubbles: true, cancelable: true, dataTransfer: dt }));
+  fromEl.dispatchEvent(new DragEvent('dragend',    { clientX: endX, clientY: endY, bubbles: true, dataTransfer: dt }));
+  fromEl.dispatchEvent(new MouseEvent('mouseup',   { clientX: endX, clientY: endY, bubbles: true }));
+
   return { message: `Dragged from (${Math.round(startX)},${Math.round(startY)}) to (${Math.round(endX)},${Math.round(endY)})` };
 }
 
@@ -436,6 +483,11 @@ function rightClickElement(params) {
   const rect = el.getBoundingClientRect();
   const cx = rect.left + rect.width / 2;
   const cy = rect.top + rect.height / 2;
+  // Hover first so the element knows the mouse arrived
+  const hoverInit = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+  el.dispatchEvent(new MouseEvent('mouseover',  hoverInit));
+  el.dispatchEvent(new MouseEvent('mouseenter', { ...hoverInit, bubbles: false }));
+  el.dispatchEvent(new MouseEvent('mousemove',  hoverInit));
   const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy, button: 2, buttons: 2 };
   el.dispatchEvent(new MouseEvent('mousedown',   init));
   el.dispatchEvent(new MouseEvent('mouseup',     init));
