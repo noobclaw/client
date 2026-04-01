@@ -110,6 +110,37 @@ const SAFETY_APPROVAL_DENY_OPTION = '拒绝本次操作';
 const DELETE_COMMAND_RE = /\b(rm|rmdir|unlink|del|erase|remove-item)\b/i;
 const FIND_DELETE_COMMAND_RE = /\bfind\b[\s\S]*\s-delete\b/i;
 const GIT_CLEAN_COMMAND_RE = /\bgit\s+clean\b/i;
+
+// ── Dangerous command patterns (ported from Claude Code bashSecurity.ts) ──
+// These catch dangerous patterns beyond simple delete operations.
+const DANGEROUS_PATTERNS: Array<{ re: RegExp; label: string }> = [
+  // Pipe to shell — arbitrary code execution
+  { re: /\|\s*(?:bash|sh|zsh|ksh|csh|fish|dash)\b/i, label: 'pipe-to-shell' },
+  { re: /\bcurl\b[\s\S]*\|\s*(?:bash|sh|sudo)\b/i, label: 'curl-pipe-shell' },
+  { re: /\bwget\b[\s\S]*\|\s*(?:bash|sh|sudo)\b/i, label: 'wget-pipe-shell' },
+  // Overwrite system/sensitive files
+  { re: />\s*\/etc\//i, label: 'write-etc' },
+  { re: />\s*~\/\.(bashrc|zshrc|profile|ssh|gnupg)/i, label: 'write-dotfiles' },
+  // Dangerous permissions
+  { re: /\bchmod\s+[0-7]*7[0-7]{2}\b/i, label: 'chmod-world-writable' },
+  { re: /\bchmod\s+.*\+s\b/i, label: 'chmod-suid' },
+  // LD_PRELOAD hijacking
+  { re: /\bLD_PRELOAD\b/i, label: 'ld-preload' },
+  // Git destructive
+  { re: /\bgit\s+push\s+.*--force\b/i, label: 'git-force-push' },
+  { re: /\bgit\s+reset\s+--hard\b/i, label: 'git-reset-hard' },
+  // Format/wipe disk
+  { re: /\b(mkfs|dd\s+if=.*of=\/dev|format\s+[a-z]:)/i, label: 'disk-format' },
+  // Process injection / keylogging
+  { re: /\b(xdotool|xte|ydotool)\b.*key/i, label: 'keylogger-like' },
+  // Network exfil
+  { re: /\b(nc|ncat|netcat)\b.*-e\s*(\/bin\/|bash|sh)/i, label: 'reverse-shell' },
+  // Command substitution in dangerous contexts
+  { re: /\beval\s+"\$\(/i, label: 'eval-command-subst' },
+  // Startup persistence
+  { re: /\bcrontab\b/i, label: 'crontab-modify' },
+  { re: /\bsystemctl\s+(enable|start|restart)\b/i, label: 'systemctl-modify' },
+];
 const PYTHON_BASH_COMMAND_RE = /(?:^|[^\w.-])(?:python(?:3)?|py(?:\.exe)?|pip(?:3)?)(?:\s+-3)?(?:\s|$)|\.py(?:\s|$)/i;
 const PYTHON_PIP_BASH_COMMAND_RE = /(?:^|[^\w.-])(?:pip(?:3)?|python(?:3)?\s+-m\s+pip|py(?:\.exe)?\s+-m\s+pip)(?:\s|$)/i;
 const MEMORY_REQUEST_TAIL_SPLIT_RE = /[,，。]\s*(?:请|麻烦)?你(?:帮我|帮忙|给我|为我|看下|看一下|查下|查一下)|[,，。]\s*帮我|[,，。]\s*请帮我|[,，。]\s*(?:能|可以)不能?\s*帮我|[,，。]\s*你看|[,，。]\s*请你/i;
@@ -2637,6 +2668,7 @@ export class CoworkRunner extends EventEmitter {
     toolName: string,
     toolInput: Record<string, unknown>
   ): Promise<PermissionResult | null> {
+    // Check 1: delete operations (existing)
     if (this.isDeleteOperation(toolName, toolInput)) {
       const commandPreview = toolName === 'Bash'
         ? this.truncateCommandPreview(this.extractToolCommand(toolInput))
@@ -2653,6 +2685,32 @@ export class CoworkRunner extends EventEmitter {
       );
       if (!approved) {
         return { behavior: 'deny', message: 'Delete operation denied by user.' };
+      }
+    }
+
+    // Check 2: dangerous bash patterns (ported from Claude Code bashSecurity.ts)
+    if (toolName.toLowerCase() === 'bash') {
+      const command = this.extractToolCommand(toolInput);
+      if (command.trim()) {
+        for (const { re, label } of DANGEROUS_PATTERNS) {
+          if (re.test(command)) {
+            const preview = this.truncateCommandPreview(command);
+            coworkLog('WARN', 'enforceToolSafetyPolicy', `Dangerous pattern "${label}" detected: ${preview}`);
+            const question = `检测到高风险操作 [${label}]。命令: ${preview}\n\n此操作可能造成不可逆影响，是否允许执行？`;
+            const approved = await this.requestSafetyApproval(
+              sessionId,
+              signal,
+              activeSession,
+              question,
+              toolName,
+              toolInput
+            );
+            if (!approved) {
+              return { behavior: 'deny', message: `Dangerous command blocked: ${label}` };
+            }
+            break; // One approval per command is enough
+          }
+        }
       }
     }
 
