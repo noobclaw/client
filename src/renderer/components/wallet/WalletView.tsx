@@ -63,7 +63,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [profile, setProfile] = useState<any>(null);
-  const [subPage, setSubPage] = useState<'main' | 'orderHistory' | 'noobCoinDetail'>('main');
+  const [subPage, setSubPage] = useState<'main' | 'orderHistory' | 'noobCoinDetail' | 'creditDetail'>('main');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchOrderNo, setSearchOrderNo] = useState('');
   const [searchFrom, setSearchFrom] = useState('');
@@ -300,13 +300,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             {updateBadge}
           </div>
         )}
-        {(subPage === 'orderHistory' || subPage === 'noobCoinDetail') && (
+        {(subPage === 'orderHistory' || subPage === 'noobCoinDetail' || subPage === 'creditDetail') && (
           <button type="button" onClick={() => setSubPage('main')} className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
         )}
         <h1 className="text-base font-semibold dark:text-claude-darkText text-claude-text">
-          {subPage === 'orderHistory' ? i18nService.t('walletHistory') : subPage === 'noobCoinDetail' ? 'NoobCoin' : i18nService.t('myWallet')}
+          {subPage === 'orderHistory' ? i18nService.t('walletHistory') : subPage === 'noobCoinDetail' ? 'NoobCoin' : subPage === 'creditDetail' ? i18nService.t('walletCreditDetail') : i18nService.t('myWallet')}
         </h1>
       </div>
       <WindowTitleBar inline />
