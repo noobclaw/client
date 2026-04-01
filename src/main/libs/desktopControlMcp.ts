@@ -152,7 +152,15 @@ function mouseMove(x: number, y: number): string {
     return runPS(winSendInputMove(x, y) + `; Write-Host "Moved to (${x},${y})"`);
   }
   if (IS_MAC) {
-    return runOsa(`tell application "System Events" to move mouse to {${x}, ${y}}`);
+    // System Events doesn't support mouse_move directly; use cliclick or CGEvent via python
+    try {
+      const result = spawnSync('python3', ['-c',
+        `import Quartz; Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (${x}, ${y}), 0))`
+      ], { timeout: 5000, encoding: 'utf8' });
+      return result.status === 0 ? `Moved to (${x},${y})` : (result.stderr?.trim() || 'Failed');
+    } catch {
+      return `Moved to (${x},${y}) [fallback — mouse move may not be supported without cliclick]`;
+    }
   }
   return 'Unsupported platform';
 }
@@ -173,7 +181,26 @@ function drag(x1: number, y1: number, x2: number, y2: number): string {
     return runPS(ps);
   }
   if (IS_MAC) {
-    return runOsa(`tell application "System Events" to drag from {${x1},${y1}} to {${x2},${y2}}`);
+    // System Events doesn't support drag natively; use CGEvent via python
+    try {
+      const pyScript = `
+import Quartz, time
+p1,p2=(${x1},${y1}),(${x2},${y2})
+e=Quartz.CGEventCreateMouseEvent(None,Quartz.kCGEventLeftMouseDown,p1,0)
+Quartz.CGEventPost(Quartz.kCGHIDEventTap,e)
+time.sleep(0.05)
+for i in range(1,6):
+  f=i/5.0;p=(p1[0]+(p2[0]-p1[0])*f,p1[1]+(p2[1]-p1[1])*f)
+  e=Quartz.CGEventCreateMouseEvent(None,Quartz.kCGEventLeftMouseDragged,p,0)
+  Quartz.CGEventPost(Quartz.kCGHIDEventTap,e);time.sleep(0.02)
+e=Quartz.CGEventCreateMouseEvent(None,Quartz.kCGEventLeftMouseUp,p2,0)
+Quartz.CGEventPost(Quartz.kCGHIDEventTap,e)
+`;
+      const result = spawnSync('python3', ['-c', pyScript], { timeout: 10000, encoding: 'utf8' });
+      return result.status === 0 ? `Dragged (${x1},${y1}) to (${x2},${y2})` : (result.stderr?.trim() || 'Failed');
+    } catch (e) {
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
   return 'Unsupported platform';
 }
@@ -194,6 +221,20 @@ function pressKey(key: string, repeat: number = 1): string {
   if (isBlockedKeyCombo(key)) {
     return `BLOCKED: "${key}" is a system key combo that could disrupt the user's session. Use the app's menu or close button instead.`;
   }
+
+  // Parse combo syntax: "ctrl+c", "alt+shift+tab", etc.
+  const parts = key.toLowerCase().split('+').map(p => p.trim());
+  const modifiers: string[] = [];
+  let mainKey = '';
+  for (const p of parts) {
+    if (['ctrl', 'control', 'alt', 'option', 'shift', 'cmd', 'command', 'meta', 'win', 'super'].includes(p)) {
+      modifiers.push(p);
+    } else {
+      mainKey = p;
+    }
+  }
+  if (!mainKey && modifiers.length > 0) mainKey = modifiers.pop()!;
+
   if (IS_WIN) {
     const keyMap: Record<string, string> = {
       'enter': '{ENTER}', 'tab': '{TAB}', 'escape': '{ESC}', 'esc': '{ESC}',
@@ -204,9 +245,24 @@ function pressKey(key: string, repeat: number = 1): string {
       'f6': '{F6}', 'f7': '{F7}', 'f8': '{F8}', 'f9': '{F9}', 'f10': '{F10}',
       'f11': '{F11}', 'f12': '{F12}', 'space': ' ',
     };
-    const mapped = keyMap[key.toLowerCase()] || key;
-    const sendKey = repeat > 1 ? `${mapped.replace('}', ` ${repeat}}`)}` : mapped;
-    return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${sendKey}"); Write-Host "Pressed ${key} x${repeat}"`);
+    // SendKeys modifier prefixes: ^ = Ctrl, % = Alt, + = Shift
+    let prefix = '';
+    for (const mod of modifiers) {
+      if (mod === 'ctrl' || mod === 'control') prefix += '^';
+      else if (mod === 'alt' || mod === 'option') prefix += '%';
+      else if (mod === 'shift') prefix += '+';
+      // Win key not supported by SendKeys
+    }
+    const mapped = keyMap[mainKey] || mainKey;
+    let sendKey: string;
+    if (repeat > 1 && mapped.startsWith('{') && mapped.endsWith('}')) {
+      sendKey = `${mapped.slice(0, -1)} ${repeat}}`;
+    } else if (repeat > 1) {
+      sendKey = mapped.repeat(repeat);
+    } else {
+      sendKey = mapped;
+    }
+    return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${prefix}${sendKey}"); Write-Host "Pressed ${key} x${repeat}"`);
   }
   if (IS_MAC) {
     const keyCodeMap: Record<string, number> = {
@@ -214,16 +270,36 @@ function pressKey(key: string, repeat: number = 1): string {
       'delete': 51, 'backspace': 51, 'up': 126, 'down': 125, 'left': 123, 'right': 124,
       'home': 115, 'end': 119, 'pageup': 116, 'pagedown': 121, 'space': 49,
       'f1': 122, 'f2': 120, 'f3': 99, 'f4': 118, 'f5': 96, 'f6': 97,
+      'f7': 98, 'f8': 100, 'f9': 101, 'f10': 109, 'f11': 103, 'f12': 111,
+      'a': 0, 'b': 11, 'c': 8, 'd': 2, 'e': 14, 'f': 3, 'g': 5, 'h': 4,
+      'i': 34, 'j': 38, 'k': 40, 'l': 37, 'm': 46, 'n': 45, 'o': 31, 'p': 35,
+      'q': 12, 'r': 15, 's': 1, 't': 17, 'u': 32, 'v': 9, 'w': 13, 'x': 7,
+      'y': 16, 'z': 6,
     };
-    const code = keyCodeMap[key.toLowerCase()];
+    // Build AppleScript modifier clause
+    const modMap: Record<string, string> = {
+      'ctrl': 'control down', 'control': 'control down',
+      'alt': 'option down', 'option': 'option down',
+      'shift': 'shift down',
+      'cmd': 'command down', 'command': 'command down', 'meta': 'command down',
+    };
+    const modClause = modifiers.map(m => modMap[m]).filter(Boolean);
+    const using = modClause.length > 0 ? ` using {${modClause.join(', ')}}` : '';
+
+    const code = keyCodeMap[mainKey];
     if (code !== undefined) {
-      let script = '';
+      const scripts: string[] = [];
       for (let i = 0; i < repeat; i++) {
-        script += `tell application "System Events" to key code ${code}\n`;
+        scripts.push(`tell application "System Events" to key code ${code}${using}`);
       }
-      return runOsa(script);
+      return runOsa(scripts.join('\n'));
     }
-    return runOsa(`tell application "System Events" to keystroke "${key}"`);
+    // Fallback: keystroke for printable chars
+    const scripts: string[] = [];
+    for (let i = 0; i < repeat; i++) {
+      scripts.push(`tell application "System Events" to keystroke "${mainKey}"${using}`);
+    }
+    return runOsa(scripts.join('\n'));
   }
   return 'Unsupported platform';
 }
@@ -266,12 +342,21 @@ function readClipboard(): string {
 
 function writeClipboard(text: string): string {
   if (IS_WIN) {
-    return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetText("${text.replace(/"/g, '`"')}"); Write-Host "Copied to clipboard"`);
+    // Use stdin pipe to avoid PowerShell injection
+    try {
+      const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+        'Add-Type -AssemblyName System.Windows.Forms; $t = [Console]::In.ReadToEnd(); [System.Windows.Forms.Clipboard]::SetText($t); Write-Host "Copied to clipboard"'
+      ], { input: text, timeout: 10000, windowsHide: true, encoding: 'utf8' });
+      return result.stdout?.trim() || result.stderr?.trim() || 'Copied';
+    } catch (e) {
+      return `Error: ${e instanceof Error ? e.message : String(e)}`;
+    }
   }
   if (IS_MAC) {
+    // Use stdin pipe to avoid shell injection
     try {
-      execSync(`echo "${text.replace(/"/g, '\\"')}" | pbcopy`, { timeout: 5000 });
-      return 'Copied to clipboard';
+      const result = spawnSync('pbcopy', [], { input: text, timeout: 5000, encoding: 'utf8' });
+      return result.status === 0 ? 'Copied to clipboard' : (result.stderr || 'Failed');
     } catch (e) {
       return `Error: ${e instanceof Error ? e.message : String(e)}`;
     }
@@ -279,14 +364,22 @@ function writeClipboard(text: string): string {
   return 'Unsupported platform';
 }
 
+/** Sanitize app name — allow only safe chars to prevent injection */
+function sanitizeAppName(name: string): string {
+  return name.replace(/[^a-zA-Z0-9\s\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af._\-()]/g, '');
+}
+
 function openApp(appName: string): string {
+  const safe = sanitizeAppName(appName);
+  if (!safe) return 'Error: Invalid app name';
   if (IS_WIN) {
-    return runPS(`$apps = Get-StartApps | Where-Object { $_.Name -like "*${appName}*" }; if ($apps) { Start-Process $apps[0].AppId; Write-Host "Launched: $($apps[0].Name)" } else { Start-Process "${appName}" -ErrorAction SilentlyContinue; Write-Host "Attempted to launch ${appName}" }`);
+    return runPS(`$apps = Get-StartApps | Where-Object { $_.Name -like '*${safe}*' }; if ($apps) { Start-Process $apps[0].AppId; Write-Host "Launched: $($apps[0].Name)" } else { Start-Process '${safe}' -ErrorAction SilentlyContinue; Write-Host "Attempted to launch ${safe}" }`);
   }
   if (IS_MAC) {
     try {
-      execSync(`open -a "${appName}"`, { timeout: 10000 });
-      return `Launched ${appName}`;
+      // Use spawnSync with array args to avoid shell injection
+      const result = spawnSync('open', ['-a', safe], { timeout: 10000, encoding: 'utf8' });
+      return result.status === 0 ? `Launched ${safe}` : (result.stderr?.trim() || `Failed to launch ${safe}`);
     } catch (e) {
       return `Error: ${e instanceof Error ? e.message : String(e)}`;
     }
@@ -297,10 +390,12 @@ function openApp(appName: string): string {
 function waitSeconds(seconds: number): string {
   if (seconds > 30) seconds = 30;
   if (seconds < 0) seconds = 0;
-  const ms = Math.round(seconds * 1000);
-  // Synchronous wait
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* busy wait — short durations only */ }
+  // Use spawnSync sleep to avoid blocking the event loop
+  if (IS_WIN) {
+    spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', `Start-Sleep -Milliseconds ${Math.round(seconds * 1000)}`], { timeout: 35000, windowsHide: true });
+  } else {
+    spawnSync('sleep', [String(seconds)], { timeout: 35000 });
+  }
   return `Waited ${seconds}s`;
 }
 

@@ -44,14 +44,17 @@ const DOS_DEVICE_RE = /\.(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/i;
 const TRIPLE_DOT_RE = /(^|[/\\])\.{3,}([/\\]|$)/;
 
 export function hasSuspiciousWindowsPathPattern(p: string): boolean {
-  if (SHORT_NAME_83_RE.test(p)) return true;
-  if (LONG_PATH_PREFIX_RE.test(p)) return true;
-  if (TRAILING_DOT_SPACE_RE.test(p)) return true;
-  if (DOS_DEVICE_RE.test(p)) return true;
+  // Most checks are Windows-specific — skip on other platforms
+  if (process.platform === 'win32') {
+    if (SHORT_NAME_83_RE.test(p)) return true;
+    if (LONG_PATH_PREFIX_RE.test(p)) return true;
+    if (TRAILING_DOT_SPACE_RE.test(p)) return true;
+    if (DOS_DEVICE_RE.test(p)) return true;
+    if (p.length > 2 && NTFS_ADS_RE.test(p.slice(2))) return true;
+  }
+  // Cross-platform checks
   if (TRIPLE_DOT_RE.test(p)) return true;
   if (containsVulnerableUncPath(p)) return true;
-  // NTFS ADS: colon after drive letter position
-  if (process.platform === 'win32' && p.length > 2 && NTFS_ADS_RE.test(p.slice(2))) return true;
   return false;
 }
 

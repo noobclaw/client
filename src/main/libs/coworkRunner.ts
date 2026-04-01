@@ -1924,10 +1924,10 @@ export class CoworkRunner extends EventEmitter {
     if (!shouldExtractSessionMemory(sessionId, session.messages, turnCount)) return;
 
     const apiConfig = getCurrentApiConfig();
-    if (!apiConfig) return;
+    if (!apiConfig || !apiConfig.apiKey) return;
 
     await extractSessionMemory(sessionId, session.messages, turnCount, {
-      apiKey: apiConfig.apiKey || '',
+      apiKey: apiConfig.apiKey,
       model: apiConfig.model || 'claude-sonnet-4-20250514',
       baseURL: apiConfig.baseURL,
     });
@@ -2852,13 +2852,17 @@ export class CoworkRunner extends EventEmitter {
     }
 
     // Check 3: path validation for file tools (ported from Claude Code pathValidation.ts)
-    const fileTools = new Set(['write', 'edit', 'fileedit', 'filewrite', 'fileread', 'read', 'glob', 'grep']);
-    if (fileTools.has(toolName.toLowerCase())) {
+    const readTools = new Set(['fileread', 'read', 'glob', 'grep']);
+    const writeTools = new Set(['write', 'edit', 'fileedit', 'filewrite']);
+    const deleteTools = new Set(['delete', 'remove', 'unlink']);
+    const normalizedTool = toolName.toLowerCase();
+    if (readTools.has(normalizedTool) || writeTools.has(normalizedTool) || deleteTools.has(normalizedTool)) {
       const filePath = String(toolInput.file_path ?? toolInput.path ?? toolInput.file ?? '');
       if (filePath) {
         const workspaceRoot = this.store.getSession(sessionId)?.workspaceRoot || process.cwd();
-        const opType = toolName.toLowerCase().includes('read') || toolName.toLowerCase() === 'glob' || toolName.toLowerCase() === 'grep'
-          ? 'read' as const : 'write' as const;
+        const opType = deleteTools.has(normalizedTool) ? 'delete' as const
+          : readTools.has(normalizedTool) ? 'read' as const
+          : 'write' as const;
         const validation = validatePath(filePath, workspaceRoot, opType);
         if (!validation.allowed) {
           coworkLog('WARN', 'enforceToolSafetyPolicy', `Path blocked: ${filePath} — ${validation.reason}`);

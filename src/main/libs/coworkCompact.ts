@@ -187,9 +187,14 @@ export async function executeCompact(options: CompactOptions): Promise<string | 
 
   const compactReq = buildCompactRequest();
 
-  // Build the API request: conversation history + compact instruction
+  // Ensure alternating user/assistant roles for API compliance
+  // If last message is user, insert a synthetic assistant message
+  const paddedMessages = [...messages];
+  if (paddedMessages.length > 0 && paddedMessages[paddedMessages.length - 1].role === 'user') {
+    paddedMessages.push({ role: 'assistant' as const, content: 'Understood. Please continue.' });
+  }
   const apiMessages = [
-    ...messages,
+    ...paddedMessages,
     { role: 'user' as const, content: compactReq.userMessage },
   ];
 

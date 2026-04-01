@@ -103,7 +103,9 @@ function getSessionMemoryPath(sessionId: string): string {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  return path.join(dir, `${sessionId}.md`);
+  // Sanitize session ID for filesystem safety
+  const safeId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  return path.join(dir, `${safeId}.md`);
 }
 
 function getState(sessionId: string): SessionMemoryState {
