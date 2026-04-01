@@ -17,6 +17,9 @@ import { cpRecursiveSync } from '../fsCompat';
 import { isQuestionLikeMemoryText, type CoworkMemoryGuardLevel } from './coworkMemoryExtractor';
 import { shouldCompact, executeCompact, POST_COMPACT_USER_MESSAGE, type CompactConfig } from './coworkCompact';
 import { buildDesktopControlTools } from './desktopControlMcp';
+import { partiallySanitizeUnicode } from './coworkSanitization';
+import { validatePath, containsVulnerableUncPath } from './coworkPathValidation';
+import { shouldExtractSessionMemory, extractSessionMemory, getSessionMemoryContent } from './coworkSessionMemory';
 import { initKnowledgeGraph, queryRelevantContext, getExtractionPrompt, storeExtractionResult, type ExtractionResult } from './knowledgeGraph';
 import { z } from 'zod';
 import { ensureSandboxReady, getSandboxRuntimeInfoIfReady, type SandboxRuntimeInfo } from './coworkSandboxRuntime';
@@ -1904,6 +1907,32 @@ export class CoworkRunner extends EventEmitter {
    * Called after each completed turn. The compact summary is cached and
    * used on the next turn's history injection.
    */
+  /** Track turn count per session for session memory thresholds */
+  private sessionTurnCounts: Map<string, number> = new Map();
+
+  /**
+   * Background session memory extraction — runs after each completed turn.
+   * Builds/updates a structured markdown file with conversation key points.
+   */
+  private async maybeExtractSessionMemory(sessionId: string): Promise<void> {
+    const session = this.store.getSession(sessionId);
+    if (!session || session.messages.length < 4) return;
+
+    const turnCount = (this.sessionTurnCounts.get(sessionId) || 0) + 1;
+    this.sessionTurnCounts.set(sessionId, turnCount);
+
+    if (!shouldExtractSessionMemory(sessionId, session.messages, turnCount)) return;
+
+    const apiConfig = getCurrentApiConfig();
+    if (!apiConfig) return;
+
+    await extractSessionMemory(sessionId, session.messages, turnCount, {
+      apiKey: apiConfig.apiKey || '',
+      model: apiConfig.model || 'claude-sonnet-4-20250514',
+      baseURL: apiConfig.baseURL,
+    });
+  }
+
   private async maybeCompactSession(sessionId: string): Promise<void> {
     const session = this.store.getSession(sessionId);
     if (!session || session.messages.length < 6) return;
@@ -1928,7 +1957,21 @@ export class CoworkRunner extends EventEmitter {
         return;
       }
 
-      // Convert session messages to API format
+      // Layer 2: Try session memory compact first (no API call needed)
+      const sessionMemoryContent = getSessionMemoryContent(sessionId);
+      if (sessionMemoryContent) {
+        const { trySessionMemoryCompact } = await import('./coworkCompact');
+        const smSummary = trySessionMemoryCompact(sessionMemoryContent, session.messages);
+        if (smSummary) {
+          this.compactSummaries.set(sessionId, smSummary);
+          this.compactFailures.set(sessionId, 0);
+          coworkLog('INFO', 'maybeCompactSession', `Session memory compact succeeded for ${sessionId} (no API call needed)`);
+          this.addSystemMessage(sessionId, '✅ Conversation compacted using session notes.');
+          return;
+        }
+      }
+
+      // Layer 3: Full LLM compact (API call)
       const apiMessages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
       for (const msg of session.messages) {
         if (msg.type === 'user' && msg.content?.trim()) {
@@ -1950,7 +1993,7 @@ export class CoworkRunner extends EventEmitter {
       if (summary) {
         this.compactSummaries.set(sessionId, summary);
         this.compactFailures.set(sessionId, 0);
-        coworkLog('INFO', 'maybeCompactSession', `Compact succeeded for session ${sessionId}`);
+        coworkLog('INFO', 'maybeCompactSession', `Full compact succeeded for session ${sessionId}`);
         this.addSystemMessage(sessionId, '✅ Conversation compacted. Context freed up for continued work.');
       } else {
         this.compactFailures.set(sessionId, failures + 1);
@@ -2496,7 +2539,20 @@ export class CoworkRunner extends EventEmitter {
       memoryRecallPrompt.push(
         '- User memories are injected as <userMemories> facts and should be treated as stable personal context.',
         '- Use `memory_user_edits` only when the user explicitly asks to remember, update, list, or delete memory facts.',
-        '- Never write transient conversation facts, news content, or source citations into user memory unless the user explicitly asks.'
+        '- Never write transient conversation facts, news content, or source citations into user memory unless the user explicitly asks.',
+        '',
+        '### Memory Reliability (ported from Claude Code memdir)',
+        '- Memory records can become stale over time. Use memory as context for what was true at a given point, but verify against current state before asserting.',
+        '- If a recalled memory names a file path, check the file exists before recommending it.',
+        '- If a recalled memory names a function or flag, grep for it before asserting it exists.',
+        '- "The memory says X exists" is NOT the same as "X exists now."',
+        '- If a memory conflicts with what you observe in the current code or files, trust what you observe now.',
+        '',
+        '### What NOT to Save in Memory',
+        '- Code patterns, architecture, file paths — these can be derived by reading the current project state.',
+        '- Git history, recent changes — `git log` / `git blame` are authoritative.',
+        '- Debugging solutions or fix recipes — the fix is in the code; the commit message has the context.',
+        '- Ephemeral task details or in-progress work — use tasks instead.',
       );
     }
     const langMap: Record<string, string> = {
@@ -2795,6 +2851,31 @@ export class CoworkRunner extends EventEmitter {
       }
     }
 
+    // Check 3: path validation for file tools (ported from Claude Code pathValidation.ts)
+    const fileTools = new Set(['write', 'edit', 'fileedit', 'filewrite', 'fileread', 'read', 'glob', 'grep']);
+    if (fileTools.has(toolName.toLowerCase())) {
+      const filePath = String(toolInput.file_path ?? toolInput.path ?? toolInput.file ?? '');
+      if (filePath) {
+        const workspaceRoot = this.store.getSession(sessionId)?.workspaceRoot || process.cwd();
+        const opType = toolName.toLowerCase().includes('read') || toolName.toLowerCase() === 'glob' || toolName.toLowerCase() === 'grep'
+          ? 'read' as const : 'write' as const;
+        const validation = validatePath(filePath, workspaceRoot, opType);
+        if (!validation.allowed) {
+          coworkLog('WARN', 'enforceToolSafetyPolicy', `Path blocked: ${filePath} — ${validation.reason}`);
+          return { behavior: 'deny', message: `Path blocked: ${validation.reason}` };
+        }
+      }
+    }
+
+    // Check 4: UNC path in bash commands
+    if (toolName.toLowerCase() === 'bash') {
+      const command = this.extractToolCommand(toolInput);
+      if (command && containsVulnerableUncPath(command)) {
+        coworkLog('WARN', 'enforceToolSafetyPolicy', `UNC path in command: ${this.truncateCommandPreview(command)}`);
+        return { behavior: 'deny', message: 'UNC paths in commands are blocked to prevent NTLM credential leaks.' };
+      }
+    }
+
     return null;
   }
 
@@ -2860,6 +2941,9 @@ export class CoworkRunner extends EventEmitter {
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
+
+    // Sanitize user prompt: strip invisible Unicode chars to prevent prompt injection
+    prompt = partiallySanitizeUnicode(prompt);
 
     // Mark session as running
     this.store.updateSession(sessionId, { status: 'running' });
@@ -2954,6 +3038,8 @@ export class CoworkRunner extends EventEmitter {
   }
 
   async continueSession(sessionId: string, prompt: string, options: { systemPrompt?: string; skillIds?: string[]; imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }> } = {}): Promise<void> {
+    // Sanitize user prompt
+    prompt = partiallySanitizeUnicode(prompt);
     this.stoppedSessions.delete(sessionId);
     const activeSession = this.activeSessions.get(sessionId);
     if (!activeSession) {
@@ -4561,6 +4647,10 @@ export class CoworkRunner extends EventEmitter {
         this.store.updateSession(sessionId, { status: 'completed' });
         this.applyTurnMemoryUpdatesForSession(sessionId);
         this.extractKnowledgeGraphAsync(sessionId);
+        // Session memory extraction: continuous background note-taking (fire-and-forget)
+        this.maybeExtractSessionMemory(sessionId).catch(e =>
+          coworkLog('ERROR', 'runClaudeCodeLocal', `Session memory extraction error: ${e}`)
+        );
         // Auto-compact: check if context window is filling up (fire-and-forget)
         this.maybeCompactSession(sessionId).catch(e =>
           coworkLog('ERROR', 'runClaudeCodeLocal', `Auto-compact background error: ${e}`)

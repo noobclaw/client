@@ -234,5 +234,142 @@ export async function executeCompact(options: CompactOptions): Promise<string | 
   }
 }
 
+// ── Layer 1: Microcompact — clear old tool results without LLM call ───────
+// Ported from Claude Code services/compact/microCompact.ts
+
+/** Tool names whose results can be safely cleared after they age out */
+const COMPACTABLE_TOOLS = new Set([
+  'Read', 'FileRead', 'Bash', 'Grep', 'Glob', 'WebSearch', 'WebFetch',
+  'Edit', 'FileEdit', 'Write', 'FileWrite',
+  'browser_read_page', 'browser_get_text', 'browser_screenshot',
+  'desktop_screenshot',
+]);
+
+const TOOL_RESULT_CLEARED = '[Old tool result content cleared]';
+
+/**
+ * Layer 1 microcompact: Clear old tool results to free context space.
+ * Keeps the most recent `keepRecent` tool results intact.
+ * Returns a new messages array (does not mutate input).
+ */
+export function microcompactMessages(
+  messages: Array<{ content?: string; type?: string; toolName?: string }>,
+  keepRecent: number = 5
+): Array<{ content?: string; type?: string; toolName?: string }> {
+  // Find all tool_result indices with compactable tool names
+  const toolResultIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.type === 'tool_result' && msg.toolName && COMPACTABLE_TOOLS.has(msg.toolName)) {
+      toolResultIndices.push(i);
+    }
+  }
+
+  if (toolResultIndices.length <= keepRecent) {
+    return messages; // Nothing to clear
+  }
+
+  // Clear all but the most recent keepRecent
+  const toClear = toolResultIndices.slice(0, -keepRecent);
+  const cleared = messages.map((msg, i) => {
+    if (toClear.includes(i)) {
+      return { ...msg, content: TOOL_RESULT_CLEARED };
+    }
+    return msg;
+  });
+
+  const freedCount = toClear.length;
+  coworkLog('INFO', 'microcompactMessages', `Cleared ${freedCount} old tool results, kept ${keepRecent} recent`);
+  return cleared;
+}
+
+// ── Layer 2: Session Memory Compact — use pre-extracted notes ─────────────
+// Ported from Claude Code services/compact/sessionMemoryCompact.ts
+
+/**
+ * Layer 2: If a session memory file exists (from SessionMemory extraction),
+ * use it as the summary instead of running a full LLM compaction call.
+ * Much cheaper — no API call needed.
+ *
+ * Returns the summary string if session memory is available, or null.
+ */
+export function trySessionMemoryCompact(
+  sessionMemoryContent: string | null,
+  messages: Array<{ content?: string; type?: string }>,
+  minKeepMessages: number = 5,
+  minKeepTokens: number = 10_000,
+  maxKeepTokens: number = 40_000
+): string | null {
+  if (!sessionMemoryContent || sessionMemoryContent.trim().length < 50) {
+    return null;
+  }
+
+  // Calculate how many messages to keep (from the end)
+  let keepIndex = messages.length;
+  let keptTokens = 0;
+  let textBlockCount = 0;
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const tokens = estimateTokens(messages[i].content || '');
+    if (keptTokens + tokens > maxKeepTokens) break;
+    keptTokens += tokens;
+    keepIndex = i;
+    if (messages[i].content && messages[i].content!.trim().length > 0) {
+      textBlockCount++;
+    }
+    // Stop expanding once we meet both minimums
+    if (keptTokens >= minKeepTokens && textBlockCount >= minKeepMessages) break;
+  }
+
+  const summary = `${POST_COMPACT_USER_MESSAGE}\n\nSession Notes:\n${sessionMemoryContent}\n\nContinue the conversation from where it left off without asking the user any further questions. Resume directly.`;
+
+  coworkLog('INFO', 'trySessionMemoryCompact', `Using session memory as summary, keeping ${messages.length - keepIndex} recent messages`);
+  return summary;
+}
+
+// ── Layer 3: Full compact — already implemented above as executeCompact ───
+
+// ── Orchestrator: try layers in order ─────────────────────────────────────
+
+export interface MultiLayerCompactOptions extends CompactOptions {
+  sessionMemoryContent?: string | null;
+}
+
+/**
+ * Try compaction strategies in order:
+ * 1. Microcompact (clear old tool results)
+ * 2. Session Memory Compact (use pre-extracted notes)
+ * 3. Full LLM Compact (API call)
+ *
+ * Returns the summary string or null if all layers fail.
+ */
+export async function multiLayerCompact(options: MultiLayerCompactOptions): Promise<{
+  summary: string | null;
+  layer: 'microcompact' | 'session_memory' | 'full_compact' | 'none';
+  microcompactedMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}> {
+  const { messages, sessionMemoryContent } = options;
+
+  // Layer 1: Microcompact — try clearing old tool results first
+  // (This happens at the message level in coworkRunner, not here)
+
+  // Layer 2: Session Memory Compact — use pre-extracted notes if available
+  if (sessionMemoryContent) {
+    const smMessages = messages.map(m => ({ content: m.content, type: m.role }));
+    const summary = trySessionMemoryCompact(sessionMemoryContent, smMessages);
+    if (summary) {
+      return { summary, layer: 'session_memory' };
+    }
+  }
+
+  // Layer 3: Full LLM Compact
+  const summary = await executeCompact(options);
+  if (summary) {
+    return { summary, layer: 'full_compact' };
+  }
+
+  return { summary: null, layer: 'none' };
+}
+
 // Re-exports for convenience
 export { estimateTokens, estimateMessagesTokens, POST_COMPACT_USER_MESSAGE };
