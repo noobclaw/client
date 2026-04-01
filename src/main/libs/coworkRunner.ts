@@ -2859,7 +2859,7 @@ export class CoworkRunner extends EventEmitter {
     if (readTools.has(normalizedTool) || writeTools.has(normalizedTool) || deleteTools.has(normalizedTool)) {
       const filePath = String(toolInput.file_path ?? toolInput.path ?? toolInput.file ?? '');
       if (filePath) {
-        const workspaceRoot = this.store.getSession(sessionId)?.workspaceRoot || process.cwd();
+        const workspaceRoot = this.store.getSession(sessionId)?.cwd || process.cwd();
         const opType = deleteTools.has(normalizedTool) ? 'delete' as const
           : readTools.has(normalizedTool) ? 'read' as const
           : 'write' as const;
