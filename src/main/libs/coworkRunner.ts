@@ -3761,20 +3761,40 @@ export class CoworkRunner extends EventEmitter {
 
         if (!installed) {
           // Not installed → show install dialog
-          const choice = await showExtensionPrompt();
-          if (choice === 'cancelled') {
-            return {
-              content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
-              isError: true,
-            } as any;
+          if (!extensionPromptShown) {
+            extensionPromptShown = true;
+            const choice = await showExtensionPrompt();
+            // Whether user clicked install or cancelled, wait for connection
+            // User might be installing right now — give them time
           }
+
+          // After prompt: poll for connection for up to 30 seconds
+          // User may be installing the extension right now
+          for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            if (getBrowserBridgeStatus().connected) {
+              return null; // Connected! Caller should proceed with the real operation
+            }
+            if (isExtensionInstalled()) {
+              // Installed but not yet connected — keep waiting
+              continue;
+            }
+          }
+
+          // After 30s still not connected
           return {
-            content: [{ type: 'text', text: 'User is installing the browser extension. Please wait for the user to confirm installation is complete, then retry the browser operation.' }],
+            content: [{ type: 'text', text: 'Browser extension is not connected after waiting. The user may still be installing it. Please retry the operation in a moment, or use Playwright skill, web-search skill, or Bash commands as alternatives.' }],
             isError: true,
           } as any;
         }
 
-        // Installed but not connected → text prompt, no dialog
+        // Installed but not connected → wait briefly then report
+        for (let i = 0; i < 5; i++) {
+          await new Promise(r => setTimeout(r, 2000));
+          if (getBrowserBridgeStatus().connected) {
+            return null; // Connected!
+          }
+        }
         return {
           content: [{ type: 'text', text: 'Browser extension is installed but not connected. Please ensure Chrome/Edge is running and the NoobClaw extension is enabled, then retry.' }],
           isError: true,
@@ -3783,7 +3803,9 @@ export class CoworkRunner extends EventEmitter {
 
       const browserToolWrapper = async (fn: () => Promise<any>) => {
         if (!getBrowserBridgeStatus().connected) {
-          return browserNotConnectedResponse();
+          const waitResult = await browserNotConnectedResponse();
+          if (waitResult !== null) return waitResult;
+          // null means connection established during wait — proceed with operation
         }
         try {
           const result = await fn();
