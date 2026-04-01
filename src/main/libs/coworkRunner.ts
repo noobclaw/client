@@ -3759,44 +3759,25 @@ export class CoworkRunner extends EventEmitter {
       const browserNotConnectedResponse = async () => {
         const installed = isExtensionInstalled();
 
-        if (!installed) {
-          // Not installed → show install dialog
-          if (!extensionPromptShown) {
-            extensionPromptShown = true;
-            const choice = await showExtensionPrompt();
-            // Whether user clicked install or cancelled, wait for connection
-            // User might be installing right now — give them time
-          }
-
-          // After prompt: poll for connection for up to 30 seconds
-          // User may be installing the extension right now
-          for (let i = 0; i < 15; i++) {
-            await new Promise(r => setTimeout(r, 2000));
-            if (getBrowserBridgeStatus().connected) {
-              return null; // Connected! Caller should proceed with the real operation
-            }
-            if (isExtensionInstalled()) {
-              // Installed but not yet connected — keep waiting
-              continue;
-            }
-          }
-
-          // After 30s still not connected
-          return {
-            content: [{ type: 'text', text: 'Browser extension is not connected after waiting. The user may still be installing it. Please retry the operation in a moment, or use Playwright skill, web-search skill, or Bash commands as alternatives.' }],
-            isError: true,
-          } as any;
+        if (!installed && !extensionPromptShown) {
+          extensionPromptShown = true;
+          // Show install dialog — await blocks until user clicks a choice
+          await showExtensionPrompt();
         }
 
-        // Installed but not connected → wait briefly then report
-        for (let i = 0; i < 5; i++) {
-          await new Promise(r => setTimeout(r, 2000));
+        // User clicked something (install/cancelled/whatever) — now WAIT for
+        // the extension to actually connect. User is likely installing right now.
+        // Poll every 2s for up to 60 seconds.
+        for (let i = 0; i < 30; i++) {
           if (getBrowserBridgeStatus().connected) {
-            return null; // Connected!
+            return null; // Connected! Caller should proceed with the real operation
           }
+          await new Promise(r => setTimeout(r, 2000));
         }
+
+        // 60s still not connected — tell AI to ask the user
         return {
-          content: [{ type: 'text', text: 'Browser extension is installed but not connected. Please ensure Chrome/Edge is running and the NoobClaw extension is enabled, then retry.' }],
+          content: [{ type: 'text', text: 'Browser extension is not yet connected. The user may still be installing it. Please tell the user: "I\'m waiting for the browser extension to connect. Once you have installed it and enabled it in Chrome, please let me know so I can continue." Do NOT fall back to Playwright or other alternatives yet — wait for the user to respond.' }],
           isError: true,
         } as any;
       };
