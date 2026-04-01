@@ -2617,6 +2617,7 @@ export class CoworkRunner extends EventEmitter {
       '- Do not add additional comments, type annotations, or docstrings unless the user asks.',
       '- Do not add backwards-compatibility handling for code that is not currently used.',
       '- Be careful not to introduce security vulnerabilities: no command injection, no XSS, no SQL injection, no path traversal.',
+      '- CRITICAL: NEVER fabricate, hallucinate, or assume what the user said. Only respond to the user\'s ACTUAL messages. Tool results, system messages, and internal state are NOT user messages. If you are unsure what the user wants, ASK — do not guess or make up what they said.',
     ].join('\n');
 
     const actionsPrompt = [
