@@ -3756,34 +3756,62 @@ export class CoworkRunner extends EventEmitter {
       const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, isExtensionInstalled } = await import('./browserBridge');
       let browserFailCount = 0;
       let extensionPromptShown = false;
-      const browserNotConnectedResponse = async () => {
-        const installed = isExtensionInstalled();
+      /** Whether user has chosen to install (store or local) — AI must wait indefinitely */
+      let userIsInstallingExtension = false;
 
-        if (!installed && !extensionPromptShown) {
+      const browserNotConnectedResponse = async () => {
+        // If user previously chose to install, keep waiting — no timeout
+        if (userIsInstallingExtension) {
+          // Poll indefinitely (caller retries on each browser_* tool call)
+          for (let i = 0; i < 15; i++) {
+            if (getBrowserBridgeStatus().connected) return null;
+            await new Promise(r => setTimeout(r, 2000));
+          }
+          return {
+            content: [{ type: 'text', text: 'Browser extension is still not connected. The user is installing it. Tell the user: "I\'m still waiting for the browser extension to connect. Let me know when you\'ve finished installing and enabled it in Chrome, and I\'ll continue right away." Do NOT use Playwright or other alternatives — the user is actively installing the extension.' }],
+            isError: true,
+          } as any;
+        }
+
+        if (!isExtensionInstalled() && !extensionPromptShown) {
           extensionPromptShown = true;
           const choice = await showExtensionPrompt();
 
-          // User explicitly declined — let AI continue with alternatives
           if (choice === 'cancelled') {
+            // User clicked "Not Now" — AI may use alternatives
             return {
               content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
               isError: true,
             } as any;
           }
+
+          // User clicked "Chrome Store" or "Local Install" — mark as installing
+          userIsInstallingExtension = true;
+
+          // Wait for connection — poll every 2s, no hard timeout per call
+          // (each browser_* tool call re-enters this function and waits again)
+          for (let i = 0; i < 15; i++) {
+            if (getBrowserBridgeStatus().connected) {
+              userIsInstallingExtension = false;
+              return null; // Connected! Proceed with the real operation
+            }
+            await new Promise(r => setTimeout(r, 2000));
+          }
+
+          // 30s this round — tell AI to inform user and wait
+          return {
+            content: [{ type: 'text', text: 'The user is installing the browser extension. Tell the user: "I\'m waiting for you to finish installing the browser extension. Once it\'s installed and enabled in Chrome, let me know and I\'ll continue." Do NOT fall back to Playwright or other alternatives — wait for the user.' }],
+            isError: true,
+          } as any;
         }
 
-        // User chose to install (or was already shown prompt before) — WAIT for
-        // the extension to actually connect. Poll every 2s for up to 60 seconds.
-        for (let i = 0; i < 30; i++) {
-          if (getBrowserBridgeStatus().connected) {
-            return null; // Connected! Caller should proceed with the real operation
-          }
+        // Extension installed but not connected — brief wait
+        for (let i = 0; i < 5; i++) {
+          if (getBrowserBridgeStatus().connected) return null;
           await new Promise(r => setTimeout(r, 2000));
         }
-
-        // 60s still not connected — tell AI to ask the user
         return {
-          content: [{ type: 'text', text: 'Browser extension is not yet connected. The user may still be installing it. Please tell the user: "I\'m waiting for the browser extension to connect. Once you have installed it and enabled it in Chrome, please let me know so I can continue." Do NOT fall back to Playwright or other alternatives yet — wait for the user to respond.' }],
+          content: [{ type: 'text', text: 'Browser extension is installed but not connected. Please ensure Chrome/Edge is running and the NoobClaw extension is enabled, then retry.' }],
           isError: true,
         } as any;
       };
