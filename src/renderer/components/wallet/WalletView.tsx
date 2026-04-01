@@ -91,6 +91,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState('');
 
+  // Credit detail state
+  const [creditRecords, setCreditRecords] = useState<any[]>([]);
+  const [creditTotal, setCreditTotal] = useState(0);
+  const [creditStats, setCreditStats] = useState<any>({});
+  const [creditPage, setCreditPage] = useState(1);
+  const [creditFrom, setCreditFrom] = useState('');
+  const [creditTo, setCreditTo] = useState('');
+  const [creditLoading, setCreditLoading] = useState(false);
+
   useEffect(() => {
     const unsub = noobClawAuth.subscribe(setAuthState);
     return unsub;
@@ -488,13 +497,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // ─── Credit Usage Detail sub-page ───
   if (subPage === 'creditDetail') {
     const PAGE_SIZE = 20;
-    const [creditRecords, setCreditRecords] = React.useState<any[]>([]);
-    const [creditTotal, setCreditTotal] = React.useState(0);
-    const [creditStats, setCreditStats] = React.useState<any>({});
-    const [creditPage, setCreditPage] = React.useState(1);
-    const [creditFrom, setCreditFrom] = React.useState('');
-    const [creditTo, setCreditTo] = React.useState('');
-    const [creditLoading, setCreditLoading] = React.useState(false);
     const creditTotalPages = Math.ceil(creditTotal / PAGE_SIZE) || 1;
 
     const loadCreditHistory = async (pg: number, from: string, to: string) => {
