@@ -3761,13 +3761,19 @@ export class CoworkRunner extends EventEmitter {
 
         if (!installed && !extensionPromptShown) {
           extensionPromptShown = true;
-          // Show install dialog — await blocks until user clicks a choice
-          await showExtensionPrompt();
+          const choice = await showExtensionPrompt();
+
+          // User explicitly declined — let AI continue with alternatives
+          if (choice === 'cancelled') {
+            return {
+              content: [{ type: 'text', text: 'User declined browser extension installation. You may use Playwright skill, web-search skill, or Bash commands as alternatives for this task.' }],
+              isError: true,
+            } as any;
+          }
         }
 
-        // User clicked something (install/cancelled/whatever) — now WAIT for
-        // the extension to actually connect. User is likely installing right now.
-        // Poll every 2s for up to 60 seconds.
+        // User chose to install (or was already shown prompt before) — WAIT for
+        // the extension to actually connect. Poll every 2s for up to 60 seconds.
         for (let i = 0; i < 30; i++) {
           if (getBrowserBridgeStatus().connected) {
             return null; // Connected! Caller should proceed with the real operation
