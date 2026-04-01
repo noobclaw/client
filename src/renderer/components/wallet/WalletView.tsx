@@ -99,6 +99,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [creditFrom, setCreditFrom] = useState('');
   const [creditTo, setCreditTo] = useState('');
   const [creditLoading, setCreditLoading] = useState(false);
+  const creditLoadedRef = React.useRef(false);
 
   useEffect(() => {
     const unsub = noobClawAuth.subscribe(setAuthState);
@@ -511,8 +512,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       setCreditLoading(false);
     };
 
-    // Auto-load
-    if (creditRecords.length === 0 && creditTotal === 0 && !creditLoading) {
+    // Auto-load (once only — ref prevents infinite loop on empty results)
+    if (!creditLoadedRef.current && !creditLoading) {
+      creditLoadedRef.current = true;
       loadCreditHistory(1, '', '');
     }
 
