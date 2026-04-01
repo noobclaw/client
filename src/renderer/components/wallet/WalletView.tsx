@@ -485,6 +485,125 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     );
   }
 
+  // ─── Credit Usage Detail sub-page ───
+  if (subPage === 'creditDetail') {
+    const PAGE_SIZE = 20;
+    const [creditRecords, setCreditRecords] = React.useState<any[]>([]);
+    const [creditTotal, setCreditTotal] = React.useState(0);
+    const [creditStats, setCreditStats] = React.useState<any>({});
+    const [creditPage, setCreditPage] = React.useState(1);
+    const [creditFrom, setCreditFrom] = React.useState('');
+    const [creditTo, setCreditTo] = React.useState('');
+    const [creditLoading, setCreditLoading] = React.useState(false);
+    const creditTotalPages = Math.ceil(creditTotal / PAGE_SIZE) || 1;
+
+    const loadCreditHistory = async (pg: number, from: string, to: string) => {
+      setCreditLoading(true);
+      try {
+        const data = await noobClawApi.getCreditHistory(pg, PAGE_SIZE, from, to);
+        setCreditRecords(data.list);
+        setCreditTotal(data.total);
+        setCreditStats(data.stats || {});
+        setCreditPage(pg);
+      } catch {}
+      setCreditLoading(false);
+    };
+
+    // Auto-load
+    if (creditRecords.length === 0 && creditTotal === 0 && !creditLoading) {
+      loadCreditHistory(1, '', '');
+    }
+
+    const formatTokens = (n: number) => {
+      if (!n) return '0';
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+      return String(n);
+    };
+
+    return (
+      <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative">
+        {header}
+        <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
+
+          {/* Back + Title */}
+          <div className="flex items-center gap-2 mb-2">
+            <button onClick={() => setSubPage('main')} className="p-1 rounded-lg hover:dark:bg-claude-darkSurface hover:bg-claude-surface transition-colors">
+              <svg className="w-5 h-5 dark:text-claude-darkTextSecondary text-claude-textSecondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <h2 className="text-base font-bold dark:text-claude-darkText text-claude-text">{i18nService.t('walletCreditDetail')}</h2>
+          </div>
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { label: i18nService.t('walletCreditTotalUsed'), value: formatTokens(creditStats.totalUsed) },
+              { label: i18nService.t('walletCreditTodayUsed'), value: formatTokens(creditStats.todayUsed) },
+              { label: i18nService.t('walletCreditLast7d'), value: formatTokens(creditStats.last7dUsed) },
+              { label: i18nService.t('walletCreditLast30d'), value: formatTokens(creditStats.last30dUsed) },
+            ].map((s, i) => (
+              <div key={i} className="rounded-xl p-3 dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
+                <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{s.label}</p>
+                <p className="text-sm font-bold text-primary">{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Date Filters */}
+          <div className="flex gap-2 items-center">
+            <input type="date" value={creditFrom} onChange={e => setCreditFrom(e.target.value)}
+              className="flex-1 px-2 py-1.5 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text" />
+            <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">–</span>
+            <input type="date" value={creditTo} onChange={e => setCreditTo(e.target.value)}
+              className="flex-1 px-2 py-1.5 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface dark:text-claude-darkText text-claude-text" />
+            <button onClick={() => loadCreditHistory(1, creditFrom, creditTo)}
+              className="px-3 py-1.5 text-xs rounded-lg bg-primary text-black font-medium hover:bg-primary/80 transition-colors">
+              {i18nService.t('walletView')}
+            </button>
+          </div>
+
+          {/* Records List */}
+          <div className="space-y-1.5">
+            {creditRecords.length === 0 && !creditLoading && (
+              <p className="text-center text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary py-8">{i18nService.t('walletCreditNoRecords')}</p>
+            )}
+            {creditRecords.map((r: any, idx: number) => (
+              <div key={idx} className="flex items-center justify-between p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{r.model || 'unknown'}</p>
+                  <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                    {i18nService.t('walletCreditPrompt')}: {formatTokens(r.prompt_tokens)} · {i18nService.t('walletCreditCompletion')}: {formatTokens(r.completion_tokens)}
+                  </p>
+                </div>
+                <div className="text-right ml-3 flex-shrink-0">
+                  <p className="text-sm font-bold text-orange-400">-{formatTokens(r.total_tokens)}</p>
+                  <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                    {new Date(r.created_at).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {creditTotalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 pt-2">
+              <button disabled={creditPage <= 1} onClick={() => loadCreditHistory(creditPage - 1, creditFrom, creditTo)}
+                className="px-3 py-1 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:text-claude-darkTextSecondary text-claude-textSecondary disabled:opacity-30 hover:text-primary hover:border-primary/40 transition-colors">
+                ←
+              </button>
+              <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{creditPage} / {creditTotalPages}</span>
+              <button disabled={creditPage >= creditTotalPages} onClick={() => loadCreditHistory(creditPage + 1, creditFrom, creditTo)}
+                className="px-3 py-1 text-xs rounded-lg border dark:border-claude-darkBorder border-claude-border dark:text-claude-darkTextSecondary text-claude-textSecondary disabled:opacity-30 hover:text-primary hover:border-primary/40 transition-colors">
+                →
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   // ─── NoobCoin Detail sub-page ───
   if (subPage === 'noobCoinDetail') {
     const PAGE_SIZE = 20;
@@ -868,9 +987,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             {/* Token Balance - Left */}
             <div className="flex-1">
               <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletTokenBalance')}</p>
-              <p className="text-2xl font-bold text-primary">
-                {(balance / 1_000_000).toFixed(2)}M
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-2xl font-bold text-primary">
+                  {(balance / 1_000_000).toFixed(2)}M
+                </p>
+                <button
+                  onClick={() => setSubPage('creditDetail')}
+                  className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                >
+                  {i18nService.t('walletView')}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
             </div>
             {/* NoobCoin - Right */}
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">

@@ -199,6 +199,21 @@ class NoobClawApiService {
     }
   }
 
+  async getCreditHistory(page = 1, limit = 20, from = '', to = ''): Promise<{ list: any[]; total: number; stats: any }> {
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+      const res = await fetch(`${this.backendUrl}/api/user/credits/history?${params}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { list: [], total: 0, stats: {} };
+      return res.json();
+    } catch {
+      return { list: [], total: 0, stats: {} };
+    }
+  }
+
   async getNoobSends(page = 1, limit = 20, from = '', to = ''): Promise<{ list: any[]; total: number }> {
     try {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
