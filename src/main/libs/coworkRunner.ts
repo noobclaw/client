@@ -2331,25 +2331,98 @@ export class CoworkRunner extends EventEmitter {
     ].join('\n');
   }
 
+  /** Cached PS edition detection result */
+  private psEdition: 'desktop' | 'core' | 'unknown' | null = null;
+
+  private detectPowerShellEdition(): 'desktop' | 'core' | 'unknown' {
+    if (this.psEdition !== null) return this.psEdition;
+    if (process.platform !== 'win32') { this.psEdition = 'unknown'; return this.psEdition; }
+    try {
+      // Check pwsh (Core 7+) first
+      const pwshResult = spawnSync('pwsh', ['--version'], { timeout: 3000, windowsHide: true });
+      if (pwshResult.status === 0) { this.psEdition = 'core'; return this.psEdition; }
+    } catch {}
+    try {
+      // Fall back to powershell.exe (Desktop 5.1)
+      const psResult = spawnSync('powershell.exe', ['-NoProfile', '-Command', '$PSVersionTable.PSEdition'], { timeout: 5000, windowsHide: true });
+      const output = psResult.stdout?.toString().trim().toLowerCase();
+      if (output === 'core') { this.psEdition = 'core'; return this.psEdition; }
+      if (psResult.status === 0) { this.psEdition = 'desktop'; return this.psEdition; }
+    } catch {}
+    this.psEdition = 'unknown';
+    return this.psEdition;
+  }
+
   private buildWindowsEncodingPrompt(): string {
     if (process.platform !== 'win32') {
       return '';
     }
 
+    const edition = this.detectPowerShellEdition();
+
+    // ── PowerShell edition-specific syntax guidance (ported from Claude Code prompt.ts) ──
+    let editionSection: string;
+    if (edition === 'desktop') {
+      editionSection = [
+        '### PowerShell Edition: Windows PowerShell 5.1 (powershell.exe)',
+        '- Pipeline chain operators `&&` and `||` are NOT available — they cause a parser error.',
+        '  To run B only if A succeeds: `A; if ($?) { B }`. To chain unconditionally: `A; B`.',
+        '- Ternary (`?:`), null-coalescing (`??`), and null-conditional (`?.`) operators are NOT available. Use `if/else` and `$null -eq` checks.',
+        '- Avoid `2>&1` on native executables. In 5.1, redirecting stderr wraps each line in an ErrorRecord and sets `$?` to `$false` even on exit code 0. stderr is already captured — do not redirect it.',
+        '- Default file encoding is UTF-16 LE (with BOM). When writing files, pass `-Encoding utf8` to `Out-File`/`Set-Content`.',
+        '- `ConvertFrom-Json` returns PSCustomObject, not hashtable. `-AsHashtable` is NOT available.',
+      ].join('\n');
+    } else if (edition === 'core') {
+      editionSection = [
+        '### PowerShell Edition: PowerShell 7+ (pwsh)',
+        '- Pipeline chain operators `&&` and `||` ARE available and work like bash. Prefer `cmd1 && cmd2` over `cmd1; cmd2`.',
+        '- Ternary (`$cond ? $a : $b`), null-coalescing (`??`), and null-conditional (`?.`) operators are available.',
+        '- Default file encoding is UTF-8 without BOM.',
+      ].join('\n');
+    } else {
+      editionSection = [
+        '### PowerShell Edition: unknown — assume Windows PowerShell 5.1 for compatibility',
+        '- Do NOT use `&&`, `||`, ternary `?:`, null-coalescing `??`, or null-conditional `?.`. These are PowerShell 7+ only and cause parser errors on 5.1.',
+        '- To chain commands conditionally: `A; if ($?) { B }`. Unconditionally: `A; B`.',
+      ].join('\n');
+    }
+
     return [
-      '## Windows Encoding Policy',
-      '- This session runs on Windows. The environment is pre-configured with UTF-8 encoding (LANG=C.UTF-8, chcp 65001).',
-      '- If a Bash command returns garbled/mojibake text (e.g. Chinese characters appear as "ÖÐ¹ú" or "ÂÒÂë"), it means the console code page was reset. Fix it by prepending `chcp.com 65001 > /dev/null 2>&1 &&` to the command.',
-      '- For PowerShell commands, use `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` if output is garbled.',
-      '- Always prefer UTF-8 when reading or writing files on Windows (e.g. `Get-Content -Encoding UTF8`, `iconv`, `python -X utf8`).',
+      '## Windows Encoding & PowerShell Policy',
       '',
-      '## Windows PowerShell Invocation Policy',
-      '- The Bash tool on Windows uses Git Bash. Bash will glob-expand `*`, interpret `$var`, and parse `{}` BEFORE the command runs.',
-      '- NEVER embed a PowerShell command directly in bash as a raw string (e.g. `powershell -Command Get-Process | Where-Object { $_.Name -like "*foo*" }` will fail because bash expands `$_` and `*foo*`).',
-      "- ALWAYS wrap the entire PowerShell command in single quotes when calling from bash: `powershell.exe -NoProfile -NonInteractive -Command 'Get-Process | Where-Object { $_.Name -like \"*foo*\" }'`",
-      '- Single quotes in bash prevent ALL variable expansion and glob expansion, so PowerShell receives the command exactly as written.',
-      '- If the PowerShell command itself contains single quotes, write it to a temporary `.ps1` file first, then execute: `powershell.exe -NoProfile -NonInteractive -File /tmp/cmd.ps1`',
-      '- Prefer writing `.ps1` files for any multi-line or complex PowerShell logic to avoid all escaping issues.',
+      '### Encoding',
+      '- This session runs on Windows with UTF-8 encoding (LANG=C.UTF-8, chcp 65001).',
+      '- If a Bash command returns garbled text (e.g. Chinese as "ÖÐ¹ú"), prepend `chcp.com 65001 > /dev/null 2>&1 &&` to the command.',
+      '- For PowerShell, use `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8` if output is garbled.',
+      '- Always prefer UTF-8 when reading/writing files (`Get-Content -Encoding UTF8`, `Out-File -Encoding utf8`).',
+      '',
+      editionSection,
+      '',
+      '### Bash-to-PowerShell Invocation Rules',
+      '- The Bash tool on Windows uses Git Bash. Bash will glob-expand `*`, interpret `$var`, and parse `{}` BEFORE PowerShell sees the command.',
+      '- NEVER embed a PowerShell command directly as a raw bash string.',
+      "- ALWAYS wrap the entire PowerShell command in single quotes: `powershell.exe -NoProfile -NonInteractive -Command '...'`",
+      '- If the PS command itself contains single quotes, write it to a `.ps1` file first: `powershell.exe -NoProfile -NonInteractive -File /tmp/cmd.ps1`',
+      '- Prefer `.ps1` files for multi-line or complex logic to avoid escaping issues.',
+      '',
+      '### PowerShell Syntax Notes',
+      '- Variables: `$myVar = "value"`. Escape char: backtick (`` ` ``), NOT backslash.',
+      '- Use Verb-Noun cmdlets: `Get-ChildItem`, `Set-Location`, `New-Item`, `Remove-Item`.',
+      '- Pipeline passes objects, not text. Use `Select-Object`, `Where-Object`, `ForEach-Object`.',
+      '- String interpolation: `"Hello $name"` or `"Hello $($obj.Property)"`.',
+      '- Registry: use PSDrive `HKLM:\\SOFTWARE\\...`, NOT raw `HKEY_LOCAL_MACHINE\\...`.',
+      '- Env vars: read `$env:NAME`, set `$env:NAME = "value"` (NOT `Set-Variable` or bash `export`).',
+      '- Call exe with spaces: `& "C:\\Program Files\\App\\app.exe" arg1 arg2`.',
+      '',
+      '### Interactive Commands (will hang — tool runs with -NonInteractive)',
+      '- NEVER use `Read-Host`, `Get-Credential`, `Out-GridView`, `$Host.UI.PromptForChoice`, or `pause`.',
+      '- Add `-Confirm:$false` to destructive cmdlets (`Remove-Item`, `Stop-Process`, `Clear-Content`).',
+      '- Use `-Force` for read-only/hidden items.',
+      '',
+      '### Here-Strings',
+      "- Use single-quoted `@'...'@` so PowerShell does NOT expand `$` or backticks inside.",
+      "- The closing `'@` MUST be at column 0 (no leading whitespace) — indenting it causes a parse error.",
+      "- Use `@'...'@` (literal) not `@\"...\"@` (interpolated) unless you need variable expansion.",
     ].join('\n');
   }
 
