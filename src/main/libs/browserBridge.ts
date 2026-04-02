@@ -157,9 +157,30 @@ export function registerNativeMessagingHost(): void {
       const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
       fs.writeFileSync(hostScriptPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
     } else {
-      const nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
-      fs.writeFileSync(hostScriptPath, `#!/bin/bash\n"${nodeExe}" "${jsSource}" "$@"\n`);
-      try { fs.chmodSync(hostScriptPath, '755'); fs.chmodSync(nodeExe, '755'); } catch {}
+      // macOS/Linux: find a working node binary
+      // Priority: 1) bundled node-runtime  2) Electron's own node  3) system node
+      let nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
+      if (!fs.existsSync(nodeExe)) {
+        // Electron's node binary (inside the .app bundle on macOS)
+        const electronNode = process.execPath;
+        // Check if system node is available as a more reliable option for Native Messaging
+        const { execSync } = require('child_process');
+        try {
+          const systemNode = execSync('which node', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+          if (systemNode && fs.existsSync(systemNode)) {
+            nodeExe = systemNode;
+          } else {
+            nodeExe = electronNode;
+          }
+        } catch {
+          nodeExe = electronNode;
+        }
+      }
+      fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${nodeExe}" "${jsSource}" "$@"\n`);
+      try { fs.chmodSync(hostScriptPath, '755'); } catch {}
+      if (fs.existsSync(nodeExe)) {
+        try { fs.chmodSync(nodeExe, '755'); } catch {}
+      }
     }
 
     // Register for all browsers
