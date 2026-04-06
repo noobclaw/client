@@ -20,6 +20,7 @@ import {
   timeoutTask,
   cancelTask,
   getTask,
+  updateTaskProgress,
   type TaskRecord,
   type CreateTaskParams,
 } from './taskRegistry';
@@ -178,13 +179,14 @@ async function runSubAgent(
 
     // Track progress
     if (event.type === 'assistant') {
-      const content = typeof event.message.content === 'string'
-        ? event.message.content
-        : '';
+      const msg = event.message;
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? (msg.content as any[]).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('')
+          : '';
       if (content) {
         lastAssistantText = content;
-        // Update progress with latest assistant text (truncated)
-        const { updateTaskProgress } = await import('./taskRegistry');
         updateTaskProgress(task.id, lastAssistantText.slice(0, 500));
       }
     }
@@ -197,7 +199,6 @@ async function runSubAgent(
 
   // Store final result
   if (lastAssistantText && getTask(task.id)?.status === 'running') {
-    const { updateTaskProgress } = await import('./taskRegistry');
     updateTaskProgress(task.id, lastAssistantText);
   }
 }

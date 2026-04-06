@@ -7,7 +7,7 @@
  */
 
 import http from 'http';
-import { createHmac } from 'crypto';
+import { createHmac, timingSafeEqual } from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { coworkLog } from './coworkLogger';
 import { emitWebhookReceived } from './hookSystem';
@@ -104,8 +104,10 @@ export function startWebhookServer(
       // Verify HMAC signature if secret is set
       if (reg.secret) {
         const signature = req.headers['x-webhook-signature'] as string || '';
-        const expected = createHmac('sha256', reg.secret).update(body).digest('hex');
-        if (signature !== `sha256=${expected}`) {
+        const expected = `sha256=${createHmac('sha256', reg.secret).update(body).digest('hex')}`;
+        const sigBuf = Buffer.from(signature);
+        const expBuf = Buffer.from(expected);
+        if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
           coworkLog('WARN', 'webhookServer', `Invalid signature for ${reg.path}`);
           res.writeHead(401, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Invalid signature' }));

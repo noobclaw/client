@@ -100,6 +100,30 @@ export function initMemoryStore(database: any): void {
   coworkLog('INFO', 'memoryStore', 'Memory store initialized');
 }
 
+// ── sql.js query helper (db.exec doesn't support bind params) ──
+
+function queryAll(sql: string, params: any[] = []): Array<Record<string, any>> {
+  if (!db) return [];
+  try {
+    const stmt = db.prepare(sql);
+    if (params.length > 0) stmt.bind(params);
+    const results: Array<Record<string, any>> = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  } catch (e) {
+    coworkLog('WARN', 'memoryStore', `Query error: ${e}`, { sql: sql.slice(0, 100) });
+    return [];
+  }
+}
+
+function queryOne(sql: string, params: any[] = []): Record<string, any> | null {
+  const results = queryAll(sql, params);
+  return results.length > 0 ? results[0] : null;
+}
+
 // ── Decay model ──
 
 /**
@@ -161,14 +185,11 @@ export function recallMemories(query: string, limit: number = 15): MemoryRecord[
 
   // Keyword-based search with score + recency ranking
   const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 1);
-  const rows = db.exec(
-    `SELECT * FROM memories ORDER BY score DESC, last_accessed_at DESC LIMIT 200`
-  );
+  const rows = queryAll(`SELECT * FROM memories ORDER BY score DESC, last_accessed_at DESC LIMIT 200`);
 
-  if (!rows || rows.length === 0 || !rows[0].values) return [];
+  if (rows.length === 0) return [];
 
-  const columns = rows[0].columns as string[];
-  const allRecords = rows[0].values.map((row: any[]) => rowToRecord(columns, row));
+  const allRecords = rows.map(objToRecord);
 
   // Score by keyword matches + decay
   const scored = allRecords.map((rec: MemoryRecord) => {
@@ -186,13 +207,33 @@ export function recallMemories(query: string, limit: number = 15): MemoryRecord[
   scored.sort((a: any, b: any) => b.effective - a.effective);
   const results = scored.slice(0, limit).map((s: any) => s.record);
 
-  // Update recall counts
+  // Update recall counts — only increment unique_queries for genuinely new queries
   const queryHash = simpleHash(query);
+  const now = Date.now();
   for (const rec of results) {
-    db.run(
-      `UPDATE memories SET recall_count = recall_count + 1, unique_queries = unique_queries + 1, last_accessed_at = ? WHERE id = ?`,
-      [Date.now(), rec.id]
-    );
+    // Check if this query hash was already seen for this memory
+    // We store seen hashes in the tags array with prefix "qh:"
+    const seenHashes = rec.tags.filter((t: string) => t.startsWith('qh:'));
+    const isNewQuery = !seenHashes.includes(`qh:${queryHash}`);
+
+    if (isNewQuery) {
+      // Add hash to tags and increment both counts
+      const updatedTags = [...rec.tags, `qh:${queryHash}`];
+      // Keep max 50 query hashes to prevent unbounded growth
+      const trimmedTags = updatedTags.filter((t: string) => !t.startsWith('qh:')).concat(
+        updatedTags.filter((t: string) => t.startsWith('qh:')).slice(-50)
+      );
+      db.run(
+        `UPDATE memories SET recall_count = recall_count + 1, unique_queries = unique_queries + 1, tags = ?, last_accessed_at = ? WHERE id = ?`,
+        [JSON.stringify(trimmedTags), now, rec.id]
+      );
+    } else {
+      // Same query seen before — only increment recall_count
+      db.run(
+        `UPDATE memories SET recall_count = recall_count + 1, last_accessed_at = ? WHERE id = ?`,
+        [now, rec.id]
+      );
+    }
   }
 
   return results;
@@ -200,36 +241,18 @@ export function recallMemories(query: string, limit: number = 15): MemoryRecord[
 
 export function getMemoriesByType(type: MemoryType, limit: number = 50): MemoryRecord[] {
   if (!db) return [];
-  const rows = db.exec(
-    `SELECT * FROM memories WHERE type = ? ORDER BY score DESC, last_accessed_at DESC LIMIT ?`,
-    [type, limit]
-  );
-  if (!rows || rows.length === 0) return [];
-  const columns = rows[0].columns as string[];
-  return rows[0].values.map((row: any[]) => rowToRecord(columns, row));
+  return queryAll(`SELECT * FROM memories WHERE type = ? ORDER BY score DESC, last_accessed_at DESC LIMIT ?`, [type, limit]).map(objToRecord);
 }
 
 export function getRecentMemories(lookbackMs: number, limit: number = 100): MemoryRecord[] {
   if (!db) return [];
   const cutoff = Date.now() - lookbackMs;
-  const rows = db.exec(
-    `SELECT * FROM memories WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`,
-    [cutoff, limit]
-  );
-  if (!rows || rows.length === 0) return [];
-  const columns = rows[0].columns as string[];
-  return rows[0].values.map((row: any[]) => rowToRecord(columns, row));
+  return queryAll(`SELECT * FROM memories WHERE created_at > ? ORDER BY created_at DESC LIMIT ?`, [cutoff, limit]).map(objToRecord);
 }
 
 export function getHighFrequencyMemories(minRecalls: number = 3, minUniqueQueries: number = 3, limit: number = 10): MemoryRecord[] {
   if (!db) return [];
-  const rows = db.exec(
-    `SELECT * FROM memories WHERE recall_count >= ? AND unique_queries >= ? AND score >= 0.8 ORDER BY recall_count DESC LIMIT ?`,
-    [minRecalls, minUniqueQueries, limit]
-  );
-  if (!rows || rows.length === 0) return [];
-  const columns = rows[0].columns as string[];
-  return rows[0].values.map((row: any[]) => rowToRecord(columns, row));
+  return queryAll(`SELECT * FROM memories WHERE recall_count >= ? AND unique_queries >= ? AND score >= 0.8 ORDER BY recall_count DESC LIMIT ?`, [minRecalls, minUniqueQueries, limit]).map(objToRecord);
 }
 
 export function updateMemory(id: string, updates: Partial<Pick<MemoryRecord, 'content' | 'score' | 'tags' | 'type'>>): boolean {
@@ -293,17 +316,12 @@ export function storeBehavioralPattern(pattern: Omit<BehavioralPattern, 'id'>): 
 
 export function getBehavioralPatterns(minStrength: number = 0.5): BehavioralPattern[] {
   if (!db) return [];
-  const rows = db.exec(
-    `SELECT * FROM behavioral_patterns WHERE strength >= ? ORDER BY strength DESC`,
-    [minStrength]
-  );
-  if (!rows || rows.length === 0) return [];
-  return rows[0].values.map((row: any[]) => ({
-    id: row[0] as string,
-    description: row[1] as string,
-    strength: row[2] as number,
-    supportingMemoryIds: JSON.parse(row[3] as string || '[]'),
-    detectedAt: row[4] as number,
+  return queryAll(`SELECT * FROM behavioral_patterns WHERE strength >= ? ORDER BY strength DESC`, [minStrength]).map(row => ({
+    id: row.id as string,
+    description: row.description as string,
+    strength: row.strength as number,
+    supportingMemoryIds: JSON.parse(row.supporting_memory_ids as string || '[]'),
+    detectedAt: row.detected_at as number,
   }));
 }
 
@@ -312,26 +330,23 @@ export function getBehavioralPatterns(minStrength: number = 0.5): BehavioralPatt
 export function getMemoryStats(): MemoryStats {
   if (!db) return { total: 0, byType: { semantic: 0, episodic: 0, procedural: 0, behavioral: 0 }, averageScore: 0, averageRecalls: 0, oldestMemory: null, newestMemory: null };
 
-  const countRows = db.exec(`SELECT type, COUNT(*) as cnt FROM memories GROUP BY type`);
+  const countRows = queryAll(`SELECT type, COUNT(*) as cnt FROM memories GROUP BY type`);
   const byType: Record<MemoryType, number> = { semantic: 0, episodic: 0, procedural: 0, behavioral: 0 };
   let total = 0;
-  if (countRows && countRows[0]) {
-    for (const row of countRows[0].values) {
-      byType[row[0] as MemoryType] = row[1] as number;
-      total += row[1] as number;
-    }
+  for (const row of countRows) {
+    byType[row.type as MemoryType] = row.cnt as number;
+    total += row.cnt as number;
   }
 
-  const avgRows = db.exec(`SELECT AVG(score), AVG(recall_count), MIN(created_at), MAX(created_at) FROM memories`);
-  const avg = avgRows?.[0]?.values?.[0] || [0, 0, null, null];
+  const avg = queryOne(`SELECT AVG(score) as avg_score, AVG(recall_count) as avg_recalls, MIN(created_at) as oldest, MAX(created_at) as newest FROM memories`) || {};
 
   return {
     total,
     byType,
-    averageScore: (avg[0] as number) || 0,
-    averageRecalls: (avg[1] as number) || 0,
-    oldestMemory: avg[2] as number | null,
-    newestMemory: avg[3] as number | null,
+    averageScore: (avg.avg_score as number) || 0,
+    averageRecalls: (avg.avg_recalls as number) || 0,
+    oldestMemory: (avg.oldest as number) ?? null,
+    newestMemory: (avg.newest as number) ?? null,
   };
 }
 
@@ -356,9 +371,7 @@ export function formatMemoriesForPrompt(memories: MemoryRecord[]): string {
 
 // ── Helpers ──
 
-function rowToRecord(columns: string[], row: any[]): MemoryRecord {
-  const obj: any = {};
-  columns.forEach((col, i) => obj[col] = row[i]);
+function objToRecord(obj: Record<string, any>): MemoryRecord {
   return {
     id: obj.id,
     type: obj.type,
@@ -378,8 +391,8 @@ function rowToRecord(columns: string[], row: any[]): MemoryRecord {
 
 function enforceTypeLimit(type: MemoryType): void {
   if (!db) return;
-  const countRow = db.exec(`SELECT COUNT(*) FROM memories WHERE type = ?`, [type]);
-  const count = countRow?.[0]?.values?.[0]?.[0] as number || 0;
+  const row = queryOne(`SELECT COUNT(*) as cnt FROM memories WHERE type = ?`, [type]);
+  const count = (row?.cnt as number) || 0;
 
   if (count > MAX_MEMORIES_PER_TYPE) {
     const excess = count - MAX_MEMORIES_PER_TYPE;

@@ -18,7 +18,8 @@ import { coworkLog } from './coworkLogger';
 
 interface PendingTool {
   block: ToolUseBlock;
-  promise: Promise<ToolExecutionResult>;
+  isSafe: boolean;
+  promise: Promise<ToolExecutionResult> | null; // null = not yet started (non-safe)
 }
 
 /**
@@ -29,10 +30,13 @@ interface PendingTool {
  * 2. During streaming, call addTool() when a tool_use block completes
  * 3. Call getCompletedResults() periodically to yield finished results
  * 4. After streaming ends, call getRemainingResults() to drain all pending
+ * 5. Call getAllResults() to get the complete list for building toolResultMessage
  */
 export class StreamingToolExecutor {
   private pending: PendingTool[] = [];
   private completed: ToolExecutionResult[] = [];
+  private yieldedIds = new Set<string>(); // Track which results have been yielded
+  private allResults: ToolExecutionResult[] = []; // Complete list of ALL results
   private tools: ToolDefinition[];
   private context: ToolContext;
   private canUseTool: CanUseToolFn;
@@ -50,8 +54,7 @@ export class StreamingToolExecutor {
 
   /**
    * Add a tool_use block for immediate execution.
-   * Only concurrency-safe tools are executed during streaming;
-   * non-safe tools are queued for sequential execution after streaming.
+   * Concurrency-safe tools start immediately; non-safe tools are queued.
    */
   addTool(block: ToolUseBlock): void {
     if (this.discarded) return;
@@ -62,33 +65,32 @@ export class StreamingToolExecutor {
       : (tool?.isConcurrencySafe ?? false);
 
     if (!isSafe) {
-      // Queue non-safe tools — they'll be executed in getRemainingResults
-      this.pending.push({
-        block,
-        promise: Promise.resolve(null as any), // placeholder
-      });
+      // Queue non-safe tools — executed in getRemainingResults
+      this.pending.push({ block, isSafe: false, promise: null });
       return;
     }
 
     // Execute concurrency-safe tools immediately
     const promise = this.executeOne(block);
-    this.pending.push({ block, promise });
+    this.pending.push({ block, isSafe: true, promise });
 
-    // Move to completed when done
     promise.then(result => {
       if (!this.discarded) {
         this.completed.push(result);
+        this.allResults.push(result);
       }
     }).catch(err => {
       if (!this.discarded) {
-        this.completed.push({
+        const errorResult: ToolExecutionResult = {
           toolUseId: block.id,
           toolName: block.name,
           result: {
             content: [{ type: 'text', text: `Streaming execution error: ${err instanceof Error ? err.message : String(err)}` }],
             isError: true,
           },
-        });
+        };
+        this.completed.push(errorResult);
+        this.allResults.push(errorResult);
       }
     });
   }
@@ -96,9 +98,16 @@ export class StreamingToolExecutor {
   /**
    * Get results that have completed since the last call.
    * Non-blocking — returns immediately with whatever is ready.
+   * Marks results as yielded to prevent duplicates.
    */
   getCompletedResults(): ToolExecutionResult[] {
-    const results = [...this.completed];
+    const results: ToolExecutionResult[] = [];
+    for (const r of this.completed) {
+      if (!this.yieldedIds.has(r.toolUseId)) {
+        this.yieldedIds.add(r.toolUseId);
+        results.push(r);
+      }
+    }
     this.completed = [];
     return results;
   }
@@ -106,24 +115,22 @@ export class StreamingToolExecutor {
   /**
    * After streaming ends, execute remaining non-safe tools and
    * wait for all pending tools to complete.
+   * Only yields results that haven't been yielded via getCompletedResults().
    */
   async *getRemainingResults(): AsyncGenerator<ToolExecutionResult> {
     if (this.discarded) return;
 
-    // Wait for all in-flight concurrent tools
     for (const p of this.pending) {
-      const tool = this.tools.find(t => t.name === p.block.name);
-      const isSafe = typeof tool?.isConcurrencySafe === 'function'
-        ? (tool.isConcurrencySafe as Function)(p.block.input)
-        : (tool?.isConcurrencySafe ?? false);
-
-      if (isSafe) {
-        // Already executing — wait for it
+      if (p.isSafe && p.promise) {
+        // Already executing — wait for it, only yield if not already yielded
         try {
           const result = await p.promise;
-          if (result) yield result;
+          if (result && !this.yieldedIds.has(result.toolUseId)) {
+            this.yieldedIds.add(result.toolUseId);
+            yield result;
+          }
         } catch (err) {
-          yield {
+          const errorResult: ToolExecutionResult = {
             toolUseId: p.block.id,
             toolName: p.block.name,
             result: {
@@ -131,20 +138,31 @@ export class StreamingToolExecutor {
               isError: true,
             },
           };
+          if (!this.yieldedIds.has(p.block.id)) {
+            this.yieldedIds.add(p.block.id);
+            this.allResults.push(errorResult);
+            yield errorResult;
+          }
         }
-      } else {
+      } else if (!p.isSafe) {
         // Non-safe tool — execute now, serially
         const result = await this.executeOne(p.block);
+        this.allResults.push(result);
+        this.yieldedIds.add(result.toolUseId);
         yield result;
       }
     }
 
-    // Also yield any completed results that weren't picked up
-    for (const r of this.completed) {
-      yield r;
-    }
-    this.completed = [];
     this.pending = [];
+  }
+
+  /**
+   * Get ALL results (both streaming-completed and remaining).
+   * Used to build the toolResultMessage for the API.
+   * Call AFTER getRemainingResults() has drained.
+   */
+  getAllResults(): ToolExecutionResult[] {
+    return [...this.allResults];
   }
 
   /**
@@ -154,6 +172,8 @@ export class StreamingToolExecutor {
     this.discarded = true;
     this.pending = [];
     this.completed = [];
+    this.allResults = [];
+    this.yieldedIds.clear();
     coworkLog('INFO', 'StreamingToolExecutor', 'Discarded all pending tools');
   }
 
@@ -173,7 +193,6 @@ export class StreamingToolExecutor {
       };
     }
 
-    // Permission check
     try {
       const permission = await this.canUseTool(toolName, toolInput, {
         signal: this.context.abortSignal ?? new AbortController().signal,

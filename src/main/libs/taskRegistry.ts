@@ -282,3 +282,18 @@ export function clearAllTasks(): void {
   tasks.clear();
   tasksByParent.clear();
 }
+
+// ── Auto-cleanup: clear completed tasks every 30 minutes ──
+
+let cleanupTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startAutoCleanup(): void {
+  if (cleanupTimer) return;
+  cleanupTimer = setInterval(() => {
+    clearCompletedTasks(30 * 60 * 1000); // older than 30 min
+  }, 30 * 60 * 1000);
+}
+
+export function stopAutoCleanup(): void {
+  if (cleanupTimer) { clearInterval(cleanupTimer); cleanupTimer = null; }
+}

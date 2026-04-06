@@ -365,9 +365,10 @@ function scheduleREM(): void {
   const now = new Date();
   const next = new Date(now);
   next.setHours(config.remCronHour, 0, 0, 0);
-  // Find next target day
-  const daysUntil = (config.remCronDay - now.getDay() + 7) % 7 || 7;
+  // Find next target day (0=Sunday)
+  let daysUntil = (config.remCronDay - now.getDay() + 7) % 7;
   next.setDate(now.getDate() + daysUntil);
+  // If same day but time already passed, push to next week
   if (next.getTime() <= now.getTime()) {
     next.setDate(next.getDate() + 7);
   }

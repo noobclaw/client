@@ -418,19 +418,8 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
     state.turnCount++;
     yield { type: 'turn_start', turnCount: state.turnCount };
 
-    // ── In-loop auto-compact: prevent context overflow before API call ──
-    // Reference: OpenClaw src/query.ts lines 367-396
-    if (state.turnCount > 1) {
-      // Micro-compact: clear old tool results (free, no API call)
-      const storeMessages = state.messages.map((m, idx) => ({
-        id: `msg-${idx}`,
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-        type: m.role === 'assistant' ? 'assistant' : 'user',
-        metadata: undefined as any,
-      }));
-      // Note: micro-compact on API messages is limited since we lack toolName metadata
-      // Full micro-compact happens in coworkRunner.maybeCompactSession on store messages
-    }
+    // Note: micro-compact runs on store messages in coworkRunner.maybeCompactSession,
+    // not here (API messages lack toolName metadata needed for selective clearing).
 
     const messagesForQuery = normalizeMessagesForAPI(state.messages);
     const maxTokens = state.maxOutputTokensRecoveryCount > 0
@@ -464,42 +453,72 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
       // ── Streaming loop with pipelined tool execution ──
       // Reference: OpenClaw src/query.ts lines 659-863
 
-      // Track current tool_use block being assembled during streaming
+      // Accumulate content blocks during streaming (instead of finalMessage)
       let currentToolUseBlock: { id: string; name: string; inputJson: string } | null = null;
+      let currentTextContent = '';
+      let currentThinkingContent = '';
 
       for await (const event of stream) {
         // Forward stream events for UI rendering
         yield { type: 'stream_event', event };
 
-        // Detect completed tool_use blocks during streaming
-        // Reference: OpenClaw — StreamingToolExecutor.addTool() on content_block_stop
+        // Accumulate content blocks from stream events
         if (event.type === 'content_block_start') {
           const cb = (event as any).content_block;
           if (cb?.type === 'tool_use') {
             currentToolUseBlock = { id: cb.id, name: cb.name, inputJson: '' };
+          } else if (cb?.type === 'text') {
+            currentTextContent = cb.text || '';
+          } else if (cb?.type === 'thinking') {
+            currentThinkingContent = cb.thinking || '';
           }
         } else if (event.type === 'content_block_delta') {
           const delta = (event as any).delta;
           if (delta?.type === 'input_json_delta' && currentToolUseBlock) {
             currentToolUseBlock.inputJson += delta.partial_json || '';
+          } else if (delta?.type === 'text_delta') {
+            currentTextContent += delta.text || '';
+          } else if (delta?.type === 'thinking_delta') {
+            currentThinkingContent += delta.thinking || '';
           }
-        } else if (event.type === 'content_block_stop' && currentToolUseBlock) {
-          // Tool block fully streamed — start execution immediately
-          let parsedInput: Record<string, unknown> = {};
-          try {
-            parsedInput = currentToolUseBlock.inputJson
-              ? JSON.parse(currentToolUseBlock.inputJson)
-              : {};
-          } catch { /* partial JSON — use empty */ }
+        } else if (event.type === 'content_block_stop') {
+          if (currentToolUseBlock) {
+            // Tool block fully streamed — add to blocks and start execution
+            let parsedInput: Record<string, unknown> = {};
+            try {
+              parsedInput = currentToolUseBlock.inputJson
+                ? JSON.parse(currentToolUseBlock.inputJson)
+                : {};
+            } catch { /* partial JSON — use empty */ }
 
-          const toolBlock: ToolUseBlock = {
-            type: 'tool_use',
-            id: currentToolUseBlock.id,
-            name: currentToolUseBlock.name,
-            input: parsedInput,
-          };
-          streamingExecutor.addTool(toolBlock);
-          currentToolUseBlock = null;
+            const toolBlock: ToolUseBlock = {
+              type: 'tool_use',
+              id: currentToolUseBlock.id,
+              name: currentToolUseBlock.name,
+              input: parsedInput,
+            };
+            assistantContentBlocks.push(toolBlock as unknown as Record<string, unknown>);
+            toolUseBlocks.push(toolBlock);
+            needsFollowUp = true;
+            streamingExecutor.addTool(toolBlock);
+            currentToolUseBlock = null;
+          } else if (currentTextContent) {
+            assistantContentBlocks.push({ type: 'text', text: currentTextContent });
+            currentTextContent = '';
+          } else if (currentThinkingContent) {
+            assistantContentBlocks.push({ type: 'thinking', thinking: currentThinkingContent });
+            currentThinkingContent = '';
+          }
+        } else if (event.type === 'message_delta') {
+          const md = (event as any).delta;
+          if (md?.stop_reason) stopReason = md.stop_reason;
+        } else if (event.type === 'message_start') {
+          const msg = (event as any).message;
+          if (msg?.usage) usage = msg.usage;
+        } else if (event.type === 'message_stop') {
+          // Final usage update if available
+          const msg = (event as any).message;
+          if (msg?.usage) usage = msg.usage;
         }
 
         // Yield any tools that completed while streaming
@@ -516,17 +535,7 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
         }
       }
 
-      // Get the final assembled message
-      const finalMessage = await stream.finalMessage();
-      for (const block of finalMessage.content) {
-        assistantContentBlocks.push(block as unknown as Record<string, unknown>);
-        if (block.type === 'tool_use') {
-          toolUseBlocks.push(block as ToolUseBlock);
-          needsFollowUp = true;
-        }
-      }
-      stopReason = finalMessage.stop_reason;
-      usage = finalMessage.usage;
+      // No finalMessage() needed — we accumulated everything during streaming
 
     } catch (e) {
       if (abortSignal?.aborted) {
@@ -667,12 +676,8 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
 
     if (!needsFollowUp) return { reason: 'completed' as const };
 
-    // ── Execute remaining tools (non-safe tools that were queued) ──
-    // Drain any tools that the StreamingToolExecutor didn't start during streaming
-    const allToolResults: ToolExecutionResult[] = [];
-
+    // ── Execute remaining tools (non-safe tools queued during streaming) ──
     for await (const result of streamingExecutor.getRemainingResults()) {
-      allToolResults.push(result);
       if (onToolResult) onToolResult(result);
       const content = result.result.content.map(c => c.text).join('\n');
       yield {
@@ -685,6 +690,9 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
     }
 
     if (abortSignal?.aborted) return { reason: 'aborted' as const };
+
+    // Use getAllResults() to get COMPLETE list (streaming-completed + remaining)
+    const allToolResults = streamingExecutor.getAllResults();
 
     const toolResultMessage = buildToolResultMessage(
       allToolResults.map(tr => ({
