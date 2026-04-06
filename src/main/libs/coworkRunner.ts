@@ -27,6 +27,11 @@ import { buildCanvasTools } from './canvasTools';
 import { buildCDPTools } from './cdpTools';
 import { buildVoiceTools } from './voiceTools';
 import { buildGmailTools } from './gmailTools';
+import { buildProcessTools } from './processTools';
+import { buildContextTools } from './contextTools';
+import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
+import { runBootstrap } from './bootstrap';
+import { killScope } from './processRegistry';
 import { partiallySanitizeUnicode } from './coworkSanitization';
 import { validatePath, containsVulnerableUncPath } from './coworkPathValidation';
 import { shouldExtractSessionMemory, extractSessionMemory, getSessionMemoryContent } from './coworkSessionMemory';
@@ -3484,6 +3489,11 @@ export class CoworkRunner extends EventEmitter {
     activeSession.claudeSessionId = null;
 
     try {
+      // Bootstrap pipeline — startup optimization
+      await runBootstrap(cwd).catch(e =>
+        coworkLog('WARN', 'runClaudeCodeLocal', `Bootstrap failed (non-fatal): ${e}`)
+      );
+
       coworkLog('INFO', 'runClaudeCodeLocal', 'Starting local Claude Code session', {
         sessionId,
         cwd,
@@ -4242,7 +4252,15 @@ export class CoworkRunner extends EventEmitter {
       const cdpToolDefs = buildCDPTools();
       const voiceToolDefs = buildVoiceTools();
       const gmailToolDefs = buildGmailTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs);
+      const processToolDefs = buildProcessTools();
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs);
+
+      // Context engine: apply deferred tool loading if too many tools
+      const deferredToolSet = buildDeferredToolSet(allTools);
+      const contextToolDefs = buildContextTools(deferredToolSet);
+      if (contextToolDefs.length > 0) {
+        allTools.push(...contextToolDefs);
+      }
 
       // User-configured MCP servers are handled separately below
       // (they still use stdio/sse/http transport, not in-process)
@@ -4444,6 +4462,8 @@ export class CoworkRunner extends EventEmitter {
       this.activeSessions.delete(sessionId);
       // Disconnect external MCP servers when session ends
       import('./mcpClient').then(m => m.disconnectAllMcpServers()).catch(() => {});
+      // Kill all background processes for this session
+      killScope(sessionId).catch(() => {});
     }
   }
 
