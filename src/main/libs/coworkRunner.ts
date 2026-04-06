@@ -26,6 +26,7 @@ import { buildWebhookTools } from './webhookTools';
 import { buildCanvasTools } from './canvasTools';
 import { buildCDPTools } from './cdpTools';
 import { buildVoiceTools } from './voiceTools';
+import { buildGmailTools } from './gmailTools';
 import { partiallySanitizeUnicode } from './coworkSanitization';
 import { validatePath, containsVulnerableUncPath } from './coworkPathValidation';
 import { shouldExtractSessionMemory, extractSessionMemory, getSessionMemoryContent } from './coworkSessionMemory';
@@ -4240,7 +4241,8 @@ export class CoworkRunner extends EventEmitter {
       const canvasToolDefs = buildCanvasTools();
       const cdpToolDefs = buildCDPTools();
       const voiceToolDefs = buildVoiceTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs);
+      const gmailToolDefs = buildGmailTools();
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs);
 
       // User-configured MCP servers are handled separately below
       // (they still use stdio/sse/http transport, not in-process)
