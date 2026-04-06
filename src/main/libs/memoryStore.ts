@@ -10,9 +10,11 @@
  * - Storage modes: inline, separate, both
  *
  * Ported from OpenClaw src/memory-host-sdk/
+ * Enhanced with vector embeddings for semantic search.
  */
 
 import { coworkLog } from './coworkLogger';
+import { embed, cosineSimilarity, isEmbeddingAvailable, type EmbeddingResult } from './embeddingProvider';
 
 // ── Types ──
 
@@ -82,7 +84,8 @@ export function initMemoryStore(database: any): void {
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     last_accessed_at INTEGER NOT NULL,
-    merged_from_ids TEXT DEFAULT '[]'
+    merged_from_ids TEXT DEFAULT '[]',
+    embedding BLOB
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS behavioral_patterns (
@@ -166,12 +169,22 @@ export function storeMemory(params: {
 
   if (db) {
     db.run(
-      `INSERT INTO memories (id, type, content, score, recall_count, unique_queries, storage_mode, source_session_ids, tags, created_at, updated_at, last_accessed_at, merged_from_ids)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO memories (id, type, content, score, recall_count, unique_queries, storage_mode, source_session_ids, tags, created_at, updated_at, last_accessed_at, merged_from_ids, embedding)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [record.id, record.type, record.content, record.score, record.recallCount, record.uniqueQueries,
        record.storageMode, JSON.stringify(record.sourceSessionIds), JSON.stringify(record.tags),
-       record.createdAt, record.updatedAt, record.lastAccessedAt, JSON.stringify(record.mergedFromIds)]
+       record.createdAt, record.updatedAt, record.lastAccessedAt, JSON.stringify(record.mergedFromIds), null]
     );
+
+    // Generate embedding async (fire-and-forget, don't block store)
+    if (isEmbeddingAvailable()) {
+      embed(record.content).then(result => {
+        if (result && db) {
+          const buf = Buffer.from(result.vector.buffer);
+          db.run(`UPDATE memories SET embedding = ? WHERE id = ?`, [buf, record.id]);
+        }
+      }).catch(() => {});
+    }
   }
 
   // Enforce per-type limit
@@ -180,10 +193,46 @@ export function storeMemory(params: {
   return record;
 }
 
-export function recallMemories(query: string, limit: number = 15): MemoryRecord[] {
+export async function recallMemories(query: string, limit: number = 15): Promise<MemoryRecord[]> {
   if (!db) return [];
 
-  // Keyword-based search with score + recency ranking
+  // Try semantic search first if embeddings available
+  if (isEmbeddingAvailable()) {
+    try {
+      const queryEmbedding = await embed(query);
+      if (queryEmbedding) {
+        return recallMemoriesSemantic(queryEmbedding, limit, query);
+      }
+    } catch {
+      // Fallback to keyword search
+    }
+  }
+
+  return recallMemoriesKeyword(query, limit);
+}
+
+function recallMemoriesSemantic(queryEmbedding: EmbeddingResult, limit: number, queryText: string): MemoryRecord[] {
+  const rows = queryAll(`SELECT * FROM memories WHERE embedding IS NOT NULL ORDER BY score DESC LIMIT 500`);
+  if (rows.length === 0) return recallMemoriesKeyword(queryText, limit);
+
+  const scored = rows.map(row => {
+    const record = objToRecord(row);
+    let similarity = 0;
+    if (row.embedding) {
+      const stored = new Float32Array(new Uint8Array(row.embedding).buffer);
+      similarity = cosineSimilarity(queryEmbedding.vector, stored);
+    }
+    const effective = similarity * 0.7 + decayedScore(record) * 0.3;
+    return { record, effective };
+  });
+
+  scored.sort((a, b) => b.effective - a.effective);
+  const results = scored.slice(0, limit).filter(s => s.effective > 0.1).map(s => s.record);
+  updateRecallCounts(results, queryText);
+  return results;
+}
+
+function recallMemoriesKeyword(query: string, limit: number): MemoryRecord[] {
   const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 1);
   const rows = queryAll(`SELECT * FROM memories ORDER BY score DESC, last_accessed_at DESC LIMIT 200`);
 
@@ -207,36 +256,28 @@ export function recallMemories(query: string, limit: number = 15): MemoryRecord[
   scored.sort((a: any, b: any) => b.effective - a.effective);
   const results = scored.slice(0, limit).map((s: any) => s.record);
 
-  // Update recall counts — only increment unique_queries for genuinely new queries
+  updateRecallCounts(results, query);
+  return results;
+}
+
+function updateRecallCounts(results: MemoryRecord[], query: string): void {
+  if (!db || results.length === 0) return;
   const queryHash = simpleHash(query);
   const now = Date.now();
   for (const rec of results) {
-    // Check if this query hash was already seen for this memory
-    // We store seen hashes in the tags array with prefix "qh:"
     const seenHashes = rec.tags.filter((t: string) => t.startsWith('qh:'));
     const isNewQuery = !seenHashes.includes(`qh:${queryHash}`);
-
     if (isNewQuery) {
-      // Add hash to tags and increment both counts
       const updatedTags = [...rec.tags, `qh:${queryHash}`];
-      // Keep max 50 query hashes to prevent unbounded growth
       const trimmedTags = updatedTags.filter((t: string) => !t.startsWith('qh:')).concat(
         updatedTags.filter((t: string) => t.startsWith('qh:')).slice(-50)
       );
-      db.run(
-        `UPDATE memories SET recall_count = recall_count + 1, unique_queries = unique_queries + 1, tags = ?, last_accessed_at = ? WHERE id = ?`,
-        [JSON.stringify(trimmedTags), now, rec.id]
-      );
+      db.run(`UPDATE memories SET recall_count = recall_count + 1, unique_queries = unique_queries + 1, tags = ?, last_accessed_at = ? WHERE id = ?`,
+        [JSON.stringify(trimmedTags), now, rec.id]);
     } else {
-      // Same query seen before — only increment recall_count
-      db.run(
-        `UPDATE memories SET recall_count = recall_count + 1, last_accessed_at = ? WHERE id = ?`,
-        [now, rec.id]
-      );
+      db.run(`UPDATE memories SET recall_count = recall_count + 1, last_accessed_at = ? WHERE id = ?`, [now, rec.id]);
     }
   }
-
-  return results;
 }
 
 export function getMemoriesByType(type: MemoryType, limit: number = 50): MemoryRecord[] {

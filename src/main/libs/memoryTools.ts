@@ -41,7 +41,7 @@ export function buildMemoryTools(): ToolDefinition[] {
         limit: z.number().min(1).max(30).optional().describe('Max results (default: 15)'),
       }),
       call: async (input) => {
-        const memories = recallMemories(input.query, input.limit ?? 15);
+        const memories = await recallMemories(input.query, input.limit ?? 15);
         if (memories.length === 0) {
           return { content: [{ type: 'text', text: 'No relevant memories found.' }] };
         }
