@@ -7,7 +7,7 @@ import { SqliteStore } from './sqliteStore';
 import { CoworkStore } from './coworkStore';
 import { CoworkRunner } from './libs/coworkRunner';
 import { SkillManager } from './skillManager';
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { PermissionResult } from './libs/toolSystem';
 import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setNoobClawAuthToken } from './libs/claudeSettings';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';

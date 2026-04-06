@@ -250,22 +250,57 @@ const COMPACTABLE_TOOLS = new Set([
   'desktop_screenshot',
 ]);
 
-const TOOL_RESULT_CLEARED = '[Old tool result content cleared]';
+export const TOOL_RESULT_CLEARED_MARKER = '[Old tool result content cleared]';
+const TOOL_RESULT_CLEARED = TOOL_RESULT_CLEARED_MARKER;
+
+/**
+ * Store message shape (from CoworkStore).
+ * tool_use messages have metadata.toolName and metadata.toolUseId.
+ * tool_result messages have metadata.toolUseId matching the tool_use.
+ */
+interface StoreMessage {
+  id: string;
+  content?: string;
+  type?: string;
+  metadata?: {
+    toolName?: string;
+    toolUseId?: string | null;
+    [key: string]: unknown;
+  };
+}
 
 /**
  * Layer 1 microcompact: Clear old tool results to free context space.
  * Keeps the most recent `keepRecent` tool results intact.
  * Returns a new messages array (does not mutate input).
+ *
+ * Ported from OpenClaw: first build toolUseId → toolName map from tool_use
+ * messages, then match tool_result messages by toolUseId to find their tool name.
  */
 export function microcompactMessages(
-  messages: Array<{ content?: string; type?: string; toolName?: string }>,
+  messages: StoreMessage[],
   keepRecent: number = 5
-): Array<{ content?: string; type?: string; toolName?: string }> {
-  // Find all tool_result indices with compactable tool names
+): StoreMessage[] {
+  // Step 1: Build toolUseId → toolName map from tool_use messages
+  const toolNameMap = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.type === 'tool_use' && msg.metadata?.toolName && msg.metadata?.toolUseId) {
+      toolNameMap.set(msg.metadata.toolUseId, msg.metadata.toolName);
+    }
+  }
+
+  // Step 2: Find compactable tool_result indices
   const toolResultIndices: number[] = [];
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
-    if (msg.type === 'tool_result' && msg.toolName && COMPACTABLE_TOOLS.has(msg.toolName)) {
+    if (msg.type !== 'tool_result') continue;
+    if (msg.content === TOOL_RESULT_CLEARED) continue; // already cleared
+
+    const toolUseId = msg.metadata?.toolUseId;
+    if (!toolUseId) continue;
+
+    const toolName = toolNameMap.get(toolUseId) || '';
+    if (COMPACTABLE_TOOLS.has(toolName)) {
       toolResultIndices.push(i);
     }
   }
@@ -274,17 +309,16 @@ export function microcompactMessages(
     return messages; // Nothing to clear
   }
 
-  // Clear all but the most recent keepRecent
-  const toClear = toolResultIndices.slice(0, -keepRecent);
+  // Step 3: Clear all but the most recent keepRecent
+  const toClear = new Set(toolResultIndices.slice(0, -keepRecent));
   const cleared = messages.map((msg, i) => {
-    if (toClear.includes(i)) {
+    if (toClear.has(i)) {
       return { ...msg, content: TOOL_RESULT_CLEARED };
     }
     return msg;
   });
 
-  const freedCount = toClear.length;
-  coworkLog('INFO', 'microcompactMessages', `Cleared ${freedCount} old tool results, kept ${keepRecent} recent`);
+  coworkLog('INFO', 'microcompactMessages', `Cleared ${toClear.size} old tool results, kept ${keepRecent} recent`);
   return cleared;
 }
 

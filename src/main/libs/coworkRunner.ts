@@ -6,17 +6,26 @@ import path from 'path';
 import type { Readable } from 'stream';
 import { StringDecoder } from 'string_decoder';
 import { v4 as uuidv4 } from 'uuid';
-import type { PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import type { PermissionResult } from './toolSystem';
 import type { CoworkStore, CoworkMessage, CoworkExecutionMode } from '../coworkStore';
 import { getClaudeCodePath, getCurrentApiConfig } from './claudeSettings';
-import { loadClaudeSdk } from './claudeSdk';
+import { queryLoopStreaming, type QueryEvent, type Terminal } from './queryEngine';
+import { buildTool, type ToolDefinition, type ToolResult } from './toolSystem';
+import { getAnthropicClient, type ApiConfig } from './anthropicClient';
 import { getElectronNodeRuntimePath, getEnhancedEnv, getEnhancedEnvWithTmpdir, getSkillsRoot } from './coworkUtil';
 import { coworkLog, getCoworkLogPath } from './coworkLogger';
 import { ensurePythonPipReady, ensurePythonRuntimeReady } from './pythonRuntime';
 import { cpRecursiveSync } from '../fsCompat';
 import { isQuestionLikeMemoryText, type CoworkMemoryGuardLevel } from './coworkMemoryExtractor';
 import { shouldCompact, executeCompact, POST_COMPACT_USER_MESSAGE, type CompactConfig } from './coworkCompact';
-import { buildDesktopControlTools } from './desktopControlMcp';
+import { buildDesktopControlToolDefs } from './desktopControlMcp';
+import { buildTaskTools } from './taskTools';
+import { buildAgentTools } from './agentTools';
+import { buildMemoryTools } from './memoryTools';
+import { buildWebhookTools } from './webhookTools';
+import { buildCanvasTools } from './canvasTools';
+import { buildCDPTools } from './cdpTools';
+import { buildVoiceTools } from './voiceTools';
 import { partiallySanitizeUnicode } from './coworkSanitization';
 import { validatePath, containsVulnerableUncPath } from './coworkPathValidation';
 import { shouldExtractSessionMemory, extractSessionMemory, getSessionMemoryContent } from './coworkSessionMemory';
@@ -1948,16 +1957,38 @@ export class CoworkRunner extends EventEmitter {
     if (!shouldCompact(session.messages)) return;
 
     coworkLog('INFO', 'maybeCompactSession', `Session ${sessionId} exceeds token threshold, compacting...`);
-    this.addSystemMessage(sessionId, '⏳ Context window filling up, compacting conversation history...');
 
     try {
+      // Layer 1: Micro-compact — clear old tool results in-place (no API call, instant)
+      const { microcompactMessages, TOOL_RESULT_CLEARED_MARKER } = await import('./coworkCompact');
+      const compactedMessages = microcompactMessages(session.messages);
+      if (compactedMessages !== session.messages) {
+        // Update cleared messages in the store
+        let clearedCount = 0;
+        for (let i = 0; i < compactedMessages.length; i++) {
+          if (compactedMessages[i].content === TOOL_RESULT_CLEARED_MARKER && session.messages[i].content !== TOOL_RESULT_CLEARED_MARKER) {
+            this.store.updateMessage(sessionId, session.messages[i].id, { content: TOOL_RESULT_CLEARED_MARKER });
+            clearedCount++;
+          }
+        }
+        coworkLog('INFO', 'maybeCompactSession', `Layer 1 micro-compact: cleared ${clearedCount} old tool results for ${sessionId}`);
+        // Re-check if we still need further compaction
+        const updatedSession = this.store.getSession(sessionId);
+        if (updatedSession && !shouldCompact(updatedSession.messages)) {
+          coworkLog('INFO', 'maybeCompactSession', `Micro-compact was sufficient for ${sessionId}`);
+          return;
+        }
+      }
+
+      this.addSystemMessage(sessionId, '⏳ Context window filling up, compacting conversation history...');
+
       const apiConfig = getCurrentApiConfig();
       if (!apiConfig) {
         coworkLog('WARN', 'maybeCompactSession', 'No API config available for compact call');
         return;
       }
 
-      // Layer 2: Try session memory compact first (no API call needed)
+      // Layer 2: Try session memory compact (no API call needed)
       const sessionMemoryContent = getSessionMemoryContent(sessionId);
       if (sessionMemoryContent) {
         const { trySessionMemoryCompact } = await import('./coworkCompact');
@@ -2618,6 +2649,18 @@ export class CoworkRunner extends EventEmitter {
       '- Do not add backwards-compatibility handling for code that is not currently used.',
       '- Be careful not to introduce security vulnerabilities: no command injection, no XSS, no SQL injection, no path traversal.',
       '- CRITICAL: NEVER fabricate, hallucinate, or assume what the user said. Only respond to the user\'s ACTUAL messages. Tool results, system messages, and internal state are NOT user messages. If you are unsure what the user wants, ASK — do not guess or make up what they said.',
+      '',
+      '### Error Handling and Debugging (IMPORTANT)',
+      '- If an approach fails, DIAGNOSE WHY before switching tactics. Read the error, check your assumptions, try a focused fix.',
+      '- Do not retry the identical action blindly, but also do not abandon a viable approach after a single failure.',
+      '- Never claim "all tests pass" or "everything works" when the output shows failures. Report outcomes faithfully.',
+      '- When you encounter an error, explain what went wrong and what you will try next.',
+      '',
+      '### Task Decomposition',
+      '- For complex multi-step tasks, break them into smaller steps and track progress.',
+      '- Complete one step fully before moving to the next.',
+      '- After completing a significant piece of work, verify it works before moving on.',
+      '- If you are blocked, explain what is blocking you and ask for help rather than silently failing.',
     ].join('\n');
 
     const actionsPrompt = [
@@ -2638,6 +2681,13 @@ export class CoworkRunner extends EventEmitter {
       '  - Write files: Use Write (NOT echo/printf)',
       '- Call multiple tools in parallel when they are independent of each other.',
       '- If one tool call depends on the result of another, wait for the first to finish before calling the second.',
+      '',
+      '### Tool Selection Strategy',
+      '- For simple, directed searches (specific file/class/function), use Glob or Grep directly.',
+      '- For broader exploration or understanding unfamiliar code, use multiple Grep calls to build context.',
+      '- ALWAYS read a file before editing it. Never edit code you haven\'t read.',
+      '- When given a bug to fix: 1) reproduce/understand the error, 2) find the root cause, 3) fix it, 4) verify the fix.',
+      '- When searching, if your first query returns no results, try alternative spellings, abbreviations, or broader patterns before giving up.',
     ].join('\n');
 
     const outputEfficiencyPrompt = [
@@ -3428,206 +3478,9 @@ export class CoworkRunner extends EventEmitter {
       }
     };
 
-    const options: Record<string, unknown> = {
-      cwd,
-      abortController,
-      env: envVars,
-      pathToClaudeCodeExecutable: claudeCodePath,
-      permissionMode: 'default',
-      includePartialMessages: true,
-      disallowedTools: ['WebSearch', 'WebFetch'],
-      stderr: handleSdkStderr,
-      canUseTool: async (
-        toolName: string,
-        toolInput: unknown,
-        { signal }: { signal: AbortSignal }
-      ): Promise<PermissionResult> => {
-        if (abortController.signal.aborted || signal.aborted) {
-          return { behavior: 'deny', message: 'Session aborted' };
-        }
-
-        const resolvedName = String(toolName ?? 'unknown');
-        const resolvedInput =
-          toolInput && typeof toolInput === 'object'
-            ? (toolInput as Record<string, unknown>)
-            : { value: toolInput };
-
-        if (resolvedName === 'Bash') {
-          const command = this.extractToolCommand(resolvedInput);
-
-          const pythonRuntimeCheck = await this.ensureWindowsPythonRuntimeForCommand(sessionId, command);
-          if (!pythonRuntimeCheck.ok) {
-            const reason = pythonRuntimeCheck.reason || 'Python runtime unavailable.';
-            this.addSystemMessage(sessionId, reason);
-            return {
-              behavior: 'deny',
-              message: reason,
-            };
-          }
-        }
-
-        // Auto-approve mode (kept for compatibility with legacy callers).
-        if (activeSession.autoApprove) {
-          return { behavior: 'allow', updatedInput: resolvedInput };
-        }
-
-        if (resolvedName !== 'AskUserQuestion') {
-          const policyResult = await this.enforceToolSafetyPolicy(
-            sessionId,
-            signal,
-            activeSession,
-            resolvedName,
-            resolvedInput
-          );
-          if (policyResult) {
-            return policyResult;
-          }
-        }
-
-        if (resolvedName !== 'AskUserQuestion') {
-          return { behavior: 'allow', updatedInput: resolvedInput };
-        }
-
-        const request: PermissionRequest = {
-          requestId: uuidv4(),
-          toolName: resolvedName,
-          toolInput: this.sanitizeToolPayload(resolvedInput) as Record<string, unknown>,
-        };
-
-        activeSession.pendingPermission = request;
-        this.emit('permissionRequest', sessionId, request);
-
-        const result = await this.waitForPermissionResponse(sessionId, request.requestId, signal);
-        if (abortController.signal.aborted || signal.aborted) {
-          return { behavior: 'deny', message: 'Session aborted' };
-        }
-
-        if (result.behavior === 'deny') {
-          return result.message
-            ? result
-            : { behavior: 'deny', message: 'Permission denied' };
-        }
-
-        const updatedInput = result.updatedInput ?? resolvedInput;
-        const hasAnswers = updatedInput && typeof updatedInput === 'object' && 'answers' in updatedInput;
-        if (!hasAnswers) {
-          return { behavior: 'deny', message: 'No answers provided' };
-        }
-
-        return { behavior: 'allow', updatedInput };
-      },
-    };
-
-    if (app.isPackaged) {
-      // The SDK's default ProcessTransport uses child_process.fork() and may
-      // relaunch the Electron app binary on some macOS installs. Override the
-      // process spawner to force Node-mode execution via Electron directly.
-      options.spawnClaudeCodeProcess = (spawnOptions: {
-        command: string;
-        args: string[];
-        cwd?: string;
-        env?: NodeJS.ProcessEnv;
-        signal?: AbortSignal;
-      }) => {
-        const isPackagedDarwin = app.isPackaged && process.platform === 'darwin';
-        const useElectronShim =
-          process.platform === 'win32'
-          || isPackagedDarwin
-          || spawnOptions.env?.NOOBCLAW_NODE_SHIM_ACTIVE === '1';
-        const spawnEnv: NodeJS.ProcessEnv = {
-          ...(spawnOptions.env ?? {}),
-          ELECTRON_RUN_AS_NODE: '1',
-        };
-        if (useElectronShim) {
-          spawnEnv.NOOBCLAW_ELECTRON_PATH = spawnOptions.env?.NOOBCLAW_ELECTRON_PATH || electronNodeRuntimePath;
-        } else {
-          delete spawnEnv.NOOBCLAW_ELECTRON_PATH;
-        }
-
-        let command = spawnOptions.command || 'node';
-        const normalizedCommand = command.trim().toLowerCase();
-        const commandBaseName = path.basename(command).toLowerCase();
-        const isNodeLikeCommand = normalizedCommand === 'node'
-          || normalizedCommand === 'node.exe'
-          || commandBaseName === 'node'
-          || commandBaseName === 'node.exe'
-          || commandBaseName === 'node.cmd'
-          || normalizedCommand.endsWith('\\node.cmd')
-          || normalizedCommand.endsWith('/node.cmd');
-        if (process.platform === 'win32' && isNodeLikeCommand) {
-          command = electronNodeRuntimePath;
-          spawnEnv.NOOBCLAW_ELECTRON_PATH = electronNodeRuntimePath;
-          coworkLog('INFO', 'runClaudeCodeLocal', `Rewrote Windows SDK command "${spawnOptions.command || 'node'}" to Electron runtime: ${electronNodeRuntimePath}`);
-        } else if (isPackagedDarwin && isNodeLikeCommand) {
-          command = electronNodeRuntimePath;
-          spawnEnv.NOOBCLAW_ELECTRON_PATH = electronNodeRuntimePath;
-          coworkLog('INFO', 'runClaudeCodeLocal', `Rewrote packaged macOS SDK command "${spawnOptions.command || 'node'}" to Electron helper runtime: ${electronNodeRuntimePath}`);
-        }
-
-        if (isPackagedDarwin && command && path.isAbsolute(command)) {
-          const commandCandidates = new Set<string>([command, path.resolve(command)]);
-          const appExecCandidates = new Set<string>([process.execPath, path.resolve(process.execPath)]);
-          try {
-            commandCandidates.add(fs.realpathSync.native(command));
-          } catch {
-            // Ignore realpath resolution errors.
-          }
-          try {
-            appExecCandidates.add(fs.realpathSync.native(process.execPath));
-          } catch {
-            // Ignore realpath resolution errors.
-          }
-          const pointsToAppExecutable = Array.from(commandCandidates).some((candidate) => appExecCandidates.has(candidate));
-          if (pointsToAppExecutable) {
-            command = electronNodeRuntimePath;
-            spawnEnv.NOOBCLAW_ELECTRON_PATH = electronNodeRuntimePath;
-            coworkLog('WARN', 'runClaudeCodeLocal', 'SDK spawner command points to app executable; rewriting to Electron helper runtime');
-          }
-        }
-        coworkLog('INFO', 'runClaudeCodeLocal', 'Using packaged custom SDK spawner', {
-          command,
-          args: spawnOptions.args,
-        });
-
-        const shouldInjectWindowsHideRequire =
-          process.platform === 'win32'
-          && Boolean(windowsHideInitScript)
-          && spawnOptions.args.length > 0
-          && /\.m?js$/i.test(path.basename(spawnOptions.args[0]));
-        const effectiveSpawnArgs = shouldInjectWindowsHideRequire
-          ? prependNodeRequireArg(spawnOptions.args, windowsHideInitScript as string)
-          : spawnOptions.args;
-        if (shouldInjectWindowsHideRequire) {
-          coworkLog('INFO', 'runClaudeCodeLocal', `Injected Windows hidden-subprocess preload: ${windowsHideInitScript}`);
-        }
-
-        const child = spawn(command, effectiveSpawnArgs, {
-          cwd: spawnOptions.cwd,
-          env: spawnEnv,
-          stdio: ['pipe', 'pipe', 'pipe'],
-          windowsHide: process.platform === 'win32',
-          signal: spawnOptions.signal,
-        });
-
-        child.stderr?.on('data', (chunk: Buffer | string) => {
-          handleSdkStderr(chunk.toString());
-        });
-
-        return child;
-      };
-    }
-
-    // The SDK session state is bound to the subprocess and its project directory.
-    // After stop, the subprocess is killed and the session cannot be reliably
-    // resumed (cwd/model mismatch causes "No conversation found" errors).
-    // Instead, we inject conversation history into the prompt in startSession().
+    // v5: No longer need SDK options object or subprocess spawning.
+    // The query engine calls the API directly — no child process.
     activeSession.claudeSessionId = null;
-
-    if (systemPrompt) {
-      options.systemPrompt = systemPrompt;
-    }
-
-    let startupTimer: ReturnType<typeof setTimeout> | null = null;
 
     try {
       coworkLog('INFO', 'runClaudeCodeLocal', 'Starting local Claude Code session', {
@@ -3647,65 +3500,52 @@ export class CoworkRunner extends EventEmitter {
         logFile: getCoworkLogPath(),
       });
 
-      const { query, createSdkMcpServer, tool } = await loadClaudeSdk();
-      coworkLog('INFO', 'runClaudeCodeLocal', 'Claude SDK loaded successfully');
+      // ── v5: Direct @anthropic-ai/sdk integration (replaces claude-agent-sdk) ──
+      coworkLog('INFO', 'runClaudeCodeLocal', 'Building tools for direct SDK query engine');
 
-      const memoryServerName = `user-memory-${sessionId.slice(0, 8)}`;
-      const memoryTools: any[] = [
-        tool(
-          'conversation_search',
-          'Search prior conversations by query and return Claude-style <chat> blocks.',
-          {
+      const allTools: ToolDefinition[] = [];
+
+      // Memory tools
+      allTools.push(
+        buildTool({
+          name: 'conversation_search',
+          description: 'Search prior conversations by query and return Claude-style <chat> blocks. Use this when the user asks about something discussed in previous conversations.',
+          inputSchema: z.object({
             query: z.string().min(1),
             max_results: z.number().int().min(1).max(10).optional(),
             before: z.string().optional(),
             after: z.string().optional(),
-          },
-          async (args: {
-            query: string;
-            max_results?: number;
-            before?: string;
-            after?: string;
-          }) => {
+          }),
+          call: async (args) => {
             const text = this.runConversationSearchTool(args);
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text,
-                },
-              ],
-            } as any;
-          }
-        ),
-        tool(
-          'recent_chats',
-          'List recent chats and return Claude-style <chat> blocks.',
-          {
+            return { content: [{ type: 'text', text }] };
+          },
+          isConcurrencySafe: true,
+          isReadOnly: true,
+        }),
+        buildTool({
+          name: 'recent_chats',
+          description: 'List recent chats and return Claude-style <chat> blocks. Use to get an overview of recent conversation history.',
+          inputSchema: z.object({
             n: z.number().int().min(1).max(20).optional(),
             sort_order: z.enum(['asc', 'desc']).optional(),
             before: z.string().optional(),
             after: z.string().optional(),
-          },
-          async (args: {
-            n?: number;
-            sort_order?: 'asc' | 'desc';
-            before?: string;
-            after?: string;
-          }) => {
+          }),
+          call: async (args) => {
             const text = this.runRecentChatsTool(args);
-            return {
-              content: [{ type: 'text', text }],
-            } as any;
-          }
-        ),
-      ];
+            return { content: [{ type: 'text', text }] };
+          },
+          isConcurrencySafe: true,
+          isReadOnly: true,
+        }),
+      );
       if (config.memoryEnabled) {
-        memoryTools.push(
-          tool(
-            'memory_user_edits',
-            'Manage user memories. action=list|add|update|delete.',
-            {
+        allTools.push(
+          buildTool({
+            name: 'memory_user_edits',
+            description: 'Manage user memories. action=list|add|update|delete. Use "list" to see existing memories, "add" to save new ones, "update" to modify, "delete" to remove.',
+            inputSchema: z.object({
               action: z.enum(['list', 'add', 'update', 'delete']),
               id: z.string().optional(),
               text: z.string().optional(),
@@ -3714,26 +3554,14 @@ export class CoworkRunner extends EventEmitter {
               is_explicit: z.boolean().optional(),
               limit: z.number().int().min(1).max(200).optional(),
               query: z.string().optional(),
-            },
-            async (args: {
-              action: 'list' | 'add' | 'update' | 'delete';
-              id?: string;
-              text?: string;
-              confidence?: number;
-              status?: 'created' | 'stale' | 'deleted';
-              is_explicit?: boolean;
-              limit?: number;
-              query?: string;
-            }) => {
+            }),
+            call: async (args) => {
               try {
                 const result = this.runMemoryUserEditsTool(args);
                 return {
-                  content: [{
-                    type: 'text',
-                    text: result.text,
-                  }],
+                  content: [{ type: 'text', text: result.text }],
                   isError: result.isError,
-                } as any;
+                };
               } catch (error) {
                 return {
                   content: [{
@@ -3747,10 +3575,10 @@ export class CoworkRunner extends EventEmitter {
                     }),
                   }],
                   isError: true,
-                } as any;
+                };
               }
-            }
-          )
+            },
+          })
         );
       }
       // --- Browser automation tools ---
@@ -3842,9 +3670,45 @@ export class CoworkRunner extends EventEmitter {
           } as any;
         }
       };
-      const browserServerName = `browser-automation-${sessionId.slice(0, 8)}`;
-      const browserTools: any[] = [
-        tool(
+      // Compatibility wrapper: converts old tool(name, desc, zodShape, handler) to ToolDefinition
+      const legacyTool = (name: string, description: string, shape: Record<string, any>, handler: Function): ToolDefinition => {
+        return buildTool({
+          name,
+          description,
+          inputSchema: z.object(shape),
+          call: async (input: any) => {
+            const result = await handler(input);
+            if (!result) return { content: [{ type: 'text', text: '(no result)' }] };
+            // Normalize legacy { content: [...], isError? } format
+            // Handle image blocks specially — don't dump base64 as text
+            return {
+              content: Array.isArray(result.content)
+                ? result.content.map((c: any) => {
+                    if (c.type === 'image' && c.data) {
+                      // Image block — save to temp file, return path reference
+                      try {
+                        const os = require('os');
+                        const fsLib = require('fs');
+                        const pathLib = require('path');
+                        const tmpPath = pathLib.join(os.tmpdir(), `noobclaw-img-${Date.now()}.jpg`);
+                        fsLib.writeFileSync(tmpPath, Buffer.from(c.data, 'base64'));
+                        return { type: 'text' as const, text: `[Screenshot saved to ${tmpPath} and displayed to user]` };
+                      } catch {
+                        return { type: 'text' as const, text: '[Screenshot captured and displayed to user]' };
+                      }
+                    }
+                    return { type: 'text' as const, text: c.text || '' };
+                  })
+                : [{ type: 'text', text: String(result.content || result) }],
+              isError: result.isError,
+            };
+          },
+        });
+      };
+
+      // Browser tools use legacyTool wrapper for minimal code changes
+      const browserTools: ToolDefinition[] = [
+        legacyTool(
           'browser_screenshot',
           'Take a screenshot of the current browser page. If the model supports vision, the image is returned directly. Otherwise the screenshot is saved locally for the user and you should use browser_read_page to understand page content.',
           {},
@@ -3871,7 +3735,7 @@ export class CoworkRunner extends EventEmitter {
             return { content: [{ type: 'text', text: `Screenshot saved to ${tmpPath} and displayed to the user. To understand the page content, use browser_read_page or browser_get_text tools.` }] } as any;
           }
         ),
-        tool(
+        legacyTool(
           'browser_observe',
           'PREFERRED tool for understanding a page. Takes a screenshot AND reads interactive DOM elements in one call. Returns both the visual screenshot (for layout understanding) and the DOM tree (for precise selectors). Always use this before clicking or interacting with page elements.',
           { filter: z.enum(['all', 'interactive']).optional() },
@@ -3901,7 +3765,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_read_page',
           'Read the accessibility tree of the current page. Returns interactive elements with selectors. Use filter="interactive" to get only buttons/links/inputs.',
           { filter: z.enum(['all', 'interactive']).optional(), selector: z.string().optional() },
@@ -3917,7 +3781,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_get_text',
           'Extract the text content from the current page. Best for reading articles and text-heavy pages.',
           {},
@@ -3933,7 +3797,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_click',
           'Click an element on the page by CSS selector or coordinates [x, y].',
           { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
@@ -3952,7 +3816,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_type',
           'Type text into the currently focused element or a specified element.',
           { text: z.string(), selector: z.string().optional() },
@@ -3968,7 +3832,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_navigate',
           'Navigate to a URL in the current tab. If the browser extension is not connected, this will open the URL in the default browser.',
           { url: z.string() },
@@ -3996,7 +3860,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_scroll',
           'Scroll the page up, down, left, or right.',
           { direction: z.enum(['up', 'down', 'left', 'right']), amount: z.number().optional() },
@@ -4012,7 +3876,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_find',
           'Find elements on the page by natural language description (e.g. "search bar", "login button").',
           { query: z.string() },
@@ -4028,7 +3892,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_fill',
           'Fill a form input element with a value by CSS selector.',
           { selector: z.string(), value: z.string() },
@@ -4048,7 +3912,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_hover',
           'Hover over an element to trigger dropdown menus or tooltips.',
           { selector: z.string() },
@@ -4062,7 +3926,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_keypress',
           'Press a keyboard key (Enter, Tab, Escape, Backspace, Delete, ArrowUp/Down/Left/Right, Space).',
           { key: z.string(), selector: z.string().optional() },
@@ -4076,7 +3940,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_wait_for',
           'Wait for an element to appear on the page (useful after navigation or dynamic loading).',
           { selector: z.string(), timeout: z.number().optional() },
@@ -4090,7 +3954,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_get_value',
           'Get the current value, text, attributes of an element by CSS selector.',
           { selector: z.string() },
@@ -4104,7 +3968,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_get_url',
           'Get the current page URL and title.',
           {},
@@ -4118,7 +3982,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_javascript',
           'Execute JavaScript code in the current page context. Returns the result of the last expression. Use for reading page state, DOM queries, or debugging.',
           { code: z.string() },
@@ -4132,7 +3996,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_drag',
           'Drag an element from one position to another.',
           { from_selector: z.string(), to_selector: z.string().optional(), to_coordinate: z.array(z.number()).optional() },
@@ -4146,7 +4010,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_double_click',
           'Double-click an element by CSS selector or coordinates.',
           { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
@@ -4160,7 +4024,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_right_click',
           'Right-click an element to open context menu.',
           { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
@@ -4174,7 +4038,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_scroll_to',
           'Scroll a specific element into view.',
           { selector: z.string() },
@@ -4188,7 +4052,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_tab_create',
           'Create a new browser tab, optionally with a URL.',
           { url: z.string().optional() },
@@ -4202,7 +4066,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_tab_close',
           'Close a browser tab by ID, or the current tab if no ID given.',
           { tabId: z.number().optional() },
@@ -4216,7 +4080,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_tab_list',
           'List all open browser tabs with their IDs, URLs, and titles.',
           {},
@@ -4230,7 +4094,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_tab_switch',
           'Switch to a specific tab by ID.',
           { tabId: z.number() },
@@ -4244,7 +4108,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_go_back',
           'Navigate back in browser history.',
           {},
@@ -4258,7 +4122,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_go_forward',
           'Navigate forward in browser history.',
           {},
@@ -4272,7 +4136,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_reload',
           'Reload the current page.',
           {},
@@ -4286,7 +4150,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_read_console',
           'Read browser console messages (log, warn, error). Filter by level or regex pattern.',
           { level: z.string().optional(), pattern: z.string().optional(), limit: z.number().optional() },
@@ -4300,7 +4164,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_page_info',
           'Get page metadata: URL, title, dimensions, scroll position, counts of forms/links/images.',
           {},
@@ -4314,7 +4178,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_resize',
           'Resize the browser window.',
           { width: z.number(), height: z.number() },
@@ -4328,7 +4192,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_upload_file',
           'Upload a file to a file input element on the page. Provide the file as base64 data. This bypasses the native file picker dialog.',
           { selector: z.string().optional(), fileData: z.string(), fileName: z.string(), mimeType: z.string().optional() },
@@ -4342,7 +4206,7 @@ export class CoworkRunner extends EventEmitter {
             }
           }
         ),
-        tool(
+        legacyTool(
           'browser_triple_click',
           'Triple-click an element to select all text in it.',
           { selector: z.string().optional(), coordinate: z.array(z.number()).optional() },
@@ -4358,323 +4222,176 @@ export class CoworkRunner extends EventEmitter {
         ),
       ];
 
-      // Desktop control MCP server — real executable tools for mouse/keyboard/screenshot
-      const desktopServerName = `desktop-control-${sessionId.slice(0, 8)}`;
-      const desktopTools = buildDesktopControlTools(tool, z);
+      // Desktop control tools — direct ToolDefinition array (no MCP wrapper)
+      const desktopTools = buildDesktopControlToolDefs();
 
-      options.mcpServers = {
-        ...(options.mcpServers as Record<string, unknown> | undefined),
-        [memoryServerName]: createSdkMcpServer({
-          name: memoryServerName,
-          tools: memoryTools,
-        }),
-        [browserServerName]: createSdkMcpServer({
-          name: browserServerName,
-          tools: browserTools,
-        }),
-        [desktopServerName]: createSdkMcpServer({
-          name: desktopServerName,
-          tools: desktopTools,
-        }),
-      };
+      // Assemble all tools into a single flat array
+      allTools.push(...browserTools, ...desktopTools);
+
+      // Sub-Agent / Task tools — must be added AFTER all other tools
+      // so spawn_subagent can pass allTools to child agents.
+      // canUseTool is defined later in the queryLoopStreaming params,
+      // so we use a late-binding reference that gets set before query starts.
+      let boundCanUseTool: any = async () => ({ behavior: 'allow' as const });
+      const taskTools = buildTaskTools(allTools, (name, input, opts) => boundCanUseTool(name, input, opts));
+      const agentTools = buildAgentTools(allTools, (name, input, opts) => boundCanUseTool(name, input, opts));
+      const dreamingMemoryTools = buildMemoryTools();
+      const webhookToolDefs = buildWebhookTools();
+      const canvasToolDefs = buildCanvasTools();
+      const cdpToolDefs = buildCDPTools();
+      const voiceToolDefs = buildVoiceTools();
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs);
+
+      // User-configured MCP servers are handled separately below
+      // (they still use stdio/sse/http transport, not in-process)
       let userMcpServerCount = 0;
 
-      // Inject user-configured MCP servers (local mode only)
+      // ── External MCP servers: connect via MCP Client and materialize tools ──
       if (this.mcpServerProvider) {
         try {
           const enabledMcpServers = this.mcpServerProvider();
-          coworkLog('INFO', 'runClaudeCodeLocal', `MCP: ${enabledMcpServers.length} user-configured servers found`);
-          for (const server of enabledMcpServers) {
-            const serverKey = server.name;
-            // Skip if name conflicts with existing MCP servers (e.g., memory server)
-            if (options.mcpServers && serverKey in (options.mcpServers as Record<string, unknown>)) {
-              coworkLog('WARN', 'runClaudeCodeLocal', `MCP server name conflict: "${serverKey}", skipping user config`);
-              continue;
-            }
-            let serverConfig: Record<string, unknown>;
-            switch (server.transportType) {
-              case 'stdio':
-                {
-                  const stdioCommand = server.command || '';
-                  let effectiveStdioCommand = stdioCommand;
-                  const stdioArgs = server.args || [];
-                  let effectiveStdioArgs = [...stdioArgs];
-                  let shouldInjectWindowsHideRequire = false;
-                  let stdioEnv = server.env && Object.keys(server.env).length > 0
-                    ? { ...server.env }
-                    : undefined;
-
-                  if (process.platform === 'win32' && app.isPackaged && effectiveStdioCommand) {
-                    const normalizedCommand = effectiveStdioCommand.trim().toLowerCase();
-                    const npmBinDir = envVars.NOOBCLAW_NPM_BIN_DIR;
-                    const npxCliJs = npmBinDir ? path.join(npmBinDir, 'npx-cli.js') : '';
-                    const npmCliJs = npmBinDir ? path.join(npmBinDir, 'npm-cli.js') : '';
-
-                    const withElectronNodeEnv = (base: Record<string, string> | undefined): Record<string, string> => ({
-                      ...(base || {}),
-                      ELECTRON_RUN_AS_NODE: '1',
-                      NOOBCLAW_ELECTRON_PATH: electronNodeRuntimePath,
-                    });
-
-                    if (
-                      normalizedCommand === 'node'
-                      || normalizedCommand === 'node.exe'
-                      || normalizedCommand.endsWith('\\node.cmd')
-                      || normalizedCommand.endsWith('/node.cmd')
-                    ) {
-                      effectiveStdioCommand = electronNodeRuntimePath;
-                      stdioEnv = withElectronNodeEnv(stdioEnv);
-                      shouldInjectWindowsHideRequire = true;
-                      coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": rewrote stdio command "${stdioCommand}" to Electron runtime`);
-                    } else if (
-                      (normalizedCommand === 'npx' || normalizedCommand === 'npx.cmd' || normalizedCommand.endsWith('\\npx.cmd') || normalizedCommand.endsWith('/npx.cmd'))
-                      && npxCliJs
-                      && fs.existsSync(npxCliJs)
-                    ) {
-                      effectiveStdioCommand = electronNodeRuntimePath;
-                      effectiveStdioArgs = [npxCliJs, ...stdioArgs];
-                      stdioEnv = withElectronNodeEnv(stdioEnv);
-                      shouldInjectWindowsHideRequire = true;
-                      coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": rewrote stdio command "${stdioCommand}" to Electron runtime + npx-cli.js`);
-                    } else if (
-                      (normalizedCommand === 'npm' || normalizedCommand === 'npm.cmd' || normalizedCommand.endsWith('\\npm.cmd') || normalizedCommand.endsWith('/npm.cmd'))
-                      && npmCliJs
-                      && fs.existsSync(npmCliJs)
-                    ) {
-                      effectiveStdioCommand = electronNodeRuntimePath;
-                      effectiveStdioArgs = [npmCliJs, ...stdioArgs];
-                      stdioEnv = withElectronNodeEnv(stdioEnv);
-                      shouldInjectWindowsHideRequire = true;
-                      coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": rewrote stdio command "${stdioCommand}" to Electron runtime + npm-cli.js`);
-                    }
-                  }
-
-                  if (process.platform === 'win32' && shouldInjectWindowsHideRequire && windowsHideInitScript) {
-                    effectiveStdioArgs = prependNodeRequireArg(effectiveStdioArgs, windowsHideInitScript);
-                    coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": injected Windows hidden-subprocess preload`);
-                  }
-
-                  if (app.isPackaged && process.platform === 'darwin' && stdioCommand && path.isAbsolute(stdioCommand)) {
-                    const commandCandidates = new Set<string>([stdioCommand, path.resolve(stdioCommand)]);
-                    const appExecCandidates = new Set<string>([
-                      process.execPath,
-                      path.resolve(process.execPath),
-                      electronNodeRuntimePath,
-                      path.resolve(electronNodeRuntimePath),
-                    ]);
-
-                    try {
-                      commandCandidates.add(fs.realpathSync.native(stdioCommand));
-                    } catch {
-                      // Ignore realpath resolution errors.
-                    }
-
-                    try {
-                      appExecCandidates.add(fs.realpathSync.native(process.execPath));
-                    } catch {
-                      // Ignore realpath resolution errors.
-                    }
-                    try {
-                      appExecCandidates.add(fs.realpathSync.native(electronNodeRuntimePath));
-                    } catch {
-                      // Ignore realpath resolution errors.
-                    }
-
-                    const pointsToAppExecutable = Array.from(commandCandidates).some((candidate) => appExecCandidates.has(candidate));
-                    if (pointsToAppExecutable) {
-                      effectiveStdioCommand = electronNodeRuntimePath;
-                      stdioEnv = {
-                        ...(stdioEnv || {}),
-                        ELECTRON_RUN_AS_NODE: '1',
-                        NOOBCLAW_ELECTRON_PATH: electronNodeRuntimePath,
-                      };
-                      coworkLog('WARN', 'runClaudeCodeLocal', `MCP "${serverKey}": command points to app executable; rewriting command to Electron helper runtime`);
-                    }
-                  }
-
-                serverConfig = {
-                  type: 'stdio',
-                  command: effectiveStdioCommand,
-                  args: effectiveStdioArgs,
-                  env: stdioEnv && Object.keys(stdioEnv).length > 0 ? stdioEnv : undefined,
-                };
-                coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": stdio command="${effectiveStdioCommand}", args=${JSON.stringify(effectiveStdioArgs)}`);
-                if (stdioEnv && Object.keys(stdioEnv).length > 0) {
-                  coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": custom env vars: ${JSON.stringify(stdioEnv)}`);
-                }
-                // Resolve command path to verify it's findable
-                if (effectiveStdioCommand) {
-                  if (path.isAbsolute(effectiveStdioCommand)) {
-                    coworkLog(
-                      fs.existsSync(effectiveStdioCommand) ? 'INFO' : 'WARN',
-                      'runClaudeCodeLocal',
-                      `MCP "${serverKey}": absolute command "${effectiveStdioCommand}" exists=${fs.existsSync(effectiveStdioCommand)}`
-                    );
-                  } else {
-                    const whichCmd = process.platform === 'win32' ? 'where' : 'which';
-                    try {
-                      const resolveResult = spawnSync(whichCmd, [effectiveStdioCommand], {
-                        env: { ...envVars, ...(stdioEnv || {}) } as NodeJS.ProcessEnv,
-                        encoding: 'utf-8',
-                        timeout: 5000,
-                        windowsHide: process.platform === 'win32',
-                      });
-                      if (resolveResult.status === 0 && resolveResult.stdout) {
-                        coworkLog('INFO', 'runClaudeCodeLocal', `MCP "${serverKey}": command "${effectiveStdioCommand}" resolves to: ${resolveResult.stdout.trim()}`);
-                      } else {
-                        coworkLog('WARN', 'runClaudeCodeLocal', `MCP "${serverKey}": command "${effectiveStdioCommand}" NOT FOUND in PATH (exit: ${resolveResult.status}, stderr: ${(resolveResult.stderr || '').trim()})`);
-                      }
-                    } catch (e) {
-                      coworkLog('WARN', 'runClaudeCodeLocal', `MCP "${serverKey}": failed to resolve command "${effectiveStdioCommand}": ${e instanceof Error ? e.message : String(e)}`);
-                    }
-                  }
-                }
-                break;
-                }
-              case 'sse':
-                serverConfig = {
-                  type: 'sse',
-                  url: server.url || '',
-                  headers: server.headers && Object.keys(server.headers).length > 0 ? server.headers : undefined,
-                };
-                break;
-              case 'http':
-                serverConfig = {
-                  type: 'http',
-                  url: server.url || '',
-                  headers: server.headers && Object.keys(server.headers).length > 0 ? server.headers : undefined,
-                };
-                break;
-              default:
-                coworkLog('WARN', 'runClaudeCodeLocal', `Unknown MCP transport type: "${server.transportType}", skipping`);
-                continue;
-            }
-            options.mcpServers = {
-              ...(options.mcpServers as Record<string, unknown>),
-              [serverKey]: serverConfig,
-            };
-            userMcpServerCount += 1;
-            coworkLog('INFO', 'runClaudeCodeLocal', `Injected user MCP server: "${serverKey}" (${server.transportType})`);
+          if (enabledMcpServers.length > 0) {
+            coworkLog('INFO', 'runClaudeCodeLocal', `Connecting to ${enabledMcpServers.length} user MCP servers`);
+            const { connectAllMcpServers } = await import('./mcpClient');
+            const mcpConfigs = enabledMcpServers.map((s: any) => ({
+              name: s.name,
+              transportType: s.transportType as 'stdio' | 'sse' | 'http',
+              command: s.command,
+              args: s.args,
+              env: s.env,
+              url: s.url,
+              headers: s.headers,
+            }));
+            const mcpTools = await connectAllMcpServers(mcpConfigs, 30_000);
+            allTools.push(...mcpTools);
+            userMcpServerCount = enabledMcpServers.length;
+            coworkLog('INFO', 'runClaudeCodeLocal', `MCP: ${mcpTools.length} tools from ${enabledMcpServers.length} servers`);
           }
         } catch (error) {
-          coworkLog('WARN', 'runClaudeCodeLocal', `Failed to load user MCP servers: ${error instanceof Error ? error.message : String(error)}`);
+          coworkLog('WARN', 'runClaudeCodeLocal', `Failed to connect user MCP servers: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
-      // Log final MCP server config summary
-      if (options.mcpServers) {
-        const mcpKeys = Object.keys(options.mcpServers as Record<string, unknown>);
-        coworkLog('INFO', 'runClaudeCodeLocal', `MCP final config: ${mcpKeys.length} servers: [${mcpKeys.join(', ')}]`);
-        for (const key of mcpKeys) {
-          const cfg = (options.mcpServers as Record<string, Record<string, unknown>>)[key];
-          if (cfg && typeof cfg === 'object' && 'type' in cfg) {
-            coworkLog('INFO', 'runClaudeCodeLocal', `MCP server "${key}": type=${cfg.type}, command=${cfg.command || 'N/A'}, args=${JSON.stringify(cfg.args || [])}`);
-          }
-        }
-        // Dump full MCP config as JSON for complete debugging
-        try {
-          const serializable: Record<string, unknown> = {};
-          for (const key of mcpKeys) {
-            const cfg = (options.mcpServers as Record<string, Record<string, unknown>>)[key];
-            if (cfg && typeof cfg === 'object') {
-              // Only serialize plain config objects; skip SDK server instances
-              if ('type' in cfg && typeof cfg.type === 'string') {
-                serializable[key] = cfg;
-              } else {
-                serializable[key] = { type: '(SDK server instance)' };
-              }
-            }
-          }
-          coworkLog('INFO', 'runClaudeCodeLocal', `MCP full config dump: ${JSON.stringify(serializable, null, 2)}`);
-        } catch (e) {
-          coworkLog('WARN', 'runClaudeCodeLocal', `MCP config dump failed: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
+      coworkLog('INFO', 'runClaudeCodeLocal', `v5 tool summary: ${allTools.length} tools registered (memory + browser + desktop + mcp)`);
 
-      // Build prompt: if we have image attachments, use SDKUserMessage with content blocks
-      // instead of a plain string prompt, so the model can see the images.
-      let queryPrompt: string | AsyncIterable<unknown>;
-      if (imageAttachments && imageAttachments.length > 0) {
-        const contentBlocks: Array<Record<string, unknown>> = [];
-        // Add text block
-        if (prompt.trim()) {
-          contentBlocks.push({ type: 'text', text: prompt });
+      // ── v5: Direct query engine (replaces SDK query()) ──
+
+      // Build API config from settings
+      const apiConfig = getCurrentApiConfig();
+      const queryApiConfig: ApiConfig = {
+        apiKey: apiConfig?.apiKey || envVars.ANTHROPIC_API_KEY || '',
+        baseUrl: apiConfig?.baseURL || envVars.ANTHROPIC_BASE_URL || undefined,
+        model: apiConfig?.model || envVars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+        maxTokens: 16384,
+        thinkingBudget: 10000, // Enable extended thinking
+      };
+
+      coworkLog('INFO', 'runClaudeCodeLocal', 'Starting v5 query engine', {
+        model: queryApiConfig.model,
+        toolCount: allTools.length,
+        hasImages: !!(imageAttachments && imageAttachments.length > 0),
+      });
+
+      // ── canUseTool: extracted as a named function so taskTools can reference it ──
+      const canUseToolFn = async (
+        toolName: string,
+        toolInput: unknown,
+        { signal }: { signal: AbortSignal }
+      ): Promise<PermissionResult> => {
+        if (abortController.signal.aborted || signal.aborted) {
+          return { behavior: 'deny', message: 'Session aborted' };
         }
-        // Add image blocks
-        for (const img of imageAttachments) {
-          contentBlocks.push({
-            type: 'image',
-            source: {
-              type: 'base64',
-              media_type: img.mimeType,
-              data: img.base64Data,
+
+        const resolvedName = String(toolName ?? 'unknown');
+        const resolvedInput =
+          toolInput && typeof toolInput === 'object'
+            ? (toolInput as Record<string, unknown>)
+            : { value: toolInput };
+
+        if (resolvedName === 'Bash') {
+          const command = this.extractToolCommand(resolvedInput);
+          const pythonRuntimeCheck = await this.ensureWindowsPythonRuntimeForCommand(sessionId, command);
+          if (!pythonRuntimeCheck.ok) {
+            return { behavior: 'deny', message: pythonRuntimeCheck.reason || 'Python runtime not available' };
+          }
+        }
+
+        // Check auto-approve mode
+        if (activeSession.autoApprove) {
+          const safetyResult = await this.enforceToolSafetyPolicy(sessionId, signal, activeSession, resolvedName, resolvedInput);
+          if (safetyResult) return safetyResult;
+          return { behavior: 'allow' };
+        }
+
+        // For AskUserQuestion tool or tools requiring user input
+        if (resolvedName === 'AskUserQuestion') {
+          return { behavior: 'allow' };
+        }
+
+        // Check safety policy
+        const safetyResult = await this.enforceToolSafetyPolicy(sessionId, signal, activeSession, resolvedName, resolvedInput);
+        if (safetyResult) return safetyResult;
+
+        // Request user permission for sensitive tools
+        const request: PermissionRequest = {
+          requestId: uuidv4(),
+          toolName: resolvedName,
+          toolInput: this.sanitizeToolPayload(resolvedInput) as Record<string, unknown>,
+        };
+        activeSession.pendingPermission = request;
+        this.emit('permissionRequest', sessionId, request);
+        const permResult = await this.waitForPermissionResponse(sessionId, request.requestId, signal);
+        if (abortController.signal.aborted || signal.aborted) {
+          return { behavior: 'deny', message: 'Session aborted' };
+        }
+        if (permResult.behavior === 'deny') {
+          return permResult.message ? permResult : { behavior: 'deny', message: 'Permission denied' };
+        }
+        const updatedInput = permResult.updatedInput ?? resolvedInput;
+        return { behavior: 'allow', updatedInput };
+      };
+
+      // Late-bind canUseTool for task tools (they reference it via closure)
+      boundCanUseTool = canUseToolFn;
+
+      // Run the query engine — our own agent loop
+      const queryGen = queryLoopStreaming({
+        prompt,
+        images: imageAttachments,
+        systemPrompt,
+        tools: allTools,
+        apiConfig: queryApiConfig,
+        cwd,
+        sessionId,
+        abortSignal: abortController.signal,
+        canUseTool: canUseToolFn,
+        onToolResult: (result) => {
+          // Emit tool results for real-time UI updates
+          const content = result.result.content.map(c => c.text).join('\n');
+          const message = this.store.addMessage(sessionId, {
+            type: 'tool_result',
+            content,
+            metadata: {
+              toolResult: content,
+              toolUseId: result.toolUseId,
+              error: result.result.isError ? content || 'Tool execution failed' : undefined,
+              isError: result.result.isError,
             },
           });
-        }
-        const userMessage: {
-          type: 'user';
-          message: { role: 'user'; content: Array<Record<string, unknown>> };
-          parent_tool_use_id: string | null;
-          session_id: string;
-        } = {
-          type: 'user' as const,
-          message: {
-            role: 'user' as const,
-            content: contentBlocks,
-          },
-          parent_tool_use_id: null,
-          session_id: '',
-        };
-        // Create a one-shot async iterable that yields the single message
-        queryPrompt = (async function* () {
-          yield userMessage;
-        })();
-      } else {
-        queryPrompt = prompt;
-      }
+          this.emit('message', sessionId, message);
+        },
+      });
 
-      // Set up a startup timeout BEFORE calling query(): if no events arrive
-      // within the timeout, abort. This covers both the query() call itself
-      // (which spawns the subprocess) and the initial event wait.
-      const startupTimeoutMs = userMcpServerCount > 0
-        ? SDK_STARTUP_TIMEOUT_WITH_USER_MCP_MS
-        : SDK_STARTUP_TIMEOUT_MS;
-      coworkLog('INFO', 'runClaudeCodeLocal', `Using SDK startup timeout: ${startupTimeoutMs}ms (userMcpServers=${userMcpServerCount})`);
-      startupTimer = setTimeout(() => {
-        coworkLog('ERROR', 'runClaudeCodeLocal', 'SDK startup timeout: no events received within timeout', {
-          timeoutMs: startupTimeoutMs,
-          userMcpServers: userMcpServerCount,
-        });
-        if (!abortController.signal.aborted) {
-          abortController.abort();
-        }
-      }, startupTimeoutMs);
-
-      const result = await query({ prompt: queryPrompt, options } as any);
-      coworkLog('INFO', 'runClaudeCodeLocal', 'Claude Code process started, iterating events');
       let eventCount = 0;
-
-      for await (const event of result as AsyncIterable<unknown>) {
-        // Clear startup timeout on first event
-        if (startupTimer) {
-          clearTimeout(startupTimer);
-          startupTimer = null;
-        }
+      for await (const event of queryGen) {
         if (this.isSessionStopRequested(sessionId, activeSession)) {
           break;
         }
         eventCount++;
-        const eventPayload = event as Record<string, unknown> | null;
-        const eventType = eventPayload && typeof eventPayload === 'object' ? String(eventPayload.type ?? '') : typeof event;
-        coworkLog('INFO', 'runClaudeCodeLocal', `Event #${eventCount}: type=${eventType}`);
-        this.handleClaudeEvent(sessionId, event);
+        coworkLog('INFO', 'runClaudeCodeLocal', `Event #${eventCount}: type=${event.type}`);
+        this.handleQueryEvent(sessionId, activeSession, event);
       }
-      // Clean up timer if loop ended before first event (e.g. empty iterator)
-      if (startupTimer) {
-        clearTimeout(startupTimer);
-        startupTimer = null;
-      }
-      coworkLog('INFO', 'runClaudeCodeLocal', `Event iteration completed, total events: ${eventCount}`);
+      coworkLog('INFO', 'runClaudeCodeLocal', `Query engine completed, total events: ${eventCount}`);
 
       if (this.stoppedSessions.has(sessionId)) {
         this.store.updateSession(sessionId, { status: 'idle' });
@@ -4700,12 +4417,6 @@ export class CoworkRunner extends EventEmitter {
         this.emit('complete', sessionId, activeSession.claudeSessionId);
       }
     } catch (error) {
-      // Clean up startup timer if still pending
-      if (startupTimer) {
-        clearTimeout(startupTimer);
-        startupTimer = null;
-      }
-
       if (this.stoppedSessions.has(sessionId)) {
         this.store.updateSession(sessionId, { status: 'idle' });
         return;
@@ -4729,6 +4440,8 @@ export class CoworkRunner extends EventEmitter {
     } finally {
       this.clearPendingPermissions(sessionId);
       this.activeSessions.delete(sessionId);
+      // Disconnect external MCP servers when session ends
+      import('./mcpClient').then(m => m.disconnectAllMcpServers()).catch(() => {});
     }
   }
 
@@ -5894,6 +5607,120 @@ export class CoworkRunner extends EventEmitter {
     return trimmed;
   }
 
+  // ── v5: Handle events from the new queryLoopStreaming engine ──
+  private handleQueryEvent(
+    sessionId: string,
+    activeSession: ActiveSession,
+    event: QueryEvent
+  ): void {
+    if (this.isSessionStopRequested(sessionId, activeSession)) return;
+
+    switch (event.type) {
+      case 'stream_event': {
+        // Forward raw stream events to the existing streaming handler
+        // Wrap in the format handleStreamEvent expects
+        const payload = { type: 'stream_event', event: event.event };
+        this.handleStreamEvent(sessionId, activeSession, payload as any);
+        break;
+      }
+
+      case 'assistant': {
+        // Complete assistant message — extract text/thinking/tool_use blocks
+        const msg = event.message;
+        if (typeof msg.content === 'string') {
+          // Simple text
+          if (!activeSession.hasAssistantTextOutput) {
+            const message = this.store.addMessage(sessionId, {
+              type: 'assistant',
+              content: msg.content,
+            });
+            activeSession.hasAssistantTextOutput = true;
+            this.emit('message', sessionId, message);
+          }
+          break;
+        }
+
+        if (!Array.isArray(msg.content)) break;
+
+        for (const block of msg.content) {
+          if (typeof block === 'string') continue;
+          const b = block as unknown as Record<string, unknown>;
+          const blockType = String(b.type ?? '');
+
+          if (blockType === 'thinking' && typeof b.thinking === 'string' && b.thinking.trim()) {
+            if (!activeSession.hasAssistantThinkingOutput) {
+              const message = this.store.addMessage(sessionId, {
+                type: 'assistant',
+                content: b.thinking,
+                metadata: { isThinking: true },
+              });
+              activeSession.hasAssistantThinkingOutput = true;
+              this.emit('message', sessionId, message);
+            }
+          }
+
+          // text blocks handled via streaming — skip if already streamed
+          if (blockType === 'text' && typeof b.text === 'string' && b.text.trim()) {
+            if (!activeSession.hasAssistantTextOutput) {
+              const message = this.store.addMessage(sessionId, {
+                type: 'assistant',
+                content: b.text,
+              });
+              activeSession.hasAssistantTextOutput = true;
+              this.emit('message', sessionId, message);
+            }
+          }
+        }
+        break;
+      }
+
+      case 'tool_use': {
+        const message = this.store.addMessage(sessionId, {
+          type: 'tool_use',
+          content: `Using tool: ${event.toolName}`,
+          metadata: {
+            toolName: event.toolName,
+            toolInput: this.sanitizeToolPayload(event.toolInput) as Record<string, unknown>,
+            toolUseId: event.toolUseId,
+          },
+        });
+        this.emit('message', sessionId, message);
+        break;
+      }
+
+      case 'tool_result': {
+        // Tool results already emitted via onToolResult callback in the query params.
+        // This event is for logging/tracking purposes.
+        break;
+      }
+
+      case 'usage': {
+        coworkLog('INFO', 'tokenUsage', 'Turn token usage', {
+          sessionId,
+          inputTokens: event.inputTokens,
+          outputTokens: event.outputTokens,
+          cacheReadInputTokens: event.cacheReadTokens,
+          cacheCreationInputTokens: event.cacheCreationTokens,
+        });
+        break;
+      }
+
+      case 'turn_start': {
+        coworkLog('INFO', 'queryEngine', `Turn ${event.turnCount} starting`, { sessionId });
+        // Reset streaming state for new turn
+        activeSession.hasAssistantTextOutput = false;
+        activeSession.hasAssistantThinkingOutput = false;
+        activeSession.currentStreamingMessageId = null;
+        activeSession.currentStreamingContent = '';
+        activeSession.currentStreamingThinkingMessageId = null;
+        activeSession.currentStreamingThinking = '';
+        activeSession.currentStreamingBlockType = null;
+        break;
+      }
+    }
+  }
+
+  /** @deprecated — kept for backward compatibility with sandbox mode */
   private handleClaudeEvent(sessionId: string, event: unknown): void {
     const activeSession = this.activeSessions.get(sessionId);
     if (!activeSession) return;

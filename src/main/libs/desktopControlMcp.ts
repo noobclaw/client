@@ -11,9 +11,12 @@
 
 import { spawnSync, execSync } from 'child_process';
 import { coworkLog } from './coworkLogger';
+import { z } from 'zod';
+import { nativeScreenshot, nativeMouseMove, nativeClipboardVerify, hasNativeDesktop } from './nativeDesktopMac';
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
+const HAS_NATIVE = IS_MAC && hasNativeDesktop();
 
 // ── Blocked system key combos (from Claude Code keyBlocklist.ts) ──
 
@@ -101,6 +104,21 @@ function screenshot(savePath: string = 'screenshot.png'): string {
     );
   }
   if (IS_MAC) {
+    // Try native SCContentFilter first (faster, ~50ms vs ~500ms for screencapture CLI)
+    if (HAS_NATIVE) {
+      try {
+        const buf = nativeScreenshot(0.75);
+        if (buf) {
+          const fs = require('fs');
+          fs.writeFileSync(savePath, buf);
+          coworkLog('INFO', 'screenshot', `Native screenshot saved: ${savePath} (${buf.length} bytes)`);
+          return `Saved ${savePath} (native)`;
+        }
+      } catch (e) {
+        coworkLog('WARN', 'screenshot', `Native screenshot failed, falling back to screencapture: ${e}`);
+      }
+    }
+    // Fallback to screencapture CLI
     try {
       execSync(`screencapture -x "${savePath}"`, { timeout: 10000 });
       return `Saved ${savePath}`;
@@ -399,128 +417,138 @@ function waitSeconds(seconds: number): string {
   return `Waited ${seconds}s`;
 }
 
-// ── Build MCP tools array for SDK registration ──
+// ── Build tool definitions for the new direct SDK integration ──
 
-export function buildDesktopControlTools(sdkTool: Function, z: any): any[] {
+import { buildTool, type ToolDefinition } from './toolSystem';
+
+export function buildDesktopControlToolDefs(): ToolDefinition[] {
   return [
-    sdkTool(
-      'desktop_screenshot',
-      'Take a screenshot of the entire screen. Returns the file path. Use this to see what is currently on screen before taking actions.',
-      { save_path: z.string().optional() },
-      async (args: { save_path?: string }) => {
+    buildTool({
+      name: 'desktop_screenshot',
+      description: 'Take a screenshot of the entire screen. Returns the file path. Use this to see what is currently on screen before taking actions.',
+      inputSchema: z.object({ save_path: z.string().optional() }),
+      call: async (args) => {
         const result = screenshot(args.save_path || 'screenshot.png');
         coworkLog('INFO', 'desktop_screenshot', result);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_zoom',
-      'Crop a rectangular region from the last screenshot for closer inspection. Useful when text is too small to read.',
-      { x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number(), save_path: z.string().optional() },
-      async (args: { x0: number; y0: number; x1: number; y1: number; save_path?: string }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+    buildTool({
+      name: 'desktop_zoom',
+      description: 'Crop a rectangular region from the last screenshot for closer inspection. Useful when text is too small to read.',
+      inputSchema: z.object({ x0: z.number(), y0: z.number(), x1: z.number(), y1: z.number(), save_path: z.string().optional() }),
+      call: async (args) => {
         const result = zoom(args.x0, args.y0, args.x1, args.y1, args.save_path || 'zoomed.png');
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_click',
-      'Click at screen coordinates. Supports left/right/middle button and single/double/triple click.',
-      { x: z.number(), y: z.number(), button: z.enum(['left', 'right', 'middle']).optional(), clicks: z.number().min(1).max(3).optional() },
-      async (args: { x: number; y: number; button?: 'left' | 'right' | 'middle'; clicks?: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+    buildTool({
+      name: 'desktop_click',
+      description: 'Click at screen coordinates. Supports left/right/middle button and single/double/triple click.',
+      inputSchema: z.object({ x: z.number(), y: z.number(), button: z.enum(['left', 'right', 'middle']).optional(), clicks: z.number().min(1).max(3).optional() }),
+      call: async (args) => {
         const result = click(args.x, args.y, args.button || 'left', args.clicks || 1);
         coworkLog('INFO', 'desktop_click', result);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_mouse_move',
-      'Move the mouse cursor to coordinates without clicking. Useful for hovering to reveal tooltips or menus.',
-      { x: z.number(), y: z.number() },
-      async (args: { x: number; y: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_mouse_move',
+      description: 'Move the mouse cursor to coordinates without clicking. Useful for hovering to reveal tooltips or menus.',
+      inputSchema: z.object({ x: z.number(), y: z.number() }),
+      call: async (args) => {
         const result = mouseMove(args.x, args.y);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_drag',
-      'Click and drag from one point to another. Used for moving windows, sliders, drag-and-drop.',
-      { x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() },
-      async (args: { x1: number; y1: number; x2: number; y2: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_drag',
+      description: 'Click and drag from one point to another. Used for moving windows, sliders, drag-and-drop.',
+      inputSchema: z.object({ x1: z.number(), y1: z.number(), x2: z.number(), y2: z.number() }),
+      call: async (args) => {
         const result = drag(args.x1, args.y1, args.x2, args.y2);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_type',
-      'Type text at the current cursor position. The text is typed character by character as keyboard input.',
-      { text: z.string().min(1) },
-      async (args: { text: string }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_type',
+      description: 'Type text at the current cursor position. The text is typed character by character as keyboard input.',
+      inputSchema: z.object({ text: z.string().min(1) }),
+      call: async (args) => {
         const result = typeText(args.text);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_key',
-      'Press a keyboard key or key combination. Examples: "enter", "tab", "escape", "f5", "ctrl+c" (Windows), "cmd+c" (macOS). Can repeat multiple times.',
-      { key: z.string().min(1), repeat: z.number().min(1).max(100).optional() },
-      async (args: { key: string; repeat?: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_key',
+      description: 'Press a keyboard key or key combination. Examples: "enter", "tab", "escape", "f5", "ctrl+c" (Windows), "cmd+c" (macOS). Can repeat multiple times.',
+      inputSchema: z.object({ key: z.string().min(1), repeat: z.number().min(1).max(100).optional() }),
+      call: async (args) => {
         const result = pressKey(args.key, args.repeat || 1);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_scroll',
-      'Scroll at a specific screen position. Direction can be "up" or "down". Amount is number of scroll units (default 3).',
-      { x: z.number(), y: z.number(), direction: z.enum(['up', 'down']), amount: z.number().min(1).max(20).optional() },
-      async (args: { x: number; y: number; direction: 'up' | 'down'; amount?: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_scroll',
+      description: 'Scroll at a specific screen position. Direction can be "up" or "down". Amount is number of scroll units (default 3).',
+      inputSchema: z.object({ x: z.number(), y: z.number(), direction: z.enum(['up', 'down']), amount: z.number().min(1).max(20).optional() }),
+      call: async (args) => {
         const result = scroll(args.x, args.y, args.direction, args.amount || 3);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_cursor_position',
-      'Get the current cursor position on screen.',
-      {},
-      async () => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_cursor_position',
+      description: 'Get the current cursor position on screen.',
+      inputSchema: z.object({}),
+      call: async () => {
         const result = getCursorPosition();
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_read_clipboard',
-      'Read the current text content of the system clipboard.',
-      {},
-      async () => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+    buildTool({
+      name: 'desktop_read_clipboard',
+      description: 'Read the current text content of the system clipboard.',
+      inputSchema: z.object({}),
+      call: async () => {
         const result = readClipboard();
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_write_clipboard',
-      'Write text to the system clipboard.',
-      { text: z.string() },
-      async (args: { text: string }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+    buildTool({
+      name: 'desktop_write_clipboard',
+      description: 'Write text to the system clipboard.',
+      inputSchema: z.object({ text: z.string() }),
+      call: async (args) => {
         const result = writeClipboard(args.text);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_open_app',
-      'Open or bring to front a desktop application by name.',
-      { app_name: z.string().min(1) },
-      async (args: { app_name: string }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_open_app',
+      description: 'Open or bring to front a desktop application by name.',
+      inputSchema: z.object({ app_name: z.string().min(1) }),
+      call: async (args) => {
         const result = openApp(args.app_name);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
-    sdkTool(
-      'desktop_wait',
-      'Wait for a specified number of seconds. Use when waiting for an app to load or animation to complete.',
-      { seconds: z.number().min(0).max(30) },
-      async (args: { seconds: number }) => {
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
+    buildTool({
+      name: 'desktop_wait',
+      description: 'Wait for a specified number of seconds. Use when waiting for an app to load or animation to complete.',
+      inputSchema: z.object({ seconds: z.number().min(0).max(30) }),
+      call: async (args) => {
         const result = waitSeconds(args.seconds);
-        return { content: [{ type: 'text', text: result }] } as any;
-      }
-    ),
+        return { content: [{ type: 'text', text: result }] };
+      },
+    }),
   ];
 }
