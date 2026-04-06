@@ -453,3 +453,85 @@ function simpleHash(str: string): string {
   }
   return hash.toString(36);
 }
+
+// ── QMD Format Export/Import ──
+// Reference: OpenClaw src/memory-host-sdk/engine-qmd.ts
+// QMD = Quick Memory Document, a compact text format for memory interchange
+
+export function exportToQMD(): string {
+  const lines: string[] = ['# NoobClaw Memory Export (QMD Format)', `# Exported: ${new Date().toISOString()}`, ''];
+
+  const allMemories = queryAll(`SELECT * FROM memories ORDER BY type, score DESC`).map(objToRecord);
+
+  let currentType = '';
+  for (const mem of allMemories) {
+    if (mem.type !== currentType) {
+      currentType = mem.type;
+      lines.push(`## ${currentType.toUpperCase()}`, '');
+    }
+    lines.push(`- [${mem.score.toFixed(2)}] ${mem.content}`);
+    if (mem.tags.filter((t: string) => !t.startsWith('qh:')).length > 0) {
+      lines.push(`  tags: ${mem.tags.filter((t: string) => !t.startsWith('qh:')).join(', ')}`);
+    }
+    lines.push('');
+  }
+
+  const patterns = getBehavioralPatterns(0);
+  if (patterns.length > 0) {
+    lines.push('## PATTERNS', '');
+    for (const p of patterns) {
+      lines.push(`- [${p.strength.toFixed(2)}] ${p.description}`, '');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+export function importFromQMD(qmd: string): number {
+  let imported = 0;
+  let currentType: MemoryType = 'semantic';
+
+  for (const line of qmd.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('## SEMANTIC')) { currentType = 'semantic'; continue; }
+    if (trimmed.startsWith('## EPISODIC')) { currentType = 'episodic'; continue; }
+    if (trimmed.startsWith('## PROCEDURAL')) { currentType = 'procedural'; continue; }
+    if (trimmed.startsWith('## BEHAVIORAL')) { currentType = 'behavioral'; continue; }
+
+    const match = trimmed.match(/^- \[(\d+\.\d+)\] (.+)$/);
+    if (match) {
+      storeMemory({ type: currentType, content: match[2], score: parseFloat(match[1]) });
+      imported++;
+    }
+  }
+
+  coworkLog('INFO', 'memoryStore', `QMD import: ${imported} memories`);
+  return imported;
+}
+
+// ── Memory Runtime Interface ──
+// Reference: OpenClaw src/memory-host-sdk/runtime.ts
+
+export interface MemoryRuntime {
+  store(params: { type: MemoryType; content: string; score?: number; tags?: string[] }): MemoryRecord;
+  recall(query: string, limit?: number): Promise<MemoryRecord[]>;
+  search(type?: MemoryType, limit?: number): MemoryRecord[];
+  update(id: string, updates: Partial<Pick<MemoryRecord, 'content' | 'score' | 'tags'>>): boolean;
+  remove(id: string): boolean;
+  stats(): MemoryStats;
+  exportQMD(): string;
+  importQMD(qmd: string): number;
+}
+
+export function createMemoryRuntime(): MemoryRuntime {
+  return {
+    store: storeMemory,
+    recall: recallMemories,
+    search: (type, limit) => type ? getMemoriesByType(type, limit) : queryAll('SELECT * FROM memories ORDER BY score DESC LIMIT ?', [limit || 50]).map(objToRecord),
+    update: updateMemory,
+    remove: deleteMemory,
+    stats: getMemoryStats,
+    exportQMD: exportToQMD,
+    importQMD: importFromQMD,
+  };
+}

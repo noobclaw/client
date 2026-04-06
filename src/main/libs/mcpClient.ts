@@ -244,3 +244,151 @@ export async function disconnectAllMcpServers(): Promise<void> {
 export function getConnectedServers(): string[] {
   return Array.from(activeConnections.keys());
 }
+
+// ── MCP Resources API (from OpenClaw src/mcp/channel-tools.ts) ──
+
+export interface McpResource {
+  uri: string;
+  name: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/**
+ * List resources from a connected MCP server.
+ */
+export async function listMcpResources(serverName: string): Promise<McpResource[]> {
+  const conn = activeConnections.get(serverName);
+  if (!conn) return [];
+
+  try {
+    const result = await conn.client.listResources();
+    return (result.resources || []).map((r: any) => ({
+      uri: r.uri,
+      name: r.name || r.uri,
+      description: r.description,
+      mimeType: r.mimeType,
+    }));
+  } catch (e) {
+    coworkLog('WARN', 'mcpClient', `listResources failed for "${serverName}": ${e}`);
+    return [];
+  }
+}
+
+/**
+ * Read a resource from a connected MCP server.
+ */
+export async function readMcpResource(serverName: string, uri: string): Promise<string | null> {
+  const conn = activeConnections.get(serverName);
+  if (!conn) return null;
+
+  try {
+    const result = await conn.client.readResource({ uri });
+    const contents = result.contents || [];
+    return contents.map((c: any) => c.text || '').join('\n');
+  } catch (e) {
+    coworkLog('WARN', 'mcpClient', `readResource failed for "${serverName}/${uri}": ${e}`);
+    return null;
+  }
+}
+
+// ── MCP Server (expose local tools as MCP server for other clients) ──
+// Reference: OpenClaw src/mcp/plugin-tools-serve.ts
+
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+let localServer: Server | null = null;
+
+/**
+ * Start a local MCP server that exposes NoobClaw tools to external MCP clients.
+ * Useful for integrating with other AI tools that support MCP.
+ */
+export function startLocalMcpServer(
+  tools: ToolDefinition[],
+  options?: { name?: string; version?: string }
+): Server {
+  if (localServer) return localServer;
+
+  localServer = new Server({
+    name: options?.name || 'noobclaw',
+    version: options?.version || '1.0.0',
+  }, {
+    capabilities: {
+      tools: {},
+    },
+  });
+
+  // Register tool list handler
+  localServer.setRequestHandler({ method: 'tools/list' } as any, async () => {
+    return {
+      tools: tools.map(t => ({
+        name: t.name,
+        description: t.description.slice(0, 2048),
+        inputSchema: z.toJSONSchema ? (z as any).toJSONSchema(t.inputSchema) : { type: 'object' },
+      })),
+    };
+  });
+
+  // Register tool call handler
+  localServer.setRequestHandler({ method: 'tools/call' } as any, async (request: any) => {
+    const toolName = request.params?.name;
+    const toolArgs = request.params?.arguments || {};
+    const tool = tools.find(t => t.name === toolName);
+
+    if (!tool) {
+      return { content: [{ type: 'text', text: `Tool "${toolName}" not found` }], isError: true };
+    }
+
+    try {
+      const input = tool.inputSchema.parse(toolArgs);
+      const result = await tool.call(input, { sessionId: 'mcp-external', cwd: process.cwd() });
+      return {
+        content: result.content.map(c => ({ type: 'text', text: c.text })),
+        isError: result.isError,
+      };
+    } catch (e) {
+      return {
+        content: [{ type: 'text', text: `Error: ${e instanceof Error ? e.message : String(e)}` }],
+        isError: true,
+      };
+    }
+  });
+
+  coworkLog('INFO', 'mcpClient', `Local MCP server started: ${tools.length} tools exposed`);
+  return localServer;
+}
+
+export function stopLocalMcpServer(): void {
+  if (localServer) {
+    localServer.close().catch(() => {});
+    localServer = null;
+    coworkLog('INFO', 'mcpClient', 'Local MCP server stopped');
+  }
+}
+
+// ── Connection health check ──
+
+export async function checkConnectionHealth(serverName: string): Promise<boolean> {
+  const conn = activeConnections.get(serverName);
+  if (!conn) return false;
+  try {
+    await conn.client.listTools();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function reconnectIfNeeded(serverName: string): Promise<boolean> {
+  const healthy = await checkConnectionHealth(serverName);
+  if (healthy) return true;
+
+  // Connection lost — try to reconnect
+  const conn = activeConnections.get(serverName);
+  if (!conn) return false;
+
+  coworkLog('WARN', 'mcpClient', `"${serverName}" unhealthy, attempting reconnect`);
+  await disconnectMcpServer(serverName);
+  // Caller needs to re-call connectMcpServer with original config
+  return false;
+}
