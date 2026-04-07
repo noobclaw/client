@@ -130,13 +130,11 @@
   },
   "electronVersion": "40.2.1",
   "asarUnpack": [
-    "node_modules/@anthropic-ai/claude-agent-sdk/**",
     "node_modules/@img/**",
     "node_modules/sql.js/dist/**",
     "node_modules/node-nim/**",
-    "node_modules/npm/**",
     "node_modules/better-sqlite3/**"
   ],
   "asar": true,
-  "compression": "normal"
+  "compression": "store"
 }
