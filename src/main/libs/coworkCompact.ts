@@ -410,5 +410,83 @@ export async function multiLayerCompact(options: MultiLayerCompactOptions): Prom
   return { summary: null, layer: 'none' };
 }
 
+// ── Layer 0: Time-based Microcompact ────────────────────────────────────
+// Reference: Claude Code src/services/compact/timeBasedMCConfig.ts
+// Triggers when gap since last assistant message > threshold (cache expired)
+
+const TIME_BASED_MC_GAP_MINUTES = 60; // 1 hour (matches prompt cache TTL)
+const IMAGE_MAX_TOKEN_SIZE = 2000;     // Flat cap per image
+
+/**
+ * Check if time-based micro-compact should trigger.
+ * Returns true if the gap since last assistant message exceeds the threshold.
+ */
+export function shouldTimeBasedMicrocompact(
+  messages: Array<{ type?: string; timestamp?: number }>,
+  lastAssistantTimestamp?: number
+): boolean {
+  if (!lastAssistantTimestamp) {
+    // Find the last assistant message timestamp
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].type === 'assistant' && messages[i].timestamp) {
+        lastAssistantTimestamp = messages[i].timestamp;
+        break;
+      }
+    }
+  }
+  if (!lastAssistantTimestamp) return false;
+
+  const gapMinutes = (Date.now() - lastAssistantTimestamp) / 60_000;
+  return gapMinutes >= TIME_BASED_MC_GAP_MINUTES;
+}
+
+/**
+ * Apply time-based micro-compact: clears old tool results when cache is cold.
+ * More aggressive than regular micro-compact since the full context must be resent anyway.
+ */
+export function timeBasedMicrocompactMessages(
+  messages: StoreMessage[],
+  keepRecent: number = 3 // Keep fewer than regular MC since cache is cold
+): { messages: StoreMessage[]; clearedCount: number } {
+  // Build toolUseId → toolName map
+  const toolNameMap = new Map<string, string>();
+  for (const msg of messages) {
+    if (msg.type === 'tool_use' && msg.metadata?.toolName && msg.metadata?.toolUseId) {
+      toolNameMap.set(msg.metadata.toolUseId, msg.metadata.toolName);
+    }
+  }
+
+  // Find clearable tool_result indices
+  const toolResultIndices: number[] = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    if (msg.type !== 'tool_result') continue;
+    if (msg.content === TOOL_RESULT_CLEARED) continue;
+    const toolUseId = msg.metadata?.toolUseId;
+    if (!toolUseId) continue;
+    const toolName = toolNameMap.get(toolUseId) || '';
+    if (COMPACTABLE_TOOLS.has(toolName)) {
+      toolResultIndices.push(i);
+    }
+  }
+
+  if (toolResultIndices.length <= keepRecent) {
+    return { messages, clearedCount: 0 };
+  }
+
+  const toClear = new Set(toolResultIndices.slice(0, -keepRecent));
+  let clearedCount = 0;
+  const result = messages.map((msg, i) => {
+    if (toClear.has(i)) {
+      clearedCount++;
+      return { ...msg, content: TOOL_RESULT_CLEARED };
+    }
+    return msg;
+  });
+
+  coworkLog('INFO', 'timeBasedMicrocompact', `Cleared ${clearedCount} old tool results (time-based, kept ${keepRecent} recent)`);
+  return { messages: result, clearedCount };
+}
+
 // Re-exports for convenience
 export { estimateTokens, estimateMessagesTokens, POST_COMPACT_USER_MESSAGE };

@@ -37,6 +37,7 @@ import { buildLSPTools } from './lspClient';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
+import { checkAutoDreamTrigger } from './dreamingEngine';
 import { runBootstrap } from './bootstrap';
 import { killScope } from './processRegistry';
 import { partiallySanitizeUnicode } from './coworkSanitization';
@@ -2597,6 +2598,17 @@ export class CoworkRunner extends EventEmitter {
         '- Git history, recent changes — `git log` / `git blame` are authoritative.',
         '- Debugging solutions or fix recipes — the fix is in the code; the commit message has the context.',
         '- Ephemeral task details or in-progress work — use tasks instead.',
+        '',
+        '### Memory Types (4-tier taxonomy)',
+        '- **user**: Facts about the user (role, goals, preferences). Score 0.9+. Always private.',
+        '- **feedback**: Corrections or confirmations of approach. Include WHY + HOW TO APPLY.',
+        '- **project**: Ongoing work, decisions, deadlines. Convert relative dates to absolute. Time-sensitive.',
+        '- **reference**: Pointers to external systems (URLs, project boards, dashboards).',
+        '',
+        '### Before Recommending from Memory',
+        '- If memory names a file path: check the file exists.',
+        '- If memory names a function or flag: grep for it.',
+        '- "Memory says X exists" is NOT the same as "X exists now."',
       );
     }
     const langMap: Record<string, string> = {
@@ -2706,9 +2718,11 @@ export class CoworkRunner extends EventEmitter {
     const outputEfficiencyPrompt = [
       '## Output Efficiency',
       'IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.',
-      '- Keep your text output brief and direct. Lead with the answer or action, not the reasoning.',
-      '- Avoid unnecessary preamble, qualifiers, disclaimers, or explanations unless the user asks.',
-      '- If you are able to complete the task in a single action, do not explain what you are going to do — just do it.',
+      '- Keep text between tool calls to ≤25 words. Keep final responses to ≤100 words unless the task requires more detail.',
+      '- Lead with the answer or action, not the reasoning. Skip preamble, qualifiers, disclaimers.',
+      '- If you can complete the task in a single action, just do it — do not explain first.',
+      '- Never restate what the user said. Never start with "Sure", "Of course", "Absolutely".',
+      '- Prefer showing code/results over describing what you will do.',
     ].join('\n');
 
     const toneStylePrompt = [
@@ -4421,6 +4435,8 @@ export class CoworkRunner extends EventEmitter {
           coworkLog('ERROR', 'runClaudeCodeLocal', `Auto-compact background error: ${e}`)
         );
         this.emit('complete', sessionId, activeSession.claudeSessionId);
+        // Auto Dream: check if background memory consolidation should trigger
+        checkAutoDreamTrigger();
       }
     } catch (error) {
       if (this.stoppedSessions.has(sessionId)) {

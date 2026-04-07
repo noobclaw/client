@@ -18,7 +18,13 @@ import { embed, cosineSimilarity, isEmbeddingAvailable, type EmbeddingResult } f
 
 // ── Types ──
 
-export type MemoryType = 'semantic' | 'episodic' | 'procedural' | 'behavioral';
+// 4-tier memory taxonomy (from Claude Code src/memdir/memoryTypes.ts):
+// user: role/goals/preferences (always private)
+// feedback: corrections + confirmations (private or team)
+// project: ongoing work/goals/decisions (time-sensitive)
+// reference: pointers to external systems
+// Plus original types for backward compat:
+export type MemoryType = 'semantic' | 'episodic' | 'procedural' | 'behavioral' | 'user' | 'feedback' | 'project' | 'reference';
 export type StorageMode = 'inline' | 'separate' | 'both';
 
 export interface MemoryRecord {
@@ -435,10 +441,10 @@ export function getBehavioralPatterns(minStrength: number = 0.5): BehavioralPatt
 // ── Stats ──
 
 export function getMemoryStats(): MemoryStats {
-  if (!db) return { total: 0, byType: { semantic: 0, episodic: 0, procedural: 0, behavioral: 0 }, averageScore: 0, averageRecalls: 0, oldestMemory: null, newestMemory: null };
+  if (!db) return { total: 0, byType: { semantic: 0, episodic: 0, procedural: 0, behavioral: 0, user: 0, feedback: 0, project: 0, reference: 0 }, averageScore: 0, averageRecalls: 0, oldestMemory: null, newestMemory: null };
 
   const countRows = queryAll(`SELECT type, COUNT(*) as cnt FROM memories GROUP BY type`);
-  const byType: Record<MemoryType, number> = { semantic: 0, episodic: 0, procedural: 0, behavioral: 0 };
+  const byType: Record<MemoryType, number> = { semantic: 0, episodic: 0, procedural: 0, behavioral: 0, user: 0, feedback: 0, project: 0, reference: 0 };
   let total = 0;
   for (const row of countRows) {
     byType[row.type as MemoryType] = row.cnt as number;

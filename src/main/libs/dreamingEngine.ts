@@ -392,3 +392,47 @@ function cosineSimilarity(a: string, b: string): number {
   const denominator = Math.sqrt(wordsA.size) * Math.sqrt(wordsB.size);
   return denominator > 0 ? intersection / denominator : 0;
 }
+
+// ── Auto Dream: background memory consolidation ──
+// Reference: Claude Code src/services/autoDream/autoDream.ts
+// Triggers: >24h since last consolidation AND >5 new sessions
+
+let lastConsolidatedAt = 0;
+let sessionCountSinceConsolidate = 0;
+const AUTO_DREAM_MIN_HOURS = 24;
+const AUTO_DREAM_MIN_SESSIONS = 5;
+
+/**
+ * Call after each session completes to check if auto-consolidation should run.
+ */
+export function checkAutoDreamTrigger(): boolean {
+  sessionCountSinceConsolidate++;
+
+  // Time gate
+  const hoursSince = (Date.now() - lastConsolidatedAt) / 3_600_000;
+  if (hoursSince < AUTO_DREAM_MIN_HOURS) return false;
+
+  // Session gate
+  if (sessionCountSinceConsolidate < AUTO_DREAM_MIN_SESSIONS) return false;
+
+  // Trigger!
+  coworkLog('INFO', 'dreamingEngine', `Auto Dream triggered: ${hoursSince.toFixed(1)}h since last, ${sessionCountSinceConsolidate} sessions`);
+
+  // Run Light Dreaming in background
+  runLightDreaming().then(result => {
+    lastConsolidatedAt = Date.now();
+    sessionCountSinceConsolidate = 0;
+    coworkLog('INFO', 'dreamingEngine', `Auto Dream complete: ${result.memoriesProcessed} processed, ${result.memoriesMerged} merged`);
+  }).catch(e => {
+    coworkLog('ERROR', 'dreamingEngine', `Auto Dream failed: ${e}`);
+  });
+
+  return true;
+}
+
+/**
+ * Set the last consolidation timestamp (e.g., loaded from persistence).
+ */
+export function setLastConsolidatedAt(timestamp: number): void {
+  lastConsolidatedAt = timestamp;
+}

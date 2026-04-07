@@ -191,10 +191,20 @@ export async function createMessageStream(params: CreateMessageParams) {
     }
 
     if (thinkingBudget && thinkingBudget > 0) {
-      requestParams.thinking = {
-        type: 'enabled',
-        budget_tokens: thinkingBudget,
-      };
+      // Adaptive thinking for newer models, budget-based for older
+      // Reference: Claude Code src/services/api/claude.ts lines 1601-1630
+      const modelLower = model.toLowerCase();
+      const supportsAdaptive = modelLower.includes('opus-4-6') || modelLower.includes('sonnet-4-6')
+        || modelLower.includes('opus-4.6') || modelLower.includes('sonnet-4.6');
+
+      if (supportsAdaptive) {
+        requestParams.thinking = { type: 'adaptive' };
+      } else {
+        requestParams.thinking = {
+          type: 'enabled',
+          budget_tokens: Math.min(thinkingBudget, maxTokens - 1),
+        };
+      }
     }
 
     extraHeaders['anthropic-beta'] = 'prompt-caching-2024-07-31';
