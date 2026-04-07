@@ -59,6 +59,12 @@ export function getAnthropicClient(config: ApiConfig): Anthropic {
     },
   };
 
+  // For OpenAI-compat proxy: skip model validation (proxy only handles /v1/messages,
+  // returns 404 on /v1/models which SDK uses for validation)
+  if (config.isOpenAICompat) {
+    (options as any).dangerouslyAllowBrowser = true; // Disables some validation
+  }
+
   if (config.baseUrl) {
     options.baseURL = config.baseUrl;
   }
@@ -236,8 +242,20 @@ export async function createMessage(params: Omit<CreateMessageParams, 'signal'> 
     requestParams.tools = tools;
   }
 
-  const response = await client.messages.create(requestParams, { signal });
-  return response;
+  try {
+    const response = await client.messages.create(requestParams, { signal });
+    return response;
+  } catch (e) {
+    // Retry once on 404 — happens when OpenAI-compat proxy hasn't configured
+    // the upstream model yet (first request after provider switch)
+    if (e instanceof Error && e.message.includes('404')) {
+      coworkLog('WARN', 'createMessage', '404 on first attempt, retrying after 1s (proxy warm-up)');
+      await new Promise(r => setTimeout(r, 1000));
+      const response = await client.messages.create(requestParams, { signal });
+      return response;
+    }
+    throw e;
+  }
 }
 
 // ── Reset ──

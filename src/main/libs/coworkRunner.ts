@@ -4230,6 +4230,9 @@ export class CoworkRunner extends EventEmitter {
       allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs);
 
       // Context engine: apply deferred tool loading if too many tools
+      // Set user message for intent-based tool selection (reduces token usage)
+      const { setLastUserMessage } = await import('./contextEngine');
+      setLastUserMessage(prompt);
       const deferredToolSet = buildDeferredToolSet(allTools);
       const contextToolDefs = buildContextTools(deferredToolSet);
       if (contextToolDefs.length > 0) {

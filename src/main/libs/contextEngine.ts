@@ -37,6 +37,7 @@ export interface ContextEngineConfig {
   deferThreshold: number;         // Tools > this count triggers deferred loading (default: 30)
   topToolCount: number;           // Number of tools to load fully (default: 20)
   maxToolDescriptionChars: number;// Truncate individual tool descriptions (default: 2048)
+  lastUserMessage?: string;       // Used for intent-based tool selection
 }
 
 const DEFAULT_CONFIG: ContextEngineConfig = {
@@ -46,8 +47,9 @@ const DEFAULT_CONFIG: ContextEngineConfig = {
   messageRatio: 0.50,
   outputRatio: 0.10,
   deferThreshold: 30,
-  topToolCount: 20,
+  topToolCount: 10,  // Reduced from 20 — intent detection adds relevant tools dynamically
   maxToolDescriptionChars: 2048,
+  lastUserMessage: '',
 };
 
 // ── State ──
@@ -140,20 +142,23 @@ export function buildDeferredToolSet(tools: ToolDefinition[]): DeferredToolSet {
     return usageB - usageA;
   });
 
-  // Always-load tools (core tools that should never be deferred)
+  // Minimal always-load set (just core file tools + tool_search)
+  // Other tools loaded based on message intent detection
   const alwaysLoad = new Set([
     'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-    'spawn_subagent', 'delegate_to_agent', 'tool_search',
-    'browser_navigate', 'browser_screenshot', 'browser_observe',
-    'desktop_screenshot', 'desktop_click', 'desktop_type',
-    'memory_recall', 'memory_store',
+    'tool_search',
   ]);
+
+  // Intent-based tool loading: detect what the user wants from their message
+  // and only load relevant tool categories
+  const intentTools = detectIntentTools(config.lastUserMessage || '');
+  const intentSet = new Set(intentTools);
 
   const fullToolDefs: ToolDefinition[] = [];
   const deferredToolDefs: ToolDefinition[] = [];
 
   for (const tool of sorted) {
-    if (alwaysLoad.has(tool.name) || fullToolDefs.length < config.topToolCount) {
+    if (alwaysLoad.has(tool.name) || intentSet.has(tool.name) || fullToolDefs.length < config.topToolCount) {
       fullToolDefs.push(tool);
     } else {
       deferredToolDefs.push(tool);
@@ -229,6 +234,68 @@ export function searchTools(query: string, tools: ToolDefinition[], maxResults: 
       inputSchema: schema.input_schema as Record<string, unknown>,
     };
   });
+}
+
+// ── Intent-based tool selection ──
+
+/**
+ * Detect which tool categories are relevant based on user message.
+ * Returns tool names to add to the always-load set.
+ * This dramatically reduces token usage: only send tools the user needs.
+ */
+function detectIntentTools(message: string): string[] {
+  if (!message) return [];
+  const lower = message.toLowerCase();
+  const tools: string[] = [];
+
+  // Browser intent
+  if (/\b(browser|网页|打开.*网|browse|url|website|chrome|navigate)\b/i.test(lower)) {
+    tools.push('browser_navigate', 'browser_screenshot', 'browser_observe', 'browser_click', 'browser_type');
+  }
+
+  // Desktop control intent
+  if (/\b(desktop|桌面|屏幕|screenshot|点击|click|打开.*应用|open.*app|鼠标|mouse)\b/i.test(lower)) {
+    tools.push('desktop_screenshot', 'desktop_click', 'desktop_type', 'desktop_open_app');
+  }
+
+  // Memory intent
+  if (/\b(remember|记住|recall|记忆|memory|之前|以前|上次)\b/i.test(lower)) {
+    tools.push('memory_recall', 'memory_store');
+  }
+
+  // Sub-agent intent
+  if (/\b(parallel|并行|agent|delegate|拆分|分配|子任务)\b/i.test(lower)) {
+    tools.push('spawn_subagent', 'delegate_to_agent', 'get_task_result');
+  }
+
+  // Process intent
+  if (/\b(server|dev|start|run|npm|node|process|后台|进程)\b/i.test(lower)) {
+    tools.push('process_spawn', 'process_list', 'process_poll', 'process_kill');
+  }
+
+  // Search intent
+  if (/\b(search|搜索|google|find.*online|查找|web)\b/i.test(lower)) {
+    tools.push('web_search', 'web_fetch');
+  }
+
+  // Canvas intent
+  if (/\b(canvas|画布|html|render|interactive|表单|form)\b/i.test(lower)) {
+    tools.push('canvas_render', 'canvas_read_action');
+  }
+
+  // Voice intent
+  if (/\b(voice|语音|speak|说|listen|听|tts|stt)\b/i.test(lower)) {
+    tools.push('voice_listen', 'voice_speak');
+  }
+
+  return tools;
+}
+
+/**
+ * Set the user message for intent detection before building tool set.
+ */
+export function setLastUserMessage(message: string): void {
+  config.lastUserMessage = message;
 }
 
 // ── Context Pressure Monitoring ──
