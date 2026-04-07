@@ -29,6 +29,11 @@ import { buildVoiceTools } from './voiceTools';
 import { buildGmailTools } from './gmailTools';
 import { buildExtraTools } from './extraTools';
 import { buildCoreFileTools } from './coreFileTools';
+import { detectEffortLevel, type EffortLevel } from './effortSystem';
+import { createBudgetTracker, type BudgetTracker } from './tokenBudget';
+import { getModelCapability } from './modelCapabilities';
+import { truncateToolResult } from './toolHooks';
+import { buildLSPTools } from './lspClient';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
@@ -4201,7 +4206,8 @@ export class CoworkRunner extends EventEmitter {
       const gmailToolDefs = buildGmailTools();
       const processToolDefs = buildProcessTools();
       const extraToolDefs = buildExtraTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs);
+      const lspToolDefs = buildLSPTools();
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs);
 
       // Context engine: apply deferred tool loading if too many tools
       const deferredToolSet = buildDeferredToolSet(allTools);
@@ -4335,6 +4341,11 @@ export class CoworkRunner extends EventEmitter {
       // Late-bind canUseTool for task tools (they reference it via closure)
       boundCanUseTool = canUseToolFn;
 
+      // Auto-detect effort level based on message complexity
+      const modelCaps = getModelCapability(queryApiConfig.model);
+      const effort = detectEffortLevel(prompt, allTools.length > 0);
+      coworkLog('INFO', 'runClaudeCodeLocal', `Effort: ${effort}, Model caps: thinking=${modelCaps.supportsThinking}, tools=${modelCaps.supportsTools}, vision=${modelCaps.supportsVision}`);
+
       // Run the query engine — our own agent loop
       const queryGen = queryLoopStreaming({
         prompt,
@@ -4343,6 +4354,7 @@ export class CoworkRunner extends EventEmitter {
         tools: allTools,                          // All tools for execution
         apiToolSchemas: deferredToolSet.allApiTools, // Only essential tools sent to API (saves tokens)
         apiConfig: queryApiConfig,
+        effort,
         cwd,
         sessionId,
         abortSignal: abortController.signal,

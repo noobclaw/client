@@ -74,6 +74,9 @@ export interface QueryParams {
   /** Pre-computed API tool schemas (subset — used for API calls, saves tokens) */
   apiToolSchemas?: AnthropicTool[];
 
+  /** Effort level for this query (auto-detected or user-specified) */
+  effort?: import('./effortSystem').EffortLevel;
+
   /** API configuration */
   apiConfig: ApiConfig;
 
