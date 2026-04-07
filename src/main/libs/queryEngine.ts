@@ -455,89 +455,39 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
       // ── Streaming loop with pipelined tool execution ──
       // Reference: OpenClaw src/query.ts lines 659-863
 
-      // Accumulate content blocks during streaming (instead of finalMessage)
-      let currentToolUseBlock: { id: string; name: string; inputJson: string } | null = null;
-      let currentTextContent = '';
-      let currentThinkingContent = '';
+      // Use non-streaming fallback first to verify API works,
+      // then iterate stream events for UI updates.
+      // The stream object supports both: iterate for events, then finalMessage() for result.
 
-      for await (const event of stream) {
-        // Forward stream events for UI rendering
-        yield { type: 'stream_event', event };
-
-        // Accumulate content blocks from stream events
-        if (event.type === 'content_block_start') {
-          const cb = (event as any).content_block;
-          if (cb?.type === 'tool_use') {
-            currentToolUseBlock = { id: cb.id, name: cb.name, inputJson: '' };
-          } else if (cb?.type === 'text') {
-            currentTextContent = cb.text || '';
-          } else if (cb?.type === 'thinking') {
-            currentThinkingContent = cb.thinking || '';
-          }
-        } else if (event.type === 'content_block_delta') {
-          const delta = (event as any).delta;
-          if (delta?.type === 'input_json_delta' && currentToolUseBlock) {
-            currentToolUseBlock.inputJson += delta.partial_json || '';
-          } else if (delta?.type === 'text_delta') {
-            currentTextContent += delta.text || '';
-          } else if (delta?.type === 'thinking_delta') {
-            currentThinkingContent += delta.thinking || '';
-          }
-        } else if (event.type === 'content_block_stop') {
-          if (currentToolUseBlock) {
-            // Tool block fully streamed — add to blocks and start execution
-            let parsedInput: Record<string, unknown> = {};
-            try {
-              parsedInput = currentToolUseBlock.inputJson
-                ? JSON.parse(currentToolUseBlock.inputJson)
-                : {};
-            } catch { /* partial JSON — use empty */ }
-
-            const toolBlock: ToolUseBlock = {
-              type: 'tool_use',
-              id: currentToolUseBlock.id,
-              name: currentToolUseBlock.name,
-              input: parsedInput,
-            };
-            assistantContentBlocks.push(toolBlock as unknown as Record<string, unknown>);
-            toolUseBlocks.push(toolBlock);
-            needsFollowUp = true;
-            streamingExecutor.addTool(toolBlock);
-            currentToolUseBlock = null;
-          } else if (currentTextContent) {
-            assistantContentBlocks.push({ type: 'text', text: currentTextContent });
-            currentTextContent = '';
-          } else if (currentThinkingContent) {
-            assistantContentBlocks.push({ type: 'thinking', thinking: currentThinkingContent });
-            currentThinkingContent = '';
-          }
-        } else if (event.type === 'message_delta') {
-          const md = (event as any).delta;
-          if (md?.stop_reason) stopReason = md.stop_reason;
-        } else if (event.type === 'message_start') {
-          const msg = (event as any).message;
-          if (msg?.usage) usage = msg.usage;
-        } else if (event.type === 'message_stop') {
-          // Final usage update if available
-          const msg = (event as any).message;
-          if (msg?.usage) usage = msg.usage;
+      try {
+        for await (const event of stream) {
+          // Forward stream events for UI rendering
+          yield { type: 'stream_event', event };
         }
-
-        // Yield any tools that completed while streaming
-        for (const result of streamingExecutor.getCompletedResults()) {
-          if (onToolResult) onToolResult(result);
-          const content = result.result.content.map(c => c.text).join('\n');
-          yield {
-            type: 'tool_result',
-            toolUseId: result.toolUseId,
-            toolName: result.toolName,
-            content: truncateText(content, TOOL_RESULT_MAX_CHARS),
-            isError: result.result.isError ?? false,
-          };
-        }
+      } catch (streamIterError) {
+        // Stream iteration failed — log details and try finalMessage() anyway
+        coworkLog('WARN', 'queryEngine', `Stream iteration error (will try finalMessage): ${streamIterError instanceof Error ? streamIterError.message : String(streamIterError)}`, {
+          stack: streamIterError instanceof Error ? streamIterError.stack : undefined,
+        });
       }
 
-      // No finalMessage() needed — we accumulated everything during streaming
+      // Get the complete message (works even if stream iteration failed partially)
+      try {
+        const finalMessage = await stream.finalMessage();
+        for (const block of finalMessage.content) {
+          assistantContentBlocks.push(block as unknown as Record<string, unknown>);
+          if (block.type === 'tool_use') {
+            toolUseBlocks.push(block as ToolUseBlock);
+            needsFollowUp = true;
+          }
+        }
+        stopReason = finalMessage.stop_reason;
+        usage = finalMessage.usage;
+      } catch (finalMsgError) {
+        // finalMessage also failed — the API call itself must have failed
+        coworkLog('ERROR', 'queryEngine', `finalMessage() also failed: ${finalMsgError instanceof Error ? finalMsgError.message : String(finalMsgError)}`);
+        throw finalMsgError;
+      }
 
     } catch (e) {
       if (abortSignal?.aborted) {
@@ -634,7 +584,9 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
         if (errMsg.includes('429') || errMsg.includes('rate_limit')) {
           coworkLog('ERROR', 'queryEngine', 'Rate limit error (SDK retries exhausted)');
         }
-        coworkLog('ERROR', 'queryEngine', `API error: ${errMsg}`);
+        coworkLog('ERROR', 'queryEngine', `API error: ${errMsg}`, {
+          stack: e instanceof Error ? e.stack : undefined,
+        });
         return { reason: 'error' as const, error: errMsg };
       }
     }
