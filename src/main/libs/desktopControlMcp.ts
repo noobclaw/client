@@ -391,11 +391,62 @@ function openApp(appName: string): string {
   const safe = sanitizeAppName(appName);
   if (!safe) return 'Error: Invalid app name';
   if (IS_WIN) {
-    return runPS(`$apps = Get-StartApps | Where-Object { $_.Name -like '*${safe}*' }; if ($apps) { Start-Process $apps[0].AppId; Write-Host "Launched: $($apps[0].Name)" } else { Start-Process '${safe}' -ErrorAction SilentlyContinue; Write-Host "Attempted to launch ${safe}" }`);
+    // Strategy: try multiple methods to find and launch the app
+    // 1. Search Start Menu via Get-StartApps
+    // 2. Try direct executable name
+    // 3. Search Program Files
+    // 4. Verify the process actually started
+    const ps = `
+      $found = $false
+      # Method 1: Start Menu search
+      $apps = Get-StartApps | Where-Object { $_.Name -like '*${safe}*' }
+      if ($apps) {
+        Start-Process $apps[0].AppId
+        Start-Sleep -Milliseconds 2000
+        $proc = Get-Process | Where-Object { $_.MainWindowTitle -like '*${safe}*' -or $_.ProcessName -like '*${safe}*' }
+        if ($proc) { Write-Host "Launched: $($apps[0].Name) (PID: $($proc[0].Id))"; $found = $true }
+        else { Write-Host "Launched: $($apps[0].Name) (window not yet visible)" ; $found = $true }
+      }
+      # Method 2: Direct executable
+      if (-not $found) {
+        try {
+          Start-Process '${safe}' -ErrorAction Stop
+          Start-Sleep -Milliseconds 2000
+          Write-Host "Launched: ${safe}"
+          $found = $true
+        } catch {}
+      }
+      # Method 3: Search common locations
+      if (-not $found) {
+        $paths = @(
+          "$env:ProgramFiles\\*${safe}*\\*.exe",
+          "$env:ProgramFiles (x86)\\*${safe}*\\*.exe",
+          "$env:LOCALAPPDATA\\*${safe}*\\*.exe",
+          "$env:APPDATA\\*${safe}*\\*.exe"
+        )
+        foreach ($p in $paths) {
+          $exe = Get-ChildItem -Path $p -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($exe) {
+            Start-Process $exe.FullName
+            Start-Sleep -Milliseconds 2000
+            Write-Host "Launched: $($exe.FullName)"
+            $found = $true
+            break
+          }
+        }
+      }
+      if (-not $found) {
+        Write-Host "FAILED: Could not find application '${safe}'. Try using the exact executable name or full path."
+      }
+    `;
+    const result = runPS(ps);
+    if (result.includes('FAILED:')) {
+      return result;
+    }
+    return result || `Launched ${safe}`;
   }
   if (IS_MAC) {
     try {
-      // Use spawnSync with array args to avoid shell injection
       const result = spawnSync('open', ['-a', safe], { timeout: 10000, encoding: 'utf8' });
       return result.status === 0 ? `Launched ${safe}` : (result.stderr?.trim() || `Failed to launch ${safe}`);
     } catch (e) {
@@ -534,7 +585,7 @@ export function buildDesktopControlToolDefs(): ToolDefinition[] {
     }),
     buildTool({
       name: 'desktop_open_app',
-      description: 'Open or bring to front a desktop application by name.',
+      description: 'Open or bring to front a desktop application by name. After opening, use desktop_screenshot to verify the app launched, then use desktop_click/desktop_type to interact with it. If the app fails to open, try the exact executable name (e.g., "QQ.exe") or full path.',
       inputSchema: z.object({ app_name: z.string().min(1) }),
       call: async (args) => {
         const result = openApp(args.app_name);
