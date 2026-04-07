@@ -440,39 +440,50 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
     let streamingFailed = false;
 
     try {
-      const stream = await createMessageStream({
-        client,
-        model: apiConfig.model,
-        systemPrompt,
-        messages: messagesForQuery,
-        tools: apiTools,
-        maxTokens,
-        thinkingBudget: apiConfig.thinkingBudget,
-        signal: abortSignal,
-        apiConfig,
-      });
+      if (apiConfig.isOpenAICompat) {
+        // ── OpenAI-compat: non-streaming to avoid SDK MessageStream parser bug ──
+        // SDK's MessageStream.js crashes on proxy SSE because proxy's message_start
+        // event may lack content:[] field, causing internal this._currentMessage.content
+        // to be undefined when SDK tries to .push() content blocks.
+        coworkLog('INFO', 'queryEngine', 'Using non-streaming mode for OpenAI-compat provider');
+        const response = await createMessage({
+          client,
+          model: apiConfig.model,
+          systemPrompt,
+          messages: messagesForQuery,
+          tools: apiTools,
+          maxTokens,
+          signal: abortSignal,
+          apiConfig,
+        });
 
-      // ── Streaming loop with pipelined tool execution ──
-      // Reference: OpenClaw src/query.ts lines 659-863
+        for (const block of response.content) {
+          assistantContentBlocks.push(block as unknown as Record<string, unknown>);
+          if (block.type === 'tool_use') {
+            toolUseBlocks.push(block as ToolUseBlock);
+            needsFollowUp = true;
+          }
+        }
+        stopReason = response.stop_reason;
+        usage = response.usage;
+      } else {
+        // ── Anthropic direct: streaming for real-time UI ──
+        const stream = await createMessageStream({
+          client,
+          model: apiConfig.model,
+          systemPrompt,
+          messages: messagesForQuery,
+          tools: apiTools,
+          maxTokens,
+          thinkingBudget: apiConfig.thinkingBudget,
+          signal: abortSignal,
+          apiConfig,
+        });
 
-      // Use non-streaming fallback first to verify API works,
-      // then iterate stream events for UI updates.
-      // The stream object supports both: iterate for events, then finalMessage() for result.
-
-      try {
         for await (const event of stream) {
-          // Forward stream events for UI rendering
           yield { type: 'stream_event', event };
         }
-      } catch (streamIterError) {
-        // Stream iteration failed — log details and try finalMessage() anyway
-        coworkLog('WARN', 'queryEngine', `Stream iteration error (will try finalMessage): ${streamIterError instanceof Error ? streamIterError.message : String(streamIterError)}`, {
-          stack: streamIterError instanceof Error ? streamIterError.stack : undefined,
-        });
-      }
 
-      // Get the complete message (works even if stream iteration failed partially)
-      try {
         const finalMessage = await stream.finalMessage();
         for (const block of finalMessage.content) {
           assistantContentBlocks.push(block as unknown as Record<string, unknown>);
@@ -483,10 +494,6 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
         }
         stopReason = finalMessage.stop_reason;
         usage = finalMessage.usage;
-      } catch (finalMsgError) {
-        // finalMessage also failed — the API call itself must have failed
-        coworkLog('ERROR', 'queryEngine', `finalMessage() also failed: ${finalMsgError instanceof Error ? finalMsgError.message : String(finalMsgError)}`);
-        throw finalMsgError;
       }
 
     } catch (e) {
