@@ -4300,13 +4300,40 @@ export class CoworkRunner extends EventEmitter {
 
       // Build API config from settings
       const apiConfig = getCurrentApiConfig();
+
+      if (!apiConfig) {
+        const fallbackMsg = 'No API configuration found. Please configure a provider in settings.';
+        coworkLog('ERROR', 'runClaudeCodeLocal', fallbackMsg);
+        this.handleError(sessionId, fallbackMsg);
+        return;
+      }
+
+      coworkLog('INFO', 'runClaudeCodeLocal', 'API config resolved', {
+        hasApiKey: !!apiConfig.apiKey,
+        baseURL: apiConfig.baseURL,
+        model: apiConfig.model,
+        apiType: (apiConfig as any).apiType || 'anthropic',
+      });
+
+      // For OpenAI-compatible providers, the baseURL points to our local proxy
+      // which translates Anthropic-format requests to OpenAI format.
+      // The @anthropic-ai/sdk sends Anthropic-format requests, and the proxy handles conversion.
       const queryApiConfig: ApiConfig = {
-        apiKey: apiConfig?.apiKey || envVars.ANTHROPIC_API_KEY || '',
-        baseUrl: apiConfig?.baseURL || envVars.ANTHROPIC_BASE_URL || undefined,
-        model: apiConfig?.model || envVars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
+        apiKey: apiConfig.apiKey || envVars.ANTHROPIC_API_KEY || '',
+        baseUrl: apiConfig.baseURL || envVars.ANTHROPIC_BASE_URL || undefined,
+        model: apiConfig.model || envVars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
         maxTokens: 16384,
-        thinkingBudget: 10000, // Enable extended thinking
+        // Only enable extended thinking for models that support it (Claude 3.5+)
+        // OpenAI-compat proxy models don't support thinking blocks
+        thinkingBudget: (apiConfig as any).apiType === 'openai' ? 0 : 10000,
       };
+
+      if (!queryApiConfig.apiKey) {
+        const noKeyMsg = 'API key is empty. Please configure your API key in settings.';
+        coworkLog('ERROR', 'runClaudeCodeLocal', noKeyMsg);
+        this.handleError(sessionId, noKeyMsg);
+        return;
+      }
 
       coworkLog('INFO', 'runClaudeCodeLocal', 'Starting v5 query engine', {
         model: queryApiConfig.model,
