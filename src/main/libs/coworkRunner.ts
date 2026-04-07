@@ -27,6 +27,7 @@ import { buildCanvasTools } from './canvasTools';
 import { buildCDPTools } from './cdpTools';
 import { buildVoiceTools } from './voiceTools';
 import { buildGmailTools } from './gmailTools';
+import { buildExtraTools } from './extraTools';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
@@ -4253,7 +4254,8 @@ export class CoworkRunner extends EventEmitter {
       const voiceToolDefs = buildVoiceTools();
       const gmailToolDefs = buildGmailTools();
       const processToolDefs = buildProcessTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs);
+      const extraToolDefs = buildExtraTools();
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs);
 
       // Context engine: apply deferred tool loading if too many tools
       const deferredToolSet = buildDeferredToolSet(allTools);
