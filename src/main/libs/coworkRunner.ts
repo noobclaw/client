@@ -38,6 +38,8 @@ import { runStopHooks, registerDefaultStopHooks, type StopHookContext } from './
 import { shouldUsePlanMode, getPlanModePrompt } from './planMode';
 import { shouldUseCoordinatorMode, getCoordinatorPrompt } from './coordinatorMode';
 import { generateDiff, formatDiff } from './diffUtils';
+import { recordFileRead, checkFileReadBeforeEdit, recordFileWrite } from './fileStateCache';
+import { trackToolStart, trackToolEnd, getStatusLine } from './activityTracker';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
