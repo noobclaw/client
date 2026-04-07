@@ -35,6 +35,8 @@ export interface MemoryRecord {
   updatedAt: number;
   lastAccessedAt: number;
   mergedFromIds: string[];    // IDs this memory was merged from (dedup)
+  mediaType?: 'text' | 'image' | 'audio' | 'video';  // Multimodal memory support
+  mediaPath?: string;         // Original media file path (if applicable)
 }
 
 export interface BehavioralPattern {
@@ -85,7 +87,9 @@ export function initMemoryStore(database: any): void {
     updated_at INTEGER NOT NULL,
     last_accessed_at INTEGER NOT NULL,
     merged_from_ids TEXT DEFAULT '[]',
-    embedding BLOB
+    embedding BLOB,
+    media_type TEXT DEFAULT 'text',
+    media_path TEXT
   )`);
 
   db.run(`CREATE TABLE IF NOT EXISTS behavioral_patterns (
@@ -337,6 +341,68 @@ export function mergeMemories(keepId: string, mergeIds: string[], mergedContent:
   }
 
   return true;
+}
+
+// ── Multimodal memory (image/audio/video → description → store) ──
+// Reference: OpenClaw src/memory-host-sdk/multimodal.ts
+
+/**
+ * Store a memory from a media file. Automatically generates a text description
+ * using vision/transcription APIs, then stores both the description and media reference.
+ */
+export async function storeMultimodalMemory(params: {
+  mediaPath: string;
+  mediaType: 'image' | 'audio' | 'video';
+  context?: string;          // Additional context about when/where this media appeared
+  sourceSessionId?: string;
+  score?: number;
+}): Promise<MemoryRecord | null> {
+  try {
+    let description = '';
+
+    // Lazy import to avoid circular dependency
+    const { describeImage, transcribeAudio, describeVideo } = await import('./mediaUnderstanding');
+
+    switch (params.mediaType) {
+      case 'image':
+        description = await describeImage(params.mediaPath, params.context || 'Describe this image for memory storage.');
+        break;
+      case 'audio':
+        description = await transcribeAudio(params.mediaPath);
+        break;
+      case 'video':
+        description = await describeVideo(params.mediaPath, 2);
+        break;
+    }
+
+    if (!description || description.startsWith('Error') || description.includes('not found')) {
+      return null;
+    }
+
+    const content = params.context
+      ? `[${params.mediaType}] ${params.context}: ${description}`
+      : `[${params.mediaType}] ${description}`;
+
+    const record = storeMemory({
+      type: 'episodic',
+      content,
+      score: params.score ?? 0.6,
+      sourceSessionId: params.sourceSessionId,
+      tags: [`media:${params.mediaType}`],
+    });
+
+    // Update media fields
+    if (db) {
+      db.run(`UPDATE memories SET media_type = ?, media_path = ? WHERE id = ?`,
+        [params.mediaType, params.mediaPath, record.id]);
+    }
+
+    coworkLog('INFO', 'memoryStore', `Stored ${params.mediaType} memory: ${record.id} — ${description.slice(0, 80)}`);
+    return record;
+  } catch (e) {
+    coworkLog('WARN', 'memoryStore', `Multimodal store failed: ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
 }
 
 // ── Behavioral patterns ──

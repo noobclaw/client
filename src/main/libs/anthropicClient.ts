@@ -112,23 +112,52 @@ export async function createMessageStream(params: CreateMessageParams) {
     thinkingBudget: thinkingBudget || 'none',
   });
 
-  // Build request parameters with prompt caching
-  // Reference: OpenClaw src/services/api/claude.ts — system prompt gets cache_control
+  // Build request parameters with multi-level prompt caching
+  // Reference: OpenClaw src/services/api/claude.ts — granular cache_control placement
+  //
+  // Cache strategy (3 breakpoints for maximum reuse):
+  //   1. System prompt: cached (stable across all turns)
+  //   2. Tool definitions: cached on last tool (stable unless tools change)
+  //   3. Last user message: cached (conversation prefix reuse across retries)
+
   const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [{
     type: 'text',
     text: systemPrompt,
-    cache_control: { type: 'ephemeral' }, // Cache the system prompt across turns
+    cache_control: { type: 'ephemeral' },
   }];
+
+  // Add cache_control to the last user message for conversation prefix caching
+  const cachedMessages = messages.map((msg, i) => {
+    if (i === messages.length - 1 && msg.role === 'user') {
+      // Cache the last user message — enables prefix reuse on retries and
+      // multi-turn conversations where only the latest assistant response changes
+      if (typeof msg.content === 'string') {
+        return {
+          ...msg,
+          content: [{ type: 'text' as const, text: msg.content, cache_control: { type: 'ephemeral' as const } }],
+        };
+      }
+      if (Array.isArray(msg.content)) {
+        const blocks = [...msg.content];
+        const lastBlock = blocks[blocks.length - 1];
+        if (lastBlock && typeof lastBlock === 'object' && 'type' in lastBlock) {
+          blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: 'ephemeral' } } as any;
+        }
+        return { ...msg, content: blocks };
+      }
+    }
+    return msg;
+  });
 
   const requestParams: Record<string, unknown> = {
     model,
     max_tokens: maxTokens,
     system: systemBlocks,
-    messages,
+    messages: cachedMessages,
     stream: true,
   };
 
-  // Add tools with cache_control on the last tool
+  // Add tools with cache_control on the last tool (tool list is stable across turns)
   if (tools.length > 0) {
     const toolsWithCache = tools.map((t, i) => {
       if (i === tools.length - 1) {
