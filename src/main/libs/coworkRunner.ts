@@ -4318,14 +4318,15 @@ export class CoworkRunner extends EventEmitter {
       // For OpenAI-compatible providers, the baseURL points to our local proxy
       // which translates Anthropic-format requests to OpenAI format.
       // The @anthropic-ai/sdk sends Anthropic-format requests, and the proxy handles conversion.
+      const isOpenAICompat = (apiConfig as any).apiType === 'openai';
       const queryApiConfig: ApiConfig = {
         apiKey: apiConfig.apiKey || envVars.ANTHROPIC_API_KEY || '',
         baseUrl: apiConfig.baseURL || envVars.ANTHROPIC_BASE_URL || undefined,
         model: apiConfig.model || envVars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
         maxTokens: 16384,
-        // Only enable extended thinking for models that support it (Claude 3.5+)
-        // OpenAI-compat proxy models don't support thinking blocks
-        thinkingBudget: (apiConfig as any).apiType === 'openai' ? 0 : 10000,
+        // Only enable extended thinking for Anthropic direct (not OpenAI-compat proxy)
+        thinkingBudget: isOpenAICompat ? 0 : 10000,
+        isOpenAICompat,
       };
 
       if (!queryApiConfig.apiKey) {

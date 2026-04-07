@@ -200,6 +200,7 @@ export async function* queryLoop(params: QueryParams): AsyncGenerator<QueryEvent
         maxTokens,
         thinkingBudget: apiConfig.thinkingBudget,
         signal: abortSignal,
+        apiConfig,
       });
 
       // ── Phase 3: Stream processing ──
@@ -448,6 +449,7 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
         maxTokens,
         thinkingBudget: apiConfig.thinkingBudget,
         signal: abortSignal,
+        apiConfig,
       });
 
       // ── Streaming loop with pipelined tool execution ──

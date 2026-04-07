@@ -31,6 +31,8 @@ export interface ApiConfig {
   model: string;
   maxTokens?: number;
   thinkingBudget?: number;
+  /** True when baseUrl points to our OpenAI-compat proxy. Disables Anthropic-specific features. */
+  isOpenAICompat?: boolean;
 }
 
 // ── Client singleton ──
@@ -81,6 +83,7 @@ export interface CreateMessageParams {
   maxTokens: number;
   thinkingBudget?: number;
   signal?: AbortSignal;
+  apiConfig?: ApiConfig;  // Needed to detect OpenAI-compat mode
 }
 
 /**
@@ -112,76 +115,94 @@ export async function createMessageStream(params: CreateMessageParams) {
     thinkingBudget: thinkingBudget || 'none',
   });
 
-  // Build request parameters with multi-level prompt caching
-  // Reference: OpenClaw src/services/api/claude.ts — granular cache_control placement
+  const isCompat = params.apiConfig?.isOpenAICompat ?? false;
+
+  // ── Build request params — two modes ──
   //
-  // Cache strategy (3 breakpoints for maximum reuse):
-  //   1. System prompt: cached (stable across all turns)
-  //   2. Tool definitions: cached on last tool (stable unless tools change)
-  //   3. Last user message: cached (conversation prefix reuse across retries)
+  // Anthropic direct: full prompt caching (3 breakpoints), thinking, beta headers
+  // OpenAI-compat proxy: plain params, no cache_control, no thinking, no beta headers
+  //   (our proxy at coworkOpenAICompatProxy.ts translates Anthropic → OpenAI format)
 
-  const systemBlocks: Array<{ type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }> = [{
-    type: 'text',
-    text: systemPrompt,
-    cache_control: { type: 'ephemeral' },
-  }];
+  let requestParams: Record<string, unknown>;
+  let extraHeaders: Record<string, string> = { 'x-client-request-id': requestId };
 
-  // Add cache_control to the last user message for conversation prefix caching
-  const cachedMessages = messages.map((msg, i) => {
-    if (i === messages.length - 1 && msg.role === 'user') {
-      // Cache the last user message — enables prefix reuse on retries and
-      // multi-turn conversations where only the latest assistant response changes
-      if (typeof msg.content === 'string') {
-        return {
-          ...msg,
-          content: [{ type: 'text' as const, text: msg.content, cache_control: { type: 'ephemeral' as const } }],
-        };
-      }
-      if (Array.isArray(msg.content)) {
-        const blocks = [...msg.content];
-        const lastBlock = blocks[blocks.length - 1];
-        if (lastBlock && typeof lastBlock === 'object' && 'type' in lastBlock) {
-          blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: 'ephemeral' } } as any;
-        }
-        return { ...msg, content: blocks };
-      }
-    }
-    return msg;
-  });
-
-  const requestParams: Record<string, unknown> = {
-    model,
-    max_tokens: maxTokens,
-    system: systemBlocks,
-    messages: cachedMessages,
-    stream: true,
-  };
-
-  // Add tools with cache_control on the last tool (tool list is stable across turns)
-  if (tools.length > 0) {
-    const toolsWithCache = tools.map((t, i) => {
-      if (i === tools.length - 1) {
-        return { ...t, cache_control: { type: 'ephemeral' } };
-      }
-      return t;
-    });
-    requestParams.tools = toolsWithCache;
-  }
-
-  // Add thinking if configured
-  if (thinkingBudget && thinkingBudget > 0) {
-    requestParams.thinking = {
-      type: 'enabled',
-      budget_tokens: thinkingBudget,
+  if (isCompat) {
+    // ── OpenAI-compat mode: keep it simple ──
+    requestParams = {
+      model,
+      max_tokens: maxTokens,
+      system: systemPrompt,  // Plain string, not blocks with cache_control
+      messages,              // Plain messages, no cache_control
+      stream: true,
     };
+    if (tools.length > 0) {
+      requestParams.tools = tools;  // No cache_control on tools
+    }
+    // No thinking, no beta headers
+  } else {
+    // ── Anthropic direct mode: full prompt caching ──
+    // Cache strategy (3 breakpoints for maximum reuse):
+    //   1. System prompt: cached (stable across all turns)
+    //   2. Tool definitions: cached on last tool (stable unless tools change)
+    //   3. Last user message: cached (conversation prefix reuse across retries)
+
+    const systemBlocks = [{
+      type: 'text' as const,
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' as const },
+    }];
+
+    const cachedMessages = messages.map((msg, i) => {
+      if (i === messages.length - 1 && msg.role === 'user') {
+        if (typeof msg.content === 'string') {
+          return {
+            ...msg,
+            content: [{ type: 'text' as const, text: msg.content, cache_control: { type: 'ephemeral' as const } }],
+          };
+        }
+        if (Array.isArray(msg.content)) {
+          const blocks = [...msg.content];
+          const lastBlock = blocks[blocks.length - 1];
+          if (lastBlock && typeof lastBlock === 'object' && 'type' in lastBlock) {
+            blocks[blocks.length - 1] = { ...lastBlock, cache_control: { type: 'ephemeral' } } as any;
+          }
+          return { ...msg, content: blocks };
+        }
+      }
+      return msg;
+    });
+
+    requestParams = {
+      model,
+      max_tokens: maxTokens,
+      system: systemBlocks,
+      messages: cachedMessages,
+      stream: true,
+    };
+
+    if (tools.length > 0) {
+      const toolsWithCache = tools.map((t, i) => {
+        if (i === tools.length - 1) {
+          return { ...t, cache_control: { type: 'ephemeral' } };
+        }
+        return t;
+      });
+      requestParams.tools = toolsWithCache;
+    }
+
+    if (thinkingBudget && thinkingBudget > 0) {
+      requestParams.thinking = {
+        type: 'enabled',
+        budget_tokens: thinkingBudget,
+      };
+    }
+
+    extraHeaders['anthropic-beta'] = 'prompt-caching-2024-07-31';
   }
 
   const stream = client.messages.stream(requestParams as any, {
     signal,
-    headers: {
-      'x-client-request-id': requestId,
-      'anthropic-beta': 'prompt-caching-2024-07-31',
-    },
+    headers: extraHeaders,
   });
 
   return stream;
