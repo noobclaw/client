@@ -102,9 +102,12 @@ const INFERRED_FILE_SEARCH_IGNORE = new Set(['.git', 'node_modules', '.cowork-te
 const SANDBOX_HISTORY_MAX_MESSAGES = 18;
 const SANDBOX_HISTORY_MAX_TOTAL_CHARS = 24000;
 const SANDBOX_HISTORY_MAX_MESSAGE_CHARS = 3000;
-const LOCAL_HISTORY_MAX_MESSAGES = 24;
-const LOCAL_HISTORY_MAX_TOTAL_CHARS = 32000;
-const LOCAL_HISTORY_MAX_MESSAGE_CHARS = 4000;
+// Optimized: reduced from 24/32K/4K to 12/8K/2K
+// Claude Code uses aggressive compression — only recent 3 turns kept complete,
+// older turns stripped to assistant text only, very old turns dropped.
+const LOCAL_HISTORY_MAX_MESSAGES = 12;
+const LOCAL_HISTORY_MAX_TOTAL_CHARS = 8000;
+const LOCAL_HISTORY_MAX_MESSAGE_CHARS = 2000;
 const STREAM_UPDATE_THROTTLE_MS = 90;
 const STREAMING_TEXT_MAX_CHARS = 120_000;
 const STREAMING_THINKING_MAX_CHARS = 60_000;
