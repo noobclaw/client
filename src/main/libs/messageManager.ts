@@ -10,8 +10,9 @@ import { coworkLog } from './coworkLogger';
 
 // ── Constants ──
 
-/** Max characters for a single tool result before truncation */
-export const TOOL_RESULT_MAX_CHARS = 120_000;
+/** Max characters for a single tool result before truncation.
+ * Reduced from 120K to 30K to save tokens — Claude Code uses similar limits. */
+export const TOOL_RESULT_MAX_CHARS = 30_000;
 
 /** Max characters for streaming text content */
 export const STREAMING_TEXT_MAX_CHARS = 120_000;

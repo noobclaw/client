@@ -170,8 +170,8 @@ export function buildCoreFileTools(): ToolDefinition[] {
           if (!output) output = `(no output, exit code: ${exitCode})`;
 
           // Truncate
-          if (output.length > 50000) {
-            output = output.slice(0, 50000) + '\n\n[Output truncated at 50KB]';
+          if (output.length > 20000) {
+            output = output.slice(0, 20000) + '\n\n[Output truncated at 20KB]';
           }
 
           return {

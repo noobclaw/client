@@ -167,23 +167,20 @@ export function buildDeferredToolSet(tools: ToolDefinition[]): DeferredToolSet {
     return schema;
   });
 
-  const deferredApiTools = deferredToolDefs.map(t => ({
-    name: t.name,
-    description: `[Deferred] ${getOneLiner(t.description)}. Use tool_search to get full details.`,
-    input_schema: { type: 'object' as const, properties: {} },
-  }));
+  // Deferred tools are NOT sent to the API at all — saves ~2000 tokens/request.
+  // The model discovers them via tool_search when needed.
+  // This follows Claude Code's defer_loading pattern where deferred tools
+  // are invisible until ToolSearchTool reveals them.
 
-  const allApiTools = [...fullApiTools, ...deferredApiTools];
-
-  const tokenEstimate = allApiTools.reduce((sum, t) =>
+  const tokenEstimate = fullApiTools.reduce((sum, t) =>
     sum + estimateTokens(t.name) + estimateTokens(t.description || '') + estimateTokens(JSON.stringify(t.input_schema)), 0);
 
-  coworkLog('INFO', 'contextEngine', `Tool set: ${fullApiTools.length} full + ${deferredApiTools.length} deferred = ${allApiTools.length} total (~${tokenEstimate} tokens)`);
+  coworkLog('INFO', 'contextEngine', `Tool set: ${fullApiTools.length} sent to API + ${deferredToolDefs.length} hidden (available via tool_search) (~${tokenEstimate} tokens)`);
 
   return {
     fullTools: fullApiTools,
-    deferredTools: deferredApiTools as AnthropicTool[],
-    allApiTools: allApiTools as AnthropicTool[],
+    deferredTools: [],  // Not sent to API — hidden, discoverable via tool_search
+    allApiTools: fullApiTools,  // Only full tools sent to API
     originalTools: tools,
     isDeferred: true,
     estimatedToolTokens: tokenEstimate,

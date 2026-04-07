@@ -7,7 +7,7 @@
  * Ported from OpenClaw (Claude Code) src/query.ts
  */
 
-import type { MessageParam, ToolUseBlock, MessageStreamEvent, ContentBlock } from './anthropicClient';
+import type { MessageParam, ToolUseBlock, MessageStreamEvent, ContentBlock, Tool as AnthropicTool } from './anthropicClient';
 import {
   getAnthropicClient,
   createMessageStream,
@@ -68,8 +68,11 @@ export interface QueryParams {
   /** Prior conversation messages (for continue/multi-turn) */
   priorMessages?: MessageParam[];
 
-  /** Available tools */
+  /** Available tools (all — used for tool execution) */
   tools: ToolDefinition[];
+
+  /** Pre-computed API tool schemas (subset — used for API calls, saves tokens) */
+  apiToolSchemas?: AnthropicTool[];
 
   /** API configuration */
   apiConfig: ApiConfig;
@@ -155,7 +158,7 @@ export async function* queryLoop(params: QueryParams): AsyncGenerator<QueryEvent
 
   const maxTurns = params.maxTurns ?? DEFAULT_MAX_TURNS;
   const client = getAnthropicClient(apiConfig);
-  const apiTools = toolsToApiSchemas(tools);
+  const apiTools = params.apiToolSchemas ?? toolsToApiSchemas(tools);
 
   // Initialize state
   const userMessage = buildUserMessage(prompt, images?.map(i => ({
@@ -423,7 +426,7 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
 
   const maxTurns = params.maxTurns ?? DEFAULT_MAX_TURNS;
   const client = getAnthropicClient(apiConfig);
-  const apiTools = toolsToApiSchemas(tools);
+  const apiTools = params.apiToolSchemas ?? toolsToApiSchemas(tools);
 
   const userMessage = buildUserMessage(prompt, images?.map(i => ({
     mimeType: i.mimeType,

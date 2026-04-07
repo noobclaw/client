@@ -4340,7 +4340,8 @@ export class CoworkRunner extends EventEmitter {
         prompt,
         images: imageAttachments,
         systemPrompt,
-        tools: allTools,
+        tools: allTools,                          // All tools for execution
+        apiToolSchemas: deferredToolSet.allApiTools, // Only essential tools sent to API (saves tokens)
         apiConfig: queryApiConfig,
         cwd,
         sessionId,
