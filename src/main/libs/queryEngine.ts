@@ -462,6 +462,8 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
           if (block.type === 'tool_use') {
             toolUseBlocks.push(block as ToolUseBlock);
             needsFollowUp = true;
+            // Queue tool for execution (non-streaming path)
+            streamingExecutor.addTool(block as ToolUseBlock);
           }
         }
         stopReason = response.stop_reason;
