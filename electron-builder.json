@@ -126,7 +126,8 @@
     "allowToChangeInstallationDirectory": true,
     "runAfterFinish": true,
     "deleteAppDataOnUninstall": true,
-    "include": "scripts/nsis-installer.nsh"
+    "include": "scripts/nsis-installer.nsh",
+    "differentialPackage": false
   },
   "electronVersion": "40.2.1",
   "asarUnpack": [
