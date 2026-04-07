@@ -34,6 +34,10 @@ import { createBudgetTracker, type BudgetTracker } from './tokenBudget';
 import { getModelCapability } from './modelCapabilities';
 import { truncateToolResult } from './toolHooks';
 import { buildLSPTools } from './lspClient';
+import { runStopHooks, registerDefaultStopHooks, type StopHookContext } from './stopHooks';
+import { shouldUsePlanMode, getPlanModePrompt } from './planMode';
+import { shouldUseCoordinatorMode, getCoordinatorPrompt } from './coordinatorMode';
+import { generateDiff, formatDiff } from './diffUtils';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
@@ -4302,10 +4306,28 @@ export class CoworkRunner extends EventEmitter {
         return;
       }
 
+      // Inject coordinator/plan mode prompts into system prompt
+      let enhancedSystemPrompt = systemPrompt;
+      if (shouldUseCoordinatorMode(prompt)) {
+        enhancedSystemPrompt += '\n\n' + getCoordinatorPrompt();
+        coworkLog('INFO', 'runClaudeCodeLocal', 'Coordinator mode activated');
+      }
+      const planPrompt = getPlanModePrompt(sessionId);
+      if (planPrompt) {
+        enhancedSystemPrompt += '\n\n' + planPrompt;
+      } else if (shouldUsePlanMode(prompt)) {
+        enhancedSystemPrompt += '\n\n## Suggested: Plan Mode\nThis task appears complex. Consider outlining a plan before executing. Use structured steps.';
+      }
+
+      // Register default stop hooks on first session
+      registerDefaultStopHooks();
+
       coworkLog('INFO', 'runClaudeCodeLocal', 'Starting v5 query engine', {
         model: queryApiConfig.model,
         toolCount: allTools.length,
         hasImages: !!(imageAttachments && imageAttachments.length > 0),
+        coordinatorMode: shouldUseCoordinatorMode(prompt),
+        planMode: !!planPrompt || shouldUsePlanMode(prompt),
       });
 
       // ── canUseTool: extracted as a named function so taskTools can reference it ──
@@ -4364,7 +4386,7 @@ export class CoworkRunner extends EventEmitter {
       const queryGen = queryLoopStreaming({
         prompt,
         images: imageAttachments,
-        systemPrompt,
+        systemPrompt: enhancedSystemPrompt,
         tools: allTools,                          // All tools for execution
         apiToolSchemas: deferredToolSet.allApiTools, // Only essential tools sent to API (saves tokens)
         apiConfig: queryApiConfig,
@@ -4437,6 +4459,19 @@ export class CoworkRunner extends EventEmitter {
         this.emit('complete', sessionId, activeSession.claudeSessionId);
         // Auto Dream: check if background memory consolidation should trigger
         checkAutoDreamTrigger();
+
+        // Run stop hooks (background intelligence: memory extraction, suggestions)
+        const stopHookContext: StopHookContext = {
+          sessionId,
+          turnCount: eventCount,
+          lastAssistantText: '',  // Would need to track from events
+          lastToolNames: [],
+          totalInputTokens: 0,
+          totalOutputTokens: 0,
+        };
+        runStopHooks(stopHookContext).catch(e =>
+          coworkLog('ERROR', 'runClaudeCodeLocal', `Stop hooks error: ${e}`)
+        );
       }
     } catch (error) {
       if (this.stoppedSessions.has(sessionId)) {
