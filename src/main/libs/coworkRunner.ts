@@ -4358,47 +4358,32 @@ export class CoworkRunner extends EventEmitter {
             ? (toolInput as Record<string, unknown>)
             : { value: toolInput };
 
-        if (resolvedName === 'Bash') {
-          const command = this.extractToolCommand(resolvedInput);
-          const pythonRuntimeCheck = await this.ensureWindowsPythonRuntimeForCommand(sessionId, command);
-          if (!pythonRuntimeCheck.ok) {
-            return { behavior: 'deny', message: pythonRuntimeCheck.reason || 'Python runtime not available' };
-          }
-        }
+        // v5 policy: DEFAULT ALLOW — only block truly dangerous operations.
+        // No permission popups for normal tool calls. Users should not be
+        // interrupted for routine operations like reading files, searching, etc.
 
-        // Check auto-approve mode
-        if (activeSession.autoApprove) {
-          const safetyResult = await this.enforceToolSafetyPolicy(sessionId, signal, activeSession, resolvedName, resolvedInput);
-          if (safetyResult) return safetyResult;
-          return { behavior: 'allow' };
-        }
-
-        // For AskUserQuestion tool or tools requiring user input
-        if (resolvedName === 'AskUserQuestion') {
-          return { behavior: 'allow' };
-        }
-
-        // Check safety policy
+        // Check safety policy (blocks destructive system commands)
         const safetyResult = await this.enforceToolSafetyPolicy(sessionId, signal, activeSession, resolvedName, resolvedInput);
         if (safetyResult) return safetyResult;
 
-        // Request user permission for sensitive tools
-        const request: PermissionRequest = {
-          requestId: uuidv4(),
-          toolName: resolvedName,
-          toolInput: this.sanitizeToolPayload(resolvedInput) as Record<string, unknown>,
-        };
-        activeSession.pendingPermission = request;
-        this.emit('permissionRequest', sessionId, request);
-        const permResult = await this.waitForPermissionResponse(sessionId, request.requestId, signal);
-        if (abortController.signal.aborted || signal.aborted) {
-          return { behavior: 'deny', message: 'Session aborted' };
+        // Only AskUserQuestion needs user interaction (it's asking the user a question)
+        if (resolvedName === 'AskUserQuestion') {
+          const request: PermissionRequest = {
+            requestId: uuidv4(),
+            toolName: resolvedName,
+            toolInput: this.sanitizeToolPayload(resolvedInput) as Record<string, unknown>,
+          };
+          activeSession.pendingPermission = request;
+          this.emit('permissionRequest', sessionId, request);
+          const permResult = await this.waitForPermissionResponse(sessionId, request.requestId, signal);
+          if (abortController.signal.aborted || signal.aborted) {
+            return { behavior: 'deny', message: 'Session aborted' };
+          }
+          return permResult;
         }
-        if (permResult.behavior === 'deny') {
-          return permResult.message ? permResult : { behavior: 'deny', message: 'Permission denied' };
-        }
-        const updatedInput = permResult.updatedInput ?? resolvedInput;
-        return { behavior: 'allow', updatedInput };
+
+        // Everything else: auto-approve
+        return { behavior: 'allow' };
       };
 
       // Late-bind canUseTool for task tools (they reference it via closure)
@@ -4442,6 +4427,18 @@ export class CoworkRunner extends EventEmitter {
         this.handleQueryEvent(sessionId, activeSession, event);
       }
       coworkLog('INFO', 'runClaudeCodeLocal', `Query engine completed, total events: ${eventCount}`);
+
+      // If the query engine finished with very few events and no assistant output,
+      // it likely hit an API error. Show it to the user instead of silently completing.
+      if (eventCount <= 2 && !activeSession.hasAssistantTextOutput) {
+        // Check if there's an error in the session messages
+        const sessionMsgs = this.store.getSession(sessionId)?.messages || [];
+        const hasContent = sessionMsgs.some((m: any) => m.type === 'assistant' && m.content?.trim());
+        if (!hasContent) {
+          this.handleError(sessionId, 'No response received from AI. This may be due to: insufficient API balance, network error, or model incompatibility. Check the log file for details.');
+          return;
+        }
+      }
 
       if (this.stoppedSessions.has(sessionId)) {
         this.store.updateSession(sessionId, { status: 'idle' });
