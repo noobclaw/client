@@ -28,6 +28,7 @@ import { buildCDPTools } from './cdpTools';
 import { buildVoiceTools } from './voiceTools';
 import { buildGmailTools } from './gmailTools';
 import { buildExtraTools } from './extraTools';
+import { buildCoreFileTools } from './coreFileTools';
 import { buildProcessTools } from './processTools';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
@@ -3517,6 +3518,12 @@ export class CoworkRunner extends EventEmitter {
 
       const allTools: ToolDefinition[] = [];
 
+      // Core file tools FIRST — Read, Write, Edit, Bash, Glob, Grep
+      // These were built into the old claude-agent-sdk but must be
+      // registered explicitly in the direct SDK mode.
+      const coreTools = buildCoreFileTools();
+      allTools.push(...coreTools);
+
       // Memory tools
       allTools.push(
         buildTool({
@@ -3689,31 +3696,44 @@ export class CoworkRunner extends EventEmitter {
           description,
           inputSchema: z.object(shape),
           call: async (input: any) => {
-            const result = await handler(input);
-            if (!result) return { content: [{ type: 'text', text: '(no result)' }] };
-            // Normalize legacy { content: [...], isError? } format
-            // Handle image blocks specially — don't dump base64 as text
-            return {
-              content: Array.isArray(result.content)
-                ? result.content.map((c: any) => {
-                    if (c.type === 'image' && c.data) {
-                      // Image block — save to temp file, return path reference
-                      try {
-                        const os = require('os');
-                        const fsLib = require('fs');
-                        const pathLib = require('path');
-                        const tmpPath = pathLib.join(os.tmpdir(), `noobclaw-img-${Date.now()}.jpg`);
-                        fsLib.writeFileSync(tmpPath, Buffer.from(c.data, 'base64'));
-                        return { type: 'text' as const, text: `[Screenshot saved to ${tmpPath} and displayed to user]` };
-                      } catch {
-                        return { type: 'text' as const, text: '[Screenshot captured and displayed to user]' };
+            try {
+              const result = await handler(input);
+              if (!result) return { content: [{ type: 'text', text: '(no result)' }] };
+              // Normalize legacy { content: [...], isError? } format
+              return {
+                content: Array.isArray(result.content)
+                  ? result.content.map((c: any) => {
+                      if (c.type === 'image' && c.data) {
+                        try {
+                          const os = require('os');
+                          const fsLib = require('fs');
+                          const pathLib = require('path');
+                          const tmpPath = pathLib.join(os.tmpdir(), `noobclaw-img-${Date.now()}.jpg`);
+                          fsLib.writeFileSync(tmpPath, Buffer.from(c.data, 'base64'));
+                          return { type: 'text' as const, text: `[Screenshot saved to ${tmpPath} and displayed to user]` };
+                        } catch {
+                          return { type: 'text' as const, text: '[Screenshot captured and displayed to user]' };
+                        }
                       }
-                    }
-                    return { type: 'text' as const, text: c.text || '' };
-                  })
-                : [{ type: 'text', text: String(result.content || result) }],
-              isError: result.isError,
-            };
+                      return { type: 'text' as const, text: c.text || '' };
+                    })
+                  : [{ type: 'text', text: String(result.content || result) }],
+                isError: result.isError,
+              };
+            } catch (e) {
+              const errMsg = e instanceof Error ? e.message : String(e);
+              // Handle common browser extension errors with helpful messages
+              if (errMsg.includes('active tab permission') || errMsg.includes('permission')) {
+                return {
+                  content: [{ type: 'text', text: `Browser permission error: ${errMsg}. Try browser_navigate to a URL first, or ask the user to click the NoobClaw extension icon to grant permission.` }],
+                  isError: true,
+                };
+              }
+              return {
+                content: [{ type: 'text', text: `Tool error: ${errMsg}` }],
+                isError: true,
+              };
+            }
           },
         });
       };

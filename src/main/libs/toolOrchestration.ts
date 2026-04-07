@@ -80,49 +80,23 @@ async function executeOneTool(
   const toolInput = (block.input ?? {}) as Record<string, unknown>;
   const toolUseId = block.id;
 
-  // Look up tool by exact name, then try common aliases
-  // Models sometimes use Claude Code standard names (Read, Bash, Glob, etc.)
-  // which we map to our actual tool names.
-  const TOOL_ALIASES: Record<string, string[]> = {
-    'Read': ['web_fetch', 'browser_get_text'],
-    'FileRead': ['web_fetch'],
-    'Bash': ['process_spawn'],
-    'Glob': ['web_search'],
-    'Grep': ['web_search', 'memory_recall'],
-    'Write': ['canvas_render'],
-    'FileWrite': ['canvas_render'],
-    'Edit': ['canvas_update'],
-    'FileEdit': ['canvas_update'],
-    'WebFetch': ['web_fetch'],
-    'WebSearch': ['web_search'],
-  };
-
+  // Look up tool by exact name, then case-insensitive fallback
   let tool = tools.find(t => t.name === toolName);
   if (!tool) {
-    // Try aliases
-    const aliases = TOOL_ALIASES[toolName];
-    if (aliases) {
-      for (const alias of aliases) {
-        tool = tools.find(t => t.name === alias);
-        if (tool) {
-          coworkLog('INFO', 'toolOrchestration', `Tool "${toolName}" aliased to "${tool.name}"`);
-          break;
-        }
-      }
-    }
-    // Try case-insensitive match
-    if (!tool) {
-      const lower = toolName.toLowerCase();
-      tool = tools.find(t => t.name.toLowerCase() === lower);
+    // Case-insensitive match (e.g., "read" → "Read")
+    const lower = toolName.toLowerCase();
+    tool = tools.find(t => t.name.toLowerCase() === lower);
+    if (tool) {
+      coworkLog('INFO', 'toolOrchestration', `Tool "${toolName}" matched case-insensitive to "${tool.name}"`);
     }
   }
   if (!tool) {
-    coworkLog('WARN', 'toolOrchestration', `Tool not found: "${toolName}" (no alias match either)`);
+    coworkLog('WARN', 'toolOrchestration', `Tool not found: "${toolName}"`);
     return {
       toolUseId,
       toolName,
       result: {
-        content: [{ type: 'text', text: `Tool "${toolName}" is not available. Available tools include: ${tools.slice(0, 20).map(t => t.name).join(', ')}...` }],
+        content: [{ type: 'text', text: `Tool "${toolName}" is not available. Available tools: ${tools.slice(0, 30).map(t => t.name).join(', ')}` }],
         isError: true,
       },
     };
