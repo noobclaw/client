@@ -2582,41 +2582,17 @@ export class CoworkRunner extends EventEmitter {
     const safetyPrompt = this.buildWorkspaceSafetyPrompt(workspaceRoot, cwd, confirmationMode);
     const windowsEncodingPrompt = this.buildWindowsEncodingPrompt();
     const windowsBundledRuntimePrompt = this.buildWindowsBundledRuntimePrompt();
+    // Compressed memory prompt: was ~640 tokens, now ~200
     const memoryRecallPrompt = [
-      '## Memory Strategy',
-      '- Historical retrieval is tool-first: when the user references previous chats, earlier outputs, or prior decisions, call `memory_recall` or `memory_search` before answering.',
-      '- Do not guess historical facts from partial context. If retrieval returns no evidence, explicitly say not found.',
-      '- Do not call history tools for every request; only use them when historical context is required.',
-      '- If retrieved history conflicts with the latest explicit user instruction, follow the latest explicit user instruction.',
+      '## Memory',
+      '- Use memory_recall when user references past chats. Do not guess history.',
+      '- Follow latest user instruction over recalled memory.',
     ];
     if (memoryEnabled) {
       memoryRecallPrompt.push(
-        '- User memories are injected as <userMemories> facts and should be treated as stable personal context.',
-        '- Use `memory_store` to save new memories and `memory_update` to modify/delete existing ones.',
-        '- Never write transient conversation facts, news content, or source citations into user memory unless the user explicitly asks.',
-        '',
-        '### Memory Reliability (ported from Claude Code memdir)',
-        '- Memory records can become stale over time. Use memory as context for what was true at a given point, but verify against current state before asserting.',
-        '- If a recalled memory names a file path, check the file exists before recommending it.',
-        '- If a recalled memory names a function or flag, grep for it before asserting it exists.',
-        '- "The memory says X exists" is NOT the same as "X exists now."',
-        '- If a memory conflicts with what you observe in the current code or files, trust what you observe now.',
-        '',
-        '### What NOT to Save in Memory',
-        '- Code patterns, architecture, file paths — these can be derived by reading the current project state.',
-        '- Git history, recent changes — `git log` / `git blame` are authoritative.',
-        '- Debugging solutions or fix recipes — the fix is in the code; the commit message has the context.',
-        '- Ephemeral task details or in-progress work — use tasks instead.',
-        '',
-        '### Memory Types (4-tier taxonomy)',
-        '- **user**: Facts about the user (role, goals, preferences). Score 0.9+. Always private.',
-        '- **feedback**: Corrections or confirmations of approach. Include WHY + HOW TO APPLY.',
-        '- **project**: Ongoing work, decisions, deadlines. Convert relative dates to absolute. Time-sensitive.',
-        '- **reference**: Pointers to external systems (URLs, project boards, dashboards).',
-        '',
-        '### Before Recommending from Memory',
-        '- If memory names a file path: check the file exists.',
-        '- If memory names a function or flag: grep for it.',
+        '- memory_store: save facts (user/feedback/project/reference types).',
+        '- Verify before recommending: check file exists, grep for functions.',
+        '- Do NOT save: code patterns, git history, debug solutions, ephemeral tasks.',
         '- "Memory says X exists" is NOT the same as "X exists now."',
       );
     }
@@ -2633,113 +2609,50 @@ export class CoworkRunner extends EventEmitter {
       const { getBrowserBridgeStatus } = require('./browserBridge');
       const browserStatus = getBrowserBridgeStatus();
       if (browserStatus.connected) {
+        // Compressed: was ~500 tokens, now ~150 tokens
         browserPrompt = [
-          '## Browser Automation Routing (IMPORTANT)',
-          '',
-          '### Tool Selection Rules — follow strictly:',
-          '1. **Needs login/user identity** (social media, email, e-commerce, admin panels, any site user is logged into) → MUST use `browser_*` tools',
-          '2. **Needs to interact with page UI** (click buttons, fill forms, scroll, navigate multi-step flows) → MUST use `browser_*` tools',
-          '3. **User wants to SEE the operation** ("open XX for me", "show me", "help me browse") → MUST use `browser_*` tools',
-          '4. **Simple search/lookup** (search for info, check a price, look up facts) → Use web-search skill',
-          '5. **Batch/background scraping** (scrape 100 pages, monitor changes, automated testing) → Use Playwright skill',
-          '',
-          '### browser_* tools (CONNECTED and ready):',
-          '- browser_navigate, browser_screenshot, browser_read_page, browser_click, browser_type, browser_scroll, browser_find, browser_fill, browser_get_text',
-          '- These control the user\'s REAL Chrome browser with their login sessions, cookies, and browsing history intact.',
-          '- Do NOT use Bash commands (curl, start chrome), Playwright, or web-search for tasks that match rules 1-3 above.',
-          '',
-          '### Workflow for browser_* tasks:',
-          '1. browser_navigate to the target URL',
-          '2. browser_read_page to understand page structure and find interactive elements',
-          '3. browser_find to locate specific elements by description',
-          '4. browser_click / browser_type / browser_fill to interact',
-          '5. browser_get_text to read the result or verify',
-          '6. browser_screenshot to see the page visually. If the model supports vision, you will receive the image directly and can analyze it to find elements, understand layout, and make decisions. Use screenshots frequently to verify your actions.',
+          '## Browser',
+          'browser_* tools are CONNECTED. Use them for: login-required sites, UI interaction, visual tasks.',
+          'Workflow: navigate → read_page → click/type/fill → verify with screenshot.',
+          'For simple lookups use web_search. For batch scraping use Playwright.',
         ].join('\n');
       } else {
         browserPrompt = [
-          '## Browser Automation Routing (CRITICAL - MUST FOLLOW)',
-          '',
-          '### NoobClaw Browser Assistant: NOT CONNECTED',
-          '- For ANY browser-related request (open, browse, navigate, scroll, click, search on a website, etc.):',
-          '  → You MUST call browser_* tools first (e.g. browser_navigate). Do NOT skip this step.',
-          '  → The system will automatically show install dialogs if needed.',
-          '  → If the tool returns "User declined installation" or "failed 3 times", THEN you may use Playwright, web-search, or Bash as fallback.',
-          '  → If the tool returns "User is installing" or "not connected, please wait", ask the user to confirm and retry. Do NOT fallback yet.',
-          '  → Do NOT read Playwright SKILL.md or use npx/playwright unless the above conditions are met.',
+          '## Browser (NOT CONNECTED)',
+          'For browser tasks: call browser_navigate first (triggers install prompt).',
+          'Fallback to web_search or Playwright only if user declines extension.',
         ].join('\n');
       }
     } catch {}
     // ── Claude Code-style prompt engineering sections (ported from Anthropic's prompts.ts) ──
 
-    const doingTasksPrompt = [
-      '## Doing Tasks',
-      '- The user will primarily request software engineering tasks.',
-      '- You are highly capable. If the user asks you to do something that seems difficult or impossible, try your best to accomplish it rather than refusing.',
-      '- When the user provides a task, ALWAYS read the relevant code first before making changes. Do not guess or assume the code structure.',
-      '- ALWAYS prefer editing existing files in the codebase. NEVER create new files unless explicitly required.',
-      '- Code style: do not add features, refactoring, or error handling beyond what the user explicitly asked for.',
-      '- Do not add additional comments, type annotations, or docstrings unless the user asks.',
-      '- Do not add backwards-compatibility handling for code that is not currently used.',
-      '- Be careful not to introduce security vulnerabilities: no command injection, no XSS, no SQL injection, no path traversal.',
-      '- CRITICAL: NEVER fabricate, hallucinate, or assume what the user said. Only respond to the user\'s ACTUAL messages. Tool results, system messages, and internal state are NOT user messages. If you are unsure what the user wants, ASK — do not guess or make up what they said.',
+    // Compressed system prompt — merged sections, removed redundancy.
+    // Target: ~1500 tokens (was ~3500). Every word must earn its place.
+    const coreRulesPrompt = [
+      '## Rules',
+      '- Read code before editing. Never edit unread files.',
+      '- Prefer editing existing files over creating new ones.',
+      '- Do not add features, comments, or error handling beyond what was asked.',
+      '- NEVER fabricate what the user said. If unsure, ASK.',
+      '- On error: diagnose why, then fix. Do not retry blindly or give up after one failure.',
+      '- Report outcomes faithfully. Never claim success when output shows failure.',
+      '- For complex tasks: break into steps, complete each, verify before moving on.',
+      '- Hard-to-reverse actions (git push, deploy, publish) → check with user first.',
       '',
-      '### Error Handling and Debugging (IMPORTANT)',
-      '- If an approach fails, DIAGNOSE WHY before switching tactics. Read the error, check your assumptions, try a focused fix.',
-      '- Do not retry the identical action blindly, but also do not abandon a viable approach after a single failure.',
-      '- Never claim "all tests pass" or "everything works" when the output shows failures. Report outcomes faithfully.',
-      '- When you encounter an error, explain what went wrong and what you will try next.',
+      '## Tools',
+      '- Use Glob/Grep/Read/Edit/Write instead of Bash equivalents.',
+      '- Call independent tools in parallel.',
+      '- Read before Edit. Bug fix: understand → find root cause → fix → verify.',
+      '- If search returns nothing, try broader patterns before giving up.',
+      '- Use tool_search to discover additional tools when needed.',
       '',
-      '### Task Decomposition',
-      '- For complex multi-step tasks, break them into smaller steps and track progress.',
-      '- Complete one step fully before moving to the next.',
-      '- After completing a significant piece of work, verify it works before moving on.',
-      '- If you are blocked, explain what is blocking you and ask for help rather than silently failing.',
-    ].join('\n');
-
-    const actionsPrompt = [
-      '## Executing Actions with Care',
-      '- When executing actions, consider the reversibility and blast radius of each action.',
-      '- Local reversible actions (editing files, running tests, running builds) are fine to do without checking with the user first.',
-      '- Hard-to-reverse actions or actions that affect shared systems (git push, deploying, publishing, sending messages, creating/closing PRs/issues) require checking with the user first.',
-      '- Do not use destructive actions as shortcuts to accomplish a task. "Measure twice, cut once."',
-    ].join('\n');
-
-    const toolUsagePrompt = [
-      '## Using Your Tools',
-      '- Do NOT use Bash to do things that can be done with dedicated tools. This is IMPORTANT:',
-      '  - File search: Use Glob (NOT find or ls)',
-      '  - Content search: Use Grep (NOT grep or rg)',
-      '  - Read files: Use Read (NOT cat/head/tail)',
-      '  - Edit files: Use Edit (NOT sed/awk)',
-      '  - Write files: Use Write (NOT echo/printf)',
-      '- Call multiple tools in parallel when they are independent of each other.',
-      '- If one tool call depends on the result of another, wait for the first to finish before calling the second.',
+      '## Output',
+      '- ≤25 words between tool calls. ≤100 words in final response unless task needs more.',
+      '- Lead with action, not reasoning. No preamble. No "Sure/Of course".',
+      '- If one action suffices, just do it.',
       '',
-      '### Tool Selection Strategy',
-      '- For simple, directed searches (specific file/class/function), use Glob or Grep directly.',
-      '- For broader exploration or understanding unfamiliar code, use multiple Grep calls to build context.',
-      '- ALWAYS read a file before editing it. Never edit code you haven\'t read.',
-      '- When given a bug to fix: 1) reproduce/understand the error, 2) find the root cause, 3) fix it, 4) verify the fix.',
-      '- When searching, if your first query returns no results, try alternative spellings, abbreviations, or broader patterns before giving up.',
-    ].join('\n');
-
-    const outputEfficiencyPrompt = [
-      '## Output Efficiency',
-      'IMPORTANT: Go straight to the point. Try the simplest approach first without going in circles. Do not overdo it. Be extra concise.',
-      '- Keep text between tool calls to ≤25 words. Keep final responses to ≤100 words unless the task requires more detail.',
-      '- Lead with the answer or action, not the reasoning. Skip preamble, qualifiers, disclaimers.',
-      '- If you can complete the task in a single action, just do it — do not explain first.',
-      '- Never restate what the user said. Never start with "Sure", "Of course", "Absolutely".',
-      '- Prefer showing code/results over describing what you will do.',
-    ].join('\n');
-
-    const toneStylePrompt = [
-      '## Tone and Style',
-      '- Only use emojis if the user explicitly requests it.',
-      '- Responses should be informative but short and concise.',
-      '- When referencing code, use the format `file_path:line_number`.',
-      '- Do not use a colon before tool calls.',
+      '## Style',
+      '- No emojis unless asked. Concise. Use file_path:line_number for code refs.',
     ].join('\n');
 
     const securityPrompt = [
@@ -2756,7 +2669,7 @@ export class CoworkRunner extends EventEmitter {
     ].join('\n');
 
     const trimmedBasePrompt = baseSystemPrompt?.trim();
-    return [safetyPrompt, windowsEncodingPrompt, windowsBundledRuntimePrompt, doingTasksPrompt, actionsPrompt, toolUsagePrompt, outputEfficiencyPrompt, toneStylePrompt, securityPrompt, memoryRecallPrompt.join('\n'), browserPrompt, uiLanguagePrompt, trimmedBasePrompt]
+    return [safetyPrompt, windowsEncodingPrompt, windowsBundledRuntimePrompt, coreRulesPrompt, securityPrompt, memoryRecallPrompt.join('\n'), browserPrompt, uiLanguagePrompt, trimmedBasePrompt]
       .filter((section): section is string => Boolean(section?.trim()))
       .join('\n\n');
   }
