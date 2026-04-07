@@ -5700,6 +5700,19 @@ export class CoworkRunner extends EventEmitter {
         break;
       }
 
+      case 'error': {
+        // Show API errors directly in the chat as an assistant message
+        coworkLog('ERROR', 'handleQueryEvent', `Surfacing error to UI: ${event.error}`);
+        const errorMessage = this.store.addMessage(sessionId, {
+          type: 'assistant',
+          content: `⚠️ ${event.error}`,
+          metadata: { isError: true },
+        });
+        this.emit('message', sessionId, errorMessage);
+        this.handleError(sessionId, event.error);
+        break;
+      }
+
       case 'turn_start': {
         coworkLog('INFO', 'queryEngine', `Turn ${event.turnCount} starting`, { sessionId });
         // Reset streaming state for new turn

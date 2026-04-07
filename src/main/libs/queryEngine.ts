@@ -50,6 +50,7 @@ export type QueryEvent =
   | { type: 'assistant'; message: MessageParam }
   | { type: 'tool_use'; toolUseId: string; toolName: string; toolInput: Record<string, unknown> }
   | { type: 'tool_result'; toolUseId: string; toolName: string; content: string; isError: boolean }
+  | { type: 'error'; error: string; code?: string }
   | { type: 'turn_start'; turnCount: number }
   | { type: 'usage'; inputTokens: number; outputTokens: number; cacheReadTokens?: number; cacheCreationTokens?: number };
 
@@ -104,6 +105,29 @@ interface QueryState {
 // ── Constants ──
 
 const DEFAULT_MAX_TURNS = 100;
+
+/** Parse API error into user-friendly message */
+function formatApiError(errMsg: string): { message: string; code: string } {
+  if (errMsg.includes('402') || errMsg.includes('balance depleted') || errMsg.includes('top up')) {
+    return { message: '账户余额不足，请充值后重试。\nInsufficient balance. Please top up and try again.', code: '402' };
+  }
+  if (errMsg.includes('401') || errMsg.includes('Unauthorized') || errMsg.includes('invalid.*key')) {
+    return { message: 'API 密钥无效或已过期，请在设置中检查。\nInvalid API key. Please check your settings.', code: '401' };
+  }
+  if (errMsg.includes('429') || errMsg.includes('rate_limit')) {
+    return { message: '请求频率超限，请稍后重试。\nRate limit exceeded. Please wait and try again.', code: '429' };
+  }
+  if (errMsg.includes('413') || errMsg.includes('prompt is too long') || errMsg.includes('prompt_too_long')) {
+    return { message: '对话内容过长，请开始新对话或减少上下文。\nConversation too long. Start a new chat or reduce context.', code: '413' };
+  }
+  if (errMsg.includes('500') || errMsg.includes('internal_server_error')) {
+    return { message: 'AI 服务暂时不可用，请稍后重试。\nAI service temporarily unavailable.', code: '500' };
+  }
+  if (errMsg.includes('timeout') || errMsg.includes('ETIMEDOUT') || errMsg.includes('ECONNREFUSED')) {
+    return { message: '网络连接超时，请检查网络或 API 服务状态。\nNetwork timeout. Check your connection.', code: 'timeout' };
+  }
+  return { message: errMsg, code: 'unknown' };
+}
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
 const DEFAULT_MAX_TOKENS = 16384;
 const ESCALATED_MAX_TOKENS = 65536;
@@ -241,8 +265,8 @@ export async function* queryLoop(params: QueryParams): AsyncGenerator<QueryEvent
       // Prompt too long (413)
       if (errMsg.includes('prompt is too long') || errMsg.includes('413') || errMsg.includes('prompt_too_long')) {
         coworkLog('ERROR', 'queryEngine', 'Prompt too long error', { messageCount: messagesForQuery.length });
-        // TODO: Implement context compaction and retry
-        // For now, return error
+        const parsed = formatApiError(errMsg);
+        yield { type: 'error', error: parsed.message, code: parsed.code };
         return { reason: 'prompt_too_long', error: errMsg };
       }
 
@@ -252,6 +276,8 @@ export async function* queryLoop(params: QueryParams): AsyncGenerator<QueryEvent
       }
 
       coworkLog('ERROR', 'queryEngine', `API error: ${errMsg}`);
+      const parsed = formatApiError(errMsg);
+      yield { type: 'error', error: parsed.message, code: parsed.code };
       return { reason: 'error', error: errMsg };
     }
 
@@ -538,6 +564,8 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
           } catch (fallbackErr) {
             const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
             coworkLog('ERROR', 'queryEngine', `Non-streaming fallback also failed: ${fbMsg}`);
+            const parsed = formatApiError(fbMsg);
+            yield { type: 'error', error: parsed.message, code: parsed.code };
             return { reason: 'error' as const, error: fbMsg };
           }
         }
@@ -585,6 +613,7 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
             coworkLog('ERROR', 'queryEngine', `Reactive compact failed: ${compactErr}`);
           }
         }
+        { const parsed = formatApiError(errMsg); yield { type: 'error', error: parsed.message, code: parsed.code }; }
         return { reason: 'prompt_too_long' as const, error: errMsg };
       }
 
@@ -596,6 +625,7 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
         coworkLog('ERROR', 'queryEngine', `API error: ${errMsg}`, {
           stack: e instanceof Error ? e.stack : undefined,
         });
+        { const parsed = formatApiError(errMsg); yield { type: 'error', error: parsed.message, code: parsed.code }; }
         return { reason: 'error' as const, error: errMsg };
       }
     }
