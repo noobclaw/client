@@ -2569,7 +2569,7 @@ export class CoworkRunner extends EventEmitter {
     const windowsBundledRuntimePrompt = this.buildWindowsBundledRuntimePrompt();
     const memoryRecallPrompt = [
       '## Memory Strategy',
-      '- Historical retrieval is tool-first: when the user references previous chats, earlier outputs, or prior decisions, call `conversation_search` or `recent_chats` before answering.',
+      '- Historical retrieval is tool-first: when the user references previous chats, earlier outputs, or prior decisions, call `memory_recall` or `memory_search` before answering.',
       '- Do not guess historical facts from partial context. If retrieval returns no evidence, explicitly say not found.',
       '- Do not call history tools for every request; only use them when historical context is required.',
       '- If retrieved history conflicts with the latest explicit user instruction, follow the latest explicit user instruction.',
@@ -2577,7 +2577,7 @@ export class CoworkRunner extends EventEmitter {
     if (memoryEnabled) {
       memoryRecallPrompt.push(
         '- User memories are injected as <userMemories> facts and should be treated as stable personal context.',
-        '- Use `memory_user_edits` only when the user explicitly asks to remember, update, list, or delete memory facts.',
+        '- Use `memory_store` to save new memories and `memory_update` to modify/delete existing ones.',
         '- Never write transient conversation facts, news content, or source citations into user memory unless the user explicitly asks.',
         '',
         '### Memory Reliability (ported from Claude Code memdir)',
@@ -3524,82 +3524,8 @@ export class CoworkRunner extends EventEmitter {
       const coreTools = buildCoreFileTools();
       allTools.push(...coreTools);
 
-      // Memory tools
-      allTools.push(
-        buildTool({
-          name: 'conversation_search',
-          description: 'Search prior conversations by query and return Claude-style <chat> blocks. Use this when the user asks about something discussed in previous conversations.',
-          inputSchema: z.object({
-            query: z.string().min(1),
-            max_results: z.number().int().min(1).max(10).optional(),
-            before: z.string().optional(),
-            after: z.string().optional(),
-          }),
-          call: async (args) => {
-            const text = this.runConversationSearchTool(args);
-            return { content: [{ type: 'text', text }] };
-          },
-          isConcurrencySafe: true,
-          isReadOnly: true,
-        }),
-        buildTool({
-          name: 'recent_chats',
-          description: 'List recent chats and return Claude-style <chat> blocks. Use to get an overview of recent conversation history.',
-          inputSchema: z.object({
-            n: z.number().int().min(1).max(20).optional(),
-            sort_order: z.enum(['asc', 'desc']).optional(),
-            before: z.string().optional(),
-            after: z.string().optional(),
-          }),
-          call: async (args) => {
-            const text = this.runRecentChatsTool(args);
-            return { content: [{ type: 'text', text }] };
-          },
-          isConcurrencySafe: true,
-          isReadOnly: true,
-        }),
-      );
-      if (config.memoryEnabled) {
-        allTools.push(
-          buildTool({
-            name: 'memory_user_edits',
-            description: 'Manage user memories. action=list|add|update|delete. Use "list" to see existing memories, "add" to save new ones, "update" to modify, "delete" to remove.',
-            inputSchema: z.object({
-              action: z.enum(['list', 'add', 'update', 'delete']),
-              id: z.string().optional(),
-              text: z.string().optional(),
-              confidence: z.number().min(0).max(1).optional(),
-              status: z.enum(['created', 'stale', 'deleted']).optional(),
-              is_explicit: z.boolean().optional(),
-              limit: z.number().int().min(1).max(200).optional(),
-              query: z.string().optional(),
-            }),
-            call: async (args) => {
-              try {
-                const result = this.runMemoryUserEditsTool(args);
-                return {
-                  content: [{ type: 'text', text: result.text }],
-                  isError: result.isError,
-                };
-              } catch (error) {
-                return {
-                  content: [{
-                    type: 'text',
-                    text: this.formatMemoryUserEditsResult({
-                      action: args.action,
-                      successCount: 0,
-                      failedCount: 1,
-                      changedIds: [],
-                      reason: error instanceof Error ? error.message : String(error),
-                    }),
-                  }],
-                  isError: true,
-                };
-              }
-            },
-          })
-        );
-      }
+      // Memory tools registered later via dreamingMemoryTools (memory_recall, memory_store, etc.)
+      // Old conversation_search/recent_chats/memory_user_edits removed — replaced by Dreaming system.
       // --- Browser automation tools ---
       const { sendBrowserCommand, getBrowserBridgeStatus, showExtensionPrompt, isExtensionInstalled } = await import('./browserBridge');
       let browserFailCount = 0;
