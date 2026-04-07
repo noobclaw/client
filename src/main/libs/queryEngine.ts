@@ -112,6 +112,53 @@ interface QueryState {
 
 const DEFAULT_MAX_TURNS = 100;
 
+// ── In-loop message compression ──
+// Keeps recent 3 turns complete, strips tool_result content from older turns.
+// Prevents messages from growing unbounded during agent loop (17 turns = 17x messages).
+
+const KEEP_RECENT_MESSAGES = 6; // ~3 turns (user+assistant pairs)
+const CLEARED_RESULT = '[Previous tool result cleared to save context]';
+
+function compressMessagesInLoop(messages: MessageParam[]): MessageParam[] {
+  if (messages.length <= KEEP_RECENT_MESSAGES) return messages;
+
+  const cutoff = messages.length - KEEP_RECENT_MESSAGES;
+  const compressed: MessageParam[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    if (i >= cutoff) {
+      // Recent: keep complete
+      compressed.push(msg);
+      continue;
+    }
+
+    // Older: strip tool_result content, keep structure for API pairing
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      const stripped = (msg.content as any[]).map((block: any) => {
+        if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 100) {
+          return { ...block, content: CLEARED_RESULT };
+        }
+        return block;
+      });
+      compressed.push({ role: msg.role, content: stripped });
+    } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
+      // Strip thinking blocks from old assistant messages
+      const stripped = (msg.content as any[]).filter((block: any) => {
+        if (block.type === 'thinking') return false; // Remove old thinking
+        return true;
+      });
+      compressed.push({ role: msg.role, content: stripped.length > 0 ? stripped : msg.content });
+    } else {
+      compressed.push(msg);
+    }
+  }
+
+  coworkLog('INFO', 'queryEngine', `Compressed messages: ${messages.length} → kept ${KEEP_RECENT_MESSAGES} recent, stripped ${cutoff} older`);
+  return compressed;
+}
+
 /** Parse API error into user-friendly message */
 function formatApiError(errMsg: string): { message: string; code: string } {
   if (errMsg.includes('402') || errMsg.includes('balance depleted') || errMsg.includes('top up')) {
@@ -451,8 +498,12 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
     state.turnCount++;
     yield { type: 'turn_start', turnCount: state.turnCount };
 
-    // Note: micro-compact runs on store messages in coworkRunner.maybeCompactSession,
-    // not here (API messages lack toolName metadata needed for selective clearing).
+    // ── In-loop message compression (Claude Code pattern) ──
+    // Keep recent 3 turns complete, strip tool_result content from older turns.
+    // This prevents messages from growing unbounded across agent loop iterations.
+    if (state.turnCount > 3 && state.messages.length > 10) {
+      state.messages = compressMessagesInLoop(state.messages);
+    }
 
     const messagesForQuery = normalizeMessagesForAPI(state.messages);
     const maxTokens = state.maxOutputTokensRecoveryCount > 0
