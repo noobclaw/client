@@ -192,28 +192,37 @@ export function createTauriElectronShim(): typeof window.electron {
       selectDirectory: async () => {
         try {
           const tauri = (window as any).__TAURI__;
-          const selected = await tauri.dialog.open({ directory: true, multiple: false });
-          if (selected) return { canceled: false, filePaths: [selected] };
+          if (tauri?.dialog?.open) {
+            const selected = await tauri.dialog.open({ directory: true, multiple: false });
+            if (selected) return { success: true, path: typeof selected === 'string' ? selected : selected[0] };
+          }
         } catch (e) { console.warn('[TauriShim] dialog.open failed:', e); }
-        return { canceled: true, filePaths: [] };
+        return { success: true, path: null };
       },
       selectFile: async (opts?: any) => {
         try {
           const tauri = (window as any).__TAURI__;
-          const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
-          const selected = await tauri.dialog.open({ directory: false, multiple: false, filters });
-          if (selected) return { canceled: false, filePaths: [selected] };
+          if (tauri?.dialog?.open) {
+            const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
+            const selected = await tauri.dialog.open({ directory: false, multiple: false, filters });
+            if (selected) return { success: true, path: typeof selected === 'string' ? selected : selected[0] };
+          }
         } catch (e) { console.warn('[TauriShim] dialog.open failed:', e); }
-        return { canceled: true, filePaths: [] };
+        return { success: true, path: null };
       },
       selectFiles: async (opts?: any) => {
         try {
           const tauri = (window as any).__TAURI__;
-          const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
-          const selected = await tauri.dialog.open({ directory: false, multiple: true, filters });
-          if (selected) return { canceled: false, filePaths: Array.isArray(selected) ? selected : [selected] };
+          if (tauri?.dialog?.open) {
+            const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
+            const selected = await tauri.dialog.open({ directory: false, multiple: true, filters });
+            if (selected) {
+              const paths = Array.isArray(selected) ? selected : [selected];
+              return { success: true, filePaths: paths };
+            }
+          }
         } catch (e) { console.warn('[TauriShim] dialog.open failed:', e); }
-        return { canceled: true, filePaths: [] };
+        return { success: true, filePaths: [] };
       },
       saveInlineFile: () => Promise.resolve({ success: false }),
       readFileAsDataUrl: () => Promise.resolve({ success: false }),

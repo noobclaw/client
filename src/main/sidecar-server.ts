@@ -45,6 +45,10 @@ async function getRunner() {
     const sqliteStore = await SqliteStore.create(getUserDataPath());
     const store = new CoworkStore(sqliteStore.getDatabase(), sqliteStore.getSaveFunction());
 
+    // Wire up claudeSettings store getter so API config resolution works
+    const { setStoreGetter } = await import('./libs/claudeSettings');
+    setStoreGetter(() => sqliteStore);
+
     runnerInstance = new CoworkRunner(store);
     // Expose sqliteStore for KV operations (store:get/set)
     (runnerInstance as any)._sqliteStore = sqliteStore;
@@ -104,9 +108,9 @@ const server = http.createServer(async (req, res) => {
     // ── Sessions ──
     if (pathname === '/api/sessions' && req.method === 'GET') {
       const runner = await getRunner();
-      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      if (!runner) return writeJSON(res, 200, { success: true, sessions: [] });
       const sessions = runner.store.listSessions();
-      return writeJSON(res, 200, sessions);
+      return writeJSON(res, 200, { success: true, sessions });
     }
 
     if (pathname === '/api/session/start' && req.method === 'POST') {
@@ -164,48 +168,64 @@ const server = http.createServer(async (req, res) => {
       const runner = await getRunner();
       if (!runner) {
         const os = require('os');
-        return writeJSON(res, 200, { mode: 'tauri-sidecar', workingDirectory: os.homedir() });
+        return writeJSON(res, 200, { success: true, config: { workingDirectory: os.homedir(), executionMode: 'local' } });
       }
-      const config = runner.store.getConfig() || {};
-      if (!config.workingDirectory) config.workingDirectory = require('os').homedir();
-      return writeJSON(res, 200, config);
+      return writeJSON(res, 200, { success: true, config: runner.store.getConfig() });
     }
 
     if (pathname === '/api/config' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
-      if (runner) runner.store.updateConfig(body);
-      return writeJSON(res, 200, { status: 'updated' });
+      if (runner) runner.store.setConfig(body);
+      return writeJSON(res, 200, { success: true });
     }
 
     // ── API Config ──
     if (pathname === '/api/apiConfig' && req.method === 'GET') {
       try {
+        await getRunner(); // ensure store is initialized
         const { getCurrentApiConfig } = await import('./libs/claudeSettings');
-        return writeJSON(res, 200, getCurrentApiConfig() || {});
-      } catch {
-        return writeJSON(res, 200, {});
+        const config = getCurrentApiConfig();
+        if (config) return writeJSON(res, 200, { hasConfig: true, config });
+        return writeJSON(res, 200, { hasConfig: false, config: null });
+      } catch (e) {
+        return writeJSON(res, 200, { hasConfig: false, config: null, error: String(e) });
+      }
+    }
+
+    if (pathname === '/api/apiConfig/check' && req.method === 'POST') {
+      try {
+        await getRunner(); // ensure store is initialized
+        const { resolveCurrentApiConfig } = await import('./libs/claudeSettings');
+        const { config, error } = resolveCurrentApiConfig();
+        return writeJSON(res, 200, { hasConfig: !!config, config, error });
+      } catch (e) {
+        return writeJSON(res, 200, { hasConfig: false, config: null, error: String(e) });
       }
     }
 
     if (pathname === '/api/apiConfig/save' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       try {
+        await getRunner(); // ensure store is initialized
         const { saveCoworkApiConfig } = await import('./libs/coworkConfigStore');
         saveCoworkApiConfig(body);
-        return writeJSON(res, 200, { status: 'saved' });
+        return writeJSON(res, 200, { success: true });
       } catch (e) {
         return writeJSON(res, 500, { error: String(e) });
       }
     }
 
     // ── Session detail ──
-    if (pathname.startsWith('/api/session/') && req.method === 'GET') {
+    if (pathname.startsWith('/api/session/') && req.method === 'GET' && !pathname.includes('/api/session/start') && !pathname.includes('/api/session/stop') && !pathname.includes('/api/session/delete') && !pathname.includes('/api/session/pin') && !pathname.includes('/api/session/rename')) {
       const sessionId = pathname.split('/api/session/')[1];
-      const runner = await getRunner();
-      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
-      const session = runner.store.getSession(sessionId);
-      return writeJSON(res, 200, session || null);
+      if (sessionId) {
+        const runner = await getRunner();
+        if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
+        const session = runner.store.getSession(sessionId);
+        const messages = session ? runner.store.getMessages(sessionId) : [];
+        return writeJSON(res, 200, { success: true, session, messages });
+      }
     }
 
     if (pathname === '/api/session/deleteBatch' && req.method === 'POST') {
@@ -347,6 +367,15 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
+
+  // Pre-initialize runner immediately so data is ready when frontend connects
+  getRunner().then((runner) => {
+    if (runner) {
+      coworkLog('INFO', 'sidecar-server', 'Runner pre-initialized successfully');
+    } else {
+      coworkLog('WARN', 'sidecar-server', 'Runner pre-initialization failed — will retry on first request');
+    }
+  }).catch(e => coworkLog('ERROR', 'sidecar-server', `Runner pre-init error: ${e}`));
 });
 
 // ── Helpers ──
