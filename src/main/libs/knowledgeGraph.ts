@@ -14,20 +14,24 @@
  *   - Procedural: Preferences and habits (likes concise replies)
  */
 
-import Database from 'better-sqlite3';
 import path from 'path';
 import { getUserDataPath } from './platformAdapter';
+
+// Conditionally load better-sqlite3 — unavailable in sidecar/pkg mode
+let Database: any = null;
+try { Database = require('better-sqlite3'); } catch {}
 
 const DB_NAME = 'knowledge-graph.db';
 const MAX_CONTEXT_TOKENS = 800;
 const APPROX_CHARS_PER_TOKEN = 4;
 const MAX_CONTEXT_CHARS = MAX_CONTEXT_TOKENS * APPROX_CHARS_PER_TOKEN;
 
-let db: Database.Database | null = null;
+let db: any = null;
 
 // --- Database Setup ---
 
 export function initKnowledgeGraph(): void {
+  if (!Database) { console.warn('[KnowledgeGraph] better-sqlite3 not available, skipping'); return; }
   try {
     const dbPath = path.join(getUserDataPath(), DB_NAME);
     db = new Database(dbPath);

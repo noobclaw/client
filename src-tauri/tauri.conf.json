@@ -10,6 +10,7 @@
     "devUrl": "http://localhost:5175"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "NoobClaw",

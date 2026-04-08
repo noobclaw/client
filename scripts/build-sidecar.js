@@ -59,7 +59,7 @@ function main() {
     process.exit(1);
   }
 
-  execSync(`npx esbuild "${entryPoint}" --bundle --platform=node --target=node20 --outfile="${bundlePath}" --external:better-sqlite3 --external:@anthropic-ai/sdk --external:@modelcontextprotocol/sdk`, {
+  execSync(`npx esbuild "${entryPoint}" --bundle --platform=node --target=node20 --outfile="${bundlePath}" --external:better-sqlite3`, {
     cwd: ROOT,
     stdio: 'inherit',
   });
