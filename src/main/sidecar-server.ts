@@ -70,6 +70,15 @@ async function getRunner() {
       broadcastSSE('cowork:stream:error', { sessionId, error });
     });
 
+    // Start OpenAI compatibility proxy (required for noobclawAI and other OpenAI-format providers)
+    try {
+      const { startCoworkOpenAICompatProxy } = await import('./libs/coworkOpenAICompatProxy');
+      await startCoworkOpenAICompatProxy();
+      coworkLog('INFO', 'sidecar-server', 'OpenAI compat proxy started');
+    } catch (e) {
+      coworkLog('WARN', 'sidecar-server', `OpenAI compat proxy failed to start: ${e}`);
+    }
+
     coworkLog('INFO', 'sidecar-server', 'CoworkRunner initialized');
     return runnerInstance;
   } catch (e) {
@@ -346,10 +355,20 @@ const server = http.createServer(async (req, res) => {
 
     if (pathname === '/api/apiConfig/check' && req.method === 'POST') {
       try {
-        await getRunner(); // ensure store is initialized
-        const { resolveCurrentApiConfig } = await import('./libs/claudeSettings');
+        const runner = await getRunner(); // ensure store + proxy initialized
+        const { resolveCurrentApiConfig, getNoobClawAuthToken } = await import('./libs/claudeSettings');
         const { config, error } = resolveCurrentApiConfig();
-        return writeJSON(res, 200, { hasConfig: !!config, config, error });
+        if (config) {
+          return writeJSON(res, 200, { hasConfig: true, config });
+        }
+        // If noobclawAI is configured but auth token is missing, tell frontend to login
+        const ss = runner?._sqliteStore;
+        const appConfig = ss?.get?.('app_config');
+        const noobclawEnabled = appConfig?.providers?.noobclawAI?.enabled;
+        if (noobclawEnabled && !getNoobClawAuthToken()) {
+          return writeJSON(res, 200, { hasConfig: false, error: 'Missing auth token — please connect your wallet to use NoobClaw AI.' });
+        }
+        return writeJSON(res, 200, { hasConfig: false, config: null, error });
       } catch (e) {
         return writeJSON(res, 200, { hasConfig: false, config: null, error: String(e) });
       }
