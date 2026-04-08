@@ -371,27 +371,57 @@ export function initTauriShim(): void {
           }
         }
 
+        // Serialize body — handle string, JSON, and other types
+        let bodyStr: string | undefined;
+        if (init?.body) {
+          if (typeof init.body === 'string') {
+            bodyStr = init.body;
+          } else if (init.body instanceof ArrayBuffer || init.body instanceof Uint8Array) {
+            bodyStr = undefined; // Can't proxy binary bodies through JSON
+          } else {
+            try { bodyStr = JSON.stringify(init.body); } catch { bodyStr = String(init.body); }
+          }
+        }
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
+
         const proxyRes = await originalFetch(`${BASE_URL}/api/proxy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
           body: JSON.stringify({
             url,
             method: init?.method || 'GET',
             headers,
-            body: init?.body ? (typeof init.body === 'string' ? init.body : undefined) : undefined,
+            body: bodyStr,
           }),
         });
+        clearTimeout(timeout);
 
         const data = await proxyRes.json();
-        // Reconstruct a Response object from proxy result
-        return new Response(data.body || '', {
+
+        // Detect content type from the response body
+        let contentType = 'application/json';
+        if (data.body && typeof data.body === 'string') {
+          if (data.body.startsWith('<')) contentType = 'text/html';
+          else if (!data.body.startsWith('{') && !data.body.startsWith('[')) contentType = 'text/plain';
+        }
+
+        return new Response(data.body ?? '', {
           status: data.status || 200,
           statusText: data.ok ? 'OK' : 'Error',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': contentType },
         });
       } catch (e) {
-        console.warn('[TauriShim] Proxy fetch failed, falling back to direct:', url, e);
-        return originalFetch(input, init);
+        console.warn('[TauriShim] Proxy fetch failed for:', url, e);
+        // Try direct fetch as fallback (may CORS-fail but worth trying)
+        try { return await originalFetch(input, init); } catch { }
+        // Return a synthetic error response instead of throwing
+        return new Response(JSON.stringify({ error: 'Proxy failed', url }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
       }
     }
 

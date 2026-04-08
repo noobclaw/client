@@ -854,14 +854,19 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/proxy' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
         const proxyRes = await fetch(body.url, {
           method: body.method || 'GET',
           headers: body.headers || {},
           body: body.body || undefined,
+          signal: controller.signal,
         });
+        clearTimeout(timeout);
         const responseBody = await proxyRes.text();
         return writeJSON(res, 200, { ok: proxyRes.ok, status: proxyRes.status, body: responseBody });
       } catch (e: any) {
+        coworkLog('WARN', 'proxy', `Proxy failed for ${body.url}: ${e.message}`);
         return writeJSON(res, 200, { ok: false, status: 0, body: '', error: e.message });
       }
     }
