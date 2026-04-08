@@ -341,6 +341,55 @@ export function initTauriShim(): void {
   console.log('[TauriShim] Tauri detected, installing electron shim');
   (window as any).electron = createTauriElectronShim();
 
+  // Patch global fetch to proxy external API calls through sidecar (bypass CORS)
+  // Tauri WebView origin (tauri://localhost) gets CORS-blocked by external APIs.
+  // In Electron, session.defaultSession.fetch() bypasses CORS. We replicate that
+  // by routing external requests through the sidecar's api:fetch handler.
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+
+    // Only proxy external API calls, not local sidecar calls
+    if (url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost')) {
+      try {
+        const headers: Record<string, string> = {};
+        if (init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.forEach((v, k) => { headers[k] = v; });
+          } else if (Array.isArray(init.headers)) {
+            init.headers.forEach(([k, v]) => { headers[k] = v; });
+          } else {
+            Object.assign(headers, init.headers);
+          }
+        }
+
+        const proxyRes = await originalFetch(`${BASE_URL}/api/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            url,
+            method: init?.method || 'GET',
+            headers,
+            body: init?.body ? (typeof init.body === 'string' ? init.body : undefined) : undefined,
+          }),
+        });
+
+        const data = await proxyRes.json();
+        // Reconstruct a Response object from proxy result
+        return new Response(data.body || '', {
+          status: data.status || 200,
+          statusText: data.ok ? 'OK' : 'Error',
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } catch (e) {
+        console.warn('[TauriShim] Proxy fetch failed, falling back to direct:', url, e);
+        return originalFetch(input, init);
+      }
+    }
+
+    return originalFetch(input, init);
+  };
+
   // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
   window.addEventListener('noobclaw-auth', ((e: CustomEvent) => {
     const { token, wallet } = e.detail || {};

@@ -816,6 +816,22 @@ const server = http.createServer(async (req, res) => {
       return writeJSON(res, 200, { status: 'ok' });
     }
 
+    // ── HTTP Proxy (bypass CORS for external API calls from Tauri WebView) ──
+    if (pathname === '/api/proxy' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      try {
+        const proxyRes = await fetch(body.url, {
+          method: body.method || 'GET',
+          headers: body.headers || {},
+          body: body.body || undefined,
+        });
+        const responseBody = await proxyRes.text();
+        return writeJSON(res, 200, { ok: proxyRes.ok, status: proxyRes.status, body: responseBody });
+      } catch (e: any) {
+        return writeJSON(res, 200, { ok: false, status: 0, body: '', error: e.message });
+      }
+    }
+
     // ── Version ──
     if (pathname === '/api/version') {
       return writeJSON(res, 200, { version: '1.0.0', mode: 'tauri-sidecar' });
