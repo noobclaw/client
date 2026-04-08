@@ -283,6 +283,9 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
   const resolvedBaseURL = matched.baseURL;
   const resolvedApiKey = matched.providerConfig.apiKey?.trim() || '';
   // noobclawAI uses JWT auth instead of a static API key
+  if (matched.providerName === 'noobclawAI' && !_noobClawAuthToken) {
+    return { config: null, error: 'Missing auth token — please connect your wallet to use NoobClaw AI.' };
+  }
   const effectiveApiKey = matched.providerName === 'noobclawAI'
     ? (_noobClawAuthToken || '')
     : matched.providerName === 'ollama'

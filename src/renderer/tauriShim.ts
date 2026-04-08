@@ -341,6 +341,14 @@ export function initTauriShim(): void {
   console.log('[TauriShim] Tauri detected, installing electron shim');
   (window as any).electron = createTauriElectronShim();
 
+  // Disable right-click context menu in Tauri (production only)
+  document.addEventListener('contextmenu', (e) => {
+    // Allow right-click in text inputs/textareas for copy/paste
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    e.preventDefault();
+  });
+
   // Patch global fetch to proxy external API calls through sidecar (bypass CORS)
   // Tauri WebView origin (tauri://localhost) gets CORS-blocked by external APIs.
   // In Electron, session.defaultSession.fetch() bypasses CORS. We replicate that
