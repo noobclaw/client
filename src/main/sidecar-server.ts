@@ -246,10 +246,17 @@ const server = http.createServer(async (req, res) => {
 
         // Start async (don't await)
         runner.startSession(session.id, body.prompt, {
+          skipInitialUserMessage: true,
           systemPrompt: body.systemPrompt,
           imageAttachments: body.imageAttachments,
           skillIds: body.activeSkillIds,
-        }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Session error: ${e}`));
+          workspaceRoot: cwd,
+        }).catch((e: any) => {
+          coworkLog('ERROR', 'sidecar', `Session error: ${e}`);
+          runner.store.updateSession(session.id, { status: 'error' });
+          runner.store.addMessage(session.id, { type: 'system', content: `Error: ${e.message || e}` });
+          broadcastSSE('cowork:stream:error', { sessionId: session.id, error: String(e) });
+        });
 
         const updatedSession = runner.store.getSession(session.id) || session;
         return writeJSON(res, 200, { success: true, session: updatedSession });
@@ -264,13 +271,13 @@ const server = http.createServer(async (req, res) => {
       if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
 
       try {
-        runner.store.addMessage(body.sessionId, { type: 'user', content: body.prompt, metadata: body.imageAttachments?.length ? { imageAttachments: body.imageAttachments } : undefined });
-        runner.store.updateSession(body.sessionId, { status: 'running' });
-
         runner.continueSession(body.sessionId, body.prompt, {
           systemPrompt: body.systemPrompt,
           imageAttachments: body.imageAttachments,
-        }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Continue error: ${e}`));
+        }).catch((e: any) => {
+          coworkLog('ERROR', 'sidecar', `Continue error: ${e}`);
+          broadcastSSE('cowork:stream:error', { sessionId: body.sessionId, error: String(e) });
+        });
 
         const session = runner.store.getSession(body.sessionId);
         return writeJSON(res, 200, { success: true, session });
@@ -392,9 +399,8 @@ const server = http.createServer(async (req, res) => {
       if (sessionId) {
         const runner = await getRunner();
         if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
-        const session = runner.store.getSession(sessionId);
-        const messages = session ? runner.store.getMessages(sessionId) : [];
-        return writeJSON(res, 200, { success: true, session, messages });
+        const session = runner.store.getSession(sessionId); // includes messages
+        return writeJSON(res, 200, { success: true, session });
       }
     }
 
