@@ -63,11 +63,13 @@ export class SqliteStore {
     // Initialize SQL.js with WASM file path (cached promise for reuse)
     if (!SqliteStore.sqlPromise) {
       const wasmBinary = loadWasmBinary();
+      console.log(`[SqliteStore] WASM binary ${wasmBinary ? `found (${wasmBinary.byteLength} bytes)` : 'NOT found, using fallback'}`);
       SqliteStore.sqlPromise = wasmBinary
         ? initSqlJs({ wasmBinary })
         : initSqlJs();  // Let sql.js find WASM on its own (sidecar mode)
     }
     const SQL = await SqliteStore.sqlPromise;
+    console.log(`[SqliteStore] sql.js initialized, dbPath=${dbPath}, exists=${fs.existsSync(dbPath)}`);
 
     // Load existing database or create new one
     let db: Database;

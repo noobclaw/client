@@ -203,10 +203,32 @@ const server = http.createServer(async (req, res) => {
     // ── API Config ──
     if (pathname === '/api/apiConfig' && req.method === 'GET') {
       try {
-        await getRunner(); // ensure store is initialized
+        const runner = await getRunner(); // ensure store is initialized
         const { getCurrentApiConfig } = await import('./libs/claudeSettings');
         const config = getCurrentApiConfig();
         if (config) return writeJSON(res, 200, { hasConfig: true, config });
+        // Even if resolveCurrentApiConfig fails (e.g., no auth token for noobclawAI),
+        // return the raw app_config so frontend knows a provider IS configured
+        const ss = runner?._sqliteStore;
+        const appConfig = ss?.get?.('app_config');
+        if (appConfig?.providers) {
+          // Find any enabled provider
+          const enabledProvider = Object.entries(appConfig.providers).find(([_, v]: [string, any]) => v?.enabled);
+          if (enabledProvider) {
+            return writeJSON(res, 200, {
+              hasConfig: true,
+              config: {
+                apiKey: '',
+                baseURL: (enabledProvider[1] as any).baseUrl || '',
+                model: appConfig.model?.defaultModel || '',
+                apiType: (enabledProvider[1] as any).apiFormat || 'openai',
+                providerName: enabledProvider[0],
+                isOpenAICompat: (enabledProvider[1] as any).apiFormat === 'openai',
+              },
+              needsAuth: enabledProvider[0] === 'noobclawAI',
+            });
+          }
+        }
         return writeJSON(res, 200, { hasConfig: false, config: null });
       } catch (e) {
         return writeJSON(res, 200, { hasConfig: false, config: null, error: String(e) });
