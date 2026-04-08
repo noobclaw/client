@@ -147,6 +147,7 @@ export function buildDeferredToolSet(tools: ToolDefinition[]): DeferredToolSet {
   const alwaysLoad = new Set([
     'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
     'tool_search',
+    'browser_navigate', 'desktop_screenshot', 'desktop_open_app',
   ]);
 
   // Intent-based tool loading: detect what the user wants from their message
@@ -248,44 +249,54 @@ function detectIntentTools(message: string): string[] {
   const lower = message.toLowerCase();
   const tools: string[] = [];
 
-  // Browser intent
-  if (/\b(browser|网页|打开.*网|browse|url|website|chrome|navigate)\b/i.test(lower)) {
-    tools.push('browser_navigate', 'browser_screenshot', 'browser_observe', 'browser_click', 'browser_type');
+  // Browser intent — match URLs, website names, browsing actions
+  if (/browser|网页|打开.*网|browse|url|website|chrome|safari|edge|navigate|小红书|抖音|bilibili|youtube|twitter|github|百度|谷歌|google|bing|搜一下|看看.*网/i.test(lower)) {
+    tools.push('browser_navigate', 'browser_screenshot', 'browser_observe', 'browser_click', 'browser_type', 'browser_get_text', 'browser_read_page');
   }
 
-  // Desktop control intent
-  if (/\b(desktop|桌面|屏幕|screenshot|点击|click|打开.*应用|open.*app|鼠标|mouse)\b/i.test(lower)) {
-    tools.push('desktop_screenshot', 'desktop_click', 'desktop_type', 'desktop_open_app');
+  // Desktop control intent — match app names, desktop actions, media playback
+  if (/desktop|桌面|屏幕|screenshot|截图|点击|click|打开|启动|运行|open|launch|start|鼠标|mouse|应用|app|微信|wechat|qq|钉钉|飞书|spotify|播放|play|音乐|music|视频|video|word|excel|ppt|vscode|terminal|终端|文件管理|finder|资源管理器|explorer/i.test(lower)) {
+    tools.push('desktop_screenshot', 'desktop_click', 'desktop_type', 'desktop_open_app', 'desktop_key', 'desktop_mouse_move');
   }
 
   // Memory intent
-  if (/\b(remember|记住|recall|记忆|memory|之前|以前|上次)\b/i.test(lower)) {
-    tools.push('memory_recall', 'memory_store');
+  if (/remember|记住|recall|记忆|memory|之前|以前|上次|你还记得|你知道我/i.test(lower)) {
+    tools.push('memory_recall', 'memory_store', 'memory_search');
   }
 
   // Sub-agent intent
-  if (/\b(parallel|并行|agent|delegate|拆分|分配|子任务)\b/i.test(lower)) {
+  if (/parallel|并行|agent|delegate|拆分|分配|子任务|同时.*做|一起.*做/i.test(lower)) {
     tools.push('spawn_subagent', 'delegate_to_agent', 'get_task_result');
   }
 
   // Process intent
-  if (/\b(server|dev|start|run|npm|node|process|后台|进程)\b/i.test(lower)) {
+  if (/server|dev.*server|start.*server|npm|node|process|后台|进程|运行.*服务|启动.*服务/i.test(lower)) {
     tools.push('process_spawn', 'process_list', 'process_poll', 'process_kill');
   }
 
   // Search intent
-  if (/\b(search|搜索|google|find.*online|查找|web)\b/i.test(lower)) {
+  if (/search|搜索|google|find.*online|查找|web|查一下|搜一下|帮我.*找/i.test(lower)) {
     tools.push('web_search', 'web_fetch');
   }
 
   // Canvas intent
-  if (/\b(canvas|画布|html|render|interactive|表单|form)\b/i.test(lower)) {
+  if (/canvas|画布|html|render|interactive|表单|form|界面|ui|页面/i.test(lower)) {
     tools.push('canvas_render', 'canvas_read_action');
   }
 
   // Voice intent
-  if (/\b(voice|语音|speak|说|listen|听|tts|stt)\b/i.test(lower)) {
+  if (/voice|语音|speak|说|listen|听|tts|stt|朗读|读出来/i.test(lower)) {
     tools.push('voice_listen', 'voice_speak');
+  }
+
+  // Gmail intent
+  if (/email|邮件|gmail|mail|发.*邮件|收.*邮件/i.test(lower)) {
+    tools.push('gmail_search', 'gmail_send', 'gmail_status');
+  }
+
+  // Media intent
+  if (/图片|image|photo|照片|视频|video|音频|audio|转换|convert|下载.*视频|下载.*音乐|生成.*图/i.test(lower)) {
+    tools.push('describe_image', 'transcribe_audio', 'convert_media', 'download_media', 'generate_media');
   }
 
   return tools;
