@@ -130,7 +130,7 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
   const results: { browser: BrowserType; manifestPath: string; regKey?: string }[] = [];
 
   if (process.platform === 'win32') {
-    const basePath = path.join(app.getPath('userData'), `${NATIVE_HOST_NAME}.json`);
+    const basePath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.json`);
     results.push(
       { browser: 'chrome', manifestPath: basePath, regKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
       { browser: 'edge', manifestPath: basePath, regKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
@@ -153,7 +153,7 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
 }
 
 function getNativeHostScriptPath(): string {
-  const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+  const resourcesPath = getResourcesPath();
   if (process.platform === 'win32') {
     return path.join(resourcesPath, 'native-messaging-host.bat');
   }
@@ -164,7 +164,7 @@ function getNativeHostScriptPath(): string {
 export function registerNativeMessagingHost(): void {
   try {
     const hostScriptPath = getNativeHostScriptPath();
-    const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+    const resourcesPath = getResourcesPath();
     const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
 
     // Create batch/shell wrapper
@@ -332,7 +332,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
 };
 
 function getPromptTexts() {
-  const locale = app.getLocale().toLowerCase();
+  const locale = (app?.getLocale?.() || Intl.DateTimeFormat().resolvedOptions().locale || 'en').toLowerCase();
   if (locale.startsWith('zh-tw') || locale.startsWith('zh-hant')) return extensionPromptTexts['zh-TW'];
   if (locale.startsWith('zh')) return extensionPromptTexts.zh;
   if (locale.startsWith('ja')) return extensionPromptTexts.ja;
@@ -409,9 +409,10 @@ export function isExtensionInstalled(): boolean {
 }
 
 async function installLocalExtension(): Promise<void> {
-  const { clipboard } = require('electron');
+  let clipboard: any = null;
+  try { clipboard = require('electron').clipboard; } catch {}
   const browsers = detectBrowsers();
-  const win = BrowserWindow.getFocusedWindow();
+  const win = BrowserWindow?.getFocusedWindow?.();
   const t = getPromptTexts();
 
   if (browsers.length === 0) {
@@ -434,12 +435,12 @@ async function installLocalExtension(): Promise<void> {
 
   // Get extension path
   const extensionPath = path.join(
-    process.resourcesPath || path.join(app.getAppPath(), '..'),
+    getResourcesPath(),
     'chrome-extension'
   );
 
   // Copy path to clipboard
-  clipboard.writeText(extensionPath);
+  clipboard?.writeText?.(extensionPath);
 
   // Open chrome://extensions page
   const browser = browsers[0];

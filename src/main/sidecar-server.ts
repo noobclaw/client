@@ -70,6 +70,16 @@ async function getRunner() {
       broadcastSSE('cowork:stream:error', { sessionId, error });
     });
 
+    // Start browser bridge (TCP server on port 12581 for Chrome extension)
+    try {
+      const { startBrowserBridge, registerNativeMessagingHost } = await import('./libs/browserBridge');
+      await startBrowserBridge();
+      registerNativeMessagingHost();
+      coworkLog('INFO', 'sidecar-server', 'Browser bridge started');
+    } catch (e: any) {
+      coworkLog('WARN', 'sidecar-server', `Browser bridge failed: ${e.message}`);
+    }
+
     coworkLog('INFO', 'sidecar-server', 'CoworkRunner initialized');
 
     // Start OpenAI compatibility proxy AFTER returning runner (non-blocking)
