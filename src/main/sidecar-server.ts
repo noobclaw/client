@@ -295,15 +295,18 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/session/stop' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
-      if (runner) runner.stopSession(body.sessionId);
-      return writeJSON(res, 200, { status: 'stopped' });
+      if (runner) {
+        runner.stopSession(body.sessionId);
+        runner.store.updateSession(body.sessionId, { status: 'idle' });
+      }
+      return writeJSON(res, 200, { success: true });
     }
 
     if (pathname === '/api/session/delete' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
       if (runner) runner.store.deleteSession(body.sessionId);
-      return writeJSON(res, 200, { status: 'deleted' });
+      return writeJSON(res, 200, { success: true });
     }
 
     // ── Permission ──
@@ -311,7 +314,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
       if (runner) runner.respondToPermission(body.requestId, body.result);
-      return writeJSON(res, 200, { status: 'ok' });
+      return writeJSON(res, 200, { success: true });
     }
 
     // ── Config ──
@@ -414,7 +417,7 @@ const server = http.createServer(async (req, res) => {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
       if (runner) for (const id of (body.sessionIds || [])) runner.store.deleteSession(id);
-      return writeJSON(res, 200, { status: 'deleted' });
+      return writeJSON(res, 200, { success: true });
     }
 
     if (pathname === '/api/session/pin' && req.method === 'POST') {
@@ -444,21 +447,21 @@ const server = http.createServer(async (req, res) => {
       const runner = await getRunner();
       if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
       const entry = runner.store.createMemoryEntry?.(body);
-      return writeJSON(res, 200, entry || { status: 'created' });
+      return writeJSON(res, 200, { success: true, entry });
     }
 
     if (pathname === '/api/memory/update' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
       if (runner) runner.store.updateMemoryEntry?.(body);
-      return writeJSON(res, 200, { status: 'updated' });
+      return writeJSON(res, 200, { success: true });
     }
 
     if (pathname === '/api/memory/delete' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
       if (runner) runner.store.deleteMemoryEntry?.(body.id);
-      return writeJSON(res, 200, { status: 'deleted' });
+      return writeJSON(res, 200, { success: true });
     }
 
     if (pathname === '/api/memory/stats' && req.method === 'GET') {
