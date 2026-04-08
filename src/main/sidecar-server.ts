@@ -168,8 +168,13 @@ const server = http.createServer(async (req, res) => {
     // ── Config ──
     if (pathname === '/api/config' && req.method === 'GET') {
       const runner = await getRunner();
-      if (!runner) return writeJSON(res, 200, { mode: 'tauri-sidecar' });
-      return writeJSON(res, 200, runner.store.getConfig());
+      if (!runner) {
+        const os = require('os');
+        return writeJSON(res, 200, { mode: 'tauri-sidecar', workingDirectory: os.homedir() });
+      }
+      const config = runner.store.getConfig() || {};
+      if (!config.workingDirectory) config.workingDirectory = require('os').homedir();
+      return writeJSON(res, 200, config);
     }
 
     if (pathname === '/api/config' && req.method === 'POST') {
