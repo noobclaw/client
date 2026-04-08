@@ -47,7 +47,7 @@ const DEFAULT_CONFIG: ContextEngineConfig = {
   messageRatio: 0.50,
   outputRatio: 0.10,
   deferThreshold: 30,
-  topToolCount: 10,  // Reduced from 20 — intent detection adds relevant tools dynamically
+  topToolCount: 25,  // Raised to ensure desktop/browser tools always available
   maxToolDescriptionChars: 2048,
   lastUserMessage: '',
 };

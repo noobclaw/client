@@ -374,34 +374,41 @@ export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> 
   }
 
   // Sidecar/Tauri mode: broadcast SSE event for frontend to show modal
-  // Use a promise that resolves when the frontend responds
   const requestId = `ext-prompt-${Date.now()}`;
+  let sseSent = false;
   try {
-    const { broadcastSSE } = require('../sidecar-server');
-    broadcastSSE('extension:install-prompt', {
+    // Dynamic import to avoid circular dependency
+    const sidecar = await import('../sidecar-server');
+    sidecar.broadcastSSE('extension:install-prompt', {
       requestId,
       storeUrl: CHROME_STORE_URL,
       title: 'Browser Extension Required',
       message: 'NoobClaw needs the browser extension for full browser automation (click, type, screenshot). Install it now?',
       buttons: ['Install from Chrome Store', 'Not Now'],
     });
+    sseSent = true;
   } catch {}
 
-  // Wait up to 30s for user response (or timeout and open store directly)
-  const choice = await new Promise<string>((resolve) => {
-    const timer = setTimeout(() => resolve('timeout'), 30000);
-    extensionPromptResolvers.set(requestId, (result: string) => {
-      clearTimeout(timer);
-      resolve(result);
+  if (sseSent) {
+    // Wait up to 60s for user response
+    const choice = await new Promise<string>((resolve) => {
+      const timer = setTimeout(() => resolve('timeout'), 60000);
+      extensionPromptResolvers.set(requestId, (result: string) => {
+        clearTimeout(timer);
+        resolve(result);
+      });
     });
-  });
-  extensionPromptResolvers.delete(requestId);
+    extensionPromptResolvers.delete(requestId);
 
-  if (choice === 'install' || choice === 'timeout') {
+    if (choice === 'cancel') return 'cancelled';
+    // User chose install or timeout — open store
     try { await openExternal(CHROME_STORE_URL); } catch {}
     return 'installed';
   }
-  return 'cancelled';
+
+  // SSE not available (Electron mode without dialog) — fallback: open store directly
+  try { await openExternal(CHROME_STORE_URL); } catch {}
+  return 'installed';
 }
 
 // Resolver map for extension prompt responses from frontend
