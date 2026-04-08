@@ -78,6 +78,26 @@ async function getRunner() {
   }
 }
 
+// ── SkillManager (lazy loaded) ──
+
+let skillManagerInstance: any = null;
+
+async function getSkillManagerInstance(): Promise<any> {
+  if (skillManagerInstance) return skillManagerInstance;
+  try {
+    const runner = await getRunner();
+    if (!runner?._sqliteStore) return null;
+    const { SkillManager } = await import('./skillManager');
+    const sqlStore = runner._sqliteStore;
+    skillManagerInstance = new SkillManager(() => sqlStore);
+    coworkLog('INFO', 'sidecar-server', 'SkillManager initialized');
+    return skillManagerInstance;
+  } catch (e) {
+    coworkLog('WARN', 'sidecar-server', `SkillManager init failed: ${e}`);
+    return null;
+  }
+}
+
 // ── HTTP Server ──
 
 const server = http.createServer(async (req, res) => {
@@ -353,23 +373,50 @@ const server = http.createServer(async (req, res) => {
 
           // ── Skills ──
           case 'skills:list': {
-            // TODO: integrate SkillManager in sidecar
-            return writeJSON(res, 200, { success: true, skills: [] });
+            const sm = await getSkillManagerInstance();
+            return writeJSON(res, 200, { success: true, skills: sm?.listSkills?.() ?? [] });
           }
-          case 'skills:setEnabled':
-          case 'skills:delete':
-          case 'skills:download':
-          case 'skills:setConfig':
-          case 'skills:testEmailConnectivity':
+          case 'skills:setEnabled': {
+            const sm = await getSkillManagerInstance();
+            sm?.setSkillEnabled?.(args[0]?.id, args[0]?.enabled);
             return writeJSON(res, 200, { success: true });
-          case 'skills:getRoot': {
-            try {
-              const { getSkillsRoot } = await import('./libs/coworkUtil');
-              return writeJSON(res, 200, getSkillsRoot());
-            } catch { return writeJSON(res, 200, ''); }
           }
-          case 'skills:autoRoutingPrompt': return writeJSON(res, 200, { success: true, prompt: '' });
-          case 'skills:getConfig': return writeJSON(res, 200, {});
+          case 'skills:delete': {
+            const sm = await getSkillManagerInstance();
+            sm?.deleteSkill?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'skills:download': {
+            const sm = await getSkillManagerInstance();
+            try {
+              const result = await sm?.downloadSkill?.(args[0], args[1]);
+              return writeJSON(res, 200, result ?? { success: true });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e.message });
+            }
+          }
+          case 'skills:getRoot': {
+            const sm = await getSkillManagerInstance();
+            return writeJSON(res, 200, sm?.getSkillsRoot?.() ?? '');
+          }
+          case 'skills:autoRoutingPrompt': {
+            const sm = await getSkillManagerInstance();
+            try {
+              const prompt = sm?.buildAutoRoutingPrompt?.() ?? '';
+              return writeJSON(res, 200, { success: true, prompt });
+            } catch { return writeJSON(res, 200, { success: true, prompt: '' }); }
+          }
+          case 'skills:getConfig': {
+            const sm = await getSkillManagerInstance();
+            return writeJSON(res, 200, sm?.getSkillConfig?.(args[0]) ?? {});
+          }
+          case 'skills:setConfig': {
+            const sm = await getSkillManagerInstance();
+            sm?.setSkillConfig?.(args[0], args[1]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'skills:testEmailConnectivity':
+            return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
 
           // ── MCP ──
           case 'mcp:list': return writeJSON(res, 200, []);
@@ -492,6 +539,13 @@ const server = http.createServer(async (req, res) => {
           case 'noobclaw:set-auth-token': {
             const { setNoobClawAuthToken } = await import('./libs/claudeSettings');
             setNoobClawAuthToken?.(args[0]);
+            // Connect/disconnect NoobClaw SSE based on auth token
+            if (args[0]) {
+              connectNoobClawSSE(args[0]).catch(() => {});
+            } else if (noobclawSseConnection) {
+              try { noobclawSseConnection.destroy(); } catch {}
+              noobclawSseConnection = null;
+            }
             return writeJSON(res, 200, { success: true });
           }
           case 'noobclaw:get-mac-address': {
@@ -582,9 +636,102 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
+// ── NoobClaw SSE Connection (for auth, wallet, balance updates) ──
+
+let noobclawSseConnection: any = null;
+
+async function connectNoobClawSSE(authToken: string): Promise<void> {
+  if (noobclawSseConnection) {
+    try { noobclawSseConnection.destroy?.(); } catch {}
+    noobclawSseConnection = null;
+  }
+
+  if (!authToken) return;
+
+  try {
+    const https = require('https');
+    const url = 'https://api.noobclaw.com/api/sse';
+
+    const req = https.get(url, {
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+    }, (res: any) => {
+      if (res.statusCode !== 200) {
+        coworkLog('WARN', 'noobclaw-sse', `SSE connection failed: ${res.statusCode}`);
+        return;
+      }
+
+      coworkLog('INFO', 'noobclaw-sse', 'Connected to NoobClaw SSE');
+      noobclawSseConnection = res;
+
+      let buffer = '';
+      res.on('data', (chunk: Buffer) => {
+        buffer += chunk.toString();
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        let eventData = '';
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            eventData += line.slice(6);
+          } else if (line === '' && eventData) {
+            try {
+              const payload = JSON.parse(eventData);
+              broadcastSSE('noobclaw:sse-payload', payload);
+            } catch {}
+            eventData = '';
+          }
+        }
+      });
+
+      res.on('end', () => {
+        coworkLog('INFO', 'noobclaw-sse', 'SSE connection closed, reconnecting in 5s...');
+        noobclawSseConnection = null;
+        setTimeout(() => {
+          const { getNoobClawAuthToken } = require('./libs/claudeSettings');
+          const token = getNoobClawAuthToken?.();
+          if (token) connectNoobClawSSE(token);
+        }, 5000);
+      });
+    });
+
+    req.on('error', (e: any) => {
+      coworkLog('WARN', 'noobclaw-sse', `SSE error: ${e.message}`);
+      noobclawSseConnection = null;
+    });
+  } catch (e) {
+    coworkLog('ERROR', 'noobclaw-sse', `Failed to connect: ${e}`);
+  }
+}
+
 // ── Graceful shutdown ──
 
-process.on('SIGTERM', () => { server.close(); process.exit(0); });
-process.on('SIGINT', () => { server.close(); process.exit(0); });
+function shutdown() {
+  coworkLog('INFO', 'sidecar-server', 'Shutting down...');
+  if (noobclawSseConnection) { try { noobclawSseConnection.destroy(); } catch {} }
+  server.close();
+  process.exit(0);
+}
+
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);
+
+// Monitor parent process exit via periodic check (more reliable than stdin)
+// The Tauri Rust side kills the sidecar via SIGTERM on exit
+const parentPid = process.ppid;
+if (parentPid && parentPid > 1) {
+  const checkParent = setInterval(() => {
+    try {
+      process.kill(parentPid, 0); // Check if parent is alive (signal 0 = no-op)
+    } catch {
+      coworkLog('INFO', 'sidecar-server', 'Parent process gone, exiting');
+      clearInterval(checkParent);
+      shutdown();
+    }
+  }, 3000);
+}
 
 export { broadcastSSE, PORT };

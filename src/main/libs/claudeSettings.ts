@@ -54,6 +54,10 @@ export type ApiConfigResolution = {
 // NoobClaw JWT auth token (set by renderer via IPC when user logs in/out)
 let _noobClawAuthToken: string | null = null;
 
+export function getNoobClawAuthToken(): string | null {
+  return _noobClawAuthToken;
+}
+
 export function setNoobClawAuthToken(token: string | null): void {
   _noobClawAuthToken = token;
 }

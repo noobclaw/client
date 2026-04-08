@@ -1,12 +1,20 @@
+use std::sync::Mutex;
 use tauri::Manager;
+use tauri_plugin_shell::process::CommandChild;
 
-/// Launch the Node.js sidecar server and return the port it's listening on.
-fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
+/// State holding the sidecar child process so we can kill it on exit.
+struct SidecarState {
+    child: Mutex<Option<CommandChild>>,
+    port: u16,
+}
+
+/// Launch the Node.js sidecar server and return (port, child).
+fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> {
     use tauri_plugin_shell::ShellExt;
 
     let port: u16 = 18800;
 
-    let (mut _rx, _child) = app
+    let (mut _rx, child) = app
         .shell()
         .sidecar("noobclaw-server")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
@@ -14,16 +22,12 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<u16, String> {
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 
-    Ok(port)
+    Ok((port, child))
 }
 
 #[tauri::command]
-fn get_server_port(state: tauri::State<'_, ServerState>) -> u16 {
+fn get_server_port(state: tauri::State<'_, SidecarState>) -> u16 {
     state.port
-}
-
-struct ServerState {
-    port: u16,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -36,16 +40,37 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // Start the Node.js sidecar
-            let port = start_sidecar(&handle)
-                .unwrap_or_else(|e| {
+            match start_sidecar(&handle) {
+                Ok((port, child)) => {
+                    app.manage(SidecarState {
+                        child: Mutex::new(Some(child)),
+                        port,
+                    });
+                    println!("NoobClaw Tauri started, sidecar on port {}", port);
+                }
+                Err(e) => {
                     eprintln!("Sidecar start failed: {}", e);
-                    18800 // fallback port
-                });
+                    app.manage(SidecarState {
+                        child: Mutex::new(None),
+                        port: 18800,
+                    });
+                }
+            }
 
-            app.manage(ServerState { port });
-
-            println!("NoobClaw Tauri started, sidecar on port {}", port);
             Ok(())
+        })
+        .on_event(|app, event| {
+            // Kill sidecar when Tauri exits
+            if let tauri::RunEvent::Exit = event {
+                if let Some(state) = app.try_state::<SidecarState>() {
+                    if let Ok(mut guard) = state.child.lock() {
+                        if let Some(child) = guard.take() {
+                            println!("Killing sidecar process...");
+                            let _ = child.kill();
+                        }
+                    }
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![get_server_port])
         .run(tauri::generate_context!())
