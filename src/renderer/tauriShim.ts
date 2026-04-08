@@ -340,4 +340,16 @@ export function initTauriShim(): void {
 
   console.log('[TauriShim] Tauri detected, installing electron shim');
   (window as any).electron = createTauriElectronShim();
+
+  // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
+  window.addEventListener('noobclaw-auth', ((e: CustomEvent) => {
+    const { token, wallet } = e.detail || {};
+    if (token && wallet) {
+      console.log('[TauriShim] Auth callback received from deep link');
+      const listeners = eventListeners.get('auth:callback');
+      if (listeners) {
+        for (const fn of listeners) fn({ token, wallet });
+      }
+    }
+  }) as EventListener);
 }

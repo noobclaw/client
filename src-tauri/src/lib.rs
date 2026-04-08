@@ -47,6 +47,7 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_deep_link::init())
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -67,6 +68,36 @@ pub fn run() {
                     });
                 }
             }
+
+            // Listen for deep link events (noobclaw://auth?token=xxx&wallet=xxx)
+            let handle_for_deeplink = handle.clone();
+            app.listen("deep-link://new-url", move |event| {
+                if let Some(urls) = event.payload().as_str() {
+                    for url in urls.split('\n') {
+                        let url = url.trim();
+                        if url.starts_with("noobclaw://auth") {
+                            if let Ok(parsed) = url::Url::parse(url) {
+                                let token = parsed.query_pairs()
+                                    .find(|(k, _)| k == "token")
+                                    .map(|(_, v)| v.to_string());
+                                let wallet = parsed.query_pairs()
+                                    .find(|(k, _)| k == "wallet")
+                                    .map(|(_, v)| v.to_string());
+                                if let (Some(t), Some(w)) = (token, wallet) {
+                                    // Send auth callback to frontend via JS eval
+                                    if let Some(window) = handle_for_deeplink.get_webview_window("main") {
+                                        let js = format!(
+                                            "window.dispatchEvent(new CustomEvent('noobclaw-auth', {{detail: {{token: '{}', wallet: '{}'}}}}));",
+                                            t.replace('\'', "\\'"), w.replace('\'', "\\'")
+                                        );
+                                        let _ = window.eval(&js);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
 
             Ok(())
         })

@@ -442,14 +442,28 @@ const getDefaultSystemPrompt = (): string => {
     return cachedDefaultSystemPrompt;
   }
 
-  try {
-    const promptPath = path.join(getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md');
-    cachedDefaultSystemPrompt = fs.readFileSync(promptPath, 'utf-8');
-  } catch (error) {
-    console.warn('Failed to load default system prompt:', error);
-    cachedDefaultSystemPrompt = '';
+  const candidates = [
+    path.join(getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    // Sidecar/Tauri: relative to executable
+    path.join(path.dirname(process.execPath), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    // Tauri resource directory
+    path.join(path.dirname(process.execPath), 'resources', 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    path.join(path.dirname(process.execPath), '..', 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    // CWD fallback
+    path.join(process.cwd(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        cachedDefaultSystemPrompt = fs.readFileSync(p, 'utf-8');
+        return cachedDefaultSystemPrompt;
+      }
+    } catch {}
   }
 
+  console.warn('Failed to load default system prompt: not found in any candidate path');
+  cachedDefaultSystemPrompt = '';
   return cachedDefaultSystemPrompt;
 };
 

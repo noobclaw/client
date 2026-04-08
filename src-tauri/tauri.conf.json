@@ -41,6 +41,7 @@
       "../SKILLs/**/*",
       "../chrome-extension/**/*",
       "../resources/tray/**/*",
+      "../sandbox/agent-runner/AGENT_SYSTEM_PROMPT.md",
       "binaries/sql-wasm.wasm"
     ],
     "windows": {
@@ -54,6 +55,11 @@
   "plugins": {
     "shell": {
       "open": true
+    },
+    "deep-link": {
+      "desktop": {
+        "schemes": ["noobclaw"]
+      }
     }
   }
 }
