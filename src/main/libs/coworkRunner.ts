@@ -3718,6 +3718,16 @@ export class CoworkRunner extends EventEmitter {
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
+              // macOS fallback: use AppleScript to get page text
+              if (process.platform === 'darwin') {
+                try {
+                  const macBrowser = require('./macBrowserBridge');
+                  if (macBrowser.isAvailable()) {
+                    const text = macBrowser.getPageText();
+                    if (text) return { content: [{ type: 'text', text }] } as any;
+                  }
+                } catch {}
+              }
               return browserNotConnectedResponse();
             }
             try {
@@ -3769,6 +3779,18 @@ export class CoworkRunner extends EventEmitter {
           { url: z.string() },
           async (args: { url: string }) => {
             if (!getBrowserBridgeStatus().connected) {
+              // macOS: use AppleScript to control browser natively (no extension needed)
+              if (process.platform === 'darwin') {
+                try {
+                  const macBrowser = require('./macBrowserBridge');
+                  if (macBrowser.isAvailable()) {
+                    const result = macBrowser.navigate(args.url || 'https://www.google.com');
+                    if (result.ok) {
+                      return { content: [{ type: 'text', text: `${result.message}. Using macOS native browser control (AppleScript). You can use browser_get_text to read page content, or desktop_screenshot to see the page.` }] } as any;
+                    }
+                  }
+                } catch {}
+              }
               // Show install prompt (only once per session)
               if (!extensionPromptShown) {
                 extensionPromptShown = true;
