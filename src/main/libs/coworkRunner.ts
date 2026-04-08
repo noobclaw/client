@@ -3650,8 +3650,9 @@ export class CoworkRunner extends EventEmitter {
             // Check if current model supports vision (image input)
             const apiConfig = getCurrentApiConfig();
             const modelId = (apiConfig?.model || '').toLowerCase();
-            // Default to vision-enabled; only exclude known text-only models
-            const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r/i;
+            // Default to vision-enabled; exclude known text-only models
+            // Note: qwen3.5-plus HAS vision, but image format may not work through Anthropic-compat proxy
+            const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r|deepseek-(?!vl)|glm|minimax|step|doubao|mimo/i;
             const supportsVision = !textOnlyModels.test(modelId);
             if (supportsVision) {
               return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
