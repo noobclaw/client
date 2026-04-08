@@ -59,12 +59,12 @@ pub fn run() {
 
             Ok(())
         })
-        .on_event(|app, event| {
+        .on_event(|app: &tauri::AppHandle, event: tauri::RunEvent| {
             // Kill sidecar when Tauri exits
             if let tauri::RunEvent::Exit = event {
                 if let Some(state) = app.try_state::<SidecarState>() {
                     if let Ok(mut guard) = state.child.lock() {
-                        if let Some(child) = guard.take() {
+                        if let Some(mut child) = guard.take() {
                             println!("Killing sidecar process...");
                             let _ = child.kill();
                         }
