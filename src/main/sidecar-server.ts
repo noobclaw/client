@@ -70,18 +70,24 @@ async function getRunner() {
       broadcastSSE('cowork:stream:error', { sessionId, error });
     });
 
-    // Start OpenAI compatibility proxy (required for noobclawAI and other OpenAI-format providers)
-    try {
-      const { startCoworkOpenAICompatProxy } = await import('./libs/coworkOpenAICompatProxy');
-      await startCoworkOpenAICompatProxy();
-      coworkLog('INFO', 'sidecar-server', 'OpenAI compat proxy started');
-    } catch (e) {
-      coworkLog('WARN', 'sidecar-server', `OpenAI compat proxy failed to start: ${e}`);
-    }
-
     coworkLog('INFO', 'sidecar-server', 'CoworkRunner initialized');
+
+    // Start OpenAI compatibility proxy AFTER returning runner (non-blocking)
+    // This prevents the proxy startup from blocking the entire init chain
+    setImmediate(async () => {
+      try {
+        console.log('[sidecar] Starting OpenAI compat proxy...');
+        const { startCoworkOpenAICompatProxy, getCoworkOpenAICompatProxyStatus } = await import('./libs/coworkOpenAICompatProxy');
+        await startCoworkOpenAICompatProxy();
+        const status = getCoworkOpenAICompatProxyStatus();
+        console.log(`[sidecar] OpenAI compat proxy started: running=${status.running}, baseURL=${status.baseURL}`);
+      } catch (e: any) {
+        console.error(`[sidecar] OpenAI compat proxy failed: ${e.message || e}`);
+      }
+    });
     return runnerInstance;
-  } catch (e) {
+  } catch (e: any) {
+    console.error('[sidecar] FATAL: Failed to init CoworkRunner:', e?.message || e, e?.stack || '');
     coworkLog('ERROR', 'sidecar-server', `Failed to init CoworkRunner: ${e}`);
     return null;
   }

@@ -305,36 +305,39 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
     };
   }
 
+  // Try OpenAI compatibility proxy first (Electron mode)
   const proxyStatus = getCoworkOpenAICompatProxyStatus();
-  if (!proxyStatus.running) {
-    return {
-      config: null,
-      error: 'OpenAI compatibility proxy is not running.',
-    };
+  if (proxyStatus.running) {
+    configureCoworkOpenAICompatProxy({
+      baseURL: resolvedBaseURL,
+      apiKey: effectiveApiKey || undefined,
+      model: matched.modelId,
+      provider: matched.providerName,
+    });
+
+    const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
+    if (proxyBaseURL) {
+      return {
+        config: {
+          apiKey: resolvedApiKey || 'noobclaw-openai-compat',
+          baseURL: proxyBaseURL,
+          model: matched.modelId,
+          apiType: 'openai',
+        },
+      };
+    }
   }
 
-  configureCoworkOpenAICompatProxy({
-    baseURL: resolvedBaseURL,
-    apiKey: effectiveApiKey || undefined,
-    model: matched.modelId,
-    provider: matched.providerName,
-  });
-
-  const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
-  if (!proxyBaseURL) {
-    return {
-      config: null,
-      error: 'OpenAI compatibility proxy base URL is unavailable.',
-    };
-  }
-
+  // Fallback: return OpenAI-compat config directly (sidecar mode without proxy)
+  // queryEngine's isOpenAICompat path will handle the request format conversion
   return {
     config: {
-      apiKey: resolvedApiKey || 'noobclaw-openai-compat',
-      baseURL: proxyBaseURL,
+      apiKey: effectiveApiKey || resolvedApiKey,
+      baseURL: resolvedBaseURL,
       model: matched.modelId,
       apiType: 'openai',
-    },
+      isOpenAICompat: true,
+    } as any,
   };
 }
 

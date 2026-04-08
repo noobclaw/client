@@ -2069,7 +2069,7 @@ async function handleResponsesStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if (parsed._noobclaw) {
           const noobclaw = parsed._noobclaw as Record<string, unknown>;
-          for (const win of BrowserWindow.getAllWindows()) {
+          for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
           boundary = findSSEPacketBoundary(buffer);
@@ -2184,7 +2184,7 @@ async function handleChatCompletionsStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if ((parsed as Record<string, unknown>)._noobclaw) {
           const noobclaw = (parsed as Record<string, unknown>)._noobclaw as Record<string, unknown>;
-          for (const win of BrowserWindow.getAllWindows()) {
+          for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
           boundary = findSSEPacketBoundary(buffer);
@@ -2304,7 +2304,7 @@ async function handleCreateScheduledTask(
     scheduledTaskDeps.getScheduler().reschedule();
 
     // Notify renderer to refresh task list
-    for (const win of BrowserWindow.getAllWindows()) {
+    for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
       win.webContents.send('scheduledTask:statusUpdate', {
         taskId: task.id,
         state: task.state,
@@ -2441,7 +2441,7 @@ async function handleUpdateScheduledTask(
     scheduledTaskDeps.getScheduler().reschedule();
 
     // Notify renderer to refresh task list
-    for (const win of BrowserWindow.getAllWindows()) {
+    for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
       win.webContents.send('scheduledTask:statusUpdate', {
         taskId: task.id,
         state: task.state,
@@ -2477,7 +2477,7 @@ async function handleDeleteScheduledTask(
     scheduledTaskDeps.getScheduler().reschedule();
 
     // Notify renderer to refresh task list
-    for (const win of BrowserWindow.getAllWindows()) {
+    for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
       win.webContents.send('scheduledTask:statusUpdate', {
         taskId: id,
         state: null,
@@ -2532,7 +2532,7 @@ async function handleToggleScheduledTask(
     scheduledTaskDeps.getScheduler().reschedule();
 
     // Notify renderer to refresh task list
-    for (const win of BrowserWindow.getAllWindows()) {
+    for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
       win.webContents.send('scheduledTask:statusUpdate', {
         taskId: task.id,
         state: task.state,
@@ -2708,7 +2708,10 @@ async function handleRequest(
   ): Promise<Response> => {
     currentTargetURL = targetURL;
     console.log(`[CoworkProxy] Sending upstream request to: ${targetURL}`);
-    return session.defaultSession.fetch(targetURL, {
+    // Use Electron session.defaultSession.fetch if available (bypasses CORS),
+    // otherwise fall back to global fetch (sidecar mode)
+    const fetchFn = session?.defaultSession?.fetch ? session.defaultSession.fetch.bind(session.defaultSession) : globalThis.fetch;
+    return fetchFn(targetURL, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),

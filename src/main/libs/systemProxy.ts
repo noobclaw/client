@@ -99,11 +99,12 @@ export function applySystemProxyEnv(proxyUrl: string | null): void {
 }
 
 export async function resolveSystemProxyUrl(targetUrl: string): Promise<string | null> {
-  if (!app.isReady()) {
+  if (!app?.isReady?.()) {
     return null;
   }
 
   try {
+    if (!session?.defaultSession?.resolveProxy) return null;
     const proxyResult = await session.defaultSession.resolveProxy(targetUrl);
     if (!proxyResult) {
       return null;

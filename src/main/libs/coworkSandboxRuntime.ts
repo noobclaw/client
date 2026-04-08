@@ -243,7 +243,8 @@ function getInitrdPathOverride(): string | null {
 }
 
 async function downloadFile(url: string, destination: string, stage: CoworkSandboxProgress['stage']): Promise<void> {
-  const response = await session.defaultSession.fetch(url);
+  const fetchFn = session?.defaultSession?.fetch?.bind(session.defaultSession) ?? globalThis.fetch;
+  const response = await fetchFn(url);
   if (!response.ok) {
     throw new Error(`Download failed (${response.status}): ${url}`);
   }
