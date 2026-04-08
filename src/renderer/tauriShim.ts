@@ -357,8 +357,12 @@ export function initTauriShim(): void {
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
 
-    // Only proxy external API calls, not local sidecar calls
-    if (url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost')) {
+    // Only proxy external API calls, NOT images/static resources
+    // Images (<img src>), fonts, CSS etc are loaded by the WebView directly — no CORS issue for those.
+    // We only need to proxy fetch() calls to API endpoints that return JSON and enforce CORS.
+    const isStaticResource = /\.(svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|css|js)(\?|$)/i.test(url);
+    const isApiCall = url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost') && !isStaticResource;
+    if (isApiCall) {
       try {
         const headers: Record<string, string> = {};
         if (init?.headers) {
