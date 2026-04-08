@@ -116,29 +116,49 @@ const server = http.createServer(async (req, res) => {
     if (pathname === '/api/session/start' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
-      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
 
-      const sessionId = body.sessionId || require('uuid').v4();
-      runner.startSession(sessionId, body.prompt, {
-        systemPrompt: body.systemPrompt,
-        imageAttachments: body.imageAttachments,
-        skillIds: body.skillIds,
-      }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Session error: ${e}`));
+      try {
+        const config = runner.store.getConfig();
+        const cwd = body.cwd || config.workingDirectory || require('os').homedir();
+        const title = body.prompt?.split('\n')[0]?.slice(0, 50) || 'New Session';
+        const session = runner.store.createSession(title, cwd, body.systemPrompt || config.systemPrompt || '', config.executionMode || 'local', body.activeSkillIds || []);
+        runner.store.addMessage(session.id, { type: 'user', content: body.prompt, metadata: body.imageAttachments?.length ? { imageAttachments: body.imageAttachments } : undefined });
+        runner.store.updateSession(session.id, { status: 'running' });
 
-      return writeJSON(res, 200, { sessionId, status: 'started' });
+        // Start async (don't await)
+        runner.startSession(session.id, body.prompt, {
+          systemPrompt: body.systemPrompt,
+          imageAttachments: body.imageAttachments,
+          skillIds: body.activeSkillIds,
+        }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Session error: ${e}`));
+
+        const updatedSession = runner.store.getSession(session.id) || session;
+        return writeJSON(res, 200, { success: true, session: updatedSession });
+      } catch (e: any) {
+        return writeJSON(res, 200, { success: false, error: e.message });
+      }
     }
 
     if (pathname === '/api/session/continue' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();
-      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
 
-      runner.continueSession(body.sessionId, body.prompt, {
-        systemPrompt: body.systemPrompt,
-        imageAttachments: body.imageAttachments,
-      }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Continue error: ${e}`));
+      try {
+        runner.store.addMessage(body.sessionId, { type: 'user', content: body.prompt, metadata: body.imageAttachments?.length ? { imageAttachments: body.imageAttachments } : undefined });
+        runner.store.updateSession(body.sessionId, { status: 'running' });
 
-      return writeJSON(res, 200, { sessionId: body.sessionId, status: 'continued' });
+        runner.continueSession(body.sessionId, body.prompt, {
+          systemPrompt: body.systemPrompt,
+          imageAttachments: body.imageAttachments,
+        }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Continue error: ${e}`));
+
+        const session = runner.store.getSession(body.sessionId);
+        return writeJSON(res, 200, { success: true, session });
+      } catch (e: any) {
+        return writeJSON(res, 200, { success: false, error: e.message });
+      }
     }
 
     if (pathname === '/api/session/stop' && req.method === 'POST') {
@@ -301,22 +321,60 @@ const server = http.createServer(async (req, res) => {
       const runner = await getRunner();
 
       // Route IPC channels to runner methods
+      const ss = runner?._sqliteStore;
       try {
         switch (channel) {
-          case 'store:get': {
-            const ss = runner?._sqliteStore;
-            return writeJSON(res, 200, ss?.get?.(args[0]) ?? null);
+          // ── Store KV ──
+          case 'store:get': return writeJSON(res, 200, ss?.get?.(args[0]) ?? null);
+          case 'store:set': ss?.set?.(args[0], args[1]); return writeJSON(res, 200, { status: 'ok' });
+          case 'store:remove': ss?.delete?.(args[0]); return writeJSON(res, 200, { status: 'ok' });
+
+          // ── Skills ──
+          case 'skills:list': {
+            // TODO: integrate SkillManager in sidecar
+            return writeJSON(res, 200, { success: true, skills: [] });
           }
-          case 'store:set': {
-            const ss = runner?._sqliteStore;
-            ss?.set?.(args[0], args[1]);
-            return writeJSON(res, 200, { status: 'ok' });
+          case 'skills:setEnabled':
+          case 'skills:delete':
+          case 'skills:download':
+          case 'skills:setConfig':
+          case 'skills:testEmailConnectivity':
+            return writeJSON(res, 200, { success: true });
+          case 'skills:getRoot': {
+            try {
+              const { getSkillsRoot } = await import('./libs/coworkUtil');
+              return writeJSON(res, 200, getSkillsRoot());
+            } catch { return writeJSON(res, 200, ''); }
           }
-          case 'store:remove': {
-            const ss = runner?._sqliteStore;
-            ss?.delete?.(args[0]);
-            return writeJSON(res, 200, { status: 'ok' });
+          case 'skills:autoRoutingPrompt': return writeJSON(res, 200, { success: true, prompt: '' });
+          case 'skills:getConfig': return writeJSON(res, 200, {});
+
+          // ── MCP ──
+          case 'mcp:list': return writeJSON(res, 200, []);
+          case 'mcp:create':
+          case 'mcp:update':
+          case 'mcp:delete':
+          case 'mcp:setEnabled':
+            return writeJSON(res, 200, { success: true });
+          case 'mcp:fetchMarketplace': return writeJSON(res, 200, []);
+
+          // ── API fetch proxy ──
+          case 'api:fetch': {
+            const opts = args[0];
+            try {
+              const fetchRes = await fetch(opts.url, {
+                method: opts.method || 'GET',
+                headers: opts.headers || {},
+                body: opts.body || undefined,
+              });
+              const bodyText = await fetchRes.text();
+              return writeJSON(res, 200, { ok: fetchRes.ok, status: fetchRes.status, body: bodyText });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, status: 0, body: '', error: e.message });
+            }
           }
+
+          // ── Log ──
           case 'log:getPath': {
             const { getCoworkLogPath } = await import('./libs/coworkLogger');
             return writeJSON(res, 200, getCoworkLogPath());
@@ -324,24 +382,132 @@ const server = http.createServer(async (req, res) => {
           case 'log:openFolder': {
             const { getCoworkLogPath } = await import('./libs/coworkLogger');
             const { openExternal } = await import('./libs/platformAdapter');
-            const logPath = getCoworkLogPath();
-            const dir = require('path').dirname(logPath);
-            await openExternal(dir);
+            await openExternal(require('path').dirname(getCoworkLogPath()));
             return writeJSON(res, 200, { status: 'ok' });
           }
+
+          // ── Shell ──
           case 'shell:openPath':
           case 'shell:showItemInFolder': {
-            const { openExternal: openExt } = await import('./libs/platformAdapter');
-            await openExt(args[0]);
+            const { openExternal: oe } = await import('./libs/platformAdapter');
+            await oe(args[0]);
             return writeJSON(res, 200, { status: 'ok' });
           }
+
+          // ── App info ──
           case 'app:getVersion': return writeJSON(res, 200, '1.0.0');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
+
+          // ── Session title ──
+          case 'generate-session-title': return writeJSON(res, 200, null); // TODO: implement LLM title generation
+          case 'get-recent-cwds': {
+            if (runner) {
+              const cwds = runner.store.getRecentCwds?.(args[0] ?? 10) ?? [];
+              return writeJSON(res, 200, cwds);
+            }
+            return writeJSON(res, 200, []);
+          }
+
+          // ── Cowork session IPC (for channels not yet routed to dedicated endpoints) ──
+          case 'cowork:session:list': {
+            const sessions = runner?.store?.listSessions?.() ?? [];
+            return writeJSON(res, 200, { success: true, sessions });
+          }
+          case 'cowork:session:get': {
+            const session = runner?.store?.getSession?.(args[0]);
+            return writeJSON(res, 200, { success: true, session: session ?? null });
+          }
+          case 'cowork:config:get': {
+            const config = runner?.store?.getConfig?.() ?? {};
+            return writeJSON(res, 200, { success: true, config });
+          }
+          case 'cowork:config:set': {
+            runner?.store?.setConfig?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'cowork:memory:listEntries': {
+            const entries = runner?.store?.listUserMemories?.(args[0] ?? {}) ?? [];
+            return writeJSON(res, 200, { success: true, entries });
+          }
+          case 'cowork:memory:createEntry': {
+            const entry = runner?.store?.createUserMemory?.(args[0]);
+            return writeJSON(res, 200, { success: true, entry });
+          }
+          case 'cowork:memory:updateEntry': {
+            runner?.store?.updateUserMemory?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'cowork:memory:deleteEntry': {
+            runner?.store?.deleteUserMemory?.(args[0]?.id);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'cowork:memory:getStats': {
+            return writeJSON(res, 200, { success: true, stats: runner?.store?.getUserMemoryStats?.() ?? { total: 0 } });
+          }
+
+          // ── Scheduled Tasks ──
+          case 'scheduledTask:list': return writeJSON(res, 200, []);
+          case 'scheduledTask:get': return writeJSON(res, 200, null);
+          case 'scheduledTask:create': return writeJSON(res, 200, { success: false, error: 'Not yet implemented in Tauri' });
+          case 'scheduledTask:update': return writeJSON(res, 200, { success: false });
+          case 'scheduledTask:delete': return writeJSON(res, 200, { success: true });
+          case 'scheduledTask:toggle': return writeJSON(res, 200, { success: true });
+          case 'scheduledTask:runManually': return writeJSON(res, 200, { success: false });
+          case 'scheduledTask:stop': return writeJSON(res, 200, { success: true });
+          case 'scheduledTask:listRuns': return writeJSON(res, 200, []);
+          case 'scheduledTask:countRuns': return writeJSON(res, 200, 0);
+          case 'scheduledTask:listAllRuns': return writeJSON(res, 200, []);
+
+          // ── IM Gateway (stub) ──
+          case 'im:config:get': return writeJSON(res, 200, {});
+          case 'im:config:set': return writeJSON(res, 200, { success: true });
+          case 'im:gateway:start': return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
+          case 'im:gateway:stop': return writeJSON(res, 200, { success: true });
+          case 'im:gateway:test': return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
+          case 'im:status:get': return writeJSON(res, 200, {});
+
+          // ── NoobClaw platform ──
+          case 'noobclaw:set-auth-token': {
+            const { setNoobClawAuthToken } = await import('./libs/claudeSettings');
+            setNoobClawAuthToken?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'noobclaw:get-mac-address': {
+            const os = require('os');
+            const interfaces = os.networkInterfaces();
+            for (const iface of Object.values(interfaces) as any[]) {
+              for (const info of (iface || [])) {
+                if (!info.internal && info.mac && info.mac !== '00:00:00:00:00:00') {
+                  return writeJSON(res, 200, info.mac);
+                }
+              }
+            }
+            return writeJSON(res, 200, null);
+          }
+          case 'noobclaw:cache-avatar': return writeJSON(res, 200, { success: false, localPath: null });
+          case 'noobclaw:get-cached-avatar': return writeJSON(res, 200, null);
+
+          // ── Dialog ──
+          case 'dialog:readFileAsDataUrl': {
+            try {
+              const fs = require('fs');
+              const filePath = args[0];
+              const data = fs.readFileSync(filePath);
+              const ext = require('path').extname(filePath).toLowerCase();
+              const mimeMap: Record<string, string> = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+              const mime = mimeMap[ext] || 'application/octet-stream';
+              return writeJSON(res, 200, { success: true, dataUrl: `data:${mime};base64,${data.toString('base64')}` });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e.message });
+            }
+          }
+
           default:
             coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);
             return writeJSON(res, 200, null);
         }
       } catch (e) {
+        coworkLog('ERROR', 'sidecar-server', `IPC error [${channel}]: ${e}`);
         return writeJSON(res, 500, { error: String(e) });
       }
     }
