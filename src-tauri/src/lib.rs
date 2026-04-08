@@ -8,6 +8,17 @@ struct SidecarState {
     port: u16,
 }
 
+impl Drop for SidecarState {
+    fn drop(&mut self) {
+        if let Ok(mut guard) = self.child.lock() {
+            if let Some(mut child) = guard.take() {
+                println!("Killing sidecar process on drop...");
+                let _ = child.kill();
+            }
+        }
+    }
+}
+
 /// Launch the Node.js sidecar server and return (port, child).
 fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> {
     use tauri_plugin_shell::ShellExt;
@@ -58,19 +69,6 @@ pub fn run() {
             }
 
             Ok(())
-        })
-        .on_event(|app: &tauri::AppHandle, event: tauri::RunEvent| {
-            // Kill sidecar when Tauri exits
-            if let tauri::RunEvent::Exit = event {
-                if let Some(state) = app.try_state::<SidecarState>() {
-                    if let Ok(mut guard) = state.child.lock() {
-                        if let Some(mut child) = guard.take() {
-                            println!("Killing sidecar process...");
-                            let _ = child.kill();
-                        }
-                    }
-                }
-            }
         })
         .invoke_handler(tauri::generate_handler![get_server_port])
         .run(tauri::generate_context!())
