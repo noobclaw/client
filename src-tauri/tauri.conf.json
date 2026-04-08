@@ -10,7 +10,6 @@
     "devUrl": "http://localhost:5175"
   },
   "app": {
-    "title": "NoobClaw",
     "windows": [
       {
         "title": "NoobClaw",
