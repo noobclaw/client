@@ -112,50 +112,78 @@ interface QueryState {
 
 const DEFAULT_MAX_TURNS = 100;
 
-// ── In-loop message compression ──
-// Keeps recent 3 turns complete, strips tool_result content from older turns.
-// Prevents messages from growing unbounded during agent loop (17 turns = 17x messages).
+// ── In-loop message compression (Claude Code pattern) ──
+//
+// Key principle: ONLY clear tool outputs, NEVER touch model reasoning.
+// Tool outputs are large but re-fetchable (just Read again).
+// Model reasoning is small but irreplaceable (decision context).
+//
+// What gets cleared:
+//   - tool_result content (replaced with "[cleared]")
+//   - thinking blocks from old turns (removed entirely)
+//   - image blocks from old turns (each ~2000 tokens)
+//
+// What is PRESERVED:
+//   - assistant text (model's reasoning and explanations)
+//   - tool_use blocks (name + input — shows what tools were called)
+//   - message structure (role alternation for API compatibility)
 
-const KEEP_RECENT_MESSAGES = 6; // ~3 turns (user+assistant pairs)
-const CLEARED_RESULT = '[Previous tool result cleared to save context]';
+const KEEP_RECENT_RESULTS = 5;
+const CLEARED_RESULT = '[Old tool result content cleared]';
 
 function compressMessagesInLoop(messages: MessageParam[]): MessageParam[] {
-  if (messages.length <= KEEP_RECENT_MESSAGES) return messages;
+  if (messages.length <= 6) return messages;
 
-  const cutoff = messages.length - KEEP_RECENT_MESSAGES;
+  // Find all tool_result positions (newest first)
+  const toolResultPositions: Array<{ msgIdx: number; blockIdx: number }> = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role === 'user' && Array.isArray(msg.content)) {
+      for (let j = (msg.content as any[]).length - 1; j >= 0; j--) {
+        const block = (msg.content as any[])[j];
+        if (block?.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 100) {
+          toolResultPositions.push({ msgIdx: i, blockIdx: j });
+        }
+      }
+    }
+  }
+
+  // Mark which tool_results to clear (all except most recent N)
+  const toClear = new Set<string>();
+  for (let i = KEEP_RECENT_RESULTS; i < toolResultPositions.length; i++) {
+    toClear.add(`${toolResultPositions[i].msgIdx}:${toolResultPositions[i].blockIdx}`);
+  }
+
+  if (toClear.size === 0) return messages;
+
+  // Build compressed messages
   const compressed: MessageParam[] = [];
-
   for (let i = 0; i < messages.length; i++) {
     const msg = messages[i];
 
-    if (i >= cutoff) {
-      // Recent: keep complete
-      compressed.push(msg);
-      continue;
-    }
-
-    // Older: strip tool_result content, keep structure for API pairing
     if (msg.role === 'user' && Array.isArray(msg.content)) {
-      const stripped = (msg.content as any[]).map((block: any) => {
-        if (block.type === 'tool_result' && typeof block.content === 'string' && block.content.length > 100) {
+      const blocks = (msg.content as any[]).map((block: any, j: number) => {
+        if (block?.type === 'tool_result' && toClear.has(`${i}:${j}`)) {
           return { ...block, content: CLEARED_RESULT };
         }
         return block;
       });
-      compressed.push({ role: msg.role, content: stripped });
+      compressed.push({ role: msg.role, content: blocks });
     } else if (msg.role === 'assistant' && Array.isArray(msg.content)) {
-      // Strip thinking blocks from old assistant messages
-      const stripped = (msg.content as any[]).filter((block: any) => {
-        if (block.type === 'thinking') return false; // Remove old thinking
+      // Remove thinking + images from non-recent messages, KEEP text
+      const isRecent = i >= messages.length - 6;
+      const blocks = (msg.content as any[]).filter((block: any) => {
+        if (!isRecent && block?.type === 'thinking') return false;
+        if (!isRecent && block?.type === 'image') return false;
         return true;
       });
-      compressed.push({ role: msg.role, content: stripped.length > 0 ? stripped : msg.content });
+      compressed.push({ role: msg.role, content: blocks.length > 0 ? blocks : msg.content });
     } else {
       compressed.push(msg);
     }
   }
 
-  coworkLog('INFO', 'queryEngine', `Compressed messages: ${messages.length} → kept ${KEEP_RECENT_MESSAGES} recent, stripped ${cutoff} older`);
+  coworkLog('INFO', 'queryEngine', `Micro-compact: cleared ${toClear.size} old tool results, kept ${KEEP_RECENT_RESULTS} recent`);
   return compressed;
 }
 
