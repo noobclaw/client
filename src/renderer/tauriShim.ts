@@ -124,11 +124,7 @@ export function createTauriElectronShim(): typeof window.electron {
     },
     shell: {
       openExternal: async (url: string) => {
-        if ((window as any).__TAURI__) {
-          const { open } = await import('@tauri-apps/plugin-opener');
-          await open(url);
-          return { success: true };
-        }
+        // Fallback: just open in new window (works in both Tauri and browser)
         window.open(url, '_blank');
         return { success: true };
       },
