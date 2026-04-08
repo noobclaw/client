@@ -6,7 +6,18 @@
  * Adapted for Electron: BrowserWindow instead of HTTP server.
  */
 
-import { BrowserWindow, ipcMain } from 'electron';
+import { isElectronMode } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let BrowserWindow: any = null;
+let ipcMain: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    BrowserWindow = electron.BrowserWindow;
+    ipcMain = electron.ipcMain;
+  }
+} catch {}
 import path from 'path';
 import fs from 'fs';
 import os from 'os';

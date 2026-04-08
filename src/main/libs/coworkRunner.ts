@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { type ChildProcessByStdio, spawn, spawnSync } from 'child_process';
-import { app } from 'electron';
+import { getUserDataPath, isPackaged, getAppPath, getResourcesPath, openExternal } from './platformAdapter';
 import fs from 'fs';
 import path from 'path';
 import type { Readable } from 'stream';
@@ -252,7 +252,7 @@ function ensureWindowsChildProcessHideInitScript(): string | null {
   }
 
   try {
-    const initDir = path.join(app.getPath('userData'), 'cowork', 'bin');
+    const initDir = path.join(getUserDataPath(), 'cowork', 'bin');
     fs.mkdirSync(initDir, { recursive: true });
     const initScriptPath = path.join(initDir, WINDOWS_HIDE_INIT_SCRIPT_NAME);
 
@@ -1154,11 +1154,11 @@ export class CoworkRunner extends EventEmitter {
     }
     pushCandidate(getSkillsRoot());
 
-    if (app.isPackaged) {
-      pushCandidate(path.join(process.resourcesPath, 'SKILLs'));
-      pushCandidate(path.join(process.resourcesPath, 'skills'));
-      pushCandidate(path.join(app.getAppPath(), 'SKILLs'));
-      pushCandidate(path.join(app.getAppPath(), 'skills'));
+    if (isPackaged()) {
+      pushCandidate(path.join(getResourcesPath(), 'SKILLs'));
+      pushCandidate(path.join(getResourcesPath(), 'skills'));
+      pushCandidate(path.join(getAppPath(), 'SKILLs'));
+      pushCandidate(path.join(getAppPath(), 'skills'));
     }
 
     pushCandidate(path.join(cwdMapping.hostPath, 'SKILLs'));
@@ -3388,7 +3388,7 @@ export class CoworkRunner extends EventEmitter {
     let stderrTail = '';
 
     // Log MCP-relevant environment for debugging
-    coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: isPackaged=${app.isPackaged}, platform=${process.platform}, arch=${process.arch}`);
+    coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: isPackaged=${isPackaged()}, platform=${process.platform}, arch=${process.arch}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: NOOBCLAW_ELECTRON_PATH=${envVars.NOOBCLAW_ELECTRON_PATH || '(not set)'}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: ELECTRON_RUN_AS_NODE=${envVars.ELECTRON_RUN_AS_NODE || '(not set)'}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: NODE_PATH=${envVars.NODE_PATH || '(not set)'}`);
@@ -3407,7 +3407,7 @@ export class CoworkRunner extends EventEmitter {
     // child_process.fork() uses process.execPath by default, so without
     // ELECTRON_RUN_AS_NODE the SDK would launch another Electron app instance
     // instead of running cli.js as a Node script, causing exit code 1.
-    if (app.isPackaged) {
+    if (isPackaged()) {
       envVars.ELECTRON_RUN_AS_NODE = '1';
     }
 
@@ -3473,8 +3473,8 @@ export class CoworkRunner extends EventEmitter {
         cwd,
         claudeCodePath,
         claudeCodePathExists: fs.existsSync(claudeCodePath),
-        isPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
+        isPackaged: isPackaged(),
+        resourcesPath: getResourcesPath(),
         processExecPath: process.execPath,
         platform: process.platform,
         arch: process.arch,
@@ -3775,8 +3775,7 @@ export class CoworkRunner extends EventEmitter {
               }
               // Fallback: open URL in default browser via shell
               try {
-                const { shell } = await import('electron');
-                await shell.openExternal(args.url || 'https://www.google.com');
+                await openExternal(args.url || 'https://www.google.com');
                 return { content: [{ type: 'text', text: `Opened ${args.url} in default browser. Note: browser extension is not connected, so advanced operations (click, type, screenshot) are not available. To enable full browser automation, install the NoobClaw Browser Assistant extension.` }] } as any;
               } catch (e: any) {
                 return { content: [{ type: 'text', text: `Failed to open browser: ${e.message}` }], isError: true } as any;

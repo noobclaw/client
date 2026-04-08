@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { getUserDataPath } from './platformAdapter';
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 
@@ -14,7 +14,7 @@ export type CoworkApiConfig = {
 const CONFIG_FILE_NAME = 'api-config.json';
 
 function getConfigPath(): string {
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
   return join(userDataPath, CONFIG_FILE_NAME);
 }
 
@@ -45,7 +45,7 @@ export function loadCoworkApiConfig(): CoworkApiConfig | null {
 
 export function saveCoworkApiConfig(config: CoworkApiConfig): void {
   const configPath = getConfigPath();
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
 
   if (!existsSync(userDataPath)) {
     mkdirSync(userDataPath, { recursive: true });

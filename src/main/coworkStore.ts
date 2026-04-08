@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { getAppPath } from './libs/platformAdapter';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -443,7 +443,7 @@ const getDefaultSystemPrompt = (): string => {
   }
 
   try {
-    const promptPath = path.join(app.getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md');
+    const promptPath = path.join(getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md');
     cachedDefaultSystemPrompt = fs.readFileSync(promptPath, 'utf-8');
   } catch (error) {
     console.warn('Failed to load default system prompt:', error);

@@ -1,5 +1,16 @@
 import http from 'http';
-import { BrowserWindow, session } from 'electron';
+import { isElectronMode } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let BrowserWindow: any = null;
+let session: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    BrowserWindow = electron.BrowserWindow;
+    session = electron.session;
+  }
+} catch {}
 import {
   anthropicToOpenAI,
   buildOpenAIChatCompletionsURL,

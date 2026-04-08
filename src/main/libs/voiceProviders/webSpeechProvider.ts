@@ -6,7 +6,14 @@
  * which calls the browser's SpeechRecognition / SpeechSynthesis APIs.
  */
 
-import { BrowserWindow } from 'electron';
+import { isElectronMode } from '../platformAdapter';
+
+let BrowserWindow: any = null;
+try {
+  if (isElectronMode()) {
+    BrowserWindow = require('electron').BrowserWindow;
+  }
+} catch {}
 import type { STTProvider, TTSProvider } from '../voiceProviderRegistry';
 import { coworkLog } from '../coworkLogger';
 

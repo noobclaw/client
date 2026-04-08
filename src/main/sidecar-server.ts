@@ -1,130 +1,223 @@
 /**
  * NoobClaw Sidecar Server — HTTP + SSE server for Tauri mode.
- * Replaces Electron IPC with HTTP API.
+ * Replaces Electron IPC with HTTP API + Server-Sent Events.
  *
- * When running as Tauri sidecar:
- * - Frontend communicates via fetch() to http://127.0.0.1:{port}
- * - Events stream via SSE (Server-Sent Events)
- * - No Electron dependency
- *
- * When running as Electron:
- * - This file is NOT used (Electron IPC is used instead)
+ * Architecture:
+ * - Tauri WebView ←→ HTTP/SSE ←→ This server ←→ CoworkRunner ←→ AI APIs
+ * - No Electron dependency. Uses platformAdapter for OS integration.
  */
 
 import http from 'http';
+import path from 'path';
+import { ensureDataDirs, getUserDataPath } from './libs/platformAdapter';
 import { coworkLog } from './libs/coworkLogger';
+
+// Ensure directories exist before anything else
+ensureDataDirs();
 
 const PORT = parseInt(process.argv[2] || '18800', 10);
 
-// ── SSE connections ──
+// ── SSE Client Management ──
 
 const sseClients = new Set<http.ServerResponse>();
 
 function broadcastSSE(event: string, data: unknown): void {
-  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
-    try { client.write(msg); } catch { sseClients.delete(client); }
+    try { client.write(payload); } catch { sseClients.delete(client); }
+  }
+}
+
+// ── CoworkRunner Integration (lazy loaded to avoid Electron imports at module level) ──
+
+let runnerInstance: any = null;
+
+async function getRunner() {
+  if (runnerInstance) return runnerInstance;
+
+  // Dynamic import to avoid top-level Electron dependencies
+  // CoworkRunner uses platformAdapter internally for OS-specific calls
+  try {
+    const { CoworkRunner } = await import('./libs/coworkRunner');
+    const { CoworkStore } = await import('../coworkStore');
+
+    // Initialize SQLite store
+    const initSqlJs = require('sql.js');
+    const SQL = await initSqlJs();
+    const dbPath = path.join(getUserDataPath(), 'cowork.sqlite');
+    const db = new SQL.Database();
+    const store = new CoworkStore(db, () => {
+      // Save callback
+      const data = db.export();
+      const fs = require('fs');
+      fs.writeFileSync(dbPath, Buffer.from(data));
+    });
+
+    runnerInstance = new CoworkRunner(store);
+
+    // Wire events to SSE broadcasts
+    runnerInstance.on('message', (sessionId: string, message: any) => {
+      broadcastSSE('cowork:stream:message', { sessionId, message });
+    });
+    runnerInstance.on('messageUpdate', (sessionId: string, messageId: string, content: string) => {
+      broadcastSSE('cowork:stream:messageUpdate', { sessionId, messageId, content });
+    });
+    runnerInstance.on('permissionRequest', (sessionId: string, request: any) => {
+      broadcastSSE('cowork:stream:permission', { sessionId, request });
+    });
+    runnerInstance.on('complete', (sessionId: string) => {
+      broadcastSSE('cowork:stream:complete', { sessionId });
+    });
+    runnerInstance.on('error', (sessionId: string, error: string) => {
+      broadcastSSE('cowork:stream:error', { sessionId, error });
+    });
+
+    coworkLog('INFO', 'sidecar-server', 'CoworkRunner initialized');
+    return runnerInstance;
+  } catch (e) {
+    coworkLog('ERROR', 'sidecar-server', `Failed to init CoworkRunner: ${e}`);
+    return null;
   }
 }
 
 // ── HTTP Server ──
 
 const server = http.createServer(async (req, res) => {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
-  if (req.method === 'OPTIONS') {
-    res.writeHead(204);
-    res.end();
-    return;
-  }
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 
   const url = new URL(req.url || '/', `http://127.0.0.1:${PORT}`);
+  const pathname = url.pathname;
 
-  // ── SSE stream ──
-  if (url.pathname === '/api/stream' && req.method === 'GET') {
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    });
-    sseClients.add(res);
-    req.on('close', () => sseClients.delete(res));
-    // Send heartbeat every 30s
-    const heartbeat = setInterval(() => {
-      try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); }
-    }, 30000);
-    req.on('close', () => clearInterval(heartbeat));
-    return;
-  }
-
-  // ── Health check ──
-  if (url.pathname === '/api/status' && req.method === 'GET') {
-    writeJSON(res, 200, { status: 'ok', port: PORT, mode: 'tauri-sidecar' });
-    return;
-  }
-
-  // ── Session start ──
-  if (url.pathname === '/api/session/start' && req.method === 'POST') {
-    const body = await readBody(req);
-    try {
-      const { sessionId, prompt, cwd, systemPrompt, imageAttachments } = JSON.parse(body);
-      // TODO: integrate with CoworkRunner
-      broadcastSSE('session:started', { sessionId });
-      writeJSON(res, 200, { sessionId, status: 'started' });
-    } catch (e) {
-      writeJSON(res, 400, { error: String(e) });
+  try {
+    // ── SSE Stream ──
+    if (pathname === '/api/stream' && req.method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+      sseClients.add(res);
+      const heartbeat = setInterval(() => { try { res.write(': heartbeat\n\n'); } catch { clearInterval(heartbeat); } }, 30000);
+      req.on('close', () => { sseClients.delete(res); clearInterval(heartbeat); });
+      return;
     }
-    return;
-  }
 
-  // ── Session continue ──
-  if (url.pathname === '/api/session/continue' && req.method === 'POST') {
-    const body = await readBody(req);
-    try {
-      const { sessionId, prompt } = JSON.parse(body);
-      broadcastSSE('session:continued', { sessionId });
-      writeJSON(res, 200, { sessionId, status: 'continued' });
-    } catch (e) {
-      writeJSON(res, 400, { error: String(e) });
+    // ── Status ──
+    if (pathname === '/api/status') {
+      return writeJSON(res, 200, { status: 'ok', port: PORT, mode: 'tauri-sidecar', clients: sseClients.size });
     }
-    return;
-  }
 
-  // ── Permission respond ──
-  if (url.pathname === '/api/permission/respond' && req.method === 'POST') {
-    const body = await readBody(req);
-    try {
-      const { requestId, result } = JSON.parse(body);
-      writeJSON(res, 200, { requestId, status: 'ok' });
-    } catch (e) {
-      writeJSON(res, 400, { error: String(e) });
+    // ── Sessions ──
+    if (pathname === '/api/sessions' && req.method === 'GET') {
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      const sessions = runner.store.listSessions();
+      return writeJSON(res, 200, sessions);
     }
-    return;
-  }
 
-  // ── Session stop ──
-  if (url.pathname === '/api/session/stop' && req.method === 'POST') {
-    const body = await readBody(req);
-    try {
-      const { sessionId } = JSON.parse(body);
-      writeJSON(res, 200, { sessionId, status: 'stopped' });
-    } catch (e) {
-      writeJSON(res, 400, { error: String(e) });
+    if (pathname === '/api/session/start' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+
+      const sessionId = body.sessionId || require('uuid').v4();
+      runner.startSession(sessionId, body.prompt, {
+        systemPrompt: body.systemPrompt,
+        imageAttachments: body.imageAttachments,
+        skillIds: body.skillIds,
+      }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Session error: ${e}`));
+
+      return writeJSON(res, 200, { sessionId, status: 'started' });
     }
-    return;
-  }
 
-  // ── Config ──
-  if (url.pathname === '/api/config' && req.method === 'GET') {
-    writeJSON(res, 200, { mode: 'tauri-sidecar' });
-    return;
-  }
+    if (pathname === '/api/session/continue' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
 
-  // ── 404 ──
-  writeJSON(res, 404, { error: 'Not found' });
+      runner.continueSession(body.sessionId, body.prompt, {
+        systemPrompt: body.systemPrompt,
+        imageAttachments: body.imageAttachments,
+      }).catch((e: any) => coworkLog('ERROR', 'sidecar', `Continue error: ${e}`));
+
+      return writeJSON(res, 200, { sessionId: body.sessionId, status: 'continued' });
+    }
+
+    if (pathname === '/api/session/stop' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.stopSession(body.sessionId);
+      return writeJSON(res, 200, { status: 'stopped' });
+    }
+
+    if (pathname === '/api/session/delete' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.deleteSession(body.sessionId);
+      return writeJSON(res, 200, { status: 'deleted' });
+    }
+
+    // ── Permission ──
+    if (pathname === '/api/permission/respond' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.respondToPermission(body.requestId, body.result);
+      return writeJSON(res, 200, { status: 'ok' });
+    }
+
+    // ── Config ──
+    if (pathname === '/api/config' && req.method === 'GET') {
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { mode: 'tauri-sidecar' });
+      return writeJSON(res, 200, runner.store.getConfig());
+    }
+
+    if (pathname === '/api/config' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.updateConfig(body);
+      return writeJSON(res, 200, { status: 'updated' });
+    }
+
+    // ── API Config ──
+    if (pathname === '/api/apiConfig' && req.method === 'GET') {
+      try {
+        const { getCurrentApiConfig } = await import('./libs/claudeSettings');
+        return writeJSON(res, 200, getCurrentApiConfig() || {});
+      } catch {
+        return writeJSON(res, 200, {});
+      }
+    }
+
+    if (pathname === '/api/apiConfig/save' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      try {
+        const { saveCoworkApiConfig } = await import('./libs/coworkConfigStore');
+        saveCoworkApiConfig(body);
+        return writeJSON(res, 200, { status: 'saved' });
+      } catch (e) {
+        return writeJSON(res, 500, { error: String(e) });
+      }
+    }
+
+    // ── Memory ──
+    if (pathname === '/api/memory/list' && req.method === 'GET') {
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, []);
+      return writeJSON(res, 200, runner.store.listMemoryEntries?.() || []);
+    }
+
+    // ── Version ──
+    if (pathname === '/api/version') {
+      return writeJSON(res, 200, { version: '1.0.0', mode: 'tauri-sidecar' });
+    }
+
+    // ── 404 ──
+    writeJSON(res, 404, { error: 'Not found', path: pathname });
+  } catch (e) {
+    coworkLog('ERROR', 'sidecar-server', `Request error: ${e}`);
+    writeJSON(res, 500, { error: String(e) });
+  }
 });
 
 server.listen(PORT, '127.0.0.1', () => {
@@ -148,5 +241,9 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-// ── Export broadcastSSE for CoworkRunner integration ──
+// ── Graceful shutdown ──
+
+process.on('SIGTERM', () => { server.close(); process.exit(0); });
+process.on('SIGINT', () => { server.close(); process.exit(0); });
+
 export { broadcastSSE, PORT };

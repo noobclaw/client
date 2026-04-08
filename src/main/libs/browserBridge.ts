@@ -14,7 +14,22 @@ import net from 'net';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { isElectronMode, getUserDataPath, getAppPath, getResourcesPath, openExternal } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let app: any = null;
+let BrowserWindow: any = null;
+let dialog: any = null;
+let shell: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    app = electron.app;
+    BrowserWindow = electron.BrowserWindow;
+    dialog = electron.dialog;
+    shell = electron.shell;
+  }
+} catch {}
 
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;

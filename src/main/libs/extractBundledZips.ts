@@ -5,7 +5,7 @@
  */
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
+import { isPackaged, getResourcesPath } from './platformAdapter';
 import { createInflateRaw } from 'zlib';
 
 const ZIPS = ['mingit', 'python-win'] as const;
@@ -77,9 +77,9 @@ async function extractZip(zipPath: string, targetDir: string): Promise<void> {
 }
 
 export async function extractBundledZips(): Promise<void> {
-  if (process.platform !== 'win32' || !app.isPackaged) return;
+  if (process.platform !== 'win32' || !isPackaged()) return;
 
-  const resourcesPath = process.resourcesPath;
+  const resourcesPath = getResourcesPath();
 
   for (const name of ZIPS) {
     const zipPath = path.join(resourcesPath, `${name}.zip`);
