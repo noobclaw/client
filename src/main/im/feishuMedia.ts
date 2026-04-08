@@ -4,7 +4,7 @@
 import { Readable } from 'stream';
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
+import { getUserDataPath } from '../libs/platformAdapter';
 import type { IMMediaType } from './types';
 
 // Types
@@ -223,7 +223,7 @@ const INBOUND_DIR = 'feishu-inbound';
  * Get Feishu media storage directory
  */
 export function getFeishuMediaDir(): string {
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
   const mediaDir = path.join(userDataPath, INBOUND_DIR);
 
   if (!fs.existsSync(mediaDir)) {

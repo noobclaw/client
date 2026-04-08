@@ -3,7 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
+import { getUserDataPath } from '../libs/platformAdapter';
 import { fetchWithSystemProxy } from './http';
 import type { IMMediaType } from './types';
 
@@ -14,7 +14,7 @@ const INBOUND_DIR = 'qq-inbound';
  * Get QQ media storage directory
  */
 export function getQQMediaDir(): string {
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
   const mediaDir = path.join(userDataPath, INBOUND_DIR);
 
   if (!fs.existsSync(mediaDir)) {

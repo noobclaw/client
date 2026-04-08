@@ -1,4 +1,6 @@
-import { BrowserWindow } from 'electron';
+import { isElectronMode } from './platformAdapter';
+let BrowserWindow: any = null;
+try { if (isElectronMode()) BrowserWindow = require('electron').BrowserWindow; } catch {}
 import { ScheduledTaskStore, ScheduledTask, ScheduledTaskRun, Schedule, NotifyPlatform } from '../scheduledTaskStore';
 import type { CoworkStore } from '../coworkStore';
 import type { CoworkRunner } from './coworkRunner';
@@ -345,7 +347,7 @@ export class Scheduler {
     const task = this.store.getTask(taskId);
     if (!task) return;
 
-    BrowserWindow.getAllWindows().forEach((win) => {
+    BrowserWindow?.getAllWindows?.()?.forEach?.((win: any) => {
       if (!win.isDestroyed()) {
         win.webContents.send('scheduledTask:statusUpdate', {
           taskId: task.id,
@@ -356,7 +358,7 @@ export class Scheduler {
   }
 
   private emitRunUpdate(run: ScheduledTaskRun): void {
-    BrowserWindow.getAllWindows().forEach((win) => {
+    BrowserWindow?.getAllWindows?.()?.forEach?.((win: any) => {
       if (!win.isDestroyed()) {
         win.webContents.send('scheduledTask:runUpdate', { run });
       }

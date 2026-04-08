@@ -3,7 +3,7 @@
  */
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
+import { getUserDataPath } from '../libs/platformAdapter';
 import type { Context } from 'grammy';
 import type { IMMediaAttachment } from './types';
 import { fetchWithSystemProxy } from './http';
@@ -16,7 +16,7 @@ const INBOUND_DIR = 'telegram-inbound';
  * Get media storage directory
  */
 export function getTelegramMediaDir(): string {
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
   const mediaDir = path.join(userDataPath, INBOUND_DIR);
 
   if (!fs.existsSync(mediaDir)) {

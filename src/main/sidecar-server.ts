@@ -98,6 +98,95 @@ async function getSkillManagerInstance(): Promise<any> {
   }
 }
 
+// ── McpStore (lazy loaded) ──
+
+let mcpStoreInstance: any = null;
+
+async function getMcpStoreInstance(): Promise<any> {
+  if (mcpStoreInstance) return mcpStoreInstance;
+  try {
+    const runner = await getRunner();
+    if (!runner?._sqliteStore) return null;
+    const { McpStore } = await import('./mcpStore');
+    const db = runner._sqliteStore.getDatabase();
+    const saveFn = runner._sqliteStore.getSaveFunction();
+    mcpStoreInstance = new McpStore(db, saveFn);
+    return mcpStoreInstance;
+  } catch (e) {
+    coworkLog('WARN', 'sidecar', `McpStore init failed: ${e}`);
+    return null;
+  }
+}
+
+// ── ScheduledTaskStore + Scheduler (lazy loaded) ──
+
+let scheduledTaskStoreInstance: any = null;
+let schedulerInstance: any = null;
+
+async function getScheduledTaskStoreInstance(): Promise<any> {
+  if (scheduledTaskStoreInstance) return scheduledTaskStoreInstance;
+  try {
+    const runner = await getRunner();
+    if (!runner?._sqliteStore) return null;
+    const { ScheduledTaskStore } = await import('./scheduledTaskStore');
+    const db = runner._sqliteStore.getDatabase();
+    const saveFn = runner._sqliteStore.getSaveFunction();
+    scheduledTaskStoreInstance = new ScheduledTaskStore(db, saveFn);
+    return scheduledTaskStoreInstance;
+  } catch (e) {
+    coworkLog('WARN', 'sidecar', `ScheduledTaskStore init failed: ${e}`);
+    return null;
+  }
+}
+
+async function getSchedulerInstance(): Promise<any> {
+  if (schedulerInstance) return schedulerInstance;
+  try {
+    const sts = await getScheduledTaskStoreInstance();
+    const runner = await getRunner();
+    if (!sts || !runner) return null;
+    const { Scheduler } = await import('./libs/scheduler');
+    schedulerInstance = new Scheduler({
+      scheduledTaskStore: sts,
+      coworkStore: runner.store,
+      getCoworkRunner: () => runner,
+      getIMGatewayManager: () => imGatewayManagerInstance,
+      getSkillsPrompt: async () => '',
+    });
+    schedulerInstance.start?.();
+    return schedulerInstance;
+  } catch (e) {
+    coworkLog('WARN', 'sidecar', `Scheduler init failed: ${e}`);
+    return null;
+  }
+}
+
+// ── IMGatewayManager (lazy loaded) ──
+
+let imGatewayManagerInstance: any = null;
+
+async function getIMGatewayManagerInstance(): Promise<any> {
+  if (imGatewayManagerInstance) return imGatewayManagerInstance;
+  try {
+    const runner = await getRunner();
+    if (!runner?._sqliteStore) return null;
+    const { IMGatewayManager } = await import('./im/imGatewayManager');
+    const db = runner._sqliteStore.getDatabase();
+    const saveFn = runner._sqliteStore.getSaveFunction();
+    imGatewayManagerInstance = new IMGatewayManager(db, saveFn, {
+      coworkRunner: runner,
+      coworkStore: runner.store,
+    });
+    // Wire IM events to SSE
+    imGatewayManagerInstance.on?.('statusChange', (status: any) => broadcastSSE('im:status:change', status));
+    imGatewayManagerInstance.on?.('message', (msg: any) => broadcastSSE('im:message:received', msg));
+    return imGatewayManagerInstance;
+  } catch (e) {
+    coworkLog('WARN', 'sidecar', `IMGatewayManager init failed: ${e}`);
+    return null;
+  }
+}
+
 // ── HTTP Server ──
 
 const server = http.createServer(async (req, res) => {
@@ -419,13 +508,37 @@ const server = http.createServer(async (req, res) => {
             return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
 
           // ── MCP ──
-          case 'mcp:list': return writeJSON(res, 200, []);
-          case 'mcp:create':
-          case 'mcp:update':
-          case 'mcp:delete':
-          case 'mcp:setEnabled':
-            return writeJSON(res, 200, { success: true });
-          case 'mcp:fetchMarketplace': return writeJSON(res, 200, []);
+          case 'mcp:list': {
+            const ms = await getMcpStoreInstance();
+            return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
+          }
+          case 'mcp:create': {
+            const ms = await getMcpStoreInstance();
+            ms?.createServer?.(args[0]);
+            return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
+          }
+          case 'mcp:update': {
+            const ms = await getMcpStoreInstance();
+            ms?.updateServer?.(args[0], args[1]);
+            return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
+          }
+          case 'mcp:delete': {
+            const ms = await getMcpStoreInstance();
+            ms?.deleteServer?.(args[0]);
+            return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
+          }
+          case 'mcp:setEnabled': {
+            const ms = await getMcpStoreInstance();
+            ms?.setEnabled?.(args[0]?.id, args[0]?.enabled);
+            return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
+          }
+          case 'mcp:fetchMarketplace': {
+            try {
+              const mpRes = await fetch('https://api-overmind.noobclaw.com/api/v1/kv/mcp-marketplace');
+              const mpJson = await mpRes.json() as any;
+              return writeJSON(res, 200, { success: true, data: mpJson?.data?.value ?? [] });
+            } catch { return writeJSON(res, 200, { success: true, data: [] }); }
+          }
 
           // ── API fetch proxy ──
           case 'api:fetch': {
@@ -468,10 +581,17 @@ const server = http.createServer(async (req, res) => {
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
 
           // ── Session title ──
-          case 'generate-session-title': return writeJSON(res, 200, null); // TODO: implement LLM title generation
+          case 'generate-session-title': {
+            try {
+              const { generateSessionTitle } = await import('./libs/coworkUtil');
+              const title = await generateSessionTitle?.(args[0]);
+              return writeJSON(res, 200, title ?? null);
+            } catch { return writeJSON(res, 200, null); }
+          }
           case 'get-recent-cwds': {
             if (runner) {
-              const cwds = runner.store.getRecentCwds?.(args[0] ?? 10) ?? [];
+              const limit = Math.min(Math.max(args[0] ?? 8, 1), 20);
+              const cwds = runner.store.listRecentCwds?.(limit) ?? [];
               return writeJSON(res, 200, cwds);
             }
             return writeJSON(res, 200, []);
@@ -515,25 +635,105 @@ const server = http.createServer(async (req, res) => {
           }
 
           // ── Scheduled Tasks ──
-          case 'scheduledTask:list': return writeJSON(res, 200, []);
-          case 'scheduledTask:get': return writeJSON(res, 200, null);
-          case 'scheduledTask:create': return writeJSON(res, 200, { success: false, error: 'Not yet implemented in Tauri' });
-          case 'scheduledTask:update': return writeJSON(res, 200, { success: false });
-          case 'scheduledTask:delete': return writeJSON(res, 200, { success: true });
-          case 'scheduledTask:toggle': return writeJSON(res, 200, { success: true });
-          case 'scheduledTask:runManually': return writeJSON(res, 200, { success: false });
-          case 'scheduledTask:stop': return writeJSON(res, 200, { success: true });
-          case 'scheduledTask:listRuns': return writeJSON(res, 200, []);
-          case 'scheduledTask:countRuns': return writeJSON(res, 200, 0);
-          case 'scheduledTask:listAllRuns': return writeJSON(res, 200, []);
+          case 'scheduledTask:list': {
+            const sts = await getScheduledTaskStoreInstance();
+            return writeJSON(res, 200, { success: true, tasks: sts?.listTasks?.() ?? [] });
+          }
+          case 'scheduledTask:get': {
+            const sts = await getScheduledTaskStoreInstance();
+            return writeJSON(res, 200, { success: true, task: sts?.getTask?.(args[0]) ?? null });
+          }
+          case 'scheduledTask:create': {
+            const sts = await getScheduledTaskStoreInstance();
+            try {
+              const task = sts?.createTask?.(args[0]);
+              const sched = await getSchedulerInstance();
+              sched?.reschedule?.();
+              return writeJSON(res, 200, { success: true, task });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
+          }
+          case 'scheduledTask:update': {
+            const sts = await getScheduledTaskStoreInstance();
+            try {
+              const task = sts?.updateTask?.(args[0], args[1]);
+              const sched = await getSchedulerInstance();
+              sched?.reschedule?.();
+              return writeJSON(res, 200, { success: true, task });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
+          }
+          case 'scheduledTask:delete': {
+            const sched = await getSchedulerInstance();
+            sched?.stopTask?.(args[0]);
+            const sts = await getScheduledTaskStoreInstance();
+            const result = sts?.deleteTask?.(args[0]);
+            sched?.reschedule?.();
+            return writeJSON(res, 200, { success: true, result });
+          }
+          case 'scheduledTask:toggle': {
+            const sts = await getScheduledTaskStoreInstance();
+            const task = sts?.toggleTask?.(args[0], args[1]);
+            const sched = await getSchedulerInstance();
+            sched?.reschedule?.();
+            return writeJSON(res, 200, { success: true, task });
+          }
+          case 'scheduledTask:runManually': {
+            const sched = await getSchedulerInstance();
+            sched?.runManually?.(args[0])?.catch?.(() => {});
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'scheduledTask:stop': {
+            const sched = await getSchedulerInstance();
+            const result = sched?.stopTask?.(args[0]);
+            return writeJSON(res, 200, { success: true, result });
+          }
+          case 'scheduledTask:listRuns': {
+            const sts = await getScheduledTaskStoreInstance();
+            return writeJSON(res, 200, { success: true, runs: sts?.listRuns?.(args[0], args[1], args[2]) ?? [] });
+          }
+          case 'scheduledTask:countRuns': {
+            const sts = await getScheduledTaskStoreInstance();
+            return writeJSON(res, 200, { success: true, count: sts?.countRuns?.(args[0]) ?? 0 });
+          }
+          case 'scheduledTask:listAllRuns': {
+            const sts = await getScheduledTaskStoreInstance();
+            return writeJSON(res, 200, { success: true, runs: sts?.listAllRuns?.(args[0], args[1]) ?? [] });
+          }
 
-          // ── IM Gateway (stub) ──
-          case 'im:config:get': return writeJSON(res, 200, {});
-          case 'im:config:set': return writeJSON(res, 200, { success: true });
-          case 'im:gateway:start': return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
-          case 'im:gateway:stop': return writeJSON(res, 200, { success: true });
-          case 'im:gateway:test': return writeJSON(res, 200, { success: false, error: 'Not available in Tauri mode' });
-          case 'im:status:get': return writeJSON(res, 200, {});
+          // ── IM Gateway ──
+          case 'im:config:get': {
+            const img = await getIMGatewayManagerInstance();
+            return writeJSON(res, 200, { success: true, config: img?.getConfig?.() ?? {} });
+          }
+          case 'im:config:set': {
+            const img = await getIMGatewayManagerInstance();
+            img?.setConfig?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'im:gateway:start': {
+            const img = await getIMGatewayManagerInstance();
+            try {
+              img?.setConfig?.({ [args[0]]: { enabled: true } });
+              await img?.startGateway?.(args[0]);
+              return writeJSON(res, 200, { success: true });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
+          }
+          case 'im:gateway:stop': {
+            const img = await getIMGatewayManagerInstance();
+            img?.setConfig?.({ [args[0]]: { enabled: false } });
+            await img?.stopGateway?.(args[0]);
+            return writeJSON(res, 200, { success: true });
+          }
+          case 'im:gateway:test': {
+            const img = await getIMGatewayManagerInstance();
+            try {
+              const result = await img?.testGateway?.(args[0], args[1]);
+              return writeJSON(res, 200, { success: true, result });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
+          }
+          case 'im:status:get': {
+            const img = await getIMGatewayManagerInstance();
+            return writeJSON(res, 200, { success: true, status: img?.getStatus?.() ?? {} });
+          }
 
           // ── NoobClaw platform ──
           case 'noobclaw:set-auth-token': {
@@ -560,8 +760,31 @@ const server = http.createServer(async (req, res) => {
             }
             return writeJSON(res, 200, null);
           }
-          case 'noobclaw:cache-avatar': return writeJSON(res, 200, { success: false, localPath: null });
-          case 'noobclaw:get-cached-avatar': return writeJSON(res, 200, null);
+          case 'noobclaw:cache-avatar': {
+            try {
+              const avatarUrl = args[0];
+              const avatarDir = path.join(getUserDataPath(), 'avatars');
+              const fs = require('fs');
+              fs.mkdirSync(avatarDir, { recursive: true });
+              const ext = avatarUrl.includes('.png') ? '.png' : '.jpg';
+              const localPath = path.join(avatarDir, `avatar${ext}`);
+              const response = await fetch(avatarUrl);
+              const buffer = Buffer.from(await response.arrayBuffer());
+              fs.writeFileSync(localPath, buffer);
+              return writeJSON(res, 200, { success: true, localPath });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, localPath: null });
+            }
+          }
+          case 'noobclaw:get-cached-avatar': {
+            const fs = require('fs');
+            const avatarDir = path.join(getUserDataPath(), 'avatars');
+            for (const ext of ['.png', '.jpg']) {
+              const p = path.join(avatarDir, `avatar${ext}`);
+              if (fs.existsSync(p)) return writeJSON(res, 200, `file://${p}`);
+            }
+            return writeJSON(res, 200, null);
+          }
 
           // ── Dialog ──
           case 'dialog:readFileAsDataUrl': {
