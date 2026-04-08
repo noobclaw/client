@@ -24,10 +24,10 @@ function loadWasmBinary(): ArrayBuffer | undefined {
     isPackaged() ? path.join(getResourcesPath(), 'app.asar.unpacked/node_modules/sql.js/dist/sql-wasm.wasm') : '',
     // Electron dev
     path.join(getAppPath(), 'node_modules/sql.js/dist/sql-wasm.wasm'),
+    // Tauri: in resources/ subdirectory
+    path.join(path.dirname(process.execPath), 'resources', 'sql-wasm.wasm'),
     // Sidecar/pkg — try relative to executable
     path.join(path.dirname(process.execPath), 'sql-wasm.wasm'),
-    // Tauri resource directory (one level up from exe in some layouts)
-    path.join(path.dirname(process.execPath), '..', 'sql-wasm.wasm'),
     path.join(path.dirname(process.execPath), 'binaries', 'sql-wasm.wasm'),
     // Sidecar — try node_modules in cwd
     path.join(process.cwd(), 'node_modules/sql.js/dist/sql-wasm.wasm'),

@@ -114,8 +114,11 @@ export function getResourcesPath(): string {
       return process.resourcesPath || getAppPath();
     } catch {}
   }
-  // Sidecar: resources are relative to the binary
-  return path.resolve(process.execPath, '..');
+  // Sidecar: resources are in a 'resources' subdirectory next to the binary
+  const exeDir = path.dirname(process.execPath);
+  const resourcesSubdir = path.join(exeDir, 'resources');
+  if (fs.existsSync(resourcesSubdir)) return resourcesSubdir;
+  return exeDir;
 }
 
 // ── shell.openExternal() equivalent ──

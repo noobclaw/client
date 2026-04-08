@@ -38,6 +38,9 @@ jobs:
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 
+      - name: Prepare Tauri resources
+        run: node scripts/prepare-tauri-resources.js
+
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 

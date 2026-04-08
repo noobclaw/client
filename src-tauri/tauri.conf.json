@@ -38,11 +38,7 @@
       "binaries/noobclaw-server"
     ],
     "resources": [
-      "../SKILLs/**/*",
-      "../chrome-extension/**/*",
-      "../resources/tray/**/*",
-      "../sandbox/agent-runner/AGENT_SYSTEM_PROMPT.md",
-      "binaries/sql-wasm.wasm"
+      "resources/**/*"
     ],
     "windows": {
       "nsis": {

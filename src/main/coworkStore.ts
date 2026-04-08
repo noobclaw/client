@@ -444,11 +444,11 @@ const getDefaultSystemPrompt = (): string => {
 
   const candidates = [
     path.join(getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
-    // Sidecar/Tauri: relative to executable
+    // Tauri: in resources/ subdirectory next to exe (prepared by prepare-tauri-resources.js)
+    path.join(path.dirname(process.execPath), 'resources', 'AGENT_SYSTEM_PROMPT.md'),
+    // Sidecar: relative to executable
+    path.join(path.dirname(process.execPath), 'AGENT_SYSTEM_PROMPT.md'),
     path.join(path.dirname(process.execPath), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
-    // Tauri resource directory
-    path.join(path.dirname(process.execPath), 'resources', 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
-    path.join(path.dirname(process.execPath), '..', 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
     // CWD fallback
     path.join(process.cwd(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
   ];
