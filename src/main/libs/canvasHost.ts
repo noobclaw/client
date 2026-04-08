@@ -29,7 +29,7 @@ import { coworkLog } from './coworkLogger';
 export interface CanvasSession {
   id: string;
   parentSessionId: string;
-  window: BrowserWindow | null;
+  window: any | null;
   currentHtml: string;
   pendingActions: CanvasAction[];
   actionResolvers: Array<(action: CanvasAction) => void>;
@@ -267,7 +267,7 @@ export function getCanvasSessionsByParent(parentSessionId: string): CanvasSessio
 // ── Initialize IPC handlers ──
 
 export function initCanvasIPC(): void {
-  ipcMain.on('canvas:action', (_event, sessionId: string, action: CanvasAction) => {
+  ipcMain.on('canvas:action', (_event: any, sessionId: string, action: CanvasAction) => {
     onCanvasAction(sessionId, action);
   });
 

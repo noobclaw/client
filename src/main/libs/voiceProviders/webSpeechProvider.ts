@@ -20,7 +20,7 @@ import { coworkLog } from '../coworkLogger';
 let listening = false;
 let transcriptResolve: ((text: string) => void) | null = null;
 
-function getWindow(): BrowserWindow | null {
+function getWindow(): any | null {
   return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
 }
 

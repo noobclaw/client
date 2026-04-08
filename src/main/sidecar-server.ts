@@ -39,7 +39,7 @@ async function getRunner() {
   // CoworkRunner uses platformAdapter internally for OS-specific calls
   try {
     const { CoworkRunner } = await import('./libs/coworkRunner');
-    const { CoworkStore } = await import('../coworkStore');
+    const { CoworkStore } = await import('./coworkStore');
 
     // Initialize SQLite store
     const initSqlJs = require('sql.js');
