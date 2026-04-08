@@ -200,11 +200,125 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
-    // ── Memory ──
-    if (pathname === '/api/memory/list' && req.method === 'GET') {
+    // ── Session detail ──
+    if (pathname.startsWith('/api/session/') && req.method === 'GET') {
+      const sessionId = pathname.split('/api/session/')[1];
       const runner = await getRunner();
-      if (!runner) return writeJSON(res, 200, []);
-      return writeJSON(res, 200, runner.store.listMemoryEntries?.() || []);
+      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      const session = runner.store.getSession(sessionId);
+      return writeJSON(res, 200, session || null);
+    }
+
+    if (pathname === '/api/session/deleteBatch' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) for (const id of (body.sessionIds || [])) runner.store.deleteSession(id);
+      return writeJSON(res, 200, { status: 'deleted' });
+    }
+
+    if (pathname === '/api/session/pin' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.updateSession(body.sessionId, { pinned: body.pinned });
+      return writeJSON(res, 200, { status: 'ok' });
+    }
+
+    if (pathname === '/api/session/rename' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.updateSession(body.sessionId, { title: body.title });
+      return writeJSON(res, 200, { status: 'ok' });
+    }
+
+    // ── Memory ──
+    if (pathname === '/api/memory/list' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { entries: [], total: 0 });
+      return writeJSON(res, 200, runner.store.listMemoryEntries?.(body) || []);
+    }
+
+    if (pathname === '/api/memory/create' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 503, { error: 'Runner not ready' });
+      const entry = runner.store.createMemoryEntry?.(body);
+      return writeJSON(res, 200, entry || { status: 'created' });
+    }
+
+    if (pathname === '/api/memory/update' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.updateMemoryEntry?.(body);
+      return writeJSON(res, 200, { status: 'updated' });
+    }
+
+    if (pathname === '/api/memory/delete' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const runner = await getRunner();
+      if (runner) runner.store.deleteMemoryEntry?.(body.id);
+      return writeJSON(res, 200, { status: 'deleted' });
+    }
+
+    if (pathname === '/api/memory/stats' && req.method === 'GET') {
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { total: 0 });
+      return writeJSON(res, 200, runner.store.getMemoryStats?.() || { total: 0 });
+    }
+
+    // ── Sandbox ──
+    if (pathname === '/api/sandbox/status' && req.method === 'GET') {
+      return writeJSON(res, 200, { ready: false, mode: 'tauri-sidecar' });
+    }
+
+    if (pathname === '/api/sandbox/install' && req.method === 'POST') {
+      return writeJSON(res, 200, { status: 'not-supported', message: 'Sandbox not available in Tauri mode' });
+    }
+
+    // ── Generic IPC invoke (for features not yet ported to dedicated routes) ──
+    if (pathname === '/api/ipc/invoke' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      const { channel, args } = body;
+      const runner = await getRunner();
+
+      // Route IPC channels to runner methods
+      try {
+        switch (channel) {
+          case 'store:get': return writeJSON(res, 200, runner?.store.getSetting?.(args[0]) ?? null);
+          case 'store:set': runner?.store.setSetting?.(args[0], args[1]); return writeJSON(res, 200, { status: 'ok' });
+          case 'store:remove': runner?.store.removeSetting?.(args[0]); return writeJSON(res, 200, { status: 'ok' });
+          case 'log:getPath': {
+            const { getCoworkLogPath } = await import('./libs/coworkLogger');
+            return writeJSON(res, 200, getCoworkLogPath());
+          }
+          case 'log:openFolder': {
+            const { getCoworkLogPath } = await import('./libs/coworkLogger');
+            const { openExternal } = await import('./libs/platformAdapter');
+            const logPath = getCoworkLogPath();
+            const dir = require('path').dirname(logPath);
+            await openExternal(dir);
+            return writeJSON(res, 200, { status: 'ok' });
+          }
+          case 'shell:openPath':
+          case 'shell:showItemInFolder': {
+            const { openExternal: openExt } = await import('./libs/platformAdapter');
+            await openExt(args[0]);
+            return writeJSON(res, 200, { status: 'ok' });
+          }
+          case 'app:getVersion': return writeJSON(res, 200, '1.0.0');
+          case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
+          default:
+            coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);
+            return writeJSON(res, 200, null);
+        }
+      } catch (e) {
+        return writeJSON(res, 500, { error: String(e) });
+      }
+    }
+
+    if (pathname === '/api/ipc/send' && req.method === 'POST') {
+      // Fire-and-forget IPC sends (no return value expected)
+      return writeJSON(res, 200, { status: 'ok' });
     }
 
     // ── Version ──
