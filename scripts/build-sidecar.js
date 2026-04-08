@@ -87,6 +87,17 @@ function main() {
     console.error('✗ Sidecar build failed - output not found');
     process.exit(1);
   }
+
+  // Step 4: Copy sql-wasm.wasm alongside the binary for sidecar mode
+  console.log('Step 4: Copying sql-wasm.wasm...');
+  const wasmSrc = path.join(ROOT, 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm');
+  const wasmDst = path.join(BINARIES_DIR, 'sql-wasm.wasm');
+  if (fs.existsSync(wasmSrc)) {
+    fs.copyFileSync(wasmSrc, wasmDst);
+    console.log(`✓ Copied sql-wasm.wasm (${Math.round(fs.statSync(wasmDst).size / 1024)}KB)`);
+  } else {
+    console.warn('⚠ sql-wasm.wasm not found, sidecar may fail to initialize SQLite');
+  }
 }
 
 main();

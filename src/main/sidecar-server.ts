@@ -36,24 +36,18 @@ async function getRunner() {
   if (runnerInstance) return runnerInstance;
 
   // Dynamic import to avoid top-level Electron dependencies
-  // CoworkRunner uses platformAdapter internally for OS-specific calls
   try {
     const { CoworkRunner } = await import('./libs/coworkRunner');
     const { CoworkStore } = await import('./coworkStore');
+    const { SqliteStore } = await import('./sqliteStore');
 
-    // Initialize SQLite store
-    const initSqlJs = require('sql.js');
-    const SQL = await initSqlJs();
-    const dbPath = path.join(getUserDataPath(), 'cowork.sqlite');
-    const db = new SQL.Database();
-    const store = new CoworkStore(db, () => {
-      // Save callback
-      const data = db.export();
-      const fs = require('fs');
-      fs.writeFileSync(dbPath, Buffer.from(data));
-    });
+    // Initialize SQLite store (loads existing DB from disk if available)
+    const sqliteStore = await SqliteStore.create(getUserDataPath());
+    const store = new CoworkStore(sqliteStore.getDatabase(), sqliteStore.getSaveFunction());
 
     runnerInstance = new CoworkRunner(store);
+    // Expose sqliteStore for KV operations (store:get/set)
+    (runnerInstance as any)._sqliteStore = sqliteStore;
 
     // Wire events to SSE broadcasts
     runnerInstance.on('message', (sessionId: string, message: any) => {
@@ -289,9 +283,20 @@ const server = http.createServer(async (req, res) => {
       // Route IPC channels to runner methods
       try {
         switch (channel) {
-          case 'store:get': return writeJSON(res, 200, runner?.store.getSetting?.(args[0]) ?? null);
-          case 'store:set': runner?.store.setSetting?.(args[0], args[1]); return writeJSON(res, 200, { status: 'ok' });
-          case 'store:remove': runner?.store.removeSetting?.(args[0]); return writeJSON(res, 200, { status: 'ok' });
+          case 'store:get': {
+            const ss = runner?._sqliteStore;
+            return writeJSON(res, 200, ss?.get?.(args[0]) ?? null);
+          }
+          case 'store:set': {
+            const ss = runner?._sqliteStore;
+            ss?.set?.(args[0], args[1]);
+            return writeJSON(res, 200, { status: 'ok' });
+          }
+          case 'store:remove': {
+            const ss = runner?._sqliteStore;
+            ss?.delete?.(args[0]);
+            return writeJSON(res, 200, { status: 'ok' });
+          }
           case 'log:getPath': {
             const { getCoworkLogPath } = await import('./libs/coworkLogger');
             return writeJSON(res, 200, getCoworkLogPath());

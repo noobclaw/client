@@ -40,7 +40,8 @@
     "resources": [
       "../SKILLs/**/*",
       "../chrome-extension/**/*",
-      "../resources/tray/**/*"
+      "../resources/tray/**/*",
+      "binaries/sql-wasm.wasm"
     ],
     "windows": {
       "nsis": {
