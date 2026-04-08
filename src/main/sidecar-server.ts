@@ -832,6 +832,15 @@ const server = http.createServer(async (req, res) => {
             return writeJSON(res, 200, null);
           }
 
+          // ── Browser Extension ──
+          case 'extension:prompt-response': {
+            try {
+              const { resolveExtensionPrompt } = await import('./libs/browserBridge');
+              resolveExtensionPrompt(args[0], args[1]); // requestId, 'install' | 'cancel'
+            } catch {}
+            return writeJSON(res, 200, { success: true });
+          }
+
           // ── Dialog ──
           case 'dialog:readFileAsDataUrl': {
             try {

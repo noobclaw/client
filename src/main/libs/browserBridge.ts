@@ -373,11 +373,43 @@ export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> 
     return 'cancelled';
   }
 
-  // Sidecar/Tauri mode: open Chrome Web Store directly
+  // Sidecar/Tauri mode: broadcast SSE event for frontend to show modal
+  // Use a promise that resolves when the frontend responds
+  const requestId = `ext-prompt-${Date.now()}`;
   try {
-    await openExternal(CHROME_STORE_URL);
+    const { broadcastSSE } = require('../sidecar-server');
+    broadcastSSE('extension:install-prompt', {
+      requestId,
+      storeUrl: CHROME_STORE_URL,
+      title: 'Browser Extension Required',
+      message: 'NoobClaw needs the browser extension for full browser automation (click, type, screenshot). Install it now?',
+      buttons: ['Install from Chrome Store', 'Not Now'],
+    });
   } catch {}
-  return 'installed';
+
+  // Wait up to 30s for user response (or timeout and open store directly)
+  const choice = await new Promise<string>((resolve) => {
+    const timer = setTimeout(() => resolve('timeout'), 30000);
+    extensionPromptResolvers.set(requestId, (result: string) => {
+      clearTimeout(timer);
+      resolve(result);
+    });
+  });
+  extensionPromptResolvers.delete(requestId);
+
+  if (choice === 'install' || choice === 'timeout') {
+    try { await openExternal(CHROME_STORE_URL); } catch {}
+    return 'installed';
+  }
+  return 'cancelled';
+}
+
+// Resolver map for extension prompt responses from frontend
+const extensionPromptResolvers = new Map<string, (result: string) => void>();
+
+export function resolveExtensionPrompt(requestId: string, result: string): void {
+  const resolver = extensionPromptResolvers.get(requestId);
+  if (resolver) resolver(result);
 }
 
 /**

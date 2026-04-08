@@ -432,6 +432,24 @@ export function initTauriShim(): void {
     return originalFetch(input, init);
   };
 
+  // Listen for browser extension install prompt from sidecar
+  onSSE('extension:install-prompt', (data: any) => {
+    const { requestId, storeUrl, message } = data || {};
+    if (!requestId) return;
+    // Show a confirm dialog to the user
+    const install = window.confirm(`${message || 'Install browser extension for full automation?'}\n\nClick OK to open Chrome Web Store.`);
+    // Send response back to sidecar
+    fetch(`${BASE_URL}/api/ipc/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: 'extension:prompt-response', args: [requestId, install ? 'install' : 'cancel'] }),
+    }).catch(() => {});
+    // If user chose install, also open the store URL
+    if (install && storeUrl) {
+      window.open(storeUrl, '_blank');
+    }
+  });
+
   // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
   window.addEventListener('noobclaw-auth', ((e: CustomEvent) => {
     const { token, wallet } = e.detail || {};
