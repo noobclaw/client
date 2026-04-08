@@ -15,17 +15,29 @@ interface Announcement {
   link: string;
 }
 
+// Local coin logos — bundled with the app to avoid external rate limiting (cryptologos.cc returns 403)
+import btcLogo from '../../assets/coins/btc.svg';
+import ethLogo from '../../assets/coins/eth.svg';
+import bnbLogo from '../../assets/coins/bnb.svg';
+import solLogo from '../../assets/coins/sol.svg';
+import xrpLogo from '../../assets/coins/xrp.svg';
+import dogeLogo from '../../assets/coins/doge.svg';
+import adaLogo from '../../assets/coins/ada.svg';
+import avaxLogo from '../../assets/coins/avax.svg';
+import dotLogo from '../../assets/coins/dot.svg';
+import trxLogo from '../../assets/coins/trx.svg';
+
 const coinMeta: Record<string, { logo: string; url: string }> = {
-  BTC:  { logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg',       url: 'https://www.binance.com/trade/BTC_USDT' },
-  ETH:  { logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg',      url: 'https://www.binance.com/trade/ETH_USDT' },
-  BNB:  { logo: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg',           url: 'https://www.binance.com/trade/BNB_USDT' },
-  SOL:  { logo: 'https://cryptologos.cc/logos/solana-sol-logo.svg',         url: 'https://www.binance.com/trade/SOL_USDT' },
-  XRP:  { logo: 'https://cryptologos.cc/logos/xrp-xrp-logo.svg',           url: 'https://www.binance.com/trade/XRP_USDT' },
-  DOGE: { logo: 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg',      url: 'https://www.binance.com/trade/DOGE_USDT' },
-  ADA:  { logo: 'https://cryptologos.cc/logos/cardano-ada-logo.svg',        url: 'https://www.binance.com/trade/ADA_USDT' },
-  AVAX: { logo: 'https://cryptologos.cc/logos/avalanche-avax-logo.svg',     url: 'https://www.binance.com/trade/AVAX_USDT' },
-  DOT:  { logo: 'https://cryptologos.cc/logos/polkadot-new-dot-logo.svg',   url: 'https://www.binance.com/trade/DOT_USDT' },
-  TRX:  { logo: 'https://cryptologos.cc/logos/tron-trx-logo.svg',           url: 'https://www.binance.com/trade/TRX_USDT' },
+  BTC:  { logo: btcLogo,  url: 'https://www.binance.com/trade/BTC_USDT' },
+  ETH:  { logo: ethLogo,  url: 'https://www.binance.com/trade/ETH_USDT' },
+  BNB:  { logo: bnbLogo,  url: 'https://www.binance.com/trade/BNB_USDT' },
+  SOL:  { logo: solLogo,  url: 'https://www.binance.com/trade/SOL_USDT' },
+  XRP:  { logo: xrpLogo,  url: 'https://www.binance.com/trade/XRP_USDT' },
+  DOGE: { logo: dogeLogo, url: 'https://www.binance.com/trade/DOGE_USDT' },
+  ADA:  { logo: adaLogo,  url: 'https://www.binance.com/trade/ADA_USDT' },
+  AVAX: { logo: avaxLogo, url: 'https://www.binance.com/trade/AVAX_USDT' },
+  DOT:  { logo: dotLogo,  url: 'https://www.binance.com/trade/DOT_USDT' },
+  TRX:  { logo: trxLogo,  url: 'https://www.binance.com/trade/TRX_USDT' },
 };
 
 // Module-level cache so data persists across component mounts
