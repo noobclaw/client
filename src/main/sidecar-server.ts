@@ -105,7 +105,9 @@ async function getSkillManagerInstance(): Promise<any> {
     const { SkillManager } = await import('./skillManager');
     const sqlStore = runner._sqliteStore;
     skillManagerInstance = new SkillManager(() => sqlStore);
-    coworkLog('INFO', 'sidecar-server', 'SkillManager initialized');
+    // Copy bundled skills to userData on first run
+    try { skillManagerInstance.syncBundledSkillsToUserData(); } catch (e) { console.warn('[sidecar] syncBundledSkills failed:', e); }
+    coworkLog('INFO', 'sidecar-server', `SkillManager initialized, skills: ${skillManagerInstance.listSkills()?.length ?? 0}`);
     return skillManagerInstance;
   } catch (e) {
     coworkLog('WARN', 'sidecar-server', `SkillManager init failed: ${e}`);

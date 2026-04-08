@@ -1799,14 +1799,23 @@ export class SkillManager {
 
   private getBundledSkillsRoot(): string {
     if (isPackaged()) {
-      // In production, bundled SKILLs should be in Resources/SKILLs.
-      const resourcesRoot = path.resolve(getResourcesPath(), SKILLS_DIR_NAME);
-      if (fs.existsSync(resourcesRoot)) {
-        return resourcesRoot;
+      // Search multiple candidate paths for bundled SKILLs
+      const candidates = [
+        path.resolve(getResourcesPath(), SKILLS_DIR_NAME),
+        // Tauri: next to the sidecar binary
+        path.resolve(path.dirname(process.execPath), SKILLS_DIR_NAME),
+        // Tauri: in resources subdirectory
+        path.resolve(path.dirname(process.execPath), 'resources', SKILLS_DIR_NAME),
+        // Tauri: one level up (NSIS layout)
+        path.resolve(path.dirname(process.execPath), '..', SKILLS_DIR_NAME),
+        // Electron: inside app.asar
+        path.resolve(getAppPath(), SKILLS_DIR_NAME),
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
       }
-
-      // Fallback for older packages where SKILLs are inside app.asar.
-      return path.resolve(getAppPath(), SKILLS_DIR_NAME);
+      // Final fallback
+      return candidates[0];
     }
 
     // In development, use the project root (parent of dist-electron).
