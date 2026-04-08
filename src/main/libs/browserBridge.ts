@@ -346,32 +346,38 @@ function getPromptTexts() {
  * - 'cancelled': user chose "not now"
  */
 export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> {
-  const win = BrowserWindow.getFocusedWindow();
-  if (!win) return 'cancelled';
-  const t = getPromptTexts();
+  const win = BrowserWindow?.getFocusedWindow?.();
 
-  const result = await dialog.showMessageBox(win, {
-    type: 'info',
-    title: t.title,
-    message: t.installMsg,
-    detail: t.installDetail,
-    buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
-    defaultId: 0,
-    cancelId: 2,
-  });
+  if (win && dialog) {
+    // Electron mode: use native dialog
+    const t = getPromptTexts();
+    const result = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: t.title,
+      message: t.installMsg,
+      detail: t.installDetail,
+      buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
+      defaultId: 0,
+      cancelId: 2,
+    });
 
-  if (result.response === 0) {
-    // Chrome Store
-    const browsers = detectBrowsers();
-    const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
-    shell.openExternal(storeUrl);
-    return 'installed';
-  } else if (result.response === 1) {
-    // Local extension
-    await installLocalExtension();
-    return 'installed';
+    if (result.response === 0) {
+      const browsers = detectBrowsers();
+      const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
+      shell?.openExternal?.(storeUrl) ?? openExternal(storeUrl);
+      return 'installed';
+    } else if (result.response === 1) {
+      await installLocalExtension();
+      return 'installed';
+    }
+    return 'cancelled';
   }
-  return 'cancelled';
+
+  // Sidecar/Tauri mode: open Chrome Web Store directly
+  try {
+    await openExternal(CHROME_STORE_URL);
+  } catch {}
+  return 'installed';
 }
 
 /**
