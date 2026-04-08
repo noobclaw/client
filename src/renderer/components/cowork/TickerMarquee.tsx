@@ -160,7 +160,7 @@ const TickerMarquee: React.FC = () => {
         onClick={(e) => { e.stopPropagation(); if (meta) openLink(meta.url); }}
         title={`${t.symbol}/USDT on Binance`}
       >
-        {meta && <img src={meta.logo} alt={t.symbol} className="w-5 h-5 mr-1.5" />}
+        {meta && <img src={(window as any).__TAURI__ ? `http://127.0.0.1:18800/api/img?url=${encodeURIComponent(meta.logo)}` : meta.logo} alt={t.symbol} className="w-5 h-5 mr-1.5" />}
         <span className="text-sm dark:text-claude-darkText text-claude-text font-semibold">{t.symbol}</span>
         <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary ml-1.5">
           ${t.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

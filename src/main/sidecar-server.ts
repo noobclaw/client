@@ -892,6 +892,22 @@ const server = http.createServer(async (req, res) => {
       }
     }
 
+    // ── Image Proxy (for <img> tags that can't load external URLs in Tauri WebView) ──
+    if (pathname === '/api/img' && req.method === 'GET') {
+      const imgUrl = url.searchParams.get('url');
+      if (!imgUrl) { res.writeHead(400); res.end('Missing url param'); return; }
+      try {
+        const imgRes = await fetch(imgUrl);
+        const contentType = imgRes.headers.get('content-type') || 'image/svg+xml';
+        const buffer = Buffer.from(await imgRes.arrayBuffer());
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=86400' });
+        res.end(buffer);
+      } catch {
+        res.writeHead(502); res.end('Failed to fetch image');
+      }
+      return;
+    }
+
     // ── Version ──
     if (pathname === '/api/version') {
       return writeJSON(res, 200, { version: '1.0.0', mode: 'tauri-sidecar' });
