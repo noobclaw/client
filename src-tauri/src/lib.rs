@@ -25,13 +25,39 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
 
     let port: u16 = 18800;
 
-    let (mut _rx, child) = app
+    let (mut rx, child) = app
         .shell()
         .sidecar("noobclaw-server")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
         .args(&[port.to_string()])
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+
+    // Log sidecar output in background
+    tauri::async_runtime::spawn(async move {
+        use tauri_plugin_shell::process::CommandEvent;
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    let s = String::from_utf8_lossy(&line);
+                    if !s.trim().is_empty() {
+                        println!("[sidecar] {}", s.trim());
+                    }
+                }
+                CommandEvent::Stderr(line) => {
+                    let s = String::from_utf8_lossy(&line);
+                    if !s.trim().is_empty() {
+                        eprintln!("[sidecar-err] {}", s.trim());
+                    }
+                }
+                CommandEvent::Terminated(status) => {
+                    eprintln!("[sidecar] Process terminated: {:?}", status);
+                    break;
+                }
+                _ => {}
+            }
+        }
+    });
 
     Ok((port, child))
 }
