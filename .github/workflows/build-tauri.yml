@@ -44,19 +44,56 @@ jobs:
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
+      - name: Import code signing certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          CSC_KEY: ${{ secrets.CSC_KEY }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          echo "$APPLE_CERT_BASE64" | base64 --decode > /tmp/cert.cer
+          echo "$CSC_KEY" > /tmp/key.pem
+          openssl x509 -inform DER -in /tmp/cert.cer -out /tmp/cert.pem
+          openssl pkcs12 -export -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          # Extract signing identity for Tauri
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          echo "Found signing identity: $IDENTITY"
+
       - name: Build Tauri app
         run: npx tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
 
-      - name: Ad-hoc codesign macOS app
+      - name: Codesign and notarize macOS app
         if: runner.os == 'macOS'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           APP_PATH=$(find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
           if [ -n "$APP_PATH" ]; then
             echo "Signing: $APP_PATH"
-            codesign --force --deep --sign - "$APP_PATH"
+            codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" "$APP_PATH"
             echo "Signed successfully"
+            # Create zip for notarization
+            ZIP_PATH="${APP_PATH%.app}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+            echo "Submitting for notarization..."
+            xcrun notarytool submit "$ZIP_PATH" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" \
+              --wait --timeout 600 || echo "Notarization may have timed out or failed — app is still signed"
+            xcrun stapler staple "$APP_PATH" || echo "Stapler failed — app is still signed"
+            rm -f "$ZIP_PATH"
           fi
 
       - name: Upload artifacts
