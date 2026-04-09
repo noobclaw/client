@@ -15,6 +15,65 @@ export function isTauriMode(): boolean {
   return !!(window as any).__TAURI__;
 }
 
+// ── Install fetch proxy IMMEDIATELY on module load (before any other code runs) ──
+// This MUST happen at the top level, not inside initTauriShim(), because
+// other modules (noobclawAuth) make fetch() calls during their own import/init
+// which happens before initTauriShim() is called.
+if (isTauriMode()) {
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    const isStaticResource = /\.(svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|css|js)(\?|$)/i.test(url);
+    const isApiCall = url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost') && !isStaticResource;
+
+    if (isApiCall) {
+      try {
+        const headers: Record<string, string> = {};
+        if (init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.forEach((v, k) => { headers[k] = v; });
+          } else if (Array.isArray(init.headers)) {
+            init.headers.forEach(([k, v]) => { headers[k] = v; });
+          } else {
+            Object.assign(headers, init.headers);
+          }
+        }
+        let bodyStr: string | undefined;
+        if (init?.body) {
+          if (typeof init.body === 'string') bodyStr = init.body;
+          else { try { bodyStr = JSON.stringify(init.body); } catch { bodyStr = String(init.body); } }
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const proxyRes = await _origFetch(`${BASE_URL}/api/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ url, method: init?.method || 'GET', headers, body: bodyStr }),
+        });
+        clearTimeout(timeout);
+        const data = await proxyRes.json();
+        let contentType = 'application/json';
+        if (data.body && typeof data.body === 'string') {
+          if (data.body.startsWith('<')) contentType = 'text/html';
+          else if (!data.body.startsWith('{') && !data.body.startsWith('[')) contentType = 'text/plain';
+        }
+        return new Response(data.body ?? '', {
+          status: data.status || 200,
+          statusText: data.ok ? 'OK' : 'Error',
+          headers: { 'Content-Type': contentType },
+        });
+      } catch (e) {
+        console.warn('[TauriShim] Proxy fetch failed for:', url, e);
+        try { return await _origFetch(input, init); } catch {}
+        return new Response(JSON.stringify({ error: 'Proxy failed', url }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+    return _origFetch(input, init);
+  };
+}
+}
+
 // ── SSE Event Source for streaming ──
 
 let eventSource: EventSource | null = null;
@@ -436,88 +495,7 @@ export function initTauriShim(): void {
     e.preventDefault();
   });
 
-  // Patch global fetch to proxy external API calls through sidecar (bypass CORS)
-  // Tauri WebView origin (tauri://localhost) gets CORS-blocked by external APIs.
-  // In Electron, session.defaultSession.fetch() bypasses CORS. We replicate that
-  // by routing external requests through the sidecar's api:fetch handler.
-  const originalFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
-
-    // Only proxy external API calls, NOT images/static resources
-    // Images (<img src>), fonts, CSS etc are loaded by the WebView directly — no CORS issue for those.
-    // We only need to proxy fetch() calls to API endpoints that return JSON and enforce CORS.
-    const isStaticResource = /\.(svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|css|js)(\?|$)/i.test(url);
-    const isApiCall = url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost') && !isStaticResource;
-    if (isApiCall) {
-      try {
-        const headers: Record<string, string> = {};
-        if (init?.headers) {
-          if (init.headers instanceof Headers) {
-            init.headers.forEach((v, k) => { headers[k] = v; });
-          } else if (Array.isArray(init.headers)) {
-            init.headers.forEach(([k, v]) => { headers[k] = v; });
-          } else {
-            Object.assign(headers, init.headers);
-          }
-        }
-
-        // Serialize body — handle string, JSON, and other types
-        let bodyStr: string | undefined;
-        if (init?.body) {
-          if (typeof init.body === 'string') {
-            bodyStr = init.body;
-          } else if (init.body instanceof ArrayBuffer || init.body instanceof Uint8Array) {
-            bodyStr = undefined; // Can't proxy binary bodies through JSON
-          } else {
-            try { bodyStr = JSON.stringify(init.body); } catch { bodyStr = String(init.body); }
-          }
-        }
-
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 30000); // 30s timeout
-
-        const proxyRes = await originalFetch(`${BASE_URL}/api/proxy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: controller.signal,
-          body: JSON.stringify({
-            url,
-            method: init?.method || 'GET',
-            headers,
-            body: bodyStr,
-          }),
-        });
-        clearTimeout(timeout);
-
-        const data = await proxyRes.json();
-
-        // Detect content type from the response body
-        let contentType = 'application/json';
-        if (data.body && typeof data.body === 'string') {
-          if (data.body.startsWith('<')) contentType = 'text/html';
-          else if (!data.body.startsWith('{') && !data.body.startsWith('[')) contentType = 'text/plain';
-        }
-
-        return new Response(data.body ?? '', {
-          status: data.status || 200,
-          statusText: data.ok ? 'OK' : 'Error',
-          headers: { 'Content-Type': contentType },
-        });
-      } catch (e) {
-        console.warn('[TauriShim] Proxy fetch failed for:', url, e);
-        // Try direct fetch as fallback (may CORS-fail but worth trying)
-        try { return await originalFetch(input, init); } catch { }
-        // Return a synthetic error response instead of throwing
-        return new Response(JSON.stringify({ error: 'Proxy failed', url }), {
-          status: 502,
-          headers: { 'Content-Type': 'application/json' },
-        });
-      }
-    }
-
-    return originalFetch(input, init);
-  };
+  // Fetch proxy is installed at module level (top of file) — no duplicate here.
 
   // Listen for browser extension install prompt from sidecar
   onSSE('extension:install-prompt', async (data: any) => {
