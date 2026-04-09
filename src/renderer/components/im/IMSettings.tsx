@@ -527,7 +527,32 @@ const IMSettings: React.FC = () => {
               </label>
               <select
                 value={config.feishu.domain || 'feishu'}
-                onChange={(e) => { handleFeishuChange('domain', e.target.value); void imService.updateConfig({ feishu: { ...config.feishu, domain: e.target.value } }); }}
+                onChange={(e) => {
+                  const newDomain = e.target.value;
+                  const oldDomain = config.feishu.domain || 'feishu';
+                  // Save current credentials before switching
+                  const saved: any = {};
+                  if (oldDomain === 'feishu' || oldDomain !== 'lark') {
+                    saved.feishuAppId = config.feishu.appId;
+                    saved.feishuAppSecret = config.feishu.appSecret;
+                  } else {
+                    saved.larkAppId = config.feishu.appId;
+                    saved.larkAppSecret = config.feishu.appSecret;
+                  }
+                  // Restore credentials for the new domain
+                  let newAppId = '';
+                  let newAppSecret = '';
+                  if (newDomain === 'lark') {
+                    newAppId = config.feishu.larkAppId || '';
+                    newAppSecret = config.feishu.larkAppSecret || '';
+                  } else {
+                    newAppId = config.feishu.feishuAppId || '';
+                    newAppSecret = config.feishu.feishuAppSecret || '';
+                  }
+                  const updated = { ...config.feishu, ...saved, domain: newDomain, appId: newAppId, appSecret: newAppSecret };
+                  dispatch(setFeishuConfig(updated));
+                  void imService.updateConfig({ feishu: updated });
+                }}
                 className="block w-full rounded-lg dark:bg-claude-darkSurface/80 bg-claude-surface/80 dark:border-claude-darkBorder/60 border-claude-border/60 border focus:border-claude-accent focus:ring-1 focus:ring-claude-accent/30 dark:text-claude-darkText text-claude-text px-3 py-2 text-sm transition-colors"
               >
                 <option value="feishu">飞书 (Feishu) - open.feishu.cn</option>
