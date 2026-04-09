@@ -40,26 +40,16 @@ function main() {
   console.log(`Building sidecar for target: ${triple}`);
   console.log(`Output: ${outPath}`);
 
-  // Step 1: Compile TypeScript
-  console.log('Step 1: Compiling TypeScript...');
-  execSync('npx tsc --project electron-tsconfig.json', { cwd: ROOT, stdio: 'inherit' });
-
-  // Step 2: Bundle with esbuild into single file
-  console.log('Step 2: Bundling with esbuild...');
-  const entryPoint = path.join(ROOT, 'dist-electron', 'sidecar-server.js');
+  // Step 1+2: Bundle TypeScript directly with esbuild (skip tsc — esbuild handles TS natively)
+  console.log('Step 1: Bundling TypeScript with esbuild...');
+  const entryPoint = path.join(ROOT, 'src', 'main', 'sidecar-server.ts');
   const bundlePath = path.join(ROOT, 'dist-electron', 'sidecar-bundle.cjs');
 
-  if (!fs.existsSync(entryPoint)) {
-    console.error(`Entry point not found: ${entryPoint}`);
-    console.log('Available files in dist-electron:');
-    try {
-      const files = fs.readdirSync(path.join(ROOT, 'dist-electron'));
-      files.slice(0, 20).forEach(f => console.log(`  ${f}`));
-    } catch {}
-    process.exit(1);
+  if (!fs.existsSync(path.join(ROOT, 'dist-electron'))) {
+    fs.mkdirSync(path.join(ROOT, 'dist-electron'), { recursive: true });
   }
 
-  execSync(`npx esbuild "${entryPoint}" --bundle --platform=node --target=node20 --outfile="${bundlePath}" --external:better-sqlite3`, {
+  execSync(`npx esbuild "${entryPoint}" --bundle --platform=node --target=node20 --outfile="${bundlePath}" --external:better-sqlite3 --external:electron`, {
     cwd: ROOT,
     stdio: 'inherit',
   });
