@@ -955,6 +955,41 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    // ── Diagnostic (for debugging macOS issues) ──
+    if (pathname === '/api/diagnostic') {
+      const runner = await getRunner();
+      const diag: Record<string, unknown> = {
+        platform: process.platform,
+        arch: process.arch,
+        nodeVersion: process.version,
+        execPath: process.execPath,
+        cwd: process.cwd(),
+        pid: process.pid,
+        uptime: process.uptime(),
+        runnerReady: !!runner,
+        sslRejectUnauthorized: process.env.NODE_TLS_REJECT_UNAUTHORIZED,
+      };
+      // Test external HTTPS connectivity
+      try {
+        const testRes = await fetch('https://api.noobclaw.com/api/ticker');
+        diag.httpsTest = { ok: testRes.ok, status: testRes.status };
+      } catch (e: any) {
+        diag.httpsTest = { ok: false, error: e.message };
+      }
+      // Check OpenAI proxy
+      try {
+        const { getCoworkOpenAICompatProxyStatus } = await import('./libs/coworkOpenAICompatProxy');
+        diag.proxy = getCoworkOpenAICompatProxyStatus();
+      } catch {}
+      // Check API config
+      try {
+        const { getCurrentApiConfig } = await import('./libs/claudeSettings');
+        const config = getCurrentApiConfig();
+        diag.apiConfig = config ? { hasConfig: true, baseURL: config.baseURL, model: config.model, apiType: (config as any).apiType } : { hasConfig: false };
+      } catch {}
+      return writeJSON(res, 200, diag);
+    }
+
     // ── Version ──
     if (pathname === '/api/version') {
       return writeJSON(res, 200, { version: '1.0.0', mode: 'tauri-sidecar' });
