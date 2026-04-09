@@ -77,16 +77,19 @@ function main() {
     console.log('  sql-wasm.wasm: copied');
   }
 
-  // 6. Native messaging host script
-  const nmhSrc = path.join(ROOT, 'resources', 'native-messaging-host.js');
-  if (fs.existsSync(nmhSrc)) {
-    fs.copyFileSync(nmhSrc, path.join(RESOURCES_DIR, 'native-messaging-host.js'));
-    console.log('  native-messaging-host.js: copied');
-  }
-  const nmhBatSrc = path.join(ROOT, 'resources', 'native-messaging-host.bat');
-  if (fs.existsSync(nmhBatSrc)) {
-    fs.copyFileSync(nmhBatSrc, path.join(RESOURCES_DIR, 'native-messaging-host.bat'));
-    console.log('  native-messaging-host.bat: copied');
+  // 6. Native messaging host scripts (search multiple locations)
+  for (const name of ['native-messaging-host.js', 'native-messaging-host.bat', 'native-messaging-host.sh']) {
+    const candidates = [
+      path.join(ROOT, 'resources', name),
+      path.join(ROOT, name),
+    ];
+    for (const src of candidates) {
+      if (fs.existsSync(src)) {
+        fs.copyFileSync(src, path.join(RESOURCES_DIR, name));
+        console.log(`  ${name}: copied from ${src}`);
+        break;
+      }
+    }
   }
 
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
