@@ -973,9 +973,14 @@ server.listen(PORT, '127.0.0.1', () => {
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
 
   // Pre-initialize runner immediately so data is ready when frontend connects
-  getRunner().then((runner) => {
+  getRunner().then(async (runner) => {
     if (runner) {
       coworkLog('INFO', 'sidecar-server', 'Runner pre-initialized successfully');
+      // Pre-initialize IM, Skills, etc so they're ready when frontend loads
+      try { await getIMGatewayManagerInstance(); coworkLog('INFO', 'sidecar-server', 'IM pre-initialized'); } catch {}
+      try { await getSkillManagerInstance(); coworkLog('INFO', 'sidecar-server', 'Skills pre-initialized'); } catch {}
+      try { await getMcpStoreInstance(); } catch {}
+      try { await getScheduledTaskStoreInstance(); } catch {}
     } else {
       coworkLog('WARN', 'sidecar-server', 'Runner pre-initialization failed — will retry on first request');
     }
