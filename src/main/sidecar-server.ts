@@ -770,7 +770,11 @@ const server = http.createServer(async (req, res) => {
           }
           case 'im:config:set': {
             const img = await getIMGatewayManagerInstance();
-            img?.setConfig?.(args[0]);
+            if (!img) {
+              coworkLog('ERROR', 'sidecar', 'im:config:set failed: IMGatewayManager not initialized');
+              return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized' });
+            }
+            img.setConfig(args[0]);
             return writeJSON(res, 200, { success: true });
           }
           case 'im:gateway:start': {
