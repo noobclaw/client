@@ -789,8 +789,10 @@ const server = http.createServer(async (req, res) => {
           }
           case 'im:gateway:test': {
             const img = await getIMGatewayManagerInstance();
+            coworkLog('INFO', 'sidecar', `im:gateway:test platform=${args[0]} override=${JSON.stringify(args[1])?.slice(0, 200)}`);
+            if (!img) return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized' });
             try {
-              const result = await img?.testGateway?.(args[0], args[1]);
+              const result = await img.testGateway(args[0], args[1]);
               return writeJSON(res, 200, { success: true, result });
             } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
           }
