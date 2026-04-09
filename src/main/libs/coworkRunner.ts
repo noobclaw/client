@@ -41,6 +41,7 @@ import { generateDiff, formatDiff } from './diffUtils';
 import { recordFileRead, checkFileReadBeforeEdit, recordFileWrite } from './fileStateCache';
 import { trackToolStart, trackToolEnd, getStatusLine } from './activityTracker';
 import { buildProcessTools } from './processTools';
+import { buildAskUserQuestionTool } from './askUserQuestion';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
 import { checkAutoDreamTrigger } from './dreamingEngine';
@@ -4196,7 +4197,16 @@ export class CoworkRunner extends EventEmitter {
       const processToolDefs = buildProcessTools();
       const extraToolDefs = buildExtraTools();
       const lspToolDefs = buildLSPTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs);
+      // AskUserQuestion tool — lets AI ask structured multiple-choice questions
+      const askUserTool = buildAskUserQuestionTool((sid, questions) => {
+        this.emit('permissionRequest', sid, {
+          requestId: `ask-${Date.now()}`,
+          type: 'ask_user_question',
+          questions,
+        });
+      });
+
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs, askUserTool);
 
       // Context engine: apply deferred tool loading if too many tools
       // Set user message for intent-based tool selection (reduces token usage)
@@ -4351,6 +4361,9 @@ export class CoworkRunner extends EventEmitter {
       // Late-bind canUseTool for task tools (they reference it via closure)
       boundCanUseTool = canUseToolFn;
 
+      // Token budget tracker — detect diminishing returns and overspending
+      const budgetTracker = createBudgetTracker(200000); // 200K token budget
+
       // Auto-detect effort level based on message complexity
       const modelCaps = getModelCapability(queryApiConfig.model);
       const effort = detectEffortLevel(prompt, allTools.length > 0);
@@ -4370,6 +4383,22 @@ export class CoworkRunner extends EventEmitter {
         abortSignal: abortController.signal,
         canUseTool: canUseToolFn,
         onToolResult: (result) => {
+          // Track file operations for intelligent caching + magic docs
+          const toolContent = result.result.content.map((c: any) => c.text || '').join('\n');
+          if (result.toolName === 'Read' && result.toolUseId) {
+            try { recordFileRead(String((result as any).input?.file_path || ''), toolContent); } catch {}
+            // Detect magic docs in read content
+            try {
+              const { onFileRead } = require('./magicDocs');
+              onFileRead(String((result as any).input?.file_path || ''), toolContent);
+            } catch {}
+          } else if ((result.toolName === 'Write' || result.toolName === 'Edit') && result.toolUseId) {
+            try { recordFileWrite(String((result as any).input?.file_path || ''), toolContent); } catch {}
+          }
+
+          // Track tool activity for UI progress display
+          try { trackToolEnd(result.toolUseId); } catch {}
+
           // Emit tool results for real-time UI updates
           const content = result.result.content.map(c => c.text).join('\n');
           const message = this.store.addMessage(sessionId, {
@@ -4392,6 +4421,19 @@ export class CoworkRunner extends EventEmitter {
           break;
         }
         eventCount++;
+
+        // Track token budget — stop if overspending or diminishing returns
+        if (event.type === 'assistant' && (event as any).usage) {
+          const { checkTokenBudget, extractTurnTokens } = require('./tokenBudget');
+          const turnTokens = extractTurnTokens((event as any).usage);
+          budgetTracker.continuationCount++;
+          const decision = checkTokenBudget(budgetTracker, turnTokens);
+          if (decision.action === 'stop') {
+            coworkLog('WARN', 'runClaudeCodeLocal', `Budget: stopping — ${decision.reason} (${decision.pct}%)`);
+            break;
+          }
+        }
+
         coworkLog('INFO', 'runClaudeCodeLocal', `Event #${eventCount}: type=${event.type}`);
         this.handleQueryEvent(sessionId, activeSession, event);
       }
@@ -5708,6 +5750,9 @@ export class CoworkRunner extends EventEmitter {
       }
 
       case 'tool_use': {
+        // Track activity for UI status line
+        try { trackToolStart(event.toolName, event.toolUseId, event.toolInput as Record<string, unknown>); } catch {}
+
         const message = this.store.addMessage(sessionId, {
           type: 'tool_use',
           content: `Using tool: ${event.toolName}`,
