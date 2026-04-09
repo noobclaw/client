@@ -333,6 +333,75 @@ export function createTauriElectronShim(): typeof window.electron {
   } as any;
 }
 
+// ── Extension Install Modal (3 options like Electron version) ──
+
+function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'local' | 'cancel'> {
+  return new Promise((resolve) => {
+    const isZh = navigator.language.startsWith('zh');
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:24px;max-width:480px;width:90%;color:#e8e8ff;font-family:system-ui;';
+
+    modal.innerHTML = `
+      <h2 style="margin:0 0 8px;font-size:18px;">${isZh ? '🦀 NoobClaw 浏览器助手' : '🦀 NoobClaw Browser Assistant'}</h2>
+      <p style="margin:0 0 16px;font-size:14px;color:#a5a5ff;">${isZh ? '启用 AI 浏览器自动化' : 'Enable AI Browser Automation'}</p>
+      <p style="margin:0 0 20px;font-size:13px;line-height:1.6;color:#ccc;">${isZh
+        ? '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览和数据采集\n• 所有数据留在本地，不会发送到外部服务器'
+        : 'Install the NoobClaw Browser Assistant to let AI control your browser.\n\n• AI operates like a real person — no bot detection\n• Works with your logged-in accounts\n• 24/7 automated browsing and data collection\n• All data stays local'
+      }</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="nc-ext-store" style="padding:10px 16px;border-radius:8px;border:none;background:#6366f1;color:white;font-size:14px;cursor:pointer;font-weight:500;">${isZh ? '从 Chrome 商店安装' : 'Install from Chrome Store'}</button>
+        <button id="nc-ext-local" style="padding:10px 16px;border-radius:8px;border:1px solid #555;background:transparent;color:#e8e8ff;font-size:14px;cursor:pointer;">${isZh ? '安装本地扩展（国内推荐）' : 'Install Local Extension'}</button>
+        <button id="nc-ext-cancel" style="padding:10px 16px;border-radius:8px;border:none;background:transparent;color:#888;font-size:13px;cursor:pointer;">${isZh ? '暂不安装' : 'Not Now'}</button>
+      </div>
+    `;
+
+    // Replace \n with <br> in description
+    const desc = modal.querySelector('p:nth-of-type(2)');
+    if (desc) desc.innerHTML = desc.innerHTML.replace(/\n/g, '<br>');
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const cleanup = () => { try { document.body.removeChild(overlay); } catch {} };
+
+    modal.querySelector('#nc-ext-store')!.addEventListener('click', () => {
+      cleanup();
+      // Open Chrome Store
+      try {
+        const tauri = (window as any).__TAURI__;
+        if (tauri?.opener?.openUrl) tauri.opener.openUrl(storeUrl);
+        else window.open(storeUrl, '_blank');
+      } catch { window.open(storeUrl, '_blank'); }
+      resolve('install');
+    });
+
+    modal.querySelector('#nc-ext-local')!.addEventListener('click', () => {
+      cleanup();
+      // Open local chrome-extension path guide
+      const isZhLang = navigator.language.startsWith('zh');
+      const guideMsg = isZhLang
+        ? '请按以下步骤操作：\n1. 打开 Chrome，地址栏输入 chrome://extensions/ 回车\n2. 打开右上角「开发者模式」\n3. 点击「加载已解压的扩展程序」\n4. 选择 NoobClaw 安装目录下的 chrome-extension 文件夹'
+        : 'Steps:\n1. Open Chrome, go to chrome://extensions/\n2. Enable "Developer mode"\n3. Click "Load unpacked"\n4. Select the chrome-extension folder in NoobClaw install directory';
+      alert(guideMsg);
+      resolve('install');
+    });
+
+    modal.querySelector('#nc-ext-cancel')!.addEventListener('click', () => {
+      cleanup();
+      resolve('cancel');
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { cleanup(); resolve('cancel'); }
+    });
+  });
+}
+
 // ── Initialize shim ──
 
 export function initTauriShim(): void {
@@ -434,40 +503,18 @@ export function initTauriShim(): void {
 
   // Listen for browser extension install prompt from sidecar
   onSSE('extension:install-prompt', async (data: any) => {
-    const { requestId, storeUrl, message } = data || {};
+    const { requestId, storeUrl } = data || {};
     if (!requestId) return;
 
-    // Try Tauri native dialog first, fallback to window.confirm
-    let install = false;
-    try {
-      const tauri = (window as any).__TAURI__;
-      if (tauri?.dialog?.ask) {
-        install = await tauri.dialog.ask(
-          message || 'NoobClaw needs the browser extension for full browser automation.\nInstall it now?',
-          { title: 'Browser Extension Required', kind: 'info', okLabel: 'Install', cancelLabel: 'Not Now' }
-        );
-      } else {
-        install = window.confirm(`${message}\n\nClick OK to open Chrome Web Store.`);
-      }
-    } catch {
-      install = window.confirm(`${message}\n\nClick OK to open Chrome Web Store.`);
-    }
+    // Show custom modal with 3 options (matching Electron version)
+    const choice = await showExtensionInstallModal(storeUrl);
 
     // Send response back to sidecar
     fetch(`${BASE_URL}/api/ipc/invoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ channel: 'extension:prompt-response', args: [requestId, install ? 'install' : 'cancel'] }),
+      body: JSON.stringify({ channel: 'extension:prompt-response', args: [requestId, choice] }),
     }).catch(() => {});
-
-    // If user chose install, open the store URL
-    if (install && storeUrl) {
-      try {
-        const tauri = (window as any).__TAURI__;
-        if (tauri?.opener?.openUrl) await tauri.opener.openUrl(storeUrl);
-        else window.open(storeUrl, '_blank');
-      } catch { window.open(storeUrl, '_blank'); }
-    }
   });
 
   // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
