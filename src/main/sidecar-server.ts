@@ -15,6 +15,13 @@ import { coworkLog } from './libs/coworkLogger';
 // Ensure directories exist before anything else
 ensureDataDirs();
 
+// Workaround: pkg binary on macOS may fail SSL cert validation.
+// Node.js bundled in pkg doesn't always find the system CA store.
+if (process.platform === 'darwin' && !process.env.NODE_EXTRA_CA_CERTS) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'; // Allow self-signed certs as fallback
+  // TODO: Use proper CA certs from macOS keychain
+}
+
 const PORT = parseInt(process.argv[2] || '18800', 10);
 
 // ── SSE Client Management ──
