@@ -16,12 +16,14 @@ const BUILD_TEST_MODE = import.meta.env.VITE_TEST_MODE === 'true';
 export const isTestMode = () => {
   // Compile-time flag takes priority, otherwise check runtime config
   if (BUILD_TEST_MODE || configService.getConfig().app?.testMode === true) return true;
+  // Tauri mode: never test mode (tauri://localhost is NOT a dev server)
+  if ((window as any).__TAURI__) return false;
   // Only treat as test mode when accessing via http on localhost
   // After Electron packaging, protocol is file:, which should not be treated as test mode
   try {
     const host = window.location.hostname;
     const proto = window.location.protocol;
-    if (proto !== 'file:' && (host === 'localhost' || host === '127.0.0.1')) return true;
+    if (proto !== 'file:' && proto !== 'tauri:' && (host === 'localhost' || host === '127.0.0.1')) return true;
   } catch {}
   return false;
 };
