@@ -41,6 +41,7 @@ import { generateDiff, formatDiff } from './diffUtils';
 import { recordFileRead, checkFileReadBeforeEdit, recordFileWrite } from './fileStateCache';
 import { trackToolStart, trackToolEnd, getStatusLine } from './activityTracker';
 import { buildProcessTools } from './processTools';
+import { createLoopDetector } from './toolLoopDetection';
 import { buildAskUserQuestionTool } from './askUserQuestion';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
@@ -4363,6 +4364,8 @@ export class CoworkRunner extends EventEmitter {
 
       // Token budget tracker — detect diminishing returns and overspending
       const budgetTracker = createBudgetTracker(200000); // 200K token budget
+      // Tool loop detector — prevents AI from burning tokens on repetitive patterns
+      const loopDetector = createLoopDetector();
 
       // Auto-detect effort level based on message complexity
       const modelCaps = getModelCapability(queryApiConfig.model);
@@ -4399,6 +4402,9 @@ export class CoworkRunner extends EventEmitter {
           // Track tool activity for UI progress display
           try { trackToolEnd(result.toolUseId); } catch {}
 
+          // Record for loop detection
+          try { loopDetector.recordCall(result.toolName, (result as any).input || {}, toolContent); } catch {}
+
           // Emit tool results for real-time UI updates
           const content = result.result.content.map(c => c.text).join('\n');
           const message = this.store.addMessage(sessionId, {
@@ -4421,6 +4427,19 @@ export class CoworkRunner extends EventEmitter {
           break;
         }
         eventCount++;
+
+        // Check for tool loops — stop AI from burning tokens on repetitive patterns
+        if (event.type === 'tool_result') {
+          const loopCheck = loopDetector.checkLoop();
+          if (loopCheck.level === 'circuit_breaker' || loopCheck.level === 'critical') {
+            coworkLog('WARN', 'runClaudeCodeLocal', `Tool loop detected: ${loopCheck.message}`);
+            this.store.addMessage(sessionId, {
+              type: 'system',
+              content: `⚠️ Tool loop detected (${loopCheck.pattern}): ${loopCheck.message}. Stopping to avoid wasting resources.`,
+            });
+            break;
+          }
+        }
 
         // Track token budget — stop if overspending or diminishing returns
         if (event.type === 'assistant' && (event as any).usage) {

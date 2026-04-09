@@ -25,6 +25,7 @@ import {
   normalizeMessagesForAPI,
   truncateText,
   TOOL_RESULT_MAX_CHARS,
+  setCurrentModel,
 } from './messageManager';
 import { runTools, type CanUseToolFn, type ToolExecutionResult } from './toolOrchestration';
 import { coworkLog } from './coworkLogger';
@@ -477,6 +478,9 @@ export async function* queryLoopStreaming(params: QueryParams): AsyncGenerator<Q
   const maxTurns = params.maxTurns ?? DEFAULT_MAX_TURNS;
   const client = getAnthropicClient(apiConfig);
   const apiTools = params.apiToolSchemas ?? toolsToApiSchemas(tools);
+
+  // Set current model for proportional tool result truncation
+  try { setCurrentModel(apiConfig.model || ''); } catch {}
 
   const userMessage = buildUserMessage(prompt, images?.map(i => ({
     mimeType: i.mimeType,
