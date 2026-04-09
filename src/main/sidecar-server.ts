@@ -773,7 +773,11 @@ const server = http.createServer(async (req, res) => {
           // ── IM Gateway ──
           case 'im:config:get': {
             const img = await getIMGatewayManagerInstance();
-            return writeJSON(res, 200, { success: true, config: img?.getConfig?.() ?? {} });
+            if (!img) {
+              // Return success:false so frontend doesn't overwrite Redux with empty config
+              return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized yet' });
+            }
+            return writeJSON(res, 200, { success: true, config: img.getConfig() });
           }
           case 'im:config:set': {
             const img = await getIMGatewayManagerInstance();
@@ -786,16 +790,18 @@ const server = http.createServer(async (req, res) => {
           }
           case 'im:gateway:start': {
             const img = await getIMGatewayManagerInstance();
+            if (!img) return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized' });
             try {
-              img?.setConfig?.({ [args[0]]: { enabled: true } });
-              await img?.startGateway?.(args[0]);
+              img.setConfig({ [args[0]]: { enabled: true } });
+              await img.startGateway(args[0]);
               return writeJSON(res, 200, { success: true });
             } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
           }
           case 'im:gateway:stop': {
             const img = await getIMGatewayManagerInstance();
-            img?.setConfig?.({ [args[0]]: { enabled: false } });
-            await img?.stopGateway?.(args[0]);
+            if (!img) return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized' });
+            img.setConfig({ [args[0]]: { enabled: false } });
+            await img.stopGateway(args[0]);
             return writeJSON(res, 200, { success: true });
           }
           case 'im:gateway:test': {
@@ -809,7 +815,8 @@ const server = http.createServer(async (req, res) => {
           }
           case 'im:status:get': {
             const img = await getIMGatewayManagerInstance();
-            return writeJSON(res, 200, { success: true, status: img?.getStatus?.() ?? {} });
+            if (!img) return writeJSON(res, 200, { success: false, error: 'IM Gateway not initialized' });
+            return writeJSON(res, 200, { success: true, status: img.getStatus() });
           }
 
           // ── NoobClaw platform ──
