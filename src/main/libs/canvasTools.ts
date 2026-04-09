@@ -170,5 +170,54 @@ export function buildCanvasTools(): ToolDefinition[] {
       isConcurrencySafe: true,
       isReadOnly: true,
     }),
+    // ── New tools: snapshot, push_data, get_html ──
+
+    buildTool({
+      name: 'canvas_snapshot',
+      description: 'Take a screenshot/snapshot of a canvas window. Returns PNG image (Electron) or HTML text (Tauri). Use this to verify what the canvas looks like.',
+      inputSchema: z.object({ canvas_id: z.string() }),
+      call: async (input) => {
+        const { captureCanvasSnapshot } = require('./canvasHost');
+        const snapshot = await captureCanvasSnapshot(input.canvas_id);
+        if (!snapshot) {
+          return { content: [{ type: 'text', text: 'Canvas not found or snapshot failed.' }], isError: true };
+        }
+        if (snapshot.type === 'image') {
+          return { content: [{ type: 'image', data: snapshot.data, mimeType: 'image/png' }] } as any;
+        }
+        // HTML text snapshot
+        return { content: [{ type: 'text', text: `Canvas HTML snapshot (${snapshot.data.length} chars):\n${snapshot.data.slice(0, 5000)}` }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+
+    buildTool({
+      name: 'canvas_push_data',
+      description: 'Push structured data (JSONL format) to a canvas without replacing the entire HTML. The canvas receives a "noobclaw:data" event with the parsed data array. Use for updating tables, charts, lists dynamically.',
+      inputSchema: z.object({ canvas_id: z.string(), data: z.string().describe('JSONL data — one JSON object per line') }),
+      call: async (input) => {
+        const { pushCanvasData } = require('./canvasHost');
+        const success = pushCanvasData(input.canvas_id, input.data);
+        return {
+          content: [{ type: 'text', text: success ? 'Data pushed to canvas.' : 'Canvas not found or push failed.' }],
+          isError: !success,
+        };
+      },
+    }),
+
+    buildTool({
+      name: 'canvas_get_html',
+      description: 'Get the current HTML source of a canvas window.',
+      inputSchema: z.object({ canvas_id: z.string() }),
+      call: async (input) => {
+        const { getCanvasHTML } = require('./canvasHost');
+        const html = getCanvasHTML(input.canvas_id);
+        if (!html) return { content: [{ type: 'text', text: 'Canvas not found.' }], isError: true };
+        return { content: [{ type: 'text', text: html.length > 10000 ? html.slice(0, 10000) + '\n[Truncated]' : html }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
   ];
 }

@@ -264,6 +264,59 @@ export function getCanvasSessionsByParent(parentSessionId: string): CanvasSessio
   return Array.from(canvasSessions.values()).filter(s => s.parentSessionId === parentSessionId);
 }
 
+// ── Snapshot — capture canvas as image or HTML text ──
+
+export async function captureCanvasSnapshot(sessionId: string): Promise<{ type: 'image' | 'html'; data: string } | null> {
+  const session = canvasSessions.get(sessionId);
+  if (!session) return null;
+
+  // Electron mode: capture as PNG via webContents
+  if (session.window && !session.window.isDestroyed()) {
+    try {
+      const image = await session.window.webContents.capturePage();
+      const pngBuffer = image.toPNG();
+      return { type: 'image', data: pngBuffer.toString('base64') };
+    } catch {}
+  }
+
+  // Fallback (Tauri/sidecar): return HTML source as text snapshot
+  return { type: 'html', data: session.currentHtml };
+}
+
+// ── A2UI Push — inject data into canvas without replacing entire HTML ──
+
+export function pushCanvasData(sessionId: string, jsonlData: string): boolean {
+  const session = canvasSessions.get(sessionId);
+  if (!session) return false;
+
+  // Execute JS in canvas to inject data
+  const js = `
+    (function() {
+      try {
+        const lines = ${JSON.stringify(jsonlData)}.split('\\n').filter(Boolean);
+        const data = lines.map(l => JSON.parse(l));
+        window.__noobclaw_canvas_data = data;
+        window.dispatchEvent(new CustomEvent('noobclaw:data', { detail: data }));
+      } catch (e) { console.error('A2UI push error:', e); }
+    })();
+  `;
+
+  if (session.window && !session.window.isDestroyed()) {
+    try {
+      session.window.webContents.executeJavaScript(js);
+      return true;
+    } catch {}
+  }
+  return false;
+}
+
+// ── Get canvas HTML source ──
+
+export function getCanvasHTML(sessionId: string): string | null {
+  const session = canvasSessions.get(sessionId);
+  return session?.currentHtml ?? null;
+}
+
 // ── Initialize IPC handlers ──
 
 export function initCanvasIPC(): void {

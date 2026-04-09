@@ -132,63 +132,26 @@ export function buildDeferredToolSet(tools: ToolDefinition[]): DeferredToolSet {
     };
   }
 
-  // Over threshold — defer less-used tools
-  coworkLog('INFO', 'contextEngine', `${tools.length} tools > threshold ${config.deferThreshold}, enabling deferred loading`);
-
-  // Sort by usage frequency (most used first)
-  const sorted = [...tools].sort((a, b) => {
-    const usageA = toolUsageCount.get(a.name) ?? 0;
-    const usageB = toolUsageCount.get(b.name) ?? 0;
-    return usageB - usageA;
-  });
-
-  // Minimal always-load set (just core file tools + tool_search)
-  // Other tools loaded based on message intent detection
-  const alwaysLoad = new Set([
-    'Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep',
-    'tool_search',
-    'browser_navigate', 'desktop_screenshot', 'desktop_open_app',
-  ]);
-
-  // Intent-based tool loading: detect what the user wants from their message
-  // and only load relevant tool categories
-  const intentTools = detectIntentTools(config.lastUserMessage || '');
-  const intentSet = new Set(intentTools);
-
-  const fullToolDefs: ToolDefinition[] = [];
-  const deferredToolDefs: ToolDefinition[] = [];
-
-  for (const tool of sorted) {
-    if (alwaysLoad.has(tool.name) || intentSet.has(tool.name) || fullToolDefs.length < config.topToolCount) {
-      fullToolDefs.push(tool);
-    } else {
-      deferredToolDefs.push(tool);
-    }
-  }
-
-  // Convert to API schemas
-  const fullApiTools = fullToolDefs.map(t => {
+  // Send ALL tools to the API — no filtering, no deferral.
+  // Let the LLM decide which tools to use based on its own judgment.
+  // This matches OpenClaw/Claude Code's approach of trusting the model.
+  const allApiTools = tools.map(t => {
     const schema = toolToApiSchema(t);
     schema.description = truncateDescription(schema.description || '', config.maxToolDescriptionChars);
     return schema;
   });
 
-  // Deferred tools are NOT sent to the API at all — saves ~2000 tokens/request.
-  // The model discovers them via tool_search when needed.
-  // This follows Claude Code's defer_loading pattern where deferred tools
-  // are invisible until ToolSearchTool reveals them.
-
-  const tokenEstimate = fullApiTools.reduce((sum, t) =>
+  const tokenEstimate = allApiTools.reduce((sum, t) =>
     sum + estimateTokens(t.name) + estimateTokens(t.description || '') + estimateTokens(JSON.stringify(t.input_schema)), 0);
 
-  coworkLog('INFO', 'contextEngine', `Tool set: ${fullApiTools.length} sent to API + ${deferredToolDefs.length} hidden (available via tool_search) (~${tokenEstimate} tokens)`);
+  coworkLog('INFO', 'contextEngine', `Tool set: ALL ${allApiTools.length} tools sent to API (~${tokenEstimate} tokens)`);
 
   return {
-    fullTools: fullApiTools,
-    deferredTools: [],  // Not sent to API — hidden, discoverable via tool_search
-    allApiTools: fullApiTools,  // Only full tools sent to API
+    fullTools: allApiTools,
+    deferredTools: [],
+    allApiTools,
     originalTools: tools,
-    isDeferred: true,
+    isDeferred: false,
     estimatedToolTokens: tokenEstimate,
   };
 }
