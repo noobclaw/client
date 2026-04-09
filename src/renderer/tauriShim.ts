@@ -72,7 +72,6 @@ if (isTauriMode()) {
     return _origFetch(input, init);
   };
 }
-}
 
 // ── SSE Event Source for streaming ──
 
