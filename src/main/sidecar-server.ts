@@ -72,9 +72,24 @@ async function getRunner() {
 
     // Start browser bridge (TCP server on port 12581 for Chrome extension)
     try {
-      const { startBrowserBridge, registerNativeMessagingHost } = await import('./libs/browserBridge');
+      const { startBrowserBridge, registerNativeMessagingHost, setExtensionPromptCallback } = await import('./libs/browserBridge');
       await startBrowserBridge();
       registerNativeMessagingHost();
+
+      // Register extension prompt callback — broadcasts SSE to frontend for user decision
+      setExtensionPromptCallback(async (opts) => {
+        return new Promise<'install' | 'cancel'>((resolve) => {
+          const requestId = `ext-${Date.now()}`;
+          broadcastSSE('extension:install-prompt', { requestId, ...opts });
+          // Wait for frontend response or timeout
+          const timer = setTimeout(() => resolve('install'), 60000);
+          extensionPromptResolvers.set(requestId, (result: string) => {
+            clearTimeout(timer);
+            resolve(result === 'cancel' ? 'cancel' : 'install');
+          });
+        });
+      });
+
       coworkLog('INFO', 'sidecar-server', 'Browser bridge started');
     } catch (e: any) {
       coworkLog('WARN', 'sidecar-server', `Browser bridge failed: ${e.message}`);
@@ -102,6 +117,9 @@ async function getRunner() {
     return null;
   }
 }
+
+// ── Extension prompt resolvers (for browser extension install dialog) ──
+const extensionPromptResolvers = new Map<string, (result: string) => void>();
 
 // ── SkillManager (lazy loaded) ──
 
@@ -834,10 +852,11 @@ const server = http.createServer(async (req, res) => {
 
           // ── Browser Extension ──
           case 'extension:prompt-response': {
-            try {
-              const { resolveExtensionPrompt } = await import('./libs/browserBridge');
-              resolveExtensionPrompt(args[0], args[1]); // requestId, 'install' | 'cancel'
-            } catch {}
+            const resolver = extensionPromptResolvers.get(args[0]);
+            if (resolver) {
+              resolver(args[1]);
+              extensionPromptResolvers.delete(args[0]);
+            }
             return writeJSON(res, 200, { success: true });
           }
 

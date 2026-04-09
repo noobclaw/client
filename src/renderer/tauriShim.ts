@@ -433,20 +433,40 @@ export function initTauriShim(): void {
   };
 
   // Listen for browser extension install prompt from sidecar
-  onSSE('extension:install-prompt', (data: any) => {
+  onSSE('extension:install-prompt', async (data: any) => {
     const { requestId, storeUrl, message } = data || {};
     if (!requestId) return;
-    // Show a confirm dialog to the user
-    const install = window.confirm(`${message || 'Install browser extension for full automation?'}\n\nClick OK to open Chrome Web Store.`);
+
+    // Try Tauri native dialog first, fallback to window.confirm
+    let install = false;
+    try {
+      const tauri = (window as any).__TAURI__;
+      if (tauri?.dialog?.ask) {
+        install = await tauri.dialog.ask(
+          message || 'NoobClaw needs the browser extension for full browser automation.\nInstall it now?',
+          { title: 'Browser Extension Required', kind: 'info', okLabel: 'Install', cancelLabel: 'Not Now' }
+        );
+      } else {
+        install = window.confirm(`${message}\n\nClick OK to open Chrome Web Store.`);
+      }
+    } catch {
+      install = window.confirm(`${message}\n\nClick OK to open Chrome Web Store.`);
+    }
+
     // Send response back to sidecar
     fetch(`${BASE_URL}/api/ipc/invoke`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ channel: 'extension:prompt-response', args: [requestId, install ? 'install' : 'cancel'] }),
     }).catch(() => {});
-    // If user chose install, also open the store URL
+
+    // If user chose install, open the store URL
     if (install && storeUrl) {
-      window.open(storeUrl, '_blank');
+      try {
+        const tauri = (window as any).__TAURI__;
+        if (tauri?.opener?.openUrl) await tauri.opener.openUrl(storeUrl);
+        else window.open(storeUrl, '_blank');
+      } catch { window.open(storeUrl, '_blank'); }
     }
   });
 

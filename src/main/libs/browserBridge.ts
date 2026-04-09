@@ -373,51 +373,36 @@ export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> 
     return 'cancelled';
   }
 
-  // Sidecar/Tauri mode: broadcast SSE event for frontend to show modal
-  const requestId = `ext-prompt-${Date.now()}`;
-  let sseSent = false;
-  try {
-    // Dynamic import to avoid circular dependency
-    const sidecar = await import('../sidecar-server');
-    sidecar.broadcastSSE('extension:install-prompt', {
-      requestId,
-      storeUrl: CHROME_STORE_URL,
-      title: 'Browser Extension Required',
-      message: 'NoobClaw needs the browser extension for full browser automation (click, type, screenshot). Install it now?',
-      buttons: ['Install from Chrome Store', 'Not Now'],
-    });
-    sseSent = true;
-  } catch {}
-
-  if (sseSent) {
-    // Wait up to 60s for user response
-    const choice = await new Promise<string>((resolve) => {
-      const timer = setTimeout(() => resolve('timeout'), 60000);
-      extensionPromptResolvers.set(requestId, (result: string) => {
-        clearTimeout(timer);
-        resolve(result);
+  // Sidecar/Tauri mode: use the global extensionPromptCallback if registered,
+  // otherwise open Chrome Store directly
+  if (_extensionPromptCallback) {
+    try {
+      const choice = await _extensionPromptCallback({
+        storeUrl: CHROME_STORE_URL,
+        title: 'Browser Extension Required',
+        message: 'NoobClaw needs the browser extension for full browser automation.\nInstall it now?',
       });
-    });
-    extensionPromptResolvers.delete(requestId);
-
-    if (choice === 'cancel') return 'cancelled';
-    // User chose install or timeout — open store
-    try { await openExternal(CHROME_STORE_URL); } catch {}
-    return 'installed';
+      if (choice === 'cancel') return 'cancelled';
+      try { await openExternal(CHROME_STORE_URL); } catch {}
+      return 'installed';
+    } catch {}
   }
 
-  // SSE not available (Electron mode without dialog) — fallback: open store directly
+  // Fallback: open Chrome Store directly
   try { await openExternal(CHROME_STORE_URL); } catch {}
   return 'installed';
 }
 
-// Resolver map for extension prompt responses from frontend
-const extensionPromptResolvers = new Map<string, (result: string) => void>();
+// Callback for extension install prompt — set by sidecar-server to avoid circular import
+type ExtensionPromptCallback = (opts: { storeUrl: string; title: string; message: string }) => Promise<'install' | 'cancel'>;
+let _extensionPromptCallback: ExtensionPromptCallback | null = null;
 
-export function resolveExtensionPrompt(requestId: string, result: string): void {
-  const resolver = extensionPromptResolvers.get(requestId);
-  if (resolver) resolver(result);
+export function setExtensionPromptCallback(cb: ExtensionPromptCallback): void {
+  _extensionPromptCallback = cb;
 }
+
+// Legacy resolver — kept for backward compat
+export function resolveExtensionPrompt(_requestId: string, _result: string): void {}
 
 /**
  * Check if extension is actually installed by looking at Chrome's extension directory
