@@ -109,7 +109,9 @@ async function getRunner() {
     setImmediate(async () => {
       try {
         console.log('[sidecar] Starting OpenAI compat proxy...');
-        const { startCoworkOpenAICompatProxy, getCoworkOpenAICompatProxyStatus } = await import('./libs/coworkOpenAICompatProxy');
+        const { startCoworkOpenAICompatProxy, getCoworkOpenAICompatProxyStatus, setSSEBroadcast } = await import('./libs/coworkOpenAICompatProxy');
+        // Register SSE broadcast callback (avoids circular import)
+        setSSEBroadcast(broadcastSSE);
         await startCoworkOpenAICompatProxy();
         const status = getCoworkOpenAICompatProxyStatus();
         console.log(`[sidecar] OpenAI compat proxy started: running=${status.running}, baseURL=${status.baseURL}`);
@@ -538,13 +540,19 @@ const server = http.createServer(async (req, res) => {
           }
           case 'skills:setEnabled': {
             const sm = await getSkillManagerInstance();
-            sm?.setSkillEnabled?.(args[0]?.id, args[0]?.enabled);
-            return writeJSON(res, 200, { success: true });
+            if (!sm) return writeJSON(res, 200, { success: false, error: 'SkillManager not initialized' });
+            try {
+              sm.setSkillEnabled(args[0]?.id, args[0]?.enabled);
+              return writeJSON(res, 200, { success: true, skills: sm.listSkills() });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
           }
           case 'skills:delete': {
             const sm = await getSkillManagerInstance();
-            sm?.deleteSkill?.(args[0]);
-            return writeJSON(res, 200, { success: true });
+            if (!sm) return writeJSON(res, 200, { success: false, error: 'SkillManager not initialized' });
+            try {
+              sm.deleteSkill(args[0]);
+              return writeJSON(res, 200, { success: true, skills: sm.listSkills() });
+            } catch (e: any) { return writeJSON(res, 200, { success: false, error: e.message }); }
           }
           case 'skills:download': {
             const sm = await getSkillManagerInstance();

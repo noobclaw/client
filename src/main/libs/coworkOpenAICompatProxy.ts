@@ -102,6 +102,13 @@ export function setScheduledTaskDeps(deps: ScheduledTaskDeps): void {
   scheduledTaskDeps = deps;
 }
 
+// --- SSE broadcast callback (set by sidecar-server to avoid circular import) ---
+let _sseBroadcast: ((event: string, data: unknown) => void) | null = null;
+
+export function setSSEBroadcast(fn: (event: string, data: unknown) => void): void {
+  _sseBroadcast = fn;
+}
+
 function toOptionalObject(value: unknown): Record<string, unknown> | null {
   if (value && typeof value === 'object' && !Array.isArray(value)) {
     return value as Record<string, unknown>;
@@ -2073,11 +2080,8 @@ async function handleResponsesStreamResponse(
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
-          // Tauri/Sidecar: broadcast via SSE
-          try {
-            const { broadcastSSE } = require('../sidecar-server');
-            broadcastSSE('noobclaw:sse-payload', noobclaw);
-          } catch {}
+          // Tauri/Sidecar: broadcast via SSE callback
+          if (_sseBroadcast) _sseBroadcast('noobclaw:sse-payload', noobclaw);
           boundary = findSSEPacketBoundary(buffer);
           continue;
         }
@@ -2194,11 +2198,8 @@ async function handleChatCompletionsStreamResponse(
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
-          // Tauri/Sidecar: broadcast via SSE
-          try {
-            const { broadcastSSE } = require('../sidecar-server');
-            broadcastSSE('noobclaw:sse-payload', noobclaw);
-          } catch {}
+          // Tauri/Sidecar: broadcast via SSE callback
+          if (_sseBroadcast) _sseBroadcast('noobclaw:sse-payload', noobclaw);
           boundary = findSSEPacketBoundary(buffer);
           continue;
         }
