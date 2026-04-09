@@ -49,6 +49,16 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
 
+      - name: Ad-hoc codesign macOS app
+        if: runner.os == 'macOS'
+        run: |
+          APP_PATH=$(find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Signing: $APP_PATH"
+            codesign --force --deep --sign - "$APP_PATH"
+            echo "Signed successfully"
+          fi
+
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
