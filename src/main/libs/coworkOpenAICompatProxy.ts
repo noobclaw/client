@@ -2069,9 +2069,15 @@ async function handleResponsesStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if (parsed._noobclaw) {
           const noobclaw = parsed._noobclaw as Record<string, unknown>;
+          // Electron: send via IPC
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
+          // Tauri/Sidecar: broadcast via SSE
+          try {
+            const { broadcastSSE } = require('../sidecar-server');
+            broadcastSSE('noobclaw:sse-payload', noobclaw);
+          } catch {}
           boundary = findSSEPacketBoundary(buffer);
           continue;
         }
@@ -2184,9 +2190,15 @@ async function handleChatCompletionsStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if ((parsed as Record<string, unknown>)._noobclaw) {
           const noobclaw = (parsed as Record<string, unknown>)._noobclaw as Record<string, unknown>;
+          // Electron: send via IPC
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
           }
+          // Tauri/Sidecar: broadcast via SSE
+          try {
+            const { broadcastSSE } = require('../sidecar-server');
+            broadcastSSE('noobclaw:sse-payload', noobclaw);
+          } catch {}
           boundary = findSSEPacketBoundary(buffer);
           continue;
         }
