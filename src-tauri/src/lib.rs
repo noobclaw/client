@@ -100,7 +100,8 @@ pub fn run() {
                 }
             }
 
-            // Open DevTools for debugging (always available, close it manually if not needed)
+            // DevTools: only in debug builds (release builds use F12/Ctrl+Shift+I)
+            #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
                 window.open_devtools();
             }

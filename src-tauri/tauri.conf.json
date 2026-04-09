@@ -13,6 +13,7 @@
     "withGlobalTauri": true,
     "windows": [
       {
+        "label": "main",
         "title": "NoobClaw",
         "width": 1200,
         "height": 800,
@@ -40,6 +41,14 @@
     "resources": [
       "resources/**/*"
     ],
+    "macOS": {
+      "dmg": {
+        "appPosition": { "x": 180, "y": 170 },
+        "applicationFolderPosition": { "x": 480, "y": 170 },
+        "windowSize": { "width": 660, "height": 400 }
+      },
+      "minimumSystemVersion": "10.15"
+    },
     "windows": {
       "nsis": {
         "installMode": "perMachine",

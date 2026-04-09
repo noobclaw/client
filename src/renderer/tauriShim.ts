@@ -410,6 +410,24 @@ export function initTauriShim(): void {
   console.log('[TauriShim] Tauri detected, installing electron shim');
   (window as any).electron = createTauriElectronShim();
 
+  // Intercept window.open — prevent new Tauri windows, open in system browser instead
+  const originalWindowOpen = window.open.bind(window);
+  window.open = (url?: string | URL, target?: string, features?: string): WindowProxy | null => {
+    if (url) {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      // Open external URLs in system browser, not a new Tauri window
+      if (urlStr.startsWith('http')) {
+        try {
+          const tauri = (window as any).__TAURI__;
+          if (tauri?.opener?.openUrl) { tauri.opener.openUrl(urlStr); }
+          else { originalWindowOpen(urlStr, '_blank'); }
+        } catch { originalWindowOpen(urlStr, '_blank'); }
+        return null;
+      }
+    }
+    return originalWindowOpen(url, target, features);
+  };
+
   // Disable right-click context menu in Tauri (production only)
   document.addEventListener('contextmenu', (e) => {
     // Allow right-click in text inputs/textareas for copy/paste
