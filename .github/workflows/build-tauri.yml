@@ -69,31 +69,34 @@ jobs:
         run: npx tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
+          # Tauri v2 uses these for automatic codesign + notarization
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
-
-      - name: Codesign and notarize macOS app
-        if: runner.os == 'macOS'
-        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify macOS codesign
+        if: runner.os == 'macOS'
         run: |
           APP_PATH=$(find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
           if [ -n "$APP_PATH" ]; then
-            echo "Signing: $APP_PATH"
-            codesign --force --deep --sign "$APPLE_SIGNING_IDENTITY" "$APP_PATH"
-            echo "Signed successfully"
-            # Create zip for notarization
-            ZIP_PATH="${APP_PATH%.app}.zip"
-            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
-            echo "Submitting for notarization..."
-            xcrun notarytool submit "$ZIP_PATH" \
-              --apple-id "$APPLE_ID" \
-              --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" \
-              --wait --timeout 600 || echo "Notarization may have timed out or failed — app is still signed"
-            xcrun stapler staple "$APP_PATH" || echo "Stapler failed — app is still signed"
-            rm -f "$ZIP_PATH"
+            echo "Verifying: $APP_PATH"
+            codesign -dvvv "$APP_PATH" 2>&1 | head -10
+            # If Tauri didn't notarize, do it manually
+            if ! spctl --assess --type execute "$APP_PATH" 2>/dev/null; then
+              echo "App not notarized by Tauri, doing manual notarization..."
+              ZIP_PATH="${APP_PATH%.app}.zip"
+              ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+              xcrun notarytool submit "$ZIP_PATH" \
+                --apple-id "${{ secrets.APPLE_ID }}" \
+                --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+                --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+                --wait --timeout 600 || echo "Notarization failed"
+              xcrun stapler staple "$APP_PATH" || echo "Stapler failed"
+              rm -f "$ZIP_PATH"
+            else
+              echo "App already notarized by Tauri"
+            fi
           fi
 
       - name: Upload artifacts
