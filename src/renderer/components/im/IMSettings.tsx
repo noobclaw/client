@@ -263,9 +263,14 @@ const IMSettings: React.FC = () => {
     if (testingPlatform) return;
 
     setConnectivityModalPlatform(platform);
+
+    // IMPORTANT: Snapshot config BEFORE updateConfig, because updateConfig
+    // calls loadConfig which may overwrite Redux state via dispatch.
+    const configSnapshot = JSON.parse(JSON.stringify(config[platform]));
+
     // 1. Persist latest config to backend (without changing enabled state)
     await imService.updateConfig({
-      [platform]: config[platform],
+      [platform]: configSnapshot,
     } as Partial<IMGatewayConfig>);
 
     const isEnabled = isPlatformEnabled(platform);
@@ -277,10 +282,10 @@ const IMSettings: React.FC = () => {
       await imService.startGateway(platform);
     }
 
-    // Run connectivity test (always passes configOverride so the backend uses
-    // the latest unsaved credential values from the form).
+    // Run connectivity test using the SNAPSHOT (not current Redux state,
+    // which may have been overwritten by loadConfig).
     const result = await runConnectivityTest(platform, {
-      [platform]: config[platform],
+      [platform]: configSnapshot,
     } as Partial<IMGatewayConfig>);
 
     // Auto-enable: if the platform was OFF but auth_check passed, start it automatically.
