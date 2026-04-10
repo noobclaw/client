@@ -152,13 +152,17 @@ export class FeishuGateway extends EventEmitter {
       coworkLog('INFO', 'feishu-gateway', 'Probing bot info via /open-apis/bot/v3/info...');
       const probeResult = await this.probeBot();
       if (!probeResult.ok) {
-        coworkLog('ERROR', 'feishu-gateway', `probeBot failed: ${probeResult.error}`);
+        coworkLog('ERROR', 'feishu-gateway', `probeBot failed: ${probeResult.error}; rawKeys=${Object.keys((probeResult.raw || {}) as any).join(',')}`);
         throw new Error(`Failed to probe bot: ${probeResult.error}`);
       }
 
       this.botOpenId = probeResult.botOpenId || null;
       this.log(`[Feishu Gateway] Bot info: ${probeResult.botName} (${this.botOpenId})`);
-      coworkLog('INFO', 'feishu-gateway', `probeBot OK: botName=${probeResult.botName || 'unknown'}, botOpenId=${this.botOpenId || 'null'}`);
+      coworkLog(
+        'INFO',
+        'feishu-gateway',
+        `probeBot OK: botName=${probeResult.botName || 'unknown'}, botOpenId=${this.botOpenId || 'null'}; rawKeys=${Object.keys((probeResult.raw || {}) as any).join(',')}`
+      );
 
       // Resolve proxy agent for WebSocket if system proxy is enabled
       let proxyAgent: any = undefined;
@@ -178,20 +182,46 @@ export class FeishuGateway extends EventEmitter {
         }
       }
 
-      // Create WebSocket client
+      // Custom logger that tees the Lark SDK's internal messages into our
+      // cowork.log file. The SDK defaults to console.log/warn/error, which
+      // Tauri captures on the sidecar's stdout but never persists to disk,
+      // so without this every WSClient connect failure and every
+      // "no X handle" dispatch miss is invisible to the user.
+      const sdkLog = (level: 'INFO' | 'WARN' | 'ERROR', tag: string, msg: unknown[]): void => {
+        let line: string;
+        try {
+          line = msg.map((m) => (typeof m === 'string' ? m : JSON.stringify(m))).join(' ');
+        } catch {
+          line = String(msg);
+        }
+        coworkLog(level, tag, line);
+      };
+      const sdkLogger = {
+        error: (msg: unknown[]) => sdkLog('ERROR', 'lark-sdk', msg),
+        warn: (msg: unknown[]) => sdkLog('WARN', 'lark-sdk', msg),
+        info: (msg: unknown[]) => sdkLog('INFO', 'lark-sdk', msg),
+        debug: (msg: unknown[]) => sdkLog('INFO', 'lark-sdk', msg),
+        trace: (msg: unknown[]) => sdkLog('INFO', 'lark-sdk', msg),
+      };
+
+      // Create WebSocket client. Cast to any because @larksuiteoapi/node-sdk
+      // accepts a custom `logger` at runtime but its .d.ts omits the field.
       this.wsClient = new Lark.WSClient({
         appId: config.appId,
         appSecret: config.appSecret,
         domain,
-        loggerLevel: config.debug ? Lark.LoggerLevel.debug : Lark.LoggerLevel.info,
+        loggerLevel: Lark.LoggerLevel.debug,
+        logger: sdkLogger,
         agent: proxyAgent,
-      });
+      } as any);
 
       // Create event dispatcher
       const eventDispatcher = new Lark.EventDispatcher({
         encryptKey: config.encryptKey,
         verificationToken: config.verificationToken,
-      });
+        loggerLevel: Lark.LoggerLevel.debug,
+        logger: sdkLogger,
+      } as any);
 
       // Register event handlers
       eventDispatcher.register({
@@ -236,32 +266,52 @@ export class FeishuGateway extends EventEmitter {
 
       // Start WebSocket client.
       //
-      // The Lark SDK's `wsClient.start` returns a Promise that resolves when
-      // the long-lived WS connection is established. Previously this was
-      // fire-and-forget, so when the connection failed (bad app permissions,
-      // network, firewall, etc.) the gateway still claimed `connected: true`
-      // — the toggle turned green but inbound messages silently never
-      // arrived and nothing explained why. Now we await it with a timeout
-      // and flip to error state on failure.
+      // The Lark SDK's `WSClient.start` is actually fire-and-forget
+      // internally: it calls `this.reConnect(true)` *without awaiting*, so
+      // its returned promise resolves immediately after setting the event
+      // dispatcher. That means `await wsClient.start(...)` gives you no
+      // signal about whether the WebSocket is actually connected.
+      //
+      // We need our own readiness probe. After kicking off start() we poll
+      // the internal `wsConfig.getWSInstance()` until it exists and is in
+      // the OPEN readyState, with a 15s budget. If that never happens we
+      // assume the SDK's reconnect loop is stuck and flip the gateway
+      // status to error so the UI toggle reflects reality instead of
+      // claiming a happy green state with no inbound messages.
       coworkLog('INFO', 'feishu-gateway', 'Calling wsClient.start({ eventDispatcher })...');
       try {
-        const startPromise = this.wsClient.start({ eventDispatcher });
-        if (startPromise && typeof startPromise.then === 'function') {
-          await Promise.race([
-            startPromise,
-            new Promise((_, reject) => setTimeout(
-              () => reject(new Error('wsClient.start timed out after 15s')),
-              15_000
-            )),
-          ]);
-          coworkLog('INFO', 'feishu-gateway', 'wsClient.start resolved — WebSocket established');
-        } else {
-          coworkLog('WARN', 'feishu-gateway', 'wsClient.start did not return a promise; assuming sync success');
+        const startReturn = this.wsClient.start({ eventDispatcher });
+        if (startReturn && typeof startReturn.then === 'function') {
+          await startReturn; // resolves immediately; real connect happens async
         }
       } catch (wsErr: any) {
-        coworkLog('ERROR', 'feishu-gateway', `wsClient.start failed: ${wsErr?.message || wsErr}`);
+        coworkLog('ERROR', 'feishu-gateway', `wsClient.start threw: ${wsErr?.message || wsErr}`);
         throw new Error(`WebSocket connection failed: ${wsErr?.message || wsErr}`);
       }
+
+      const WS_READY_DEADLINE_MS = 15_000;
+      const wsDeadline = Date.now() + WS_READY_DEADLINE_MS;
+      let wsReady = false;
+      while (Date.now() < wsDeadline) {
+        const ws = this.wsClient?.wsConfig?.getWSInstance?.();
+        // readyState OPEN (1) means the SDK's underlying WebSocket actually
+        // completed its handshake. Anything else (CONNECTING, CLOSED, null)
+        // means we're still waiting or have already failed.
+        if (ws && ws.readyState === 1) {
+          wsReady = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (!wsReady) {
+        coworkLog(
+          'ERROR',
+          'feishu-gateway',
+          'wsClient did not reach OPEN state within 15s — gateway is effectively disconnected'
+        );
+        throw new Error('WebSocket did not reach OPEN state within 15s');
+      }
+      coworkLog('INFO', 'feishu-gateway', 'WebSocket reached OPEN state — ready to receive events');
 
       this.status = {
         connected: true,
@@ -329,13 +379,21 @@ export class FeishuGateway extends EventEmitter {
   }
 
   /**
-   * Probe bot info
+   * Probe bot info.
+   *
+   * The real Lark response is `{ code, msg, bot: {app_name, open_id, ...} }` —
+   * NOT `{ data: { bot: {...} } }`. The old code read `response.data.bot.*`
+   * so both botName and botOpenId always came back undefined, and the log
+   * showed `botName=unknown, botOpenId=null` even for fully working apps.
+   * We now try the actual field locations first and keep the legacy ones as
+   * a secondary fallback in case a newer SDK wraps responses.
    */
   private async probeBot(): Promise<{
     ok: boolean;
     error?: string;
     botName?: string;
     botOpenId?: string;
+    raw?: unknown;
   }> {
     try {
       const response: any = await this.restClient.request({
@@ -344,13 +402,15 @@ export class FeishuGateway extends EventEmitter {
       });
 
       if (response.code !== 0) {
-        return { ok: false, error: response.msg };
+        return { ok: false, error: response.msg, raw: response };
       }
 
+      const bot = response.bot ?? response.data?.bot ?? response.data;
       return {
         ok: true,
-        botName: response.data?.app_name ?? response.data?.bot?.app_name,
-        botOpenId: response.data?.open_id ?? response.data?.bot?.open_id,
+        botName: bot?.app_name ?? response.data?.app_name,
+        botOpenId: bot?.open_id ?? response.data?.open_id,
+        raw: response,
       };
     } catch (err: any) {
       return { ok: false, error: err.message };
