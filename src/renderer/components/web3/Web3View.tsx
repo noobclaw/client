@@ -251,12 +251,18 @@ export const Web3View: React.FC<Web3ViewProps> = ({ isSidebarCollapsed, onToggle
     setTestingPlatform(platform);
     setConnectivityResult(null);
     const gwPlatform = platform === 'lark' ? 'feishu' as const : platform;
-    const override = gwPlatform === 'telegram'
-      ? { telegram: { ...config.telegram, botToken: localTelegram.botToken, allowedUserIds: localTelegram.allowedUserIds } }
-      : gwPlatform === 'feishu'
-      ? { feishu: { ...config.feishu, appId: localFeishu.appId, appSecret: localFeishu.appSecret } }
-      : { dingtalk: { ...config.dingtalk, clientId: localDingtalk.clientId, clientSecret: localDingtalk.clientSecret } };
-    const result = await imService.testGateway(gwPlatform, override as Partial<IMGatewayConfig>);
+    let override: Partial<IMGatewayConfig>;
+    if (gwPlatform === 'telegram') {
+      override = { telegram: { ...config.telegram, botToken: localTelegram.botToken, allowedUserIds: localTelegram.allowedUserIds } };
+    } else if (gwPlatform === 'feishu') {
+      // Lark 和 Feishu 有独立的 local state，必须按用户实际打开的 modal 选择
+      const localCreds = platform === 'lark' ? localLark : localFeishu;
+      const domain = platform === 'lark' ? 'lark' : 'feishu';
+      override = { feishu: { ...config.feishu, appId: localCreds.appId, appSecret: localCreds.appSecret, domain } };
+    } else {
+      override = { dingtalk: { ...config.dingtalk, clientId: localDingtalk.clientId, clientSecret: localDingtalk.clientSecret } };
+    }
+    const result = await imService.testGateway(gwPlatform, override);
     setConnectivityResult(result);
     setTestingPlatform(null);
   };
