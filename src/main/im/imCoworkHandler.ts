@@ -108,6 +108,12 @@ export class IMCoworkHandler extends EventEmitter {
   }
 
   private async processMessageInternal(message: IMMessage, forceNewSession: boolean): Promise<string> {
+    // Timing phase log — the "IM message → first LLM response" latency is a
+    // recurring user complaint (was ~60s on Windows, mostly invisible because
+    // no function in this chain logged its duration). Record each phase so
+    // the next slow path is immediately diagnosable via cowork.log.
+    const { coworkLog } = await import('../libs/coworkLogger');
+    const t0 = Date.now();
     const coworkSessionId = await this.getOrCreateCoworkSession(
       message.conversationId,
       message.platform,
@@ -115,6 +121,7 @@ export class IMCoworkHandler extends EventEmitter {
       message.senderId,
       message
     );
+    const tSession = Date.now();
     this.sessionConversationMap.set(coworkSessionId, {
       conversationId: message.conversationId,
       platform: message.platform,
@@ -125,9 +132,20 @@ export class IMCoworkHandler extends EventEmitter {
     // Start or continue session
     const isActive = this.coworkRunner.isSessionActive(coworkSessionId);
     const formattedContent = this.formatMessageWithMedia(message);
+    const tFormat = Date.now();
     const systemPrompt = await this.buildSystemPromptWithSkills();
+    const tSystemPrompt = Date.now();
     const hasAvailableSkills = systemPrompt.includes('<available_skills>');
     const session = this.coworkStore.getSession(coworkSessionId);
+    coworkLog(
+      'INFO',
+      'imCoworkHandler',
+      `processMessageInternal phases: ` +
+      `getOrCreateSession=${tSession - t0}ms ` +
+      `formatMessage=${tFormat - tSession}ms ` +
+      `buildSystemPrompt=${tSystemPrompt - tFormat}ms ` +
+      `isActive=${isActive} platform=${message.platform}`
+    );
     if (session && session.systemPrompt !== systemPrompt) {
       // Claude resume sessions may ignore updated system prompt.
       // Reset claudeSessionId so this turn starts a fresh SDK session with new prompt.

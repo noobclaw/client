@@ -1088,6 +1088,17 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
   console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
 
+  // Pre-warm Windows environment discovery caches (gitbash probe, registry
+  // PATH reads, node shim creation, etc.) so the first Lark- or user-
+  // triggered cowork session doesn't pay ~30s of execSync cost synchronously.
+  // Fire and forget — the function schedules its work on setImmediate.
+  try {
+    const { warmEnhancedEnvCaches } = require('./libs/coworkUtil');
+    warmEnhancedEnvCaches?.();
+  } catch (e) {
+    coworkLog('WARN', 'sidecar-server', `warmEnhancedEnvCaches failed to schedule: ${e}`);
+  }
+
   // Pre-initialize runner immediately so data is ready when frontend connects
   getRunner().then(async (runner) => {
     if (runner) {

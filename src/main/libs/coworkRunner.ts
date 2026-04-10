@@ -2973,11 +2973,13 @@ export class CoworkRunner extends EventEmitter {
       imageAttachments?: Array<{ name: string; mimeType: string; base64Data: string }>;
     } = {}
   ): Promise<void> {
+    const startSessionT0 = Date.now();
     this.stoppedSessions.delete(sessionId);
     const session = this.store.getSession(sessionId);
     if (!session) {
       throw new Error(`Session ${sessionId} not found`);
     }
+    coworkLog('INFO', 'coworkRunner', `startSession enter: sessionId=${sessionId}, promptLen=${prompt.length}, hasSystemPrompt=${!!options.systemPrompt}`);
 
     // Sanitize user prompt: strip invisible Unicode chars to prevent prompt injection
     prompt = partiallySanitizeUnicode(prompt);
@@ -3052,11 +3054,14 @@ export class CoworkRunner extends EventEmitter {
 
     // Run claude-code using the SDK
     try {
+      const tBeforePrefix = Date.now();
       const promptPrefix = this.buildPromptPrefix();
+      const tAfterPrefix = Date.now();
       let effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
 
       // Inject knowledge graph context
       const graphContext = queryRelevantContext(prompt);
+      const tAfterGraph = Date.now();
       if (graphContext) {
         effectivePrompt = `<knowledge_context>\n${graphContext}\n</knowledge_context>\n\n${effectivePrompt}`;
       }
@@ -3067,6 +3072,18 @@ export class CoworkRunner extends EventEmitter {
       if (currentSession && currentSession.messages.length > 0) {
         effectivePrompt = this.injectLocalHistoryPrompt(sessionId, prompt, effectivePrompt);
       }
+      const tAfterHistory = Date.now();
+
+      coworkLog(
+        'INFO',
+        'coworkRunner',
+        `startSession phases before runClaudeCode: ` +
+        `syncSetup=${tBeforePrefix - startSessionT0}ms ` +
+        `buildPromptPrefix=${tAfterPrefix - tBeforePrefix}ms ` +
+        `queryGraph=${tAfterGraph - tAfterPrefix}ms ` +
+        `historyInject=${tAfterHistory - tAfterGraph}ms ` +
+        `handoffToRunClaudeCode @ ${tAfterHistory - startSessionT0}ms`
+      );
 
       await this.runClaudeCode(activeSession, effectivePrompt, sessionCwd, effectiveSystemPrompt, options.imageAttachments);
     } catch (error) {
@@ -3383,10 +3400,13 @@ export class CoworkRunner extends EventEmitter {
       hasApiKey: Boolean(apiConfig.apiKey),
     });
 
+    const tBeforeEnv = Date.now();
     const claudeCodePath = getClaudeCodePath();
     const envVars = await getEnhancedEnvWithTmpdir(cwd, 'local');
     const electronNodeRuntimePath = getElectronNodeRuntimePath();
     const windowsHideInitScript = ensureWindowsChildProcessHideInitScript();
+    const tAfterEnv = Date.now();
+    coworkLog('INFO', 'runClaudeCodeLocal', `getEnhancedEnvWithTmpdir + runtime path took ${tAfterEnv - tBeforeEnv}ms`);
     let stderrTail = '';
 
     // Log MCP-relevant environment for debugging

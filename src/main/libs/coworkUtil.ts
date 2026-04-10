@@ -1303,12 +1303,23 @@ export function getSkillsRoot(): string {
  * Async function to fetch system proxy and inject into environment variables
  */
 export async function getEnhancedEnv(target: OpenAICompatProxyTarget = 'local'): Promise<Record<string, string | undefined>> {
+  // Timing instrumentation: Lark-triggered cowork sessions previously spent
+  // ~42 seconds between `handleInboundMessage` and the first
+  // `runClaudeCodeLocal Resolved API config` line with zero log output.
+  // Most of that gap lives inside applyPackagedEnvOverrides (Windows PATH
+  // probing, registry reads, gitbash resolution, bash health checks, node
+  // shim creation). Without timing logs the next mystery slowdown is
+  // invisible again, so record a phase breakdown here. The cost is
+  // negligible (a handful of Date.now() calls per session).
+  const envStart = Date.now();
   const config = getCurrentApiConfig(target);
   const env = config
     ? buildEnvForConfig(config)
     : { ...process.env };
+  const tBuildEnv = Date.now();
 
   applyPackagedEnvOverrides(env);
+  const tPackagedOverrides = Date.now();
 
   // Inject SKILLs directory path for skill scripts.
   // On Windows, normalise backslashes to forward slashes so the value is usable
@@ -1329,18 +1340,34 @@ export async function getEnhancedEnv(target: OpenAICompatProxyTarget = 'local'):
     env.NOOBCLAW_API_BASE_URL = internalApiBaseURL;
   }
 
+  const logTimings = (proxyResolveMs: number | null) => {
+    const total = Date.now() - envStart;
+    coworkLog(
+      'INFO',
+      'getEnhancedEnv',
+      `target=${target} total=${total}ms ` +
+      `buildEnv=${tBuildEnv - envStart}ms ` +
+      `applyPackagedOverrides=${tPackagedOverrides - tBuildEnv}ms ` +
+      `proxyResolve=${proxyResolveMs ?? 0}ms`
+    );
+  };
+
   // Skip system proxy resolution if proxy env vars already exist
   if (env.http_proxy || env.HTTP_PROXY || env.https_proxy || env.HTTPS_PROXY) {
+    logTimings(null);
     return env;
   }
 
   // User can disable system proxy from settings.
   if (!isSystemProxyEnabled()) {
+    logTimings(null);
     return env;
   }
 
   // Resolve proxy from system settings
+  const proxyStart = Date.now();
   const proxyUrl = await resolveSystemProxyUrl('https://openrouter.ai');
+  const proxyResolveMs = Date.now() - proxyStart;
   if (proxyUrl) {
     env.http_proxy = proxyUrl;
     env.https_proxy = proxyUrl;
@@ -1349,7 +1376,39 @@ export async function getEnhancedEnv(target: OpenAICompatProxyTarget = 'local'):
     console.log('Injected system proxy for subprocess:', proxyUrl);
   }
 
+  logTimings(proxyResolveMs);
   return env;
+}
+
+/**
+ * Pre-warm all the lazy/cached resolvers that feed getEnhancedEnv so that the
+ * first real cowork session (including IM-triggered ones) doesn't pay the
+ * one-time Windows environment discovery cost synchronously.
+ *
+ * Safe to call multiple times: every resolver is already memoized.
+ * Called from sidecar-server.ts during startup and from main.ts.
+ */
+export function warmEnhancedEnvCaches(): void {
+  // Run in background, don't await. Any failure is non-fatal.
+  setImmediate(() => {
+    const warmStart = Date.now();
+    try {
+      // Force applyPackagedEnvOverrides code path once on a throwaway env,
+      // so every execSync (reg query, where bash, gitbash health check,
+      // node shim creation) is done before any real user message arrives.
+      const scratch: Record<string, string | undefined> = { ...process.env };
+      applyPackagedEnvOverrides(scratch);
+      // And touch the skills root / electron node runtime / internal base URL
+      // so their own caches populate too.
+      void getSkillsRoot();
+      void getElectronNodeRuntimePath();
+      void getInternalApiBaseURL();
+    } catch (e) {
+      coworkLog('WARN', 'warmEnhancedEnvCaches', `prewarm failed: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    coworkLog('INFO', 'warmEnhancedEnvCaches', `prewarm complete in ${Date.now() - warmStart}ms`);
+  });
 }
 
 /**
