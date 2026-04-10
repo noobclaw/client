@@ -29,6 +29,7 @@ import {
 import { parseMediaMarkers } from './dingtalkMediaParser';
 import { stringifyAsciiJson } from './jsonEncoding';
 import { isSystemProxyEnabled, resolveSystemProxyUrl } from '../libs/systemProxy';
+import { coworkLog } from '../libs/coworkLogger';
 
 // Message deduplication cache
 const processedMessages = new Map<string, number>();
@@ -129,6 +130,7 @@ export class FeishuGateway extends EventEmitter {
     this.log = config.debug ? console.log.bind(console) : () => {};
 
     this.log('[Feishu Gateway] Starting WebSocket gateway...');
+    coworkLog('INFO', 'feishu-gateway', `start: domain=${config.domain}, appId=${config.appId?.slice(0, 8)}..., enabled=${config.enabled}`);
 
     try {
       // Dynamically import @larksuiteoapi/node-sdk
@@ -136,6 +138,7 @@ export class FeishuGateway extends EventEmitter {
 
       // Resolve domain
       const domain = this.resolveDomain(config.domain, Lark);
+      coworkLog('INFO', 'feishu-gateway', `Resolved domain: ${domain}`);
 
       // Create REST client for sending messages
       this.restClient = new Lark.Client({
@@ -146,13 +149,16 @@ export class FeishuGateway extends EventEmitter {
       });
 
       // Probe bot info to get open_id
+      coworkLog('INFO', 'feishu-gateway', 'Probing bot info via /open-apis/bot/v3/info...');
       const probeResult = await this.probeBot();
       if (!probeResult.ok) {
+        coworkLog('ERROR', 'feishu-gateway', `probeBot failed: ${probeResult.error}`);
         throw new Error(`Failed to probe bot: ${probeResult.error}`);
       }
 
       this.botOpenId = probeResult.botOpenId || null;
       this.log(`[Feishu Gateway] Bot info: ${probeResult.botName} (${this.botOpenId})`);
+      coworkLog('INFO', 'feishu-gateway', `probeBot OK: botName=${probeResult.botName || 'unknown'}, botOpenId=${this.botOpenId || 'null'}`);
 
       // Resolve proxy agent for WebSocket if system proxy is enabled
       let proxyAgent: any = undefined;
@@ -192,6 +198,11 @@ export class FeishuGateway extends EventEmitter {
         'im.message.receive_v1': async (data: any) => {
           try {
             const event = data as FeishuMessageEvent;
+            coworkLog(
+              'INFO',
+              'feishu-gateway',
+              `Inbound im.message.receive_v1: message_id=${event.message?.message_id}, chat_id=${event.message?.chat_id}, msg_type=${event.message?.message_type}`
+            );
 
             // Check for duplicate
             if (this.isMessageProcessed(event.message.message_id)) {
@@ -205,9 +216,11 @@ export class FeishuGateway extends EventEmitter {
             // not through the event handler return value.
             this.handleInboundMessage(ctx).catch((err) => {
               console.error(`[Feishu Gateway] Error handling message ${ctx.messageId}: ${err.message}`);
+              coworkLog('ERROR', 'feishu-gateway', `handleInboundMessage failed: ${err?.message || err}`);
             });
           } catch (err: any) {
             console.error(`[Feishu Gateway] Error parsing message event: ${err.message}`);
+            coworkLog('ERROR', 'feishu-gateway', `Event handler exception: ${err?.message || err}`);
           }
         },
         'im.message.message_read_v1': async () => {
@@ -221,8 +234,34 @@ export class FeishuGateway extends EventEmitter {
         },
       });
 
-      // Start WebSocket client
-      this.wsClient.start({ eventDispatcher });
+      // Start WebSocket client.
+      //
+      // The Lark SDK's `wsClient.start` returns a Promise that resolves when
+      // the long-lived WS connection is established. Previously this was
+      // fire-and-forget, so when the connection failed (bad app permissions,
+      // network, firewall, etc.) the gateway still claimed `connected: true`
+      // — the toggle turned green but inbound messages silently never
+      // arrived and nothing explained why. Now we await it with a timeout
+      // and flip to error state on failure.
+      coworkLog('INFO', 'feishu-gateway', 'Calling wsClient.start({ eventDispatcher })...');
+      try {
+        const startPromise = this.wsClient.start({ eventDispatcher });
+        if (startPromise && typeof startPromise.then === 'function') {
+          await Promise.race([
+            startPromise,
+            new Promise((_, reject) => setTimeout(
+              () => reject(new Error('wsClient.start timed out after 15s')),
+              15_000
+            )),
+          ]);
+          coworkLog('INFO', 'feishu-gateway', 'wsClient.start resolved — WebSocket established');
+        } else {
+          coworkLog('WARN', 'feishu-gateway', 'wsClient.start did not return a promise; assuming sync success');
+        }
+      } catch (wsErr: any) {
+        coworkLog('ERROR', 'feishu-gateway', `wsClient.start failed: ${wsErr?.message || wsErr}`);
+        throw new Error(`WebSocket connection failed: ${wsErr?.message || wsErr}`);
+      }
 
       this.status = {
         connected: true,
@@ -234,8 +273,10 @@ export class FeishuGateway extends EventEmitter {
       };
 
       this.log('[Feishu Gateway] WebSocket gateway started successfully');
+      coworkLog('INFO', 'feishu-gateway', 'Gateway fully started, ready to receive messages');
       this.emit('connected');
     } catch (error: any) {
+      coworkLog('ERROR', 'feishu-gateway', `start failed: ${error?.message || error}`);
       this.wsClient = null;
       this.restClient = null;
       this.status = {

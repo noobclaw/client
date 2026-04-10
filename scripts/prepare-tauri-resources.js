@@ -77,8 +77,14 @@ function main() {
     console.log('  sql-wasm.wasm: copied');
   }
 
-  // 6. Native messaging host scripts (search multiple locations)
-  for (const name of ['native-messaging-host.js', 'native-messaging-host.bat', 'native-messaging-host.sh']) {
+  // 6. Native messaging host JS source only. The .bat / .sh wrappers are
+  //    generated at runtime by registerNativeMessagingHost() using absolute
+  //    paths derived from the actual install location, and in Tauri mode
+  //    the wrapper just calls `noobclaw-server.exe --native-messaging-host`
+  //    so it does not even need the .js file to exist on disk. We still
+  //    ship the .js for Electron builds that may share this resource dir.
+  {
+    const name = 'native-messaging-host.js';
     const candidates = [
       path.join(ROOT, 'resources', name),
       path.join(ROOT, name),

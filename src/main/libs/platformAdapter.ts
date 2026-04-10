@@ -108,17 +108,82 @@ export function getAppPath(): string {
 
 // ── resourcesPath equivalent ──
 
+/**
+ * Locate the bundled `resources/` directory next to the sidecar binary.
+ *
+ * Previous implementation just took `path.dirname(process.execPath)` and
+ * `fs.existsSync(dir + '/resources')` — under @yao-pkg/pkg that `existsSync`
+ * probe sometimes returned false for real-filesystem Windows drive paths, so
+ * the function silently fell back to `process.execPath`'s parent, and in
+ * some launch contexts (Tauri started from Start Menu inheriting
+ * `C:\Windows\System32` as cwd) other code paths then joined against cwd
+ * and wrote native-messaging-host files into System32. That is how the
+ * Chrome extension ended up with a manifest pointing to
+ * `C:\Windows\system32\native-messaging-host.bat` in the wild.
+ *
+ * New behavior: walk an ordered candidate list and return the first one
+ * that actually exists. Never return an unverified path. When nothing
+ * works, fall through to `path.dirname(process.execPath)` as a last resort.
+ */
 export function getResourcesPath(): string {
   if (isElectronMode()) {
     try {
       return process.resourcesPath || getAppPath();
     } catch {}
   }
-  // Sidecar: resources are in a 'resources' subdirectory next to the binary
-  const exeDir = path.dirname(process.execPath);
-  const resourcesSubdir = path.join(exeDir, 'resources');
-  if (fs.existsSync(resourcesSubdir)) return resourcesSubdir;
-  return exeDir;
+
+  const tried: string[] = [];
+  const tryDir = (dir: string | null | undefined): string | null => {
+    if (!dir) return null;
+    tried.push(dir);
+    try {
+      if (fs.existsSync(dir)) return dir;
+    } catch {}
+    return null;
+  };
+
+  // 1. Next to the sidecar binary (normal Tauri install layout on all OS)
+  try {
+    const exeDir = path.dirname(process.execPath);
+    const hit = tryDir(path.join(exeDir, 'resources'));
+    if (hit) return hit;
+  } catch {}
+
+  // 2. macOS .app bundle layout — if the sidecar sits in
+  //    Contents/MacOS/, the Resources dir is a sibling.
+  try {
+    const exeDir = path.dirname(process.execPath);
+    if (path.basename(exeDir) === 'MacOS') {
+      const hit = tryDir(path.join(path.dirname(exeDir), 'Resources'));
+      if (hit) return hit;
+    }
+  } catch {}
+
+  // 3. Windows: some Tauri perMachine installs drop resources at the
+  //    install root, not in a `resources/` subdir.
+  try {
+    const exeDir = path.dirname(process.execPath);
+    const hit = tryDir(exeDir);
+    if (hit && fs.existsSync(path.join(exeDir, 'native-messaging-host.js'))) return hit;
+  } catch {}
+
+  // 4. `tauri dev` runs the sidecar from the project root — try cwd/resources.
+  try {
+    const hit = tryDir(path.join(process.cwd(), 'resources'));
+    if (hit) return hit;
+  } catch {}
+
+  // 5. Last resort: dirname of execPath, even if we haven't verified it.
+  //    Log so we know the robust chain failed and the caller can see it
+  //    via coworkLog if they import it later.
+  const fallback = (() => {
+    try { return path.dirname(process.execPath); } catch { return process.cwd(); }
+  })();
+  try {
+    // eslint-disable-next-line no-console
+    console.warn(`[platformAdapter] getResourcesPath: no candidate existed, falling back to ${fallback}. Tried: ${tried.join(' | ')}`);
+  } catch {}
+  return fallback;
 }
 
 // ── shell.openExternal() equivalent ──

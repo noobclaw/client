@@ -166,35 +166,50 @@ export function registerNativeMessagingHost(): void {
     const hostScriptPath = getNativeHostScriptPath();
     const resourcesPath = getResourcesPath();
     const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
+    console.log(`[BrowserBridge] registerNativeMessagingHost: resourcesPath=${resourcesPath}, hostScriptPath=${hostScriptPath}, execPath=${process.execPath}`);
+
+    // In Tauri (sidecar) mode we ship neither a `node-runtime/` directory
+    // nor the Electron executable. Invoke the sidecar binary itself with a
+    // special `--native-messaging-host` flag — sidecar-server.ts branches on
+    // this and runs the host loop without starting the HTTP server.
+    const useSidecarAsHost = !isElectronMode() && process.platform !== undefined;
 
     // Create batch/shell wrapper
     if (process.platform === 'win32') {
-      const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
-      fs.writeFileSync(hostScriptPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
+      if (useSidecarAsHost) {
+        // process.execPath is the sidecar .exe in Tauri mode.
+        fs.writeFileSync(hostScriptPath, `@echo off\r\n"${process.execPath}" --native-messaging-host %*\r\n`);
+      } else {
+        const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
+        fs.writeFileSync(hostScriptPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
+      }
     } else {
-      // macOS/Linux: find a working node binary
-      // Priority: 1) bundled node-runtime  2) Electron's own node  3) system node
-      let nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
-      if (!fs.existsSync(nodeExe)) {
-        // Electron's node binary (inside the .app bundle on macOS)
-        const electronNode = process.execPath;
-        // Check if system node is available as a more reliable option for Native Messaging
-        const { execSync } = require('child_process');
-        try {
-          const systemNode = execSync('which node', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-          if (systemNode && fs.existsSync(systemNode)) {
-            nodeExe = systemNode;
-          } else {
+      // macOS/Linux
+      if (useSidecarAsHost) {
+        fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${process.execPath}" --native-messaging-host "$@"\n`);
+        try { fs.chmodSync(hostScriptPath, '755'); } catch {}
+      } else {
+        // find a working node binary
+        let nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
+        if (!fs.existsSync(nodeExe)) {
+          const electronNode = process.execPath;
+          const { execSync } = require('child_process');
+          try {
+            const systemNode = execSync('which node', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+            if (systemNode && fs.existsSync(systemNode)) {
+              nodeExe = systemNode;
+            } else {
+              nodeExe = electronNode;
+            }
+          } catch {
             nodeExe = electronNode;
           }
-        } catch {
-          nodeExe = electronNode;
         }
-      }
-      fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${nodeExe}" "${jsSource}" "$@"\n`);
-      try { fs.chmodSync(hostScriptPath, '755'); } catch {}
-      if (fs.existsSync(nodeExe)) {
-        try { fs.chmodSync(nodeExe, '755'); } catch {}
+        fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${nodeExe}" "${jsSource}" "$@"\n`);
+        try { fs.chmodSync(hostScriptPath, '755'); } catch {}
+        if (fs.existsSync(nodeExe)) {
+          try { fs.chmodSync(nodeExe, '755'); } catch {}
+        }
       }
     }
 
