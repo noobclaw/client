@@ -24,12 +24,18 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
     use tauri_plugin_shell::ShellExt;
 
     let port: u16 = 18800;
+    // Tauri's real PID. Pass it explicitly so the sidecar can monitor the
+    // correct process — `process.ppid` on Windows is unreliable because the
+    // shell plugin may spawn us through an intermediate helper that exits
+    // immediately, causing the sidecar's parent-watchdog to false-positive
+    // and shut itself down mid-cowork-session.
+    let tauri_pid = std::process::id();
 
     let (mut rx, child) = app
         .shell()
         .sidecar("noobclaw-server")
         .map_err(|e| format!("Failed to create sidecar command: {}", e))?
-        .args(&[port.to_string()])
+        .args(&[port.to_string(), format!("--tauri-pid={}", tauri_pid)])
         .spawn()
         .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
 

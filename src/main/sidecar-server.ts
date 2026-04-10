@@ -103,7 +103,10 @@ if (process.platform === 'darwin' && !process.env.NODE_EXTRA_CA_CERTS) {
   // TODO: Use proper CA certs from macOS keychain
 }
 
-const PORT = parseInt(process.argv[2] || '18800', 10);
+// Pick the first bare numeric argv token as the port. Flags like
+// --tauri-pid=12345 are skipped so argv order doesn't matter.
+const portArg = process.argv.slice(2).find((a) => /^\d+$/.test(a));
+const PORT = parseInt(portArg || '18800', 10);
 
 // ── SSE Client Management ──
 
@@ -1151,19 +1154,64 @@ function shutdown() {
 process.on('SIGTERM', shutdown);
 process.on('SIGINT', shutdown);
 
-// Monitor parent process exit via periodic check (more reliable than stdin)
-// The Tauri Rust side kills the sidecar via SIGTERM on exit
-const parentPid = process.ppid;
-if (parentPid && parentPid > 1) {
+// Monitor parent process exit via periodic check.
+//
+// Previously we used `process.ppid` and shut down as soon as one check
+// failed. That caused real in-flight cowork sessions to be killed on
+// Windows: Tauri's shell plugin can spawn the sidecar through a short-
+// lived intermediate helper whose PID disappears immediately, so ppid
+// points to a dead process and `process.kill(ppid, 0)` throws ESRCH
+// within seconds of startup. The sidecar would then shut itself down
+// mid-session, losing any Lark-triggered cowork runs (the user reported
+// "从 Lark 发消息客户端不响应" — Lark dispatched fine, the cowork
+// session started and even got a tool_use back, then 40s later the
+// sidecar killed itself because it thought "parent" was gone).
+//
+// New behavior:
+//   1. Prefer the --tauri-pid=<N> argument, which src-tauri/src/lib.rs
+//      now passes explicitly as the real Tauri process PID.
+//   2. Fall back to process.ppid only if the arg is missing (Electron
+//      dev, standalone runs, etc.).
+//   3. Poll every 10s, and require THREE consecutive failures before
+//      shutting down, so transient Windows quirks don't terminate us.
+//   4. Log which PID we're watching at startup so the next mystery
+//      shutdown is immediately diagnosable.
+const tauriPidArg = process.argv
+  .slice(1)
+  .find((a) => a.startsWith('--tauri-pid='));
+const tauriPidFromArg = tauriPidArg
+  ? parseInt(tauriPidArg.slice('--tauri-pid='.length), 10)
+  : NaN;
+const parentPid = Number.isFinite(tauriPidFromArg) && tauriPidFromArg > 1
+  ? tauriPidFromArg
+  : process.ppid;
+coworkLog(
+  'INFO',
+  'sidecar-server',
+  `Parent monitor: watching pid=${parentPid} (from ${Number.isFinite(tauriPidFromArg) ? '--tauri-pid' : 'process.ppid'})`
+);
+if (!IS_NATIVE_MESSAGING_HOST && parentPid && parentPid > 1) {
+  let consecutiveMisses = 0;
+  const PARENT_CHECK_INTERVAL_MS = 10_000;
+  const PARENT_CHECK_MAX_MISSES = 3;
   const checkParent = setInterval(() => {
     try {
-      process.kill(parentPid, 0); // Check if parent is alive (signal 0 = no-op)
+      process.kill(parentPid, 0); // signal 0 = liveness probe, no-op
+      consecutiveMisses = 0;
     } catch {
-      coworkLog('INFO', 'sidecar-server', 'Parent process gone, exiting');
-      clearInterval(checkParent);
-      shutdown();
+      consecutiveMisses++;
+      coworkLog(
+        'WARN',
+        'sidecar-server',
+        `Parent pid ${parentPid} liveness probe failed (${consecutiveMisses}/${PARENT_CHECK_MAX_MISSES})`
+      );
+      if (consecutiveMisses >= PARENT_CHECK_MAX_MISSES) {
+        coworkLog('INFO', 'sidecar-server', 'Parent process confirmed gone, exiting');
+        clearInterval(checkParent);
+        shutdown();
+      }
     }
-  }, 3000);
+  }, PARENT_CHECK_INTERVAL_MS);
 }
 
 export { broadcastSSE, PORT };
