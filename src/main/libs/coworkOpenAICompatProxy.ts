@@ -2890,6 +2890,31 @@ async function handleRequest(
     return;
   }
 
+  // Forward _noobclaw payload (lucky bag, balance update) to renderer.
+  // Non-streaming responses from api.noobclaw.com carry _noobclaw as a
+  // top-level field on the completion JSON (see backend/src/routes/ai.ts
+  // around line 608 — `response.data._noobclaw = { remainingTokens, ... }`).
+  // Previously this non-streaming branch only forwarded the Anthropic body
+  // and silently dropped _noobclaw, which meant the frontend LuckyBag /
+  // balance listeners never fired when queryEngine chose non-streaming
+  // mode (which it does for every OpenAI-compat call; see
+  // queryEngine.ts "Using non-streaming mode for OpenAI-compat provider").
+  try {
+    const noobclaw = (upstreamJSON as Record<string, unknown>)?._noobclaw as Record<string, unknown> | undefined;
+    if (noobclaw && typeof noobclaw === 'object') {
+      const luckyBagHit = (noobclaw.luckyBag as any)?.hit === true;
+      coworkLog(
+        'INFO',
+        'cowork-proxy',
+        `_noobclaw received (non-streaming): luckyBag=${luckyBagHit}, remainingTokens=${noobclaw.remainingTokens ?? 'n/a'}, broadcastAvailable=${!!_sseBroadcast}`
+      );
+      for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
+        win.webContents.send('noobclaw:sse-payload', noobclaw);
+      }
+      if (_sseBroadcast) _sseBroadcast('noobclaw:sse-payload', noobclaw);
+    }
+  } catch {}
+
   if (upstreamAPIType === 'responses') {
     const syntheticOpenAIResponse = convertResponsesToOpenAIResponse(upstreamJSON);
     cacheToolCallExtraContentFromOpenAIResponse(syntheticOpenAIResponse);

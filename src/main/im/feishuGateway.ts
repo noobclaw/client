@@ -402,7 +402,7 @@ export class FeishuGateway extends EventEmitter {
       });
 
       if (response.code !== 0) {
-        return { ok: false, error: response.msg, raw: response };
+        return { ok: false, error: `code=${response.code} msg=${response.msg}`, raw: response };
       }
 
       const bot = response.bot ?? response.data?.bot ?? response.data;
@@ -413,7 +413,24 @@ export class FeishuGateway extends EventEmitter {
         raw: response,
       };
     } catch (err: any) {
-      return { ok: false, error: err.message };
+      // The Lark SDK wraps axios, and when the server returns a non-2xx HTTP
+      // response (e.g. 400 with a business error body like {"code":4040,...})
+      // the error is thrown without surfacing the body. Reach into the axios
+      // error shape to recover as much as we can, including the actual Lark
+      // error code and message. Otherwise our log just says "Request failed
+      // with status code 400" with no clue what went wrong.
+      const httpStatus = err?.response?.status;
+      const body = err?.response?.data;
+      let bodyText = '';
+      if (body) {
+        try {
+          bodyText = typeof body === 'string' ? body : JSON.stringify(body);
+        } catch {
+          bodyText = String(body);
+        }
+      }
+      const errorMsg = `${err.message}${httpStatus ? ` (HTTP ${httpStatus})` : ''}${bodyText ? ` body=${bodyText.slice(0, 500)}` : ''}`;
+      return { ok: false, error: errorMsg, raw: body };
     }
   }
 

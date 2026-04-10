@@ -997,14 +997,33 @@ export class IMGatewayManager extends EventEmitter {
         appType: Lark.AppType.SelfBuild,
         domain,
       });
-      const response: any = await client.request({
-        method: 'GET',
-        url: '/open-apis/bot/v3/info',
-      });
+      let response: any;
+      try {
+        response = await client.request({
+          method: 'GET',
+          url: '/open-apis/bot/v3/info',
+        });
+      } catch (err: any) {
+        // Lark's /bot/v3/info returns HTTP 400 + a business error body like
+        // {"code":4040,"msg":"app_secret invalid"} when credentials are bad.
+        // Surface that body instead of axios's generic "Request failed with
+        // status code 400" so the user knows exactly what to fix.
+        const httpStatus = err?.response?.status;
+        const body = err?.response?.data;
+        if (body && typeof body === 'object' && typeof body.code === 'number') {
+          throw new Error(`Lark error ${body.code}: ${body.msg || 'unknown'}`);
+        }
+        const bodyText = body ? (typeof body === 'string' ? body : JSON.stringify(body)).slice(0, 300) : '';
+        throw new Error(`${err.message}${httpStatus ? ` (HTTP ${httpStatus})` : ''}${bodyText ? ` body=${bodyText}` : ''}`);
+      }
       if (response.code !== 0) {
         throw new Error(response.msg || `code ${response.code}`);
       }
-      const botName = response.data?.app_name ?? response.data?.bot?.app_name ?? 'unknown';
+      // The real Lark response is {code, msg, bot: {app_name, open_id, ...}} —
+      // not wrapped under `data`. Read the top-level `bot` field first and
+      // keep the old `data.*` paths as legacy fallbacks.
+      const bot = response.bot ?? response.data?.bot ?? response.data;
+      const botName = bot?.app_name ?? response.data?.app_name ?? 'unknown';
       const isLark = config.feishu.domain === 'lark';
       return `${isLark ? 'Lark' : '飞书'}鉴权通过（Bot: ${botName}）。`;
     }
