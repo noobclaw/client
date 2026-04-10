@@ -160,7 +160,7 @@ export class IMStore {
 
   getConfig(): IMGatewayConfig {
     const dingtalk = this.getConfigValue<DingTalkConfig>('dingtalk') ?? DEFAULT_DINGTALK_CONFIG;
-    const feishu = this.getConfigValue<FeishuConfig>('feishu') ?? DEFAULT_FEISHU_CONFIG;
+    const feishu = this.getFeishuConfig();
     const telegram = this.getConfigValue<TelegramConfig>('telegram') ?? DEFAULT_TELEGRAM_CONFIG;
     const discord = this.getConfigValue<DiscordConfig>('discord') ?? DEFAULT_DISCORD_CONFIG;
     const qq = this.getConfigValue<QQConfig>('qq') ?? DEFAULT_QQ_CONFIG;
@@ -228,13 +228,42 @@ export class IMStore {
   // ==================== Feishu Config ====================
 
   getFeishuConfig(): FeishuConfig {
-    const stored = this.getConfigValue<FeishuConfig>('feishu');
-    return { ...DEFAULT_FEISHU_CONFIG, ...stored };
+    // Read the active domain's config — feishu and lark stored separately
+    const feishuStored = this.getConfigValue<FeishuConfig>('feishu');
+    const larkStored = this.getConfigValue<FeishuConfig>('lark');
+
+    // Determine which domain is currently active
+    // Priority: feishu key's domain field, then check if lark has data
+    const activeDomain = feishuStored?.domain || 'feishu';
+    if (activeDomain === 'lark' && larkStored?.appId) {
+      return { ...DEFAULT_FEISHU_CONFIG, ...larkStored, domain: 'lark' };
+    }
+    return { ...DEFAULT_FEISHU_CONFIG, ...feishuStored };
+  }
+
+  /** Get config for a specific domain (feishu or lark) */
+  getFeishuConfigForDomain(domain: string): FeishuConfig {
+    const key = domain === 'lark' ? 'lark' : 'feishu';
+    const stored = this.getConfigValue<FeishuConfig>(key);
+    return { ...DEFAULT_FEISHU_CONFIG, ...stored, domain: domain as any };
   }
 
   setFeishuConfig(config: Partial<FeishuConfig>): void {
-    const current = this.getFeishuConfig();
-    this.setConfigValue('feishu', { ...current, ...config });
+    const domain = config.domain || this.getFeishuConfig().domain || 'feishu';
+    const key = domain === 'lark' ? 'lark' : 'feishu';
+
+    // Read current config for THIS domain specifically
+    const current = this.getConfigValue<FeishuConfig>(key) || { ...DEFAULT_FEISHU_CONFIG };
+    const merged = { ...current, ...config, domain };
+
+    // Save to domain-specific key
+    this.setConfigValue(key, merged);
+
+    // Also save the active domain reference in feishu key
+    if (key === 'lark') {
+      const feishuBase = this.getConfigValue<FeishuConfig>('feishu') || { ...DEFAULT_FEISHU_CONFIG };
+      this.setConfigValue('feishu', { ...feishuBase, domain: 'lark' });
+    }
   }
 
   // ==================== Telegram Config ====================

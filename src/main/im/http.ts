@@ -1,4 +1,6 @@
-import { app, session } from 'electron';
+import { getUserDataPath, isElectronMode } from '../libs/platformAdapter';
+let session: any = null;
+try { if (isElectronMode()) session = require('electron').session; } catch {}
 
 // Fallback for cases where Electron session is not ready yet.
 const nodeFetch = require('node-fetch');
@@ -12,7 +14,7 @@ function linkAbortSignal(source: AbortSignal, controller: AbortController): void
 }
 
 export async function fetchWithSystemProxy(url: string, options: RequestInit = {}): Promise<Response> {
-  if (app.isReady()) {
+  if (session?.defaultSession) {
     try {
       return await session.defaultSession.fetch(url, options);
     } catch (error) {

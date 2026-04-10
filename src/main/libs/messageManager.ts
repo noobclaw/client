@@ -11,8 +11,48 @@ import { coworkLog } from './coworkLogger';
 // ── Constants ──
 
 /** Max characters for a single tool result before truncation.
- * Reduced from 120K to 30K to save tokens — Claude Code uses similar limits. */
+ * This is the DEFAULT — actual limit is computed proportionally to context window.
+ * See getToolResultMaxChars(). */
 export const TOOL_RESULT_MAX_CHARS = 30_000;
+
+/** Maximum share of context window a single tool result can occupy.
+ * Reference: OpenClaw tool-result-truncation.ts MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3 */
+const MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3;
+
+/** Approximate chars per token (for context window calculation) */
+const CHARS_PER_TOKEN = 4;
+
+/** Context window sizes by model family (in tokens) */
+const MODEL_CONTEXT_SIZES: Record<string, number> = {
+  'claude': 200000,
+  'gpt-5': 128000,
+  'gpt-4': 128000,
+  'gemini': 2000000,
+  'qwen': 131072,
+  'deepseek': 131072,
+  'glm': 131072,
+  'kimi': 131072,
+  'default': 128000,
+};
+
+let _currentModel = '';
+
+/** Set the current model for proportional truncation */
+export function setCurrentModel(model: string): void {
+  _currentModel = model.toLowerCase();
+}
+
+/** Get the max chars for tool results based on current model's context window */
+export function getToolResultMaxChars(): number {
+  const model = _currentModel;
+  let contextTokens = MODEL_CONTEXT_SIZES['default'];
+  for (const [prefix, tokens] of Object.entries(MODEL_CONTEXT_SIZES)) {
+    if (model.includes(prefix)) { contextTokens = tokens; break; }
+  }
+  const maxChars = Math.floor(contextTokens * CHARS_PER_TOKEN * MAX_TOOL_RESULT_CONTEXT_SHARE);
+  // Clamp between 10K and 200K
+  return Math.max(10_000, Math.min(200_000, maxChars));
+}
 
 /** Max characters for streaming text content */
 export const STREAMING_TEXT_MAX_CHARS = 120_000;
@@ -275,7 +315,18 @@ export function extractTextContent(message: MessageParam): string {
 /**
  * Truncate text to max chars with indicator.
  */
-export function truncateText(text: string, maxChars: number): string {
-  if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars) + '\n\n[Content truncated — exceeded maximum length]';
+export function truncateText(text: string, maxChars?: number): string {
+  const limit = maxChars ?? getToolResultMaxChars();
+  if (text.length <= limit) return text;
+
+  // Try to break at a newline boundary for cleaner truncation
+  let cutPoint = limit;
+  const lastNewline = text.lastIndexOf('\n', limit);
+  if (lastNewline > limit * 0.8) {
+    cutPoint = lastNewline;
+  }
+
+  const truncated = text.slice(0, cutPoint);
+  const remaining = text.length - cutPoint;
+  return truncated + `\n\n[Content truncated — ${remaining} characters omitted]`;
 }

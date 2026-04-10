@@ -48,6 +48,9 @@ export function buildCDPTools(): ToolDefinition[] {
       inputSchema: z.object({ url: z.string().min(1) }),
       call: async (input) => {
         try {
+          // SSRF guard: block internal/dangerous addresses
+          const { assertNavigationAllowed } = require('./navigationGuard');
+          assertNavigationAllowed(input.url);
           if (!isCDPBrowserRunning()) await launchCDPBrowser();
           const result = await cdpNavigate(input.url);
           return { content: [{ type: 'text', text: result }] };
@@ -164,6 +167,57 @@ export function buildCDPTools(): ToolDefinition[] {
         closeCDPBrowser();
         return { content: [{ type: 'text', text: 'CDP browser closed.' }] };
       },
+    }),
+
+    // ── New tools: console, network, snapshot ──
+
+    buildTool({
+      name: 'cdp_console',
+      description: 'Read browser console messages (log, warn, error). Useful for debugging JS errors.',
+      inputSchema: z.object({ limit: z.number().optional() }),
+      call: async (input) => {
+        const { getConsoleMessages } = require('./cdpBrowser');
+        const msgs = getConsoleMessages(input.limit || 50);
+        if (msgs.length === 0) return { content: [{ type: 'text', text: 'No console messages.' }] };
+        const lines = msgs.map((m: any) => `[${m.level}] ${m.text}`).join('\n');
+        return { content: [{ type: 'text', text: lines }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+
+    buildTool({
+      name: 'cdp_network',
+      description: 'View recent network requests made by the page. Shows URL, method, status.',
+      inputSchema: z.object({ limit: z.number().optional(), filter: z.string().optional().describe('Filter by URL pattern') }),
+      call: async (input) => {
+        const { getNetworkRequests } = require('./cdpBrowser');
+        let reqs = getNetworkRequests(input.limit || 50);
+        if (input.filter) {
+          const pattern = input.filter.toLowerCase();
+          reqs = reqs.filter((r: any) => r.url.toLowerCase().includes(pattern));
+        }
+        if (reqs.length === 0) return { content: [{ type: 'text', text: 'No matching network requests.' }] };
+        const lines = reqs.map((r: any) => `${r.method} ${r.status} ${r.url}`).join('\n');
+        return { content: [{ type: 'text', text: lines }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
+    }),
+
+    buildTool({
+      name: 'cdp_snapshot',
+      description: 'Get the accessibility tree (aria snapshot) of the current page. Shows the page structure as AI-readable text with roles and labels. Much better than reading raw HTML for understanding page layout.',
+      inputSchema: z.object({ max_depth: z.number().optional() }),
+      call: async (input) => {
+        const { getActivePage, getAriaSnapshot, enablePageTracking } = require('./cdpBrowser');
+        const page = await getActivePage();
+        await enablePageTracking(page);
+        const snapshot = await getAriaSnapshot(page, input.max_depth || 10);
+        return { content: [{ type: 'text', text: snapshot }] };
+      },
+      isConcurrencySafe: true,
+      isReadOnly: true,
     }),
   ];
 }

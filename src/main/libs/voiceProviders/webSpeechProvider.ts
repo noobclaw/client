@@ -6,14 +6,21 @@
  * which calls the browser's SpeechRecognition / SpeechSynthesis APIs.
  */
 
-import { BrowserWindow } from 'electron';
+import { isElectronMode } from '../platformAdapter';
+
+let BrowserWindow: any = null;
+try {
+  if (isElectronMode()) {
+    BrowserWindow = require('electron').BrowserWindow;
+  }
+} catch {}
 import type { STTProvider, TTSProvider } from '../voiceProviderRegistry';
 import { coworkLog } from '../coworkLogger';
 
 let listening = false;
 let transcriptResolve: ((text: string) => void) | null = null;
 
-function getWindow(): BrowserWindow | null {
+function getWindow(): any | null {
   return BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0] || null;
 }
 

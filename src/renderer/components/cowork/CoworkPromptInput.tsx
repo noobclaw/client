@@ -206,7 +206,9 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
   }, [value, draftPrompt, dispatch]);
 
   const handleSubmit = useCallback(() => {
-    if (showFolderSelector && !workingDirectory?.trim()) {
+    // In Tauri mode, config may load async — don't block on empty directory
+    // (sidecar will use default ~/noobclaw/project)
+    if (showFolderSelector && !workingDirectory?.trim() && !(window as any).__TAURI__) {
       setShowFolderRequiredWarning(true);
       return;
     }

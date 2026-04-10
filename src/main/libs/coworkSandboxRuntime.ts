@@ -1,4 +1,12 @@
-import { app, session } from 'electron';
+import { getUserDataPath, isElectronMode } from './platformAdapter';
+
+// Conditionally load Electron session — unavailable in sidecar mode
+let session: any = null;
+try {
+  if (isElectronMode()) {
+    session = require('electron').session;
+  }
+} catch {}
 import { createHash } from 'crypto';
 import { EventEmitter } from 'events';
 import fs from 'fs';
@@ -120,7 +128,7 @@ function getRuntimeBinaryName(): string {
 }
 
 function getSandboxPaths() {
-  const baseDir = path.join(app.getPath('userData'), 'cowork', 'sandbox');
+  const baseDir = path.join(getUserDataPath(), 'cowork', 'sandbox');
   const runtimeDir = path.join(baseDir, 'runtime', `${SANDBOX_RUNTIME_VERSION}`);
   const imageDir = path.join(baseDir, 'images', `${SANDBOX_IMAGE_VERSION}`);
   const runtimeBinary = path.join(runtimeDir, getRuntimeBinaryName());
@@ -235,7 +243,8 @@ function getInitrdPathOverride(): string | null {
 }
 
 async function downloadFile(url: string, destination: string, stage: CoworkSandboxProgress['stage']): Promise<void> {
-  const response = await session.defaultSession.fetch(url);
+  const fetchFn = session?.defaultSession?.fetch?.bind(session.defaultSession) ?? globalThis.fetch;
+  const response = await fetchFn(url);
   if (!response.ok) {
     throw new Error(`Download failed (${response.status}): ${url}`);
   }

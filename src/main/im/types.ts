@@ -58,6 +58,12 @@ export interface FeishuConfig {
   verificationToken?: string;
   renderMode: 'text' | 'card';
   debug?: boolean;
+  /** Saved feishu credentials (preserved when switching to lark) */
+  feishuAppId?: string;
+  feishuAppSecret?: string;
+  /** Saved lark credentials (preserved when switching to feishu) */
+  larkAppId?: string;
+  larkAppSecret?: string;
 }
 
 export interface FeishuGatewayStatus {

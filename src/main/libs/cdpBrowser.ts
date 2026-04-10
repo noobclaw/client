@@ -339,6 +339,75 @@ export function isCDPBrowserRunning(): boolean {
   return browserSession !== null && browserSession.process !== null && !browserSession.process.killed;
 }
 
+// ── Console & Network Event Tracking ──
+
+const consoleMessages: Array<{ level: string; text: string; timestamp: number }> = [];
+const networkRequests: Array<{ url: string; method: string; status: number; timestamp: number }> = [];
+
+/** Enable console + network tracking on a page */
+export async function enablePageTracking(page: CDPPage): Promise<void> {
+  if (!page.ws) return;
+  try {
+    await sendCDPCommand(page.ws, 'Runtime.enable');
+    await sendCDPCommand(page.ws, 'Network.enable');
+
+    // Listen for console messages
+    page.ws.on('message', (data: string) => {
+      try {
+        const msg = JSON.parse(data);
+        if (msg.method === 'Runtime.consoleAPICalled') {
+          const args = msg.params?.args?.map((a: any) => a.value ?? a.description ?? '').join(' ') || '';
+          consoleMessages.push({ level: msg.params?.type || 'log', text: args, timestamp: Date.now() });
+          if (consoleMessages.length > 200) consoleMessages.shift();
+        }
+        if (msg.method === 'Network.responseReceived') {
+          const resp = msg.params?.response;
+          if (resp) {
+            networkRequests.push({ url: resp.url, method: resp.requestHeaders?.Method || 'GET', status: resp.status, timestamp: Date.now() });
+            if (networkRequests.length > 200) networkRequests.shift();
+          }
+        }
+      } catch {}
+    });
+  } catch (e) {
+    coworkLog('WARN', 'cdpBrowser', `Failed to enable page tracking: ${e}`);
+  }
+}
+
+/** Get recent console messages */
+export function getConsoleMessages(limit: number = 50): typeof consoleMessages {
+  return consoleMessages.slice(-limit);
+}
+
+/** Get recent network requests */
+export function getNetworkRequests(limit: number = 50): typeof networkRequests {
+  return networkRequests.slice(-limit);
+}
+
+// ── Aria Snapshot (Accessibility Tree) ──
+
+/** Get the accessibility tree for the current page — lets AI understand page structure */
+export async function getAriaSnapshot(page: CDPPage, maxDepth: number = 10): Promise<string> {
+  if (!page.ws) throw new Error('Page not connected');
+
+  const result = await sendCDPCommand(page.ws, 'Accessibility.getFullAXTree', { max_depth: maxDepth });
+  if (!result.nodes) return 'No accessibility tree available';
+
+  // Format into readable text
+  const lines: string[] = [];
+  for (const node of result.nodes.slice(0, 200)) {
+    const role = node.role?.value || '';
+    const name = node.name?.value || '';
+    const value = node.value?.value || '';
+    if (!role || role === 'none' || role === 'generic') continue;
+    const indent = '  '.repeat(Math.min(node.depth || 0, 5));
+    const desc = [name, value].filter(Boolean).join(': ');
+    lines.push(`${indent}[${role}] ${desc}`);
+  }
+
+  return lines.join('\n') || 'Empty accessibility tree';
+}
+
 // ── Helpers ──
 
 function sleep(ms: number): Promise<void> {

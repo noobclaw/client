@@ -146,6 +146,15 @@ const App: React.FC = () => {
         // Initialize scheduled task service
         await scheduledTaskService.init();
 
+        // Initialize cowork service early so SSE listeners (including
+        // noobclaw:sse-payload for lucky bag / balance update) are registered
+        // as soon as possible, not only when the user first opens CoworkView.
+        // Without this, lucky bag events broadcast before the user navigates
+        // to cowork would be silently dropped.
+        void coworkService.init().catch((err) => {
+          console.error('[App] coworkService.init failed:', err);
+        });
+
         setIsInitialized(true);
 
         // No longer automatically showing LoginWall at startup; users can browse freely

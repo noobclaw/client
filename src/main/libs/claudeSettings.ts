@@ -1,5 +1,5 @@
 import { join } from 'path';
-import { app } from 'electron';
+import { isPackaged, getAppPath, getResourcesPath } from './platformAdapter';
 import type { SqliteStore } from '../sqliteStore';
 import type { CoworkApiConfig } from './coworkConfigStore';
 import {
@@ -54,6 +54,10 @@ export type ApiConfigResolution = {
 // NoobClaw JWT auth token (set by renderer via IPC when user logs in/out)
 let _noobClawAuthToken: string | null = null;
 
+export function getNoobClawAuthToken(): string | null {
+  return _noobClawAuthToken;
+}
+
 export function setNoobClawAuthToken(token: string | null): void {
   _noobClawAuthToken = token;
 }
@@ -73,20 +77,17 @@ const getStore = (): SqliteStore | null => {
 };
 
 export function getClaudeCodePath(): string {
-  if (app.isPackaged) {
+  if (isPackaged()) {
     return join(
-      process.resourcesPath,
+      getResourcesPath(),
       'app.asar.unpacked/node_modules/@anthropic-ai/claude-agent-sdk/cli.js'
     );
   }
 
   // In development, try to find the SDK in the project root node_modules
-  // app.getAppPath() might point to dist-electron or other build output directories
-  // We need to look in the project root
-  const appPath = app.getAppPath();
-  // If appPath ends with dist-electron, go up one level
-  const rootDir = appPath.endsWith('dist-electron') 
-    ? join(appPath, '..') 
+  const appPath = getAppPath();
+  const rootDir = appPath.endsWith('dist-electron')
+    ? join(appPath, '..')
     : appPath;
 
   return join(rootDir, 'node_modules/@anthropic-ai/claude-agent-sdk/cli.js');
@@ -282,6 +283,9 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
   const resolvedBaseURL = matched.baseURL;
   const resolvedApiKey = matched.providerConfig.apiKey?.trim() || '';
   // noobclawAI uses JWT auth instead of a static API key
+  if (matched.providerName === 'noobclawAI' && !_noobClawAuthToken) {
+    return { config: null, error: 'Missing auth token — please connect your wallet to use NoobClaw AI.' };
+  }
   const effectiveApiKey = matched.providerName === 'noobclawAI'
     ? (_noobClawAuthToken || '')
     : matched.providerName === 'ollama'
@@ -301,36 +305,39 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
     };
   }
 
+  // Try OpenAI compatibility proxy first (Electron mode)
   const proxyStatus = getCoworkOpenAICompatProxyStatus();
-  if (!proxyStatus.running) {
-    return {
-      config: null,
-      error: 'OpenAI compatibility proxy is not running.',
-    };
+  if (proxyStatus.running) {
+    configureCoworkOpenAICompatProxy({
+      baseURL: resolvedBaseURL,
+      apiKey: effectiveApiKey || undefined,
+      model: matched.modelId,
+      provider: matched.providerName,
+    });
+
+    const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
+    if (proxyBaseURL) {
+      return {
+        config: {
+          apiKey: resolvedApiKey || 'noobclaw-openai-compat',
+          baseURL: proxyBaseURL,
+          model: matched.modelId,
+          apiType: 'openai',
+        },
+      };
+    }
   }
 
-  configureCoworkOpenAICompatProxy({
-    baseURL: resolvedBaseURL,
-    apiKey: effectiveApiKey || undefined,
-    model: matched.modelId,
-    provider: matched.providerName,
-  });
-
-  const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
-  if (!proxyBaseURL) {
-    return {
-      config: null,
-      error: 'OpenAI compatibility proxy base URL is unavailable.',
-    };
-  }
-
+  // Fallback: return OpenAI-compat config directly (sidecar mode without proxy)
+  // queryEngine's isOpenAICompat path will handle the request format conversion
   return {
     config: {
-      apiKey: resolvedApiKey || 'noobclaw-openai-compat',
-      baseURL: proxyBaseURL,
+      apiKey: effectiveApiKey || resolvedApiKey,
+      baseURL: resolvedBaseURL,
       model: matched.modelId,
       apiType: 'openai',
-    },
+      isOpenAICompat: true,
+    } as any,
   };
 }
 

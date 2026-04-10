@@ -36,6 +36,10 @@ export interface FeishuConfig {
   verificationToken?: string;
   renderMode: 'text' | 'card';
   debug?: boolean;
+  feishuAppId?: string;
+  feishuAppSecret?: string;
+  larkAppId?: string;
+  larkAppSecret?: string;
 }
 
 export interface FeishuGatewayStatus {

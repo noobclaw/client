@@ -96,11 +96,74 @@ export function toolToApiSchema(tool: ToolDefinition): AnthropicTool {
     jsonSchema = { type: 'object', properties: {} };
   }
 
+  // Clean schema for multi-model compatibility
+  cleanSchemaForProviders(jsonSchema);
+
   return {
     name: tool.name,
     description: tool.description,
     input_schema: jsonSchema as AnthropicTool['input_schema'],
   };
+}
+
+/**
+ * Clean JSON Schema for multi-model compatibility.
+ * Reference: OpenClaw pi-tools.schema.ts — per-provider cleaning
+ *
+ * Issues addressed:
+ * - Gemini: doesn't support 'format', 'default', '$schema', 'examples'
+ * - OpenAI: top-level must have 'type: "object"', no 'anyOf' at root
+ * - Qwen/DeepSeek: some don't support 'enum' with single value
+ */
+function cleanSchemaForProviders(schema: Record<string, unknown>): void {
+  // Remove keywords that Gemini/Qwen don't support
+  delete schema['$schema'];
+  delete schema['examples'];
+  delete schema['$id'];
+
+  // Recursively clean nested schemas
+  if (schema.properties && typeof schema.properties === 'object') {
+    for (const prop of Object.values(schema.properties as Record<string, any>)) {
+      if (prop && typeof prop === 'object') {
+        // Remove 'format' (Gemini rejects 'format: "uri"' etc)
+        delete prop.format;
+        // Remove 'default' (some models don't support it)
+        delete prop.default;
+        // Flatten single-value enum to const (better compatibility)
+        if (Array.isArray(prop.enum) && prop.enum.length === 1) {
+          prop.const = prop.enum[0];
+          delete prop.enum;
+        }
+        // Recursively clean nested objects
+        if (prop.properties) cleanSchemaForProviders(prop);
+        // Clean items in arrays
+        if (prop.items && typeof prop.items === 'object') {
+          delete prop.items.format;
+          delete prop.items.default;
+          if (prop.items.properties) cleanSchemaForProviders(prop.items);
+        }
+      }
+    }
+  }
+
+  // Flatten anyOf/oneOf at top level (OpenAI rejects these)
+  if (schema.anyOf || schema.oneOf) {
+    const variants = (schema.anyOf || schema.oneOf) as any[];
+    if (variants.length > 0) {
+      // Merge all variant properties into one object
+      const merged: Record<string, unknown> = {};
+      for (const v of variants) {
+        if (v.properties) Object.assign(merged, v.properties);
+      }
+      schema.type = 'object';
+      schema.properties = { ...((schema.properties || {}) as Record<string, unknown>), ...merged };
+      delete schema.anyOf;
+      delete schema.oneOf;
+    }
+  }
+
+  // Ensure top-level has type: "object" (OpenAI requirement)
+  if (!schema.type) schema.type = 'object';
 }
 
 /**

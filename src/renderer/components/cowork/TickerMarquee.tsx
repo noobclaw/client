@@ -15,17 +15,18 @@ interface Announcement {
   link: string;
 }
 
+// Coin logos via CoinGecko CDN (no rate limiting, unlike cryptologos.cc which returns 403)
 const coinMeta: Record<string, { logo: string; url: string }> = {
-  BTC:  { logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg',       url: 'https://www.binance.com/trade/BTC_USDT' },
-  ETH:  { logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg',      url: 'https://www.binance.com/trade/ETH_USDT' },
-  BNB:  { logo: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg',           url: 'https://www.binance.com/trade/BNB_USDT' },
-  SOL:  { logo: 'https://cryptologos.cc/logos/solana-sol-logo.svg',         url: 'https://www.binance.com/trade/SOL_USDT' },
-  XRP:  { logo: 'https://cryptologos.cc/logos/xrp-xrp-logo.svg',           url: 'https://www.binance.com/trade/XRP_USDT' },
-  DOGE: { logo: 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg',      url: 'https://www.binance.com/trade/DOGE_USDT' },
-  ADA:  { logo: 'https://cryptologos.cc/logos/cardano-ada-logo.svg',        url: 'https://www.binance.com/trade/ADA_USDT' },
-  AVAX: { logo: 'https://cryptologos.cc/logos/avalanche-avax-logo.svg',     url: 'https://www.binance.com/trade/AVAX_USDT' },
-  DOT:  { logo: 'https://cryptologos.cc/logos/polkadot-new-dot-logo.svg',   url: 'https://www.binance.com/trade/DOT_USDT' },
-  TRX:  { logo: 'https://cryptologos.cc/logos/tron-trx-logo.svg',           url: 'https://www.binance.com/trade/TRX_USDT' },
+  BTC:  { logo: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png',       url: 'https://www.binance.com/trade/BTC_USDT' },
+  ETH:  { logo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png',    url: 'https://www.binance.com/trade/ETH_USDT' },
+  BNB:  { logo: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', url: 'https://www.binance.com/trade/BNB_USDT' },
+  SOL:  { logo: 'https://assets.coingecko.com/coins/images/4128/small/solana.png',     url: 'https://www.binance.com/trade/SOL_USDT' },
+  XRP:  { logo: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png', url: 'https://www.binance.com/trade/XRP_USDT' },
+  DOGE: { logo: 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png',      url: 'https://www.binance.com/trade/DOGE_USDT' },
+  ADA:  { logo: 'https://assets.coingecko.com/coins/images/975/small/cardano.png',     url: 'https://www.binance.com/trade/ADA_USDT' },
+  AVAX: { logo: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', url: 'https://www.binance.com/trade/AVAX_USDT' },
+  DOT:  { logo: 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png',  url: 'https://www.binance.com/trade/DOT_USDT' },
+  TRX:  { logo: 'https://assets.coingecko.com/coins/images/1094/small/tron-logo.png',  url: 'https://www.binance.com/trade/TRX_USDT' },
 };
 
 // Module-level cache so data persists across component mounts
@@ -160,7 +161,7 @@ const TickerMarquee: React.FC = () => {
         onClick={(e) => { e.stopPropagation(); if (meta) openLink(meta.url); }}
         title={`${t.symbol}/USDT on Binance`}
       >
-        {meta && <img src={meta.logo} alt={t.symbol} className="w-5 h-5 mr-1.5" />}
+        {meta && <img src={meta.logo} alt={t.symbol} className="w-5 h-5 mr-1.5 rounded-full" />}
         <span className="text-sm dark:text-claude-darkText text-claude-text font-semibold">{t.symbol}</span>
         <span className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary ml-1.5">
           ${t.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

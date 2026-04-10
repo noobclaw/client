@@ -14,7 +14,22 @@ import net from 'net';
 import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
-import { app, BrowserWindow, dialog, shell } from 'electron';
+import { isElectronMode, getUserDataPath, getAppPath, getResourcesPath, openExternal } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let app: any = null;
+let BrowserWindow: any = null;
+let dialog: any = null;
+let shell: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    app = electron.app;
+    BrowserWindow = electron.BrowserWindow;
+    dialog = electron.dialog;
+    shell = electron.shell;
+  }
+} catch {}
 
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
@@ -115,7 +130,7 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
   const results: { browser: BrowserType; manifestPath: string; regKey?: string }[] = [];
 
   if (process.platform === 'win32') {
-    const basePath = path.join(app.getPath('userData'), `${NATIVE_HOST_NAME}.json`);
+    const basePath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.json`);
     results.push(
       { browser: 'chrome', manifestPath: basePath, regKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
       { browser: 'edge', manifestPath: basePath, regKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
@@ -138,7 +153,7 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
 }
 
 function getNativeHostScriptPath(): string {
-  const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+  const resourcesPath = getResourcesPath();
   if (process.platform === 'win32') {
     return path.join(resourcesPath, 'native-messaging-host.bat');
   }
@@ -149,7 +164,7 @@ function getNativeHostScriptPath(): string {
 export function registerNativeMessagingHost(): void {
   try {
     const hostScriptPath = getNativeHostScriptPath();
-    const resourcesPath = process.resourcesPath || path.join(app.getAppPath(), 'resources');
+    const resourcesPath = getResourcesPath();
     const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
 
     // Create batch/shell wrapper
@@ -317,7 +332,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
 };
 
 function getPromptTexts() {
-  const locale = app.getLocale().toLowerCase();
+  const locale = (app?.getLocale?.() || Intl.DateTimeFormat().resolvedOptions().locale || 'en').toLowerCase();
   if (locale.startsWith('zh-tw') || locale.startsWith('zh-hant')) return extensionPromptTexts['zh-TW'];
   if (locale.startsWith('zh')) return extensionPromptTexts.zh;
   if (locale.startsWith('ja')) return extensionPromptTexts.ja;
@@ -331,33 +346,63 @@ function getPromptTexts() {
  * - 'cancelled': user chose "not now"
  */
 export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> {
-  const win = BrowserWindow.getFocusedWindow();
-  if (!win) return 'cancelled';
-  const t = getPromptTexts();
+  const win = BrowserWindow?.getFocusedWindow?.();
 
-  const result = await dialog.showMessageBox(win, {
-    type: 'info',
-    title: t.title,
-    message: t.installMsg,
-    detail: t.installDetail,
-    buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
-    defaultId: 0,
-    cancelId: 2,
-  });
+  if (win && dialog) {
+    // Electron mode: use native dialog
+    const t = getPromptTexts();
+    const result = await dialog.showMessageBox(win, {
+      type: 'info',
+      title: t.title,
+      message: t.installMsg,
+      detail: t.installDetail,
+      buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
+      defaultId: 0,
+      cancelId: 2,
+    });
 
-  if (result.response === 0) {
-    // Chrome Store
-    const browsers = detectBrowsers();
-    const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
-    shell.openExternal(storeUrl);
-    return 'installed';
-  } else if (result.response === 1) {
-    // Local extension
-    await installLocalExtension();
-    return 'installed';
+    if (result.response === 0) {
+      const browsers = detectBrowsers();
+      const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
+      shell?.openExternal?.(storeUrl) ?? openExternal(storeUrl);
+      return 'installed';
+    } else if (result.response === 1) {
+      await installLocalExtension();
+      return 'installed';
+    }
+    return 'cancelled';
   }
-  return 'cancelled';
+
+  // Sidecar/Tauri mode: use the global extensionPromptCallback if registered,
+  // otherwise open Chrome Store directly
+  if (_extensionPromptCallback) {
+    try {
+      const choice = await _extensionPromptCallback({
+        storeUrl: CHROME_STORE_URL,
+        title: 'Browser Extension Required',
+        message: 'NoobClaw needs the browser extension for full browser automation.\nInstall it now?',
+      });
+      if (choice === 'cancel') return 'cancelled';
+      try { await openExternal(CHROME_STORE_URL); } catch {}
+      return 'installed';
+    } catch {}
+  }
+
+  // Fallback: open Chrome Store directly
+  try { await openExternal(CHROME_STORE_URL); } catch {}
+  return 'installed';
 }
+
+// Callback for extension install prompt — set by sidecar-server to avoid circular import
+type ExtensionPromptCallback = (opts: { storeUrl: string; title: string; message: string }) => Promise<'install' | 'cancel'>;
+let _extensionPromptCallback: ExtensionPromptCallback | null = null;
+
+export function setExtensionPromptCallback(cb: ExtensionPromptCallback): void {
+  _extensionPromptCallback = cb;
+}
+
+// Legacy resolver — kept for backward compat
+export function resolveExtensionPrompt(_requestId: string, _result: string): void {}
 
 /**
  * Check if extension is actually installed by looking at Chrome's extension directory
@@ -388,9 +433,10 @@ export function isExtensionInstalled(): boolean {
 }
 
 async function installLocalExtension(): Promise<void> {
-  const { clipboard } = require('electron');
+  let clipboard: any = null;
+  try { clipboard = require('electron').clipboard; } catch {}
   const browsers = detectBrowsers();
-  const win = BrowserWindow.getFocusedWindow();
+  const win = BrowserWindow?.getFocusedWindow?.();
   const t = getPromptTexts();
 
   if (browsers.length === 0) {
@@ -413,12 +459,12 @@ async function installLocalExtension(): Promise<void> {
 
   // Get extension path
   const extensionPath = path.join(
-    process.resourcesPath || path.join(app.getAppPath(), '..'),
+    getResourcesPath(),
     'chrome-extension'
   );
 
   // Copy path to clipboard
-  clipboard.writeText(extensionPath);
+  clipboard?.writeText?.(extensionPath);
 
   // Open chrome://extensions page
   const browser = browsers[0];

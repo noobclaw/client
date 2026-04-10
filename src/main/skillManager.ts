@@ -1,4 +1,15 @@
-import { app, BrowserWindow, session } from 'electron';
+import { isPackaged, getAppPath, getUserDataPath, getHomePath, getResourcesPath, isElectronMode } from './libs/platformAdapter';
+
+// Conditionally load Electron modules
+let BrowserWindow: any = null;
+let session: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    BrowserWindow = electron.BrowserWindow;
+    session = electron.session;
+  }
+} catch {}
 import { execSync, spawn, spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -126,10 +137,10 @@ function buildSkillEnv(): Record<string, string | undefined> {
   // Normalize PATH key casing on Windows to avoid duplicate PATH/Path issues
   normalizePathKey(env);
 
-  if (app.isPackaged) {
+  if (isPackaged()) {
     // Ensure HOME is set (crucial for npm to find its config)
     if (!env.HOME) {
-      env.HOME = app.getPath('home');
+      env.HOME = getHomePath();
     }
 
     if (process.platform === 'win32') {
@@ -394,8 +405,8 @@ const resolveWindowsGitExecutable = (): string | null => {
     }
   }
 
-  const bundledRoots = app.isPackaged
-    ? [path.join(process.resourcesPath, 'mingit')]
+  const bundledRoots = isPackaged()
+    ? [path.join(getResourcesPath(), 'mingit')]
     : [
       path.join(__dirname, '..', '..', 'resources', 'mingit'),
       path.join(process.cwd(), 'resources', 'mingit'),
@@ -759,7 +770,7 @@ const downloadGithubArchive = async (
 
   for (const candidate of archiveUrlCandidates) {
     try {
-      const response = await session.defaultSession.fetch(candidate.url, {
+      const response = await fetch(candidate.url, {
         method: 'GET',
         headers: candidate.headers,
       });
@@ -836,7 +847,7 @@ const isGenericHttpUrl = (source: string): boolean => {
  * content-type header and magic bytes, then process accordingly.
  */
 const downloadGenericUrl = async (url: string, tempRoot: string): Promise<string> => {
-  const response = await session.defaultSession.fetch(url, {
+  const response = await fetch(url, {
     method: 'GET',
     headers: { 'User-Agent': 'NoobClaw Skill Downloader' },
   });
@@ -978,7 +989,7 @@ async function downloadMdUrl(mdUrl: string, destDir: string): Promise<string> {
 }
 
 const downloadZipUrl = async (zipUrl: string, tempRoot: string): Promise<string> => {
-  const response = await session.defaultSession.fetch(zipUrl, {
+  const response = await fetch(zipUrl, {
     method: 'GET',
     headers: { 'User-Agent': 'NoobClaw Skill Downloader' },
   });
@@ -1140,7 +1151,7 @@ export class SkillManager {
   constructor(private getStore: () => SqliteStore) {}
 
   getSkillsRoot(): string {
-    return path.resolve(app.getPath('userData'), SKILLS_DIR_NAME);
+    return path.resolve(getUserDataPath(), SKILLS_DIR_NAME);
   }
 
   ensureSkillsRoot(): string {
@@ -1152,7 +1163,7 @@ export class SkillManager {
   }
 
   syncBundledSkillsToUserData(): void {
-    if (!app.isPackaged) {
+    if (!isPackaged()) {
       return;
     }
 
@@ -1445,7 +1456,7 @@ export class SkillManager {
         const stat = fs.statSync(localSource);
         if (stat.isFile()) {
           if (isZipFile(localSource)) {
-            const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-zip-'));
+            const tempRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'noobclaw-skill-zip-'));
             await extractZip(localSource, { dir: tempRoot });
             localSource = tempRoot;
             cleanupPath = tempRoot;
@@ -1458,17 +1469,17 @@ export class SkillManager {
       } else if (isRemoteMdUrl(trimmed)) {
         const cleanUrl = trimmed.trim().replace(/\/+$/, '');
         console.info('[skill-manager] Detected remote .md URL:', cleanUrl);
-        const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-md-'));
+        const tempRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'noobclaw-skill-md-'));
         cleanupPath = tempRoot;
         localSource = await downloadMdUrl(cleanUrl, tempRoot);
       } else if (isRemoteZipUrl(trimmed)) {
-        const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-zip-'));
+        const tempRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'noobclaw-skill-zip-'));
         cleanupPath = tempRoot;
         localSource = await downloadZipUrl(trimmed, tempRoot);
       } else if (isGenericHttpUrl(trimmed)) {
         // Generic HTTP URL (e.g. admin-uploaded file without .zip/.md extension, R2 proxy, etc.)
         console.info('[skill-manager] Detected generic HTTP URL, downloading and auto-detecting type:', trimmed);
-        const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-generic-'));
+        const tempRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'noobclaw-skill-generic-'));
         cleanupPath = tempRoot;
         localSource = await downloadGenericUrl(trimmed, tempRoot);
       } else {
@@ -1476,7 +1487,7 @@ export class SkillManager {
         if (!normalized) {
           return { success: false, error: 'Invalid skill source. Use owner/repo, repo URL, or a GitHub tree/blob URL.' };
         }
-        const tempRoot = fs.mkdtempSync(path.join(app.getPath('temp'), 'noobclaw-skill-'));
+        const tempRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'noobclaw-skill-'));
         cleanupPath = tempRoot;
         const repoName = normalizeFolderName(normalized.repoNameHint || deriveRepoName(normalized.repoUrl));
         const clonePath = path.join(tempRoot, repoName);
@@ -1663,7 +1674,7 @@ export class SkillManager {
   }
 
   private notifySkillsChanged(): void {
-    BrowserWindow.getAllWindows().forEach(win => {
+    BrowserWindow?.getAllWindows?.()?.forEach?.((win: any) => {
       if (!win.isDestroyed()) {
         win.webContents.send('skills:changed');
       }
@@ -1782,20 +1793,29 @@ export class SkillManager {
   }
 
   private getClaudeSkillsRoot(): string | null {
-    const homeDir = app.getPath('home');
+    const homeDir = getHomePath();
     return path.join(homeDir, CLAUDE_SKILLS_DIR_NAME, CLAUDE_SKILLS_SUBDIR);
   }
 
   private getBundledSkillsRoot(): string {
-    if (app.isPackaged) {
-      // In production, bundled SKILLs should be in Resources/SKILLs.
-      const resourcesRoot = path.resolve(process.resourcesPath, SKILLS_DIR_NAME);
-      if (fs.existsSync(resourcesRoot)) {
-        return resourcesRoot;
+    if (isPackaged()) {
+      // Search multiple candidate paths for bundled SKILLs
+      const candidates = [
+        path.resolve(getResourcesPath(), SKILLS_DIR_NAME),
+        // Tauri: next to the sidecar binary
+        path.resolve(path.dirname(process.execPath), SKILLS_DIR_NAME),
+        // Tauri: in resources subdirectory
+        path.resolve(path.dirname(process.execPath), 'resources', SKILLS_DIR_NAME),
+        // Tauri: one level up (NSIS layout)
+        path.resolve(path.dirname(process.execPath), '..', SKILLS_DIR_NAME),
+        // Electron: inside app.asar
+        path.resolve(getAppPath(), SKILLS_DIR_NAME),
+      ];
+      for (const candidate of candidates) {
+        if (fs.existsSync(candidate)) return candidate;
       }
-
-      // Fallback for older packages where SKILLs are inside app.asar.
-      return path.resolve(app.getAppPath(), SKILLS_DIR_NAME);
+      // Final fallback
+      return candidates[0];
     }
 
     // In development, use the project root (parent of dist-electron).
@@ -1843,7 +1863,7 @@ export class SkillManager {
   }
 
   private repairSkillFromBundled(skillId: string, skillPath: string): boolean {
-    if (!app.isPackaged) return false;
+    if (!isPackaged()) return false;
 
     const bundledRoot = this.getBundledSkillsRoot();
     if (!bundledRoot || !fs.existsSync(bundledRoot)) {

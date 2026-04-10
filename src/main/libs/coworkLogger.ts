@@ -1,6 +1,6 @@
-import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
+import { getUserDataPath } from './platformAdapter';
 
 const MAX_LOG_SIZE = 5 * 1024 * 1024; // 5MB
 
@@ -8,7 +8,7 @@ let logFilePath: string | null = null;
 
 function getLogFilePath(): string {
   if (!logFilePath) {
-    const logDir = path.join(app.getPath('userData'), 'logs');
+    const logDir = path.join(getUserDataPath(), 'logs');
     if (!fs.existsSync(logDir)) {
       fs.mkdirSync(logDir, { recursive: true });
     }

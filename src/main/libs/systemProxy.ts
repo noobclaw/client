@@ -1,4 +1,15 @@
-import { app, session } from 'electron';
+import { isElectronMode } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let app: any = null;
+let session: any = null;
+try {
+  if (isElectronMode()) {
+    const electron = require('electron');
+    app = electron.app;
+    session = electron.session;
+  }
+} catch {}
 
 const PROXY_ENV_KEYS = [
   'http_proxy',
@@ -88,11 +99,12 @@ export function applySystemProxyEnv(proxyUrl: string | null): void {
 }
 
 export async function resolveSystemProxyUrl(targetUrl: string): Promise<string | null> {
-  if (!app.isReady()) {
+  if (!app?.isReady?.()) {
     return null;
   }
 
   try {
+    if (!session?.defaultSession?.resolveProxy) return null;
     const proxyResult = await session.defaultSession.resolveProxy(targetUrl);
     if (!proxyResult) {
       return null;

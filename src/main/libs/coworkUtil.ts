@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { isPackaged, getAppPath, getResourcesPath, getUserDataPath, getHomePath, getAppName } from './platformAdapter';
 import { execSync, spawnSync } from 'child_process';
 import { existsSync, mkdirSync, writeFileSync, chmodSync, statSync, readdirSync } from 'fs';
 import { delimiter, dirname, join } from 'path';
@@ -47,13 +47,13 @@ function hasCommandInEnv(command: string, env: Record<string, string | undefined
 let cachedElectronNodeRuntimePath: string | null = null;
 
 function resolveElectronNodeRuntimePath(): string {
-  if (!app.isPackaged || process.platform !== 'darwin') {
+  if (!isPackaged() || process.platform !== 'darwin') {
     return process.execPath;
   }
 
   try {
-    const appName = app.getName();
-    const frameworksDir = join(process.resourcesPath, '..', 'Frameworks');
+    const appName = getAppName();
+    const frameworksDir = join(getResourcesPath(), '..', 'Frameworks');
     if (!existsSync(frameworksDir)) {
       return process.execPath;
     }
@@ -312,8 +312,8 @@ function listGitInstallPathsFromRegistry(): string[] {
 }
 
 function getBundledGitBashCandidates(): string[] {
-  const bundledRoots = app.isPackaged
-    ? [join(process.resourcesPath, 'mingit')]
+  const bundledRoots = isPackaged()
+    ? [join(getResourcesPath(), 'mingit')]
     : [
       join(__dirname, '..', '..', 'resources', 'mingit'),
       join(process.cwd(), 'resources', 'mingit'),
@@ -442,7 +442,7 @@ function getWindowsGitToolDirs(bashPath: string): string[] {
 
 function ensureElectronNodeShim(electronPath: string, npmBinDir?: string): string | null {
   try {
-    const shimDir = join(app.getPath('userData'), 'cowork', 'bin');
+    const shimDir = join(getUserDataPath(), 'cowork', 'bin');
     mkdirSync(shimDir, { recursive: true });
     coworkLog('INFO', 'resolveNodeShim', `Shim directory: ${shimDir}, electronPath: ${electronPath}, npmBinDir: ${npmBinDir || '(none)'}`);
 
@@ -923,7 +923,7 @@ function ensureWindowsOriginalPath(env: Record<string, string | undefined>): voi
  */
 function ensureWindowsBashUtf8InitScript(): string | null {
   try {
-    const initDir = join(app.getPath('userData'), 'cowork', 'bin');
+    const initDir = join(getUserDataPath(), 'cowork', 'bin');
     mkdirSync(initDir, { recursive: true });
 
     const initScript = join(initDir, 'bash_utf8_init.sh');
@@ -954,7 +954,7 @@ function ensureWindowsBashUtf8InitScript(): string | null {
 function applyPackagedEnvOverrides(env: Record<string, string | undefined>): void {
   const electronNodeRuntimePath = getElectronNodeRuntimePath();
 
-  if (app.isPackaged && !env.NOOBCLAW_ELECTRON_PATH) {
+  if (isPackaged() && !env.NOOBCLAW_ELECTRON_PATH) {
     env.NOOBCLAW_ELECTRON_PATH = electronNodeRuntimePath;
   }
 
@@ -1097,10 +1097,10 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
     ensureWindowsOriginalPath(env);
   }
 
-  if (!app.isPackaged) {
+  if (!isPackaged()) {
     // In dev mode, prepend project's node_modules/.bin to PATH so bundled
     // npx/npm are found even if the user has no global Node.js installation.
-    const devBinDir = join(app.getAppPath(), 'node_modules', '.bin');
+    const devBinDir = join(getAppPath(), 'node_modules', '.bin');
     if (existsSync(devBinDir)) {
       env.PATH = [devBinDir, env.PATH].filter(Boolean).join(delimiter);
       coworkLog('INFO', 'applyPackagedEnvOverrides', `Dev mode: prepended node_modules/.bin to PATH: ${devBinDir}`);
@@ -1109,7 +1109,7 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
   }
 
   if (!env.HOME) {
-    env.HOME = app.getPath('home');
+    env.HOME = getHomePath();
   }
 
   // Resolve user's shell PATH so that node, npm, and other tools are findable
@@ -1122,7 +1122,7 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
     }
   } else {
     // Fallback: append common node installation paths
-    const home = env.HOME || app.getPath('home');
+    const home = env.HOME || getHomePath();
     const commonPaths = [
       '/usr/local/bin',
       '/opt/homebrew/bin',
@@ -1134,7 +1134,7 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
     coworkLog('WARN', 'applyPackagedEnvOverrides', `Failed to resolve user shell PATH, using fallback common paths`);
   }
 
-  const resourcesPath = process.resourcesPath;
+  const resourcesPath = getResourcesPath();
   coworkLog('INFO', 'applyPackagedEnvOverrides', `Packaged mode: resourcesPath=${resourcesPath}`);
 
   // Create node/npx/npm shims that wrap Electron as a Node.js runtime via
@@ -1151,7 +1151,7 @@ function applyPackagedEnvOverrides(env: Record<string, string | undefined>): voi
   const hasSystemNode = hasCommandInEnv('node', env);
   const hasSystemNpx = hasCommandInEnv('npx', env);
   const hasSystemNpm = hasCommandInEnv('npm', env);
-  const shouldForcePackagedDarwinShim = app.isPackaged && process.platform === 'darwin';
+  const shouldForcePackagedDarwinShim = isPackaged() && process.platform === 'darwin';
   const shouldInjectShim = shouldForcePackagedDarwinShim
     || process.platform === 'win32'
     || !(hasSystemNode && hasSystemNpx && hasSystemNpm);
@@ -1270,9 +1270,9 @@ function verifyNodeEnvironment(env: Record<string, string | undefined>): void {
  * Get SKILLs directory path (handles both development and production)
  */
 export function getSkillsRoot(): string {
-  if (app.isPackaged) {
+  if (isPackaged()) {
     // In production, SKILLs are copied to userData
-    return join(app.getPath('userData'), 'SKILLs');
+    return join(getUserDataPath(), 'SKILLs');
   }
 
   // In development, __dirname can vary with bundling output (e.g. dist-electron/ or dist-electron/libs/).
@@ -1282,7 +1282,7 @@ export function getSkillsRoot(): string {
     .filter((value): value is string => Boolean(value));
   const candidates = [
     ...envRoots,
-    join(app.getAppPath(), 'SKILLs'),
+    join(getAppPath(), 'SKILLs'),
     join(process.cwd(), 'SKILLs'),
     join(__dirname, '..', 'SKILLs'),
     join(__dirname, '..', '..', 'SKILLs'),
@@ -1295,7 +1295,7 @@ export function getSkillsRoot(): string {
   }
 
   // Final fallback for first-run dev environments where SKILLs may not exist yet.
-  return join(app.getAppPath(), 'SKILLs');
+  return join(getAppPath(), 'SKILLs');
 }
 
 /**

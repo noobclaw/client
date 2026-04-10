@@ -140,15 +140,15 @@ const Web3News: React.FC = () => {
 
   if (loading) {
     const cryptoIcons = [
-      { symbol: 'BTC', logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg', color: '#F7931A' },
-      { symbol: 'ETH', logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg', color: '#627EEA' },
-      { symbol: 'SOL', logo: 'https://cryptologos.cc/logos/solana-sol-logo.svg', color: '#9945FF' },
-      { symbol: 'BNB', logo: 'https://cryptologos.cc/logos/bnb-bnb-logo.svg', color: '#F0B90B' },
-      { symbol: 'AVAX', logo: 'https://cryptologos.cc/logos/avalanche-avax-logo.svg', color: '#E84142' },
-      { symbol: 'DOT', logo: 'https://cryptologos.cc/logos/polkadot-new-dot-logo.svg', color: '#E6007A' },
-      { symbol: 'ADA', logo: 'https://cryptologos.cc/logos/cardano-ada-logo.svg', color: '#0033AD' },
-      { symbol: 'DOGE', logo: 'https://cryptologos.cc/logos/dogecoin-doge-logo.svg', color: '#C2A633' },
-      { symbol: 'XRP', logo: 'https://cryptologos.cc/logos/xrp-xrp-logo.svg', color: '#23292F' },
+      { symbol: 'BTC', logo: 'https://assets.coingecko.com/coins/images/1/small/bitcoin.png', color: '#F7931A' },
+      { symbol: 'ETH', logo: 'https://assets.coingecko.com/coins/images/279/small/ethereum.png', color: '#627EEA' },
+      { symbol: 'SOL', logo: 'https://assets.coingecko.com/coins/images/4128/small/solana.png', color: '#9945FF' },
+      { symbol: 'BNB', logo: 'https://assets.coingecko.com/coins/images/825/small/bnb-icon2_2x.png', color: '#F0B90B' },
+      { symbol: 'AVAX', logo: 'https://assets.coingecko.com/coins/images/12559/small/Avalanche_Circle_RedWhite_Trans.png', color: '#E84142' },
+      { symbol: 'DOT', logo: 'https://assets.coingecko.com/coins/images/12171/small/polkadot.png', color: '#E6007A' },
+      { symbol: 'ADA', logo: 'https://assets.coingecko.com/coins/images/975/small/cardano.png', color: '#0033AD' },
+      { symbol: 'DOGE', logo: 'https://assets.coingecko.com/coins/images/5/small/dogecoin.png', color: '#C2A633' },
+      { symbol: 'XRP', logo: 'https://assets.coingecko.com/coins/images/44/small/xrp-symbol-white-128.png', color: '#23292F' },
     ];
     return (
       <div className="flex flex-col h-full items-center justify-center gap-8">

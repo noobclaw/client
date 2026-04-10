@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { isPackaged, getAppPath, getUserDataPath, getResourcesPath } from './libs/platformAdapter';
 import { EventEmitter } from 'events';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -18,15 +18,31 @@ const USER_MEMORIES_MIGRATION_KEY = 'userMemories.migration.v1.completed';
 // Using fs.readFileSync (which handles non-ASCII paths via Windows wide-char APIs)
 // and passing the buffer directly to initSqlJs bypasses Emscripten's file loading,
 // which can fail or hang when the install path contains Chinese characters on Windows.
-function loadWasmBinary(): ArrayBuffer {
-  const wasmPath = app.isPackaged
-    ? path.join(
-        process.resourcesPath,
-        'app.asar.unpacked/node_modules/sql.js/dist/sql-wasm.wasm'
-      )
-    : path.join(app.getAppPath(), 'node_modules/sql.js/dist/sql-wasm.wasm');
-  const buf = fs.readFileSync(wasmPath);
-  return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+function loadWasmBinary(): ArrayBuffer | undefined {
+  const candidates = [
+    // Electron packaged
+    isPackaged() ? path.join(getResourcesPath(), 'app.asar.unpacked/node_modules/sql.js/dist/sql-wasm.wasm') : '',
+    // Electron dev
+    path.join(getAppPath(), 'node_modules/sql.js/dist/sql-wasm.wasm'),
+    // Tauri: in resources/ subdirectory
+    path.join(path.dirname(process.execPath), 'resources', 'sql-wasm.wasm'),
+    // Sidecar/pkg — try relative to executable
+    path.join(path.dirname(process.execPath), 'sql-wasm.wasm'),
+    path.join(path.dirname(process.execPath), 'binaries', 'sql-wasm.wasm'),
+    // Sidecar — try node_modules in cwd
+    path.join(process.cwd(), 'node_modules/sql.js/dist/sql-wasm.wasm'),
+  ].filter(Boolean);
+
+  for (const wasmPath of candidates) {
+    try {
+      if (fs.existsSync(wasmPath)) {
+        const buf = fs.readFileSync(wasmPath);
+        return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+      }
+    } catch {}
+  }
+  // Return undefined — sql.js will try to fetch WASM itself
+  return undefined;
 }
 
 export class SqliteStore {
@@ -41,17 +57,19 @@ export class SqliteStore {
   }
 
   static async create(userDataPath?: string): Promise<SqliteStore> {
-    const basePath = userDataPath ?? app.getPath('userData');
+    const basePath = userDataPath ?? getUserDataPath();
     const dbPath = path.join(basePath, DB_FILENAME);
 
     // Initialize SQL.js with WASM file path (cached promise for reuse)
     if (!SqliteStore.sqlPromise) {
       const wasmBinary = loadWasmBinary();
-      SqliteStore.sqlPromise = initSqlJs({
-        wasmBinary,
-      });
+      console.log(`[SqliteStore] WASM binary ${wasmBinary ? `found (${wasmBinary.byteLength} bytes)` : 'NOT found, using fallback'}`);
+      SqliteStore.sqlPromise = wasmBinary
+        ? initSqlJs({ wasmBinary })
+        : initSqlJs();  // Let sql.js find WASM on its own (sidecar mode)
     }
     const SQL = await SqliteStore.sqlPromise;
+    console.log(`[SqliteStore] sql.js initialized, dbPath=${dbPath}, exists=${fs.existsSync(dbPath)}`);
 
     // Load existing database or create new one
     let db: Database;
@@ -376,9 +394,9 @@ export class SqliteStore {
   private tryReadLegacyMemoryText(): string {
     const candidates = [
       path.join(process.cwd(), 'MEMORY.md'),
-      path.join(app.getAppPath(), 'MEMORY.md'),
+      path.join(getAppPath(), 'MEMORY.md'),
       path.join(process.cwd(), 'memory.md'),
-      path.join(app.getAppPath(), 'memory.md'),
+      path.join(getAppPath(), 'memory.md'),
     ];
 
     for (const candidate of candidates) {

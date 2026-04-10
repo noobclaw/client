@@ -14,7 +14,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { app } from 'electron';
+import { getUserDataPath } from './platformAdapter';
 import { coworkLog } from './coworkLogger';
 import { estimateTokens } from './coworkCompact';
 
@@ -94,7 +94,7 @@ const sessionStates = new Map<string, SessionMemoryState>();
 // ── File paths ──
 
 function getSessionMemoryDir(): string {
-  const userDataPath = app.getPath('userData');
+  const userDataPath = getUserDataPath();
   return path.join(userDataPath, 'session-memory');
 }
 

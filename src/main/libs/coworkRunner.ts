@@ -1,6 +1,6 @@
 import { EventEmitter } from 'events';
 import { type ChildProcessByStdio, spawn, spawnSync } from 'child_process';
-import { app } from 'electron';
+import { getUserDataPath, isPackaged, getAppPath, getResourcesPath, openExternal } from './platformAdapter';
 import fs from 'fs';
 import path from 'path';
 import type { Readable } from 'stream';
@@ -41,6 +41,8 @@ import { generateDiff, formatDiff } from './diffUtils';
 import { recordFileRead, checkFileReadBeforeEdit, recordFileWrite } from './fileStateCache';
 import { trackToolStart, trackToolEnd, getStatusLine } from './activityTracker';
 import { buildProcessTools } from './processTools';
+import { createLoopDetector } from './toolLoopDetection';
+import { buildAskUserQuestionTool } from './askUserQuestion';
 import { buildContextTools } from './contextTools';
 import { buildDeferredToolSet, recordToolUsage } from './contextEngine';
 import { checkAutoDreamTrigger } from './dreamingEngine';
@@ -252,7 +254,7 @@ function ensureWindowsChildProcessHideInitScript(): string | null {
   }
 
   try {
-    const initDir = path.join(app.getPath('userData'), 'cowork', 'bin');
+    const initDir = path.join(getUserDataPath(), 'cowork', 'bin');
     fs.mkdirSync(initDir, { recursive: true });
     const initScriptPath = path.join(initDir, WINDOWS_HIDE_INIT_SCRIPT_NAME);
 
@@ -1154,11 +1156,11 @@ export class CoworkRunner extends EventEmitter {
     }
     pushCandidate(getSkillsRoot());
 
-    if (app.isPackaged) {
-      pushCandidate(path.join(process.resourcesPath, 'SKILLs'));
-      pushCandidate(path.join(process.resourcesPath, 'skills'));
-      pushCandidate(path.join(app.getAppPath(), 'SKILLs'));
-      pushCandidate(path.join(app.getAppPath(), 'skills'));
+    if (isPackaged()) {
+      pushCandidate(path.join(getResourcesPath(), 'SKILLs'));
+      pushCandidate(path.join(getResourcesPath(), 'skills'));
+      pushCandidate(path.join(getAppPath(), 'SKILLs'));
+      pushCandidate(path.join(getAppPath(), 'skills'));
     }
 
     pushCandidate(path.join(cwdMapping.hostPath, 'SKILLs'));
@@ -3388,7 +3390,7 @@ export class CoworkRunner extends EventEmitter {
     let stderrTail = '';
 
     // Log MCP-relevant environment for debugging
-    coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: isPackaged=${app.isPackaged}, platform=${process.platform}, arch=${process.arch}`);
+    coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: isPackaged=${isPackaged()}, platform=${process.platform}, arch=${process.arch}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: NOOBCLAW_ELECTRON_PATH=${envVars.NOOBCLAW_ELECTRON_PATH || '(not set)'}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: ELECTRON_RUN_AS_NODE=${envVars.ELECTRON_RUN_AS_NODE || '(not set)'}`);
     coworkLog('INFO', 'runClaudeCodeLocal', `MCP env: NODE_PATH=${envVars.NODE_PATH || '(not set)'}`);
@@ -3407,7 +3409,7 @@ export class CoworkRunner extends EventEmitter {
     // child_process.fork() uses process.execPath by default, so without
     // ELECTRON_RUN_AS_NODE the SDK would launch another Electron app instance
     // instead of running cli.js as a Node script, causing exit code 1.
-    if (app.isPackaged) {
+    if (isPackaged()) {
       envVars.ELECTRON_RUN_AS_NODE = '1';
     }
 
@@ -3473,8 +3475,8 @@ export class CoworkRunner extends EventEmitter {
         cwd,
         claudeCodePath,
         claudeCodePathExists: fs.existsSync(claudeCodePath),
-        isPackaged: app.isPackaged,
-        resourcesPath: process.resourcesPath,
+        isPackaged: isPackaged(),
+        resourcesPath: getResourcesPath(),
         processExecPath: process.execPath,
         platform: process.platform,
         arch: process.arch,
@@ -3650,8 +3652,9 @@ export class CoworkRunner extends EventEmitter {
             // Check if current model supports vision (image input)
             const apiConfig = getCurrentApiConfig();
             const modelId = (apiConfig?.model || '').toLowerCase();
-            // Default to vision-enabled; only exclude known text-only models
-            const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r/i;
+            // Default to vision-enabled; exclude known text-only models
+            // Note: qwen3.5-plus HAS vision, but image format may not work through Anthropic-compat proxy
+            const textOnlyModels = /gpt-3\.5|gpt-4-(?!o|turbo|vision)|llama|mistral|phi-|command-r|deepseek-(?!vl)|glm|minimax|step|doubao|mimo/i;
             const supportsVision = !textOnlyModels.test(modelId);
             if (supportsVision) {
               return { content: [{ type: 'image', data: data.image, mimeType: 'image/jpeg' }] } as any;
@@ -3717,6 +3720,16 @@ export class CoworkRunner extends EventEmitter {
           {},
           async () => {
             if (!getBrowserBridgeStatus().connected) {
+              // macOS fallback: use AppleScript to get page text
+              if (process.platform === 'darwin') {
+                try {
+                  const macBrowser = require('./macBrowserBridge');
+                  if (macBrowser.isAvailable()) {
+                    const text = macBrowser.getPageText();
+                    if (text) return { content: [{ type: 'text', text }] } as any;
+                  }
+                } catch {}
+              }
               return browserNotConnectedResponse();
             }
             try {
@@ -3768,6 +3781,18 @@ export class CoworkRunner extends EventEmitter {
           { url: z.string() },
           async (args: { url: string }) => {
             if (!getBrowserBridgeStatus().connected) {
+              // macOS: use AppleScript to control browser natively (no extension needed)
+              if (process.platform === 'darwin') {
+                try {
+                  const macBrowser = require('./macBrowserBridge');
+                  if (macBrowser.isAvailable()) {
+                    const result = macBrowser.navigate(args.url || 'https://www.google.com');
+                    if (result.ok) {
+                      return { content: [{ type: 'text', text: `${result.message}. Using macOS native browser control (AppleScript). You can use browser_get_text to read page content, or desktop_screenshot to see the page.` }] } as any;
+                    }
+                  }
+                } catch {}
+              }
               // Show install prompt (only once per session)
               if (!extensionPromptShown) {
                 extensionPromptShown = true;
@@ -3775,8 +3800,7 @@ export class CoworkRunner extends EventEmitter {
               }
               // Fallback: open URL in default browser via shell
               try {
-                const { shell } = await import('electron');
-                await shell.openExternal(args.url || 'https://www.google.com');
+                await openExternal(args.url || 'https://www.google.com');
                 return { content: [{ type: 'text', text: `Opened ${args.url} in default browser. Note: browser extension is not connected, so advanced operations (click, type, screenshot) are not available. To enable full browser automation, install the NoobClaw Browser Assistant extension.` }] } as any;
               } catch (e: any) {
                 return { content: [{ type: 'text', text: `Failed to open browser: ${e.message}` }], isError: true } as any;
@@ -4174,7 +4198,16 @@ export class CoworkRunner extends EventEmitter {
       const processToolDefs = buildProcessTools();
       const extraToolDefs = buildExtraTools();
       const lspToolDefs = buildLSPTools();
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs);
+      // AskUserQuestion tool — lets AI ask structured multiple-choice questions
+      const askUserTool = buildAskUserQuestionTool((sid, questions) => {
+        this.emit('permissionRequest', sid, {
+          requestId: `ask-${Date.now()}`,
+          type: 'ask_user_question',
+          questions,
+        });
+      });
+
+      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs, askUserTool);
 
       // Context engine: apply deferred tool loading if too many tools
       // Set user message for intent-based tool selection (reduces token usage)
@@ -4329,6 +4362,11 @@ export class CoworkRunner extends EventEmitter {
       // Late-bind canUseTool for task tools (they reference it via closure)
       boundCanUseTool = canUseToolFn;
 
+      // Token budget tracker — detect diminishing returns and overspending
+      const budgetTracker = createBudgetTracker(200000); // 200K token budget
+      // Tool loop detector — prevents AI from burning tokens on repetitive patterns
+      const loopDetector = createLoopDetector();
+
       // Auto-detect effort level based on message complexity
       const modelCaps = getModelCapability(queryApiConfig.model);
       const effort = detectEffortLevel(prompt, allTools.length > 0);
@@ -4348,6 +4386,25 @@ export class CoworkRunner extends EventEmitter {
         abortSignal: abortController.signal,
         canUseTool: canUseToolFn,
         onToolResult: (result) => {
+          // Track file operations for intelligent caching + magic docs
+          const toolContent = result.result.content.map((c: any) => c.text || '').join('\n');
+          if (result.toolName === 'Read' && result.toolUseId) {
+            try { recordFileRead(String((result as any).input?.file_path || ''), toolContent); } catch {}
+            // Detect magic docs in read content
+            try {
+              const { onFileRead } = require('./magicDocs');
+              onFileRead(String((result as any).input?.file_path || ''), toolContent);
+            } catch {}
+          } else if ((result.toolName === 'Write' || result.toolName === 'Edit') && result.toolUseId) {
+            try { recordFileWrite(String((result as any).input?.file_path || ''), toolContent); } catch {}
+          }
+
+          // Track tool activity for UI progress display
+          try { trackToolEnd(result.toolUseId); } catch {}
+
+          // Record for loop detection
+          try { loopDetector.recordCall(result.toolName, (result as any).input || {}, toolContent); } catch {}
+
           // Emit tool results for real-time UI updates
           const content = result.result.content.map(c => c.text).join('\n');
           const message = this.store.addMessage(sessionId, {
@@ -4370,6 +4427,32 @@ export class CoworkRunner extends EventEmitter {
           break;
         }
         eventCount++;
+
+        // Check for tool loops — stop AI from burning tokens on repetitive patterns
+        if (event.type === 'tool_result') {
+          const loopCheck = loopDetector.checkLoop();
+          if (loopCheck.level === 'circuit_breaker' || loopCheck.level === 'critical') {
+            coworkLog('WARN', 'runClaudeCodeLocal', `Tool loop detected: ${loopCheck.message}`);
+            this.store.addMessage(sessionId, {
+              type: 'system',
+              content: `⚠️ Tool loop detected (${loopCheck.pattern}): ${loopCheck.message}. Stopping to avoid wasting resources.`,
+            });
+            break;
+          }
+        }
+
+        // Track token budget — stop if overspending or diminishing returns
+        if (event.type === 'assistant' && (event as any).usage) {
+          const { checkTokenBudget, extractTurnTokens } = require('./tokenBudget');
+          const turnTokens = extractTurnTokens((event as any).usage);
+          budgetTracker.continuationCount++;
+          const decision = checkTokenBudget(budgetTracker, turnTokens);
+          if (decision.action === 'stop') {
+            coworkLog('WARN', 'runClaudeCodeLocal', `Budget: stopping — ${decision.reason} (${decision.pct}%)`);
+            break;
+          }
+        }
+
         coworkLog('INFO', 'runClaudeCodeLocal', `Event #${eventCount}: type=${event.type}`);
         this.handleQueryEvent(sessionId, activeSession, event);
       }
@@ -5686,6 +5769,9 @@ export class CoworkRunner extends EventEmitter {
       }
 
       case 'tool_use': {
+        // Track activity for UI status line
+        try { trackToolStart(event.toolName, event.toolUseId, event.toolInput as Record<string, unknown>); } catch {}
+
         const message = this.store.addMessage(sessionId, {
           type: 'tool_use',
           content: `Using tool: ${event.toolName}`,

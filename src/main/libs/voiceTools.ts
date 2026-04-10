@@ -6,7 +6,15 @@
 import { z } from 'zod';
 import { buildTool, type ToolDefinition } from './toolSystem';
 import { getActiveSTT, getActiveTTS, listProviders, setActiveSTT, setActiveTTS } from './voiceProviderRegistry';
-import { BrowserWindow } from 'electron';
+import { isElectronMode } from './platformAdapter';
+
+// Conditionally load Electron modules — unavailable in sidecar mode
+let BrowserWindow: any = null;
+try {
+  if (isElectronMode()) {
+    BrowserWindow = require('electron').BrowserWindow;
+  }
+} catch {}
 import { coworkLog } from './coworkLogger';
 
 // ── IPC bridge for renderer-side Web Speech API ──

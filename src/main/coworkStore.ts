@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { getAppPath } from './libs/platformAdapter';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -442,14 +442,28 @@ const getDefaultSystemPrompt = (): string => {
     return cachedDefaultSystemPrompt;
   }
 
-  try {
-    const promptPath = path.join(app.getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md');
-    cachedDefaultSystemPrompt = fs.readFileSync(promptPath, 'utf-8');
-  } catch (error) {
-    console.warn('Failed to load default system prompt:', error);
-    cachedDefaultSystemPrompt = '';
+  const candidates = [
+    path.join(getAppPath(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    // Tauri: in resources/ subdirectory next to exe (prepared by prepare-tauri-resources.js)
+    path.join(path.dirname(process.execPath), 'resources', 'AGENT_SYSTEM_PROMPT.md'),
+    // Sidecar: relative to executable
+    path.join(path.dirname(process.execPath), 'AGENT_SYSTEM_PROMPT.md'),
+    path.join(path.dirname(process.execPath), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+    // CWD fallback
+    path.join(process.cwd(), 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md'),
+  ];
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        cachedDefaultSystemPrompt = fs.readFileSync(p, 'utf-8');
+        return cachedDefaultSystemPrompt;
+      }
+    } catch {}
   }
 
+  console.warn('Failed to load default system prompt: not found in any candidate path');
+  cachedDefaultSystemPrompt = '';
   return cachedDefaultSystemPrompt;
 };
 

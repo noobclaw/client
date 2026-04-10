@@ -1,0 +1,526 @@
+/**
+ * Tauri Shim — provides window.electron compatible API using HTTP + SSE.
+ * When running in Tauri, this shim replaces Electron's preload bridge.
+ * Frontend code continues using window.electron.* without any changes.
+ *
+ * IMPORTANT: All return formats MUST match the Electron IPC handlers in main.ts.
+ */
+
+const SIDECAR_PORT = 18800;
+const BASE_URL = `http://127.0.0.1:${SIDECAR_PORT}`;
+
+// ── Detect runtime mode ──
+
+export function isTauriMode(): boolean {
+  return !!(window as any).__TAURI__;
+}
+
+// ── Install fetch proxy IMMEDIATELY on module load (before any other code runs) ──
+// This MUST happen at the top level, not inside initTauriShim(), because
+// other modules (noobclawAuth) make fetch() calls during their own import/init
+// which happens before initTauriShim() is called.
+if (isTauriMode()) {
+  const _origFetch = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : (input as Request).url;
+    const isStaticResource = /\.(svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|eot|css|js)(\?|$)/i.test(url);
+    const isApiCall = url.startsWith('http') && !url.includes('127.0.0.1') && !url.includes('localhost') && !isStaticResource;
+
+    if (isApiCall) {
+      try {
+        const headers: Record<string, string> = {};
+        if (init?.headers) {
+          if (init.headers instanceof Headers) {
+            init.headers.forEach((v, k) => { headers[k] = v; });
+          } else if (Array.isArray(init.headers)) {
+            init.headers.forEach(([k, v]) => { headers[k] = v; });
+          } else {
+            Object.assign(headers, init.headers);
+          }
+        }
+        let bodyStr: string | undefined;
+        if (init?.body) {
+          if (typeof init.body === 'string') bodyStr = init.body;
+          else { try { bodyStr = JSON.stringify(init.body); } catch { bodyStr = String(init.body); } }
+        }
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        const proxyRes = await _origFetch(`${BASE_URL}/api/proxy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+          body: JSON.stringify({ url, method: init?.method || 'GET', headers, body: bodyStr }),
+        });
+        clearTimeout(timeout);
+        const data = await proxyRes.json();
+        let contentType = 'application/json';
+        if (data.body && typeof data.body === 'string') {
+          if (data.body.startsWith('<')) contentType = 'text/html';
+          else if (!data.body.startsWith('{') && !data.body.startsWith('[')) contentType = 'text/plain';
+        }
+        return new Response(data.body ?? '', {
+          status: data.status || 200,
+          statusText: data.ok ? 'OK' : 'Error',
+          headers: { 'Content-Type': contentType },
+        });
+      } catch (e) {
+        console.warn('[TauriShim] Proxy fetch failed for:', url, e);
+        try { return await _origFetch(input, init); } catch {}
+        return new Response(JSON.stringify({ error: 'Proxy failed', url }), { status: 502, headers: { 'Content-Type': 'application/json' } });
+      }
+    }
+    return _origFetch(input, init);
+  };
+}
+
+// ── SSE Event Source for streaming ──
+
+let eventSource: EventSource | null = null;
+const eventListeners = new Map<string, Set<Function>>();
+
+function ensureSSE(): void {
+  if (eventSource) return;
+  eventSource = new EventSource(`${BASE_URL}/api/stream`);
+
+  // Generic message handler dispatches ALL event types (not just pre-registered ones)
+  // This handles dynamic event types like api:stream:${id}:data
+  eventSource.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      const listeners = eventListeners.get('message');
+      if (listeners) for (const fn of listeners) fn(data);
+    } catch {}
+  };
+
+  // Override addEventListener to also register on EventSource for named events
+  // The sidecar sends named events like "event: cowork:stream:message\ndata: {...}\n\n"
+  // We need to register listeners dynamically as they're added
+}
+
+function onSSE(event: string, callback: Function): () => void {
+  ensureSSE();
+  if (!eventListeners.has(event)) {
+    eventListeners.set(event, new Set());
+    // Register on EventSource for this specific event type
+    if (eventSource) {
+      eventSource.addEventListener(event, (e: MessageEvent) => {
+        try {
+          const data = JSON.parse(e.data);
+          const listeners = eventListeners.get(event);
+          if (listeners) for (const fn of listeners) fn(data);
+        } catch {}
+      });
+    }
+  }
+  eventListeners.get(event)!.add(callback);
+  return () => eventListeners.get(event)?.delete(callback);
+}
+
+// ── HTTP helpers ──
+
+async function apiGet(path: string): Promise<any> {
+  try {
+    const res = await fetch(`${BASE_URL}${path}`);
+    return res.json();
+  } catch (e) {
+    console.warn(`[TauriShim] GET ${path} failed:`, e);
+    return null;
+  }
+}
+
+async function apiPost(path: string, body?: any): Promise<any> {
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return res.json();
+  } catch (e) {
+    console.warn(`[TauriShim] POST ${path} failed:`, e);
+    return null;
+  }
+}
+
+// Generic IPC invoke via HTTP
+async function ipcInvoke(channel: string, ...args: any[]): Promise<any> {
+  return apiPost('/api/ipc/invoke', { channel, args });
+}
+
+// ── Tauri Dialog helpers ──
+
+async function tauriDialogOpen(opts: any): Promise<string | string[] | null> {
+  try {
+    const tauri = (window as any).__TAURI__;
+    if (tauri?.dialog?.open) return await tauri.dialog.open(opts);
+  } catch (e) { console.warn('[TauriShim] dialog.open failed:', e); }
+  return null;
+}
+
+// ── Build the shim ──
+// Every method's return format MUST match the corresponding ipcMain.handle in main.ts
+
+export function createTauriElectronShim(): typeof window.electron {
+  return {
+    platform: navigator.platform.includes('Win') ? 'win32'
+      : navigator.platform.includes('Mac') ? 'darwin' : 'linux',
+    arch: navigator.userAgent.includes('arm') ? 'arm64' : 'x64',
+
+    // ── Store (KV) ──
+    store: {
+      get: (key: string) => ipcInvoke('store:get', key),
+      set: (key: string, value: any) => ipcInvoke('store:set', key, value),
+      remove: (key: string) => ipcInvoke('store:remove', key),
+    },
+
+    // ── Skills ──
+    skills: {
+      list: () => ipcInvoke('skills:list').then(r => r ?? { success: true, skills: [] }),
+      setEnabled: (opts: any) => ipcInvoke('skills:setEnabled', opts).then(r => r ?? { success: true }),
+      delete: (id: string) => ipcInvoke('skills:delete', id).then(r => r ?? { success: true }),
+      download: (source: string, meta?: any) => ipcInvoke('skills:download', source, meta).then(r => r ?? { success: false, error: 'Not available in Tauri mode' }),
+      getRoot: () => ipcInvoke('skills:getRoot').then(r => r ?? ''),
+      autoRoutingPrompt: () => ipcInvoke('skills:autoRoutingPrompt').then(r => r ?? { success: true, prompt: '' }),
+      getConfig: (id: string) => ipcInvoke('skills:getConfig', id).then(r => r ?? {}),
+      setConfig: (id: string, config: any) => ipcInvoke('skills:setConfig', id, config).then(r => r ?? { success: true }),
+      testEmailConnectivity: (id: string, config: any) => ipcInvoke('skills:testEmailConnectivity', id, config).then(r => r ?? { success: false }),
+      onChanged: (cb: () => void) => onSSE('skills:changed', cb),
+    },
+
+    // ── MCP ──
+    mcp: {
+      list: () => ipcInvoke('mcp:list').then(r => r ?? []),
+      create: (data: any) => ipcInvoke('mcp:create', data).then(r => r ?? { success: true }),
+      update: (id: string, data: any) => ipcInvoke('mcp:update', id, data).then(r => r ?? { success: true }),
+      delete: (id: string) => ipcInvoke('mcp:delete', id).then(r => r ?? { success: true }),
+      setEnabled: (opts: any) => ipcInvoke('mcp:setEnabled', opts).then(r => r ?? { success: true }),
+      fetchMarketplace: () => ipcInvoke('mcp:fetchMarketplace').then(r => r ?? []),
+    },
+
+    // ── Permissions ──
+    permissions: {
+      checkCalendar: () => Promise.resolve({ status: 'denied' }),
+      requestCalendar: () => Promise.resolve({ status: 'denied' }),
+    },
+
+    // ── API proxy (for Settings provider validation) ──
+    api: {
+      fetch: (opts: any) => ipcInvoke('api:fetch', opts).then(r => r ?? { ok: false, status: 0, body: '' }),
+      stream: (opts: any) => ipcInvoke('api:stream', opts),
+      cancelStream: (id: string) => ipcInvoke('api:stream:cancel', id),
+      onStreamData: (id: string, cb: (chunk: string) => void) => onSSE(`api:stream:${id}:data`, cb),
+      onStreamDone: (id: string, cb: () => void) => onSSE(`api:stream:${id}:done`, cb),
+      onStreamError: (id: string, cb: (err: string) => void) => onSSE(`api:stream:${id}:error`, cb),
+      onStreamAbort: (id: string, cb: () => void) => onSSE(`api:stream:${id}:abort`, cb),
+    },
+
+    // ── IPC Renderer ──
+    ipcRenderer: {
+      send: (channel: string, ...args: any[]) => { apiPost('/api/ipc/send', { channel, args }); },
+      on: (channel: string, func: (...args: any[]) => void) => onSSE(channel, func),
+    },
+
+    // ── Window controls (Tauri uses native titlebar) ──
+    window: {
+      minimize: () => {},
+      toggleMaximize: () => {},
+      close: () => { try { (window as any).__TAURI__?.window?.getCurrent?.()?.close?.(); } catch {} },
+      isMaximized: () => Promise.resolve(false),
+      showSystemMenu: () => {},
+      onStateChanged: (cb: any) => onSSE('window:state-changed', cb),
+    },
+
+    // ── API Config ──
+    getApiConfig: () => apiGet('/api/apiConfig'),
+    checkApiConfig: (opts?: any) => apiPost('/api/apiConfig/check', opts || {}),
+    saveApiConfig: (config: any) => apiPost('/api/apiConfig/save', config),
+    generateSessionTitle: (input: string | null) => ipcInvoke('generate-session-title', input).then(r => r ?? null),
+    getRecentCwds: (limit?: number) => ipcInvoke('get-recent-cwds', limit).then(r => r ?? []),
+
+    // ── Cowork ──
+    cowork: {
+      startSession: (opts: any) => apiPost('/api/session/start', opts),
+      continueSession: (opts: any) => apiPost('/api/session/continue', opts),
+      stopSession: (id: string) => apiPost('/api/session/stop', { sessionId: id }),
+      deleteSession: (id: string) => apiPost('/api/session/delete', { sessionId: id }),
+      deleteSessions: (ids: string[]) => apiPost('/api/session/deleteBatch', { sessionIds: ids }),
+      setSessionPinned: (opts: any) => apiPost('/api/session/pin', opts),
+      renameSession: (opts: any) => apiPost('/api/session/rename', opts),
+      getSession: (id: string) => apiGet(`/api/session/${id}`),
+      listSessions: () => apiGet('/api/sessions'),
+      exportResultImage: () => Promise.resolve({ success: false }),
+      captureImageChunk: () => Promise.resolve({ success: false }),
+      saveResultImage: () => Promise.resolve({ success: false }),
+
+      respondToPermission: (opts: any) => apiPost('/api/permission/respond', opts),
+
+      getConfig: () => apiGet('/api/config'),
+      setConfig: (config: any) => apiPost('/api/config', config),
+
+      listMemoryEntries: (input: any) => apiPost('/api/memory/list', input),
+      createMemoryEntry: (input: any) => apiPost('/api/memory/create', input),
+      updateMemoryEntry: (input: any) => apiPost('/api/memory/update', input),
+      deleteMemoryEntry: (input: any) => apiPost('/api/memory/delete', input),
+      getMemoryStats: () => apiGet('/api/memory/stats'),
+
+      getSandboxStatus: () => apiGet('/api/sandbox/status'),
+      installSandbox: () => apiPost('/api/sandbox/install'),
+      onSandboxDownloadProgress: (cb: any) => onSSE('cowork:sandbox:downloadProgress', cb),
+
+      onStreamMessage: (cb: any) => onSSE('cowork:stream:message', cb),
+      onStreamMessageUpdate: (cb: any) => onSSE('cowork:stream:messageUpdate', cb),
+      onStreamPermission: (cb: any) => onSSE('cowork:stream:permission', cb),
+      onStreamComplete: (cb: any) => onSSE('cowork:stream:complete', cb),
+      onStreamError: (cb: any) => onSSE('cowork:stream:error', cb),
+    },
+
+    // ── Dialog (Tauri native) ──
+    dialog: {
+      selectDirectory: async () => {
+        const selected = await tauriDialogOpen({ directory: true, multiple: false });
+        if (selected) return { success: true, path: typeof selected === 'string' ? selected : selected[0] };
+        return { success: true, path: null };
+      },
+      selectFile: async (opts?: any) => {
+        const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
+        const selected = await tauriDialogOpen({ directory: false, multiple: false, filters });
+        if (selected) return { success: true, path: typeof selected === 'string' ? selected : selected[0] };
+        return { success: true, path: null };
+      },
+      selectFiles: async (opts?: any) => {
+        const filters = opts?.filters?.map((f: any) => ({ name: f.name, extensions: f.extensions }));
+        const selected = await tauriDialogOpen({ directory: false, multiple: true, filters });
+        if (selected) {
+          const paths = Array.isArray(selected) ? selected : [selected];
+          return { success: true, filePaths: paths };
+        }
+        return { success: true, filePaths: [] };
+      },
+      saveInlineFile: () => Promise.resolve({ success: false, error: 'Not available in Tauri mode' }),
+      readFileAsDataUrl: (filePath: string) => ipcInvoke('dialog:readFileAsDataUrl', filePath).then(r => r ?? { success: false }),
+    },
+
+    // ── Shell ──
+    shell: {
+      openPath: (p: string) => ipcInvoke('shell:openPath', p),
+      showItemInFolder: (p: string) => ipcInvoke('shell:showItemInFolder', p),
+      openExternal: async (url: string) => {
+        try {
+          const tauri = (window as any).__TAURI__;
+          if (tauri?.opener?.openUrl) { await tauri.opener.openUrl(url); return; }
+        } catch {}
+        window.open(url, '_blank');
+      },
+    },
+
+    // ── Auto Launch (not available in Tauri, return correct formats) ──
+    autoLaunch: {
+      get: () => Promise.resolve({ enabled: false }),
+      set: (_enabled: boolean) => Promise.resolve({ success: true }),
+    },
+
+    // ── App Info ──
+    appInfo: {
+      getVersion: () => apiGet('/api/version').then((r: any) => r?.version || '1.0.0'),
+      getSystemLocale: () => Promise.resolve(navigator.language),
+    },
+
+    // ── App Update (stub — Tauri has its own update mechanism) ──
+    appUpdate: {
+      download: () => Promise.resolve({ success: false }),
+      cancelDownload: () => Promise.resolve(),
+      install: () => Promise.resolve({ success: false }),
+      onDownloadProgress: () => () => {},
+    },
+
+    // ── Log ──
+    log: {
+      getPath: () => ipcInvoke('log:getPath'),
+      openFolder: () => ipcInvoke('log:openFolder'),
+      exportZip: () => Promise.resolve({ success: false }),
+    },
+
+    // ── IM Gateway ──
+    im: {
+      getConfig: () => ipcInvoke('im:config:get').then(r => r ?? {}),
+      setConfig: (config: any) => ipcInvoke('im:config:set', config).then(r => r ?? { success: true }),
+      startGateway: (platform: string) => ipcInvoke('im:gateway:start', platform).then(r => r ?? { success: false }),
+      stopGateway: (platform: string) => ipcInvoke('im:gateway:stop', platform).then(r => r ?? { success: true }),
+      testGateway: (platform: string, override?: any) => ipcInvoke('im:gateway:test', platform, override).then(r => r ?? { success: false }),
+      getStatus: () => ipcInvoke('im:status:get').then(r => r ?? {}),
+      onStatusChange: (cb: any) => onSSE('im:status:change', cb),
+      onMessageReceived: (cb: any) => onSSE('im:message:received', cb),
+    },
+
+    // ── Scheduled Tasks ──
+    scheduledTasks: {
+      list: () => ipcInvoke('scheduledTask:list').then(r => r ?? []),
+      get: (id: string) => ipcInvoke('scheduledTask:get', id).then(r => r ?? null),
+      create: (input: any) => ipcInvoke('scheduledTask:create', input).then(r => r ?? { success: false }),
+      update: (id: string, input: any) => ipcInvoke('scheduledTask:update', id, input).then(r => r ?? { success: false }),
+      delete: (id: string) => ipcInvoke('scheduledTask:delete', id).then(r => r ?? { success: true }),
+      toggle: (id: string, enabled: boolean) => ipcInvoke('scheduledTask:toggle', id, enabled).then(r => r ?? { success: true }),
+      runManually: (id: string) => ipcInvoke('scheduledTask:runManually', id).then(r => r ?? { success: false }),
+      stop: (id: string) => ipcInvoke('scheduledTask:stop', id).then(r => r ?? { success: true }),
+      listRuns: (taskId: string, limit?: number, offset?: number) =>
+        ipcInvoke('scheduledTask:listRuns', taskId, limit, offset).then(r => r ?? []),
+      countRuns: (taskId: string) => ipcInvoke('scheduledTask:countRuns', taskId).then(r => r ?? 0),
+      listAllRuns: (limit?: number, offset?: number) =>
+        ipcInvoke('scheduledTask:listAllRuns', limit, offset).then(r => r ?? []),
+      onStatusUpdate: (cb: any) => onSSE('scheduledTask:statusUpdate', cb),
+      onRunUpdate: (cb: any) => onSSE('scheduledTask:runUpdate', cb),
+    },
+
+    // ── Network Status ──
+    networkStatus: {
+      send: (status: string) => { apiPost('/api/ipc/send', { channel: 'network:status-change', args: [status] }); },
+    },
+
+    // ── Auth ──
+    onAuthCallback: (cb: (token: string, wallet: string) => void) =>
+      onSSE('auth:callback', (data: any) => cb(data?.token, data?.wallet)),
+
+    // ── NoobClaw Platform ──
+    noobclaw: {
+      setAuthToken: (token: string | null) => ipcInvoke('noobclaw:set-auth-token', token),
+      getMacAddress: () => ipcInvoke('noobclaw:get-mac-address').then(r => r ?? null),
+      cacheAvatar: (url: string) => ipcInvoke('noobclaw:cache-avatar', url).then(r => r ?? { success: false, localPath: null }),
+      getCachedAvatar: () => ipcInvoke('noobclaw:get-cached-avatar').then(r => r ?? null),
+      onSsePayload: (cb: any) => onSSE('noobclaw:sse-payload', cb),
+    },
+  } as any;
+}
+
+// ── Extension Install Modal (3 options like Electron version) ──
+
+function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'local' | 'cancel'> {
+  return new Promise((resolve) => {
+    const isZh = navigator.language.startsWith('zh');
+
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:999999;display:flex;align-items:center;justify-content:center;';
+
+    const modal = document.createElement('div');
+    modal.style.cssText = 'background:#1a1a2e;border:1px solid #333;border-radius:12px;padding:24px;max-width:480px;width:90%;color:#e8e8ff;font-family:system-ui;';
+
+    modal.innerHTML = `
+      <h2 style="margin:0 0 8px;font-size:18px;">${isZh ? '🦀 NoobClaw 浏览器助手' : '🦀 NoobClaw Browser Assistant'}</h2>
+      <p style="margin:0 0 16px;font-size:14px;color:#a5a5ff;">${isZh ? '启用 AI 浏览器自动化' : 'Enable AI Browser Automation'}</p>
+      <p style="margin:0 0 20px;font-size:13px;line-height:1.6;color:#ccc;">${isZh
+        ? '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览和数据采集\n• 所有数据留在本地，不会发送到外部服务器'
+        : 'Install the NoobClaw Browser Assistant to let AI control your browser.\n\n• AI operates like a real person — no bot detection\n• Works with your logged-in accounts\n• 24/7 automated browsing and data collection\n• All data stays local'
+      }</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button id="nc-ext-store" style="padding:10px 16px;border-radius:8px;border:none;background:#6366f1;color:white;font-size:14px;cursor:pointer;font-weight:500;">${isZh ? '从 Chrome 商店安装' : 'Install from Chrome Store'}</button>
+        <button id="nc-ext-local" style="padding:10px 16px;border-radius:8px;border:1px solid #555;background:transparent;color:#e8e8ff;font-size:14px;cursor:pointer;">${isZh ? '安装本地扩展（国内推荐）' : 'Install Local Extension'}</button>
+        <button id="nc-ext-cancel" style="padding:10px 16px;border-radius:8px;border:none;background:transparent;color:#888;font-size:13px;cursor:pointer;">${isZh ? '暂不安装' : 'Not Now'}</button>
+      </div>
+    `;
+
+    // Replace \n with <br> in description
+    const desc = modal.querySelector('p:nth-of-type(2)');
+    if (desc) desc.innerHTML = desc.innerHTML.replace(/\n/g, '<br>');
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    const cleanup = () => { try { document.body.removeChild(overlay); } catch {} };
+
+    modal.querySelector('#nc-ext-store')!.addEventListener('click', () => {
+      cleanup();
+      // Open Chrome Store
+      try {
+        const tauri = (window as any).__TAURI__;
+        if (tauri?.opener?.openUrl) tauri.opener.openUrl(storeUrl);
+        else window.open(storeUrl, '_blank');
+      } catch { window.open(storeUrl, '_blank'); }
+      resolve('install');
+    });
+
+    modal.querySelector('#nc-ext-local')!.addEventListener('click', () => {
+      cleanup();
+      // Open local chrome-extension path guide
+      const isZhLang = navigator.language.startsWith('zh');
+      const guideMsg = isZhLang
+        ? '请按以下步骤操作：\n1. 打开 Chrome，地址栏输入 chrome://extensions/ 回车\n2. 打开右上角「开发者模式」\n3. 点击「加载已解压的扩展程序」\n4. 选择 NoobClaw 安装目录下的 chrome-extension 文件夹'
+        : 'Steps:\n1. Open Chrome, go to chrome://extensions/\n2. Enable "Developer mode"\n3. Click "Load unpacked"\n4. Select the chrome-extension folder in NoobClaw install directory';
+      alert(guideMsg);
+      resolve('install');
+    });
+
+    modal.querySelector('#nc-ext-cancel')!.addEventListener('click', () => {
+      cleanup();
+      resolve('cancel');
+    });
+
+    // Close on overlay click
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { cleanup(); resolve('cancel'); }
+    });
+  });
+}
+
+// ── Initialize shim ──
+
+export function initTauriShim(): void {
+  if (!isTauriMode()) return;
+
+  console.log('[TauriShim] Tauri detected, installing electron shim');
+  (window as any).electron = createTauriElectronShim();
+
+  // Intercept window.open — prevent new Tauri windows, open in system browser instead
+  const originalWindowOpen = window.open.bind(window);
+  window.open = (url?: string | URL, target?: string, features?: string): WindowProxy | null => {
+    if (url) {
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      // Open external URLs in system browser, not a new Tauri window
+      if (urlStr.startsWith('http')) {
+        try {
+          const tauri = (window as any).__TAURI__;
+          if (tauri?.opener?.openUrl) { tauri.opener.openUrl(urlStr); }
+          else { originalWindowOpen(urlStr, '_blank'); }
+        } catch { originalWindowOpen(urlStr, '_blank'); }
+        return null;
+      }
+    }
+    return originalWindowOpen(url, target, features);
+  };
+
+  // Disable right-click context menu in Tauri (production only)
+  document.addEventListener('contextmenu', (e) => {
+    // Allow right-click in text inputs/textareas for copy/paste
+    const target = e.target as HTMLElement;
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+    e.preventDefault();
+  });
+
+  // Fetch proxy is installed at module level (top of file) — no duplicate here.
+
+  // Listen for browser extension install prompt from sidecar
+  onSSE('extension:install-prompt', async (data: any) => {
+    const { requestId, storeUrl } = data || {};
+    if (!requestId) return;
+
+    // Show custom modal with 3 options (matching Electron version)
+    const choice = await showExtensionInstallModal(storeUrl);
+
+    // Send response back to sidecar
+    fetch(`${BASE_URL}/api/ipc/invoke`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ channel: 'extension:prompt-response', args: [requestId, choice] }),
+    }).catch(() => {});
+  });
+
+  // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
+  window.addEventListener('noobclaw-auth', ((e: CustomEvent) => {
+    const { token, wallet } = e.detail || {};
+    if (token && wallet) {
+      console.log('[TauriShim] Auth callback received from deep link');
+      const listeners = eventListeners.get('auth:callback');
+      if (listeners) {
+        for (const fn of listeners) fn({ token, wallet });
+      }
+    }
+  }) as EventListener);
+}

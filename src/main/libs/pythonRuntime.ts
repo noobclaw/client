@@ -1,4 +1,4 @@
-import { app } from 'electron';
+import { isPackaged, getAppPath, getUserDataPath, getResourcesPath } from './platformAdapter';
 import { spawnSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
@@ -193,10 +193,10 @@ function ensureRuntimeStateFile(runtimeRoot: string, sourceRoot: string): void {
 }
 
 function resolveBundledCandidates(): string[] {
-  if (app.isPackaged) {
+  if (isPackaged()) {
     return [
-      path.join(process.resourcesPath, PYTHON_RUNTIME_DIR_NAME),
-      path.join(app.getAppPath(), PYTHON_RUNTIME_DIR_NAME),
+      path.join(getResourcesPath(), PYTHON_RUNTIME_DIR_NAME),
+      path.join(getAppPath(), PYTHON_RUNTIME_DIR_NAME),
     ];
   }
 
@@ -204,7 +204,7 @@ function resolveBundledCandidates(): string[] {
   return [
     path.join(projectRoot, 'resources', PYTHON_RUNTIME_DIR_NAME),
     path.join(process.cwd(), 'resources', PYTHON_RUNTIME_DIR_NAME),
-    path.join(app.getAppPath(), 'resources', PYTHON_RUNTIME_DIR_NAME),
+    path.join(getAppPath(), 'resources', PYTHON_RUNTIME_DIR_NAME),
   ];
 }
 
@@ -219,7 +219,7 @@ export function getBundledPythonRoot(): string | null {
 }
 
 export function getUserPythonRoot(): string {
-  return path.join(app.getPath('userData'), 'runtimes', PYTHON_RUNTIME_DIR_NAME);
+  return path.join(getUserDataPath(), 'runtimes', PYTHON_RUNTIME_DIR_NAME);
 }
 
 export function appendPythonRuntimeToEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {

@@ -206,19 +206,86 @@ export function storeMemory(params: {
 export async function recallMemories(query: string, limit: number = 15): Promise<MemoryRecord[]> {
   if (!db) return [];
 
-  // Try semantic search first if embeddings available
-  if (isEmbeddingAvailable()) {
+  // Hybrid search: run vector + keyword in parallel, merge with MMR diversity re-ranking
+  const VECTOR_WEIGHT = 0.7;
+  const TEXT_WEIGHT = 0.3;
+
+  let vectorResults: Array<{ record: MemoryRecord; score: number }> = [];
+  let keywordResults: Array<{ record: MemoryRecord; score: number }> = [];
+
+  // Run searches in parallel
+  const vectorPromise = (async () => {
+    if (!isEmbeddingAvailable()) return;
     try {
       const queryEmbedding = await embed(query);
-      if (queryEmbedding) {
-        return recallMemoriesSemantic(queryEmbedding, limit, query);
-      }
-    } catch {
-      // Fallback to keyword search
+      if (!queryEmbedding) return;
+      const rows = queryAll(`SELECT * FROM memories WHERE embedding IS NOT NULL LIMIT 500`);
+      vectorResults = rows.map(row => {
+        const record = objToRecord(row);
+        let similarity = 0;
+        if (row.embedding) {
+          const stored = new Float32Array(new Uint8Array(row.embedding).buffer);
+          similarity = cosineSimilarity(queryEmbedding.vector, stored);
+        }
+        return { record, score: similarity };
+      }).filter(r => r.score > 0.1);
+    } catch {}
+  })();
+
+  // Keyword search (always available)
+  const keywords = query.toLowerCase().split(/\s+/).filter(k => k.length > 1);
+  const allRows = queryAll(`SELECT * FROM memories ORDER BY score DESC, last_accessed_at DESC LIMIT 200`);
+  keywordResults = allRows.map(row => {
+    const record = objToRecord(row);
+    const contentLower = record.content.toLowerCase();
+    const tagStr = record.tags.join(' ').toLowerCase();
+    let matchScore = 0;
+    for (const kw of keywords) {
+      if (contentLower.includes(kw)) matchScore += 1;
+      if (tagStr.includes(kw)) matchScore += 0.5;
+    }
+    return { record, score: matchScore > 0 ? matchScore / keywords.length : 0 };
+  }).filter(r => r.score > 0);
+
+  await vectorPromise;
+
+  // Merge: combine vector and keyword scores by memory ID
+  const mergedMap = new Map<string, { record: MemoryRecord; vectorScore: number; textScore: number }>();
+  for (const v of vectorResults) {
+    mergedMap.set(v.record.id, { record: v.record, vectorScore: v.score, textScore: 0 });
+  }
+  for (const k of keywordResults) {
+    const existing = mergedMap.get(k.record.id);
+    if (existing) {
+      existing.textScore = k.score;
+    } else {
+      mergedMap.set(k.record.id, { record: k.record, vectorScore: 0, textScore: k.score });
     }
   }
 
-  return recallMemoriesKeyword(query, limit);
+  // Compute hybrid score with temporal decay
+  const candidates = Array.from(mergedMap.values()).map(m => {
+    const hybridScore = VECTOR_WEIGHT * m.vectorScore + TEXT_WEIGHT * m.textScore;
+    const decayed = hybridScore * decayedScore(m.record);
+    return { id: m.record.id, text: m.record.content, score: decayed, record: m.record };
+  });
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  // Apply MMR diversity re-ranking (fetch 4x candidates for MMR to choose from)
+  const topCandidates = candidates.slice(0, limit * 4);
+  let results: MemoryRecord[];
+  try {
+    const { applyMMR } = require('./memoryMMR');
+    const mmrResults = applyMMR(topCandidates, limit, 0.7);
+    results = mmrResults.map((m: any) => candidates.find(c => c.id === m.id)!.record);
+  } catch {
+    // Fallback: no MMR, just top-N
+    results = topCandidates.slice(0, limit).map(c => c.record);
+  }
+
+  updateRecallCounts(results, query);
+  return results;
 }
 
 function recallMemoriesSemantic(queryEmbedding: EmbeddingResult, limit: number, queryText: string): MemoryRecord[] {

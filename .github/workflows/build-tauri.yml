@@ -40,13 +40,75 @@ jobs:
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 
+<<<<<<< HEAD
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
+=======
+      - name: Prepare Tauri resources
+        run: node scripts/prepare-tauri-resources.js
+
+      - name: Install Tauri CLI
+        run: npm install -g @tauri-apps/cli
+
+      - name: Import code signing certificate (macOS)
+        if: runner.os == 'macOS'
+        env:
+          APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
+          CSC_KEY: ${{ secrets.CSC_KEY }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          echo "$APPLE_CERT_BASE64" | base64 --decode > /tmp/cert.cer
+          echo "$CSC_KEY" > /tmp/key.pem
+          openssl x509 -inform DER -in /tmp/cert.cer -out /tmp/cert.pem
+          openssl pkcs12 -export -out /tmp/cert.p12 -inkey /tmp/key.pem -in /tmp/cert.pem -passout pass:"$CSC_KEY_PASSWORD"
+          security create-keychain -p actions build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p actions build.keychain
+          security import /tmp/cert.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k actions build.keychain
+          # Extract signing identity for Tauri
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain | grep -o '"[^"]*"' | head -1 | tr -d '"')
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
+          echo "Found signing identity: $IDENTITY"
+
+>>>>>>> tauri-migration
       - name: Build Tauri app
         run: npx tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
+<<<<<<< HEAD
+=======
+          # Tauri v2 uses these for automatic codesign + notarization
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Verify macOS codesign
+        if: runner.os == 'macOS'
+        run: |
+          APP_PATH=$(find src-tauri/target/${{ matrix.target }}/release/bundle -name "*.app" -type d | head -1)
+          if [ -n "$APP_PATH" ]; then
+            echo "Verifying: $APP_PATH"
+            codesign -dvvv "$APP_PATH" 2>&1 | head -10
+            # If Tauri didn't notarize, do it manually
+            if ! spctl --assess --type execute "$APP_PATH" 2>/dev/null; then
+              echo "App not notarized by Tauri, doing manual notarization..."
+              ZIP_PATH="${APP_PATH%.app}.zip"
+              ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "$ZIP_PATH"
+              xcrun notarytool submit "$ZIP_PATH" \
+                --apple-id "${{ secrets.APPLE_ID }}" \
+                --password "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}" \
+                --team-id "${{ secrets.APPLE_TEAM_ID }}" \
+                --wait --timeout 600 || echo "Notarization failed"
+              xcrun stapler staple "$APP_PATH" || echo "Stapler failed"
+              rm -f "$ZIP_PATH"
+            else
+              echo "App already notarized by Tauri"
+            fi
+          fi
+>>>>>>> tauri-migration
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
