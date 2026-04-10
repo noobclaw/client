@@ -1,5 +1,6 @@
 import http from 'http';
 import { isElectronMode } from './platformAdapter';
+import { coworkLog } from './coworkLogger';
 
 // Conditionally load Electron modules — unavailable in sidecar mode
 let BrowserWindow: any = null;
@@ -2076,6 +2077,12 @@ async function handleResponsesStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if (parsed._noobclaw) {
           const noobclaw = parsed._noobclaw as Record<string, unknown>;
+          const luckyBagHit = (noobclaw.luckyBag as any)?.hit === true;
+          coworkLog(
+            'INFO',
+            'cowork-proxy',
+            `_noobclaw received (responses): luckyBag=${luckyBagHit}, remainingTokens=${noobclaw.remainingTokens ?? 'n/a'}, broadcastAvailable=${!!_sseBroadcast}`
+          );
           // Electron: send via IPC
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);
@@ -2194,6 +2201,12 @@ async function handleChatCompletionsStreamResponse(
         // Forward _noobclaw payload (lucky bag, balance update) to renderer
         if ((parsed as Record<string, unknown>)._noobclaw) {
           const noobclaw = (parsed as Record<string, unknown>)._noobclaw as Record<string, unknown>;
+          const luckyBagHit = (noobclaw.luckyBag as any)?.hit === true;
+          coworkLog(
+            'INFO',
+            'cowork-proxy',
+            `_noobclaw received (chat.completions): luckyBag=${luckyBagHit}, remainingTokens=${noobclaw.remainingTokens ?? 'n/a'}, broadcastAvailable=${!!_sseBroadcast}`
+          );
           // Electron: send via IPC
           for (const win of (BrowserWindow?.getAllWindows?.() ?? [])) {
             win.webContents.send('noobclaw:sse-payload', noobclaw);

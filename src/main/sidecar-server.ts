@@ -831,13 +831,10 @@ const server = http.createServer(async (req, res) => {
           case 'noobclaw:set-auth-token': {
             const { setNoobClawAuthToken } = await import('./libs/claudeSettings');
             setNoobClawAuthToken?.(args[0]);
-            // Connect/disconnect NoobClaw SSE based on auth token
-            if (args[0]) {
-              connectNoobClawSSE(args[0]).catch(() => {});
-            } else if (noobclawSseConnection) {
-              try { noobclawSseConnection.destroy(); } catch {}
-              noobclawSseConnection = null;
-            }
+            // Previously this also started a dedicated SSE connection to
+            // https://api.noobclaw.com/api/sse, but that endpoint does not
+            // exist. Lucky bag / balance updates now come through the AI
+            // chat-completion stream via coworkOpenAICompatProxy.
             return writeJSON(res, 200, { success: true });
           }
           case 'noobclaw:get-mac-address': {
@@ -1012,7 +1009,22 @@ server.listen(PORT, '127.0.0.1', () => {
     if (runner) {
       coworkLog('INFO', 'sidecar-server', 'Runner pre-initialized successfully');
       // Pre-initialize IM, Skills, etc so they're ready when frontend loads
-      try { await getIMGatewayManagerInstance(); coworkLog('INFO', 'sidecar-server', 'IM pre-initialized'); } catch {}
+      try {
+        const img = await getIMGatewayManagerInstance();
+        coworkLog('INFO', 'sidecar-server', 'IM pre-initialized');
+        // Auto-reconnect IM gateways that were enabled before restart.
+        // Electron main.ts calls startAllEnabled() on startup; in Tauri mode
+        // we must do the equivalent here, otherwise a user who had Lark/Feishu
+        // enabled sees the toggle yellow ("enabled but not connected") forever
+        // after an app restart.
+        if (img?.startAllEnabled) {
+          img.startAllEnabled().then(() => {
+            coworkLog('INFO', 'sidecar-server', 'IM startAllEnabled complete');
+          }).catch((e: any) => {
+            coworkLog('WARN', 'sidecar-server', `IM startAllEnabled failed: ${e?.message || e}`);
+          });
+        }
+      } catch {}
       try { await getSkillManagerInstance(); coworkLog('INFO', 'sidecar-server', 'Skills pre-initialized'); } catch {}
       try { await getMcpStoreInstance(); } catch {}
       try { await getScheduledTaskStoreInstance(); } catch {}
@@ -1038,82 +1050,19 @@ function readBody(req: http.IncomingMessage): Promise<string> {
   });
 }
 
-// ── NoobClaw SSE Connection (for auth, wallet, balance updates) ──
-
-let noobclawSseConnection: any = null;
-
-async function connectNoobClawSSE(authToken: string): Promise<void> {
-  if (noobclawSseConnection) {
-    try { noobclawSseConnection.destroy?.(); } catch {}
-    noobclawSseConnection = null;
-  }
-
-  if (!authToken) return;
-
-  try {
-    const https = require('https');
-    const url = 'https://api.noobclaw.com/api/sse';
-
-    const req = https.get(url, {
-      headers: {
-        'Authorization': `Bearer ${authToken}`,
-        'Accept': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-      },
-    }, (res: any) => {
-      if (res.statusCode !== 200) {
-        coworkLog('WARN', 'noobclaw-sse', `SSE connection failed: ${res.statusCode}`);
-        return;
-      }
-
-      coworkLog('INFO', 'noobclaw-sse', 'Connected to NoobClaw SSE');
-      noobclawSseConnection = res;
-
-      let buffer = '';
-      res.on('data', (chunk: Buffer) => {
-        buffer += chunk.toString();
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        let eventData = '';
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            eventData += line.slice(6);
-          } else if (line === '' && eventData) {
-            try {
-              const payload = JSON.parse(eventData);
-              broadcastSSE('noobclaw:sse-payload', payload);
-            } catch {}
-            eventData = '';
-          }
-        }
-      });
-
-      res.on('end', () => {
-        coworkLog('INFO', 'noobclaw-sse', 'SSE connection closed, reconnecting in 5s...');
-        noobclawSseConnection = null;
-        setTimeout(() => {
-          const { getNoobClawAuthToken } = require('./libs/claudeSettings');
-          const token = getNoobClawAuthToken?.();
-          if (token) connectNoobClawSSE(token);
-        }, 5000);
-      });
-    });
-
-    req.on('error', (e: any) => {
-      coworkLog('WARN', 'noobclaw-sse', `SSE error: ${e.message}`);
-      noobclawSseConnection = null;
-    });
-  } catch (e) {
-    coworkLog('ERROR', 'noobclaw-sse', `Failed to connect: ${e}`);
-  }
-}
+// Note: A dedicated NoobClaw SSE connection (https://api.noobclaw.com/api/sse)
+// used to live here, but that endpoint does not exist on the backend and every
+// attempt returned 404 — see cowork.log for the flood of "SSE connection failed:
+// 404" warnings. Lucky bag + balance updates are injected INTO the AI chat
+// completion stream by backend/src/routes/ai.ts, and forwarded to the frontend
+// by coworkOpenAICompatProxy via _sseBroadcast('noobclaw:sse-payload', ...).
+// That path is the only one that actually works, so the dead reconnect loop
+// has been removed.
 
 // ── Graceful shutdown ──
 
 function shutdown() {
   coworkLog('INFO', 'sidecar-server', 'Shutting down...');
-  if (noobclawSseConnection) { try { noobclawSseConnection.destroy(); } catch {} }
   server.close();
   process.exit(0);
 }
