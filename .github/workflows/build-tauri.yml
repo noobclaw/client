@@ -40,11 +40,6 @@ jobs:
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 
-<<<<<<< HEAD
-      - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
-
-=======
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
 
@@ -72,13 +67,10 @@ jobs:
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
           echo "Found signing identity: $IDENTITY"
 
->>>>>>> tauri-migration
       - name: Build Tauri app
         run: npx tauri build --target ${{ matrix.target }}
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
-<<<<<<< HEAD
-=======
           # Tauri v2 uses these for automatic codesign + notarization
           APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -108,7 +100,6 @@ jobs:
               echo "App already notarized by Tauri"
             fi
           fi
->>>>>>> tauri-migration
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
