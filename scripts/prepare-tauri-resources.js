@@ -77,6 +77,35 @@ function main() {
     console.log('  sql-wasm.wasm: copied');
   }
 
+  // 5b. macOS native desktop addon (compiled by node-gyp before this step
+  //     runs; see .github/workflows/build-tauri.yml). The .node file is
+  //     only built on macOS — Windows and Linux skip silently. The
+  //     sidecar loader in src/main/libs/nativeDesktopMac.ts looks for
+  //     this file at <resources>/native/noobclaw_desktop.node at runtime.
+  if (process.platform === 'darwin') {
+    const nodeAddonSrc = path.join(
+      ROOT,
+      'native',
+      'macos-desktop',
+      'build',
+      'Release',
+      'noobclaw_desktop.node'
+    );
+    if (fs.existsSync(nodeAddonSrc)) {
+      const nativeDestDir = path.join(RESOURCES_DIR, 'native');
+      fs.mkdirSync(nativeDestDir, { recursive: true });
+      const nodeAddonDest = path.join(nativeDestDir, 'noobclaw_desktop.node');
+      fs.copyFileSync(nodeAddonSrc, nodeAddonDest);
+      const sizeKb = Math.round(fs.statSync(nodeAddonDest).size / 1024);
+      console.log(`  native/noobclaw_desktop.node: copied (${sizeKb} KB)`);
+    } else {
+      console.warn(
+        '  native/noobclaw_desktop.node: NOT FOUND — sidecar will fall back to osascript. ' +
+          'Build it first with: cd native/macos-desktop && npm install && npm run build'
+      );
+    }
+  }
+
   // 6. Native messaging host JS source only. The .bat / .sh wrappers are
   //    generated at runtime by registerNativeMessagingHost() using absolute
   //    paths derived from the actual install location, and in Tauri mode

@@ -12,7 +12,17 @@
 import { spawnSync, execSync } from 'child_process';
 import { coworkLog } from './coworkLogger';
 import { z } from 'zod';
-import { nativeScreenshot, nativeMouseMove, nativeClipboardVerify, hasNativeDesktop } from './nativeDesktopMac';
+import {
+  nativeScreenshot,
+  nativeMouseMove,
+  nativeMouseClick,
+  nativeMouseDrag,
+  nativeKeyType,
+  nativeKeyPress,
+  nativeClipboardGet,
+  nativeClipboardSet,
+  hasNativeDesktop,
+} from './nativeDesktopMac';
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
@@ -159,6 +169,12 @@ function click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left
     return runPS(ps);
   }
   if (IS_MAC) {
+    // Prefer CGEvent via the native addon (anti-bot-safe, low latency,
+    // supports real double/triple click state). Fall back to osascript
+    // System Events if the addon isn't loaded.
+    if (HAS_NATIVE && nativeMouseClick(x, y, button, clicks)) {
+      return `Clicked ${button} at (${x},${y}) x${clicks} (native)`;
+    }
     const clickType = button === 'right' ? 'secondary click' : button === 'middle' ? 'click' : (clicks === 2 ? 'double click' : clicks === 3 ? 'triple click' : 'click');
     return runOsa(`tell application "System Events" to ${clickType} at {${x}, ${y}}`);
   }
@@ -170,7 +186,14 @@ function mouseMove(x: number, y: number): string {
     return runPS(winSendInputMove(x, y) + `; Write-Host "Moved to (${x},${y})"`);
   }
   if (IS_MAC) {
-    // System Events doesn't support mouse_move directly; use cliclick or CGEvent via python
+    // Prefer native CGEvent (instant, no subprocess spawn). Animated
+    // motion is available via the addon's duration option — we don't
+    // use it in this tool since the MCP interface only exposes a
+    // single destination coordinate.
+    if (HAS_NATIVE && nativeMouseMove(x, y, 0)) {
+      return `Moved to (${x},${y}) (native)`;
+    }
+    // Fallback: python3 + Quartz subprocess
     try {
       const result = spawnSync('python3', ['-c',
         `import Quartz; Quartz.CGEventPost(Quartz.kCGHIDEventTap, Quartz.CGEventCreateMouseEvent(None, Quartz.kCGEventMouseMoved, (${x}, ${y}), 0))`
@@ -199,7 +222,11 @@ function drag(x1: number, y1: number, x2: number, y2: number): string {
     return runPS(ps);
   }
   if (IS_MAC) {
-    // System Events doesn't support drag natively; use CGEvent via python
+    // Prefer CGEvent-based native drag (smooth 60fps, ease-out-cubic).
+    if (HAS_NATIVE && nativeMouseDrag(x1, y1, x2, y2, 400)) {
+      return `Dragged (${x1},${y1}) to (${x2},${y2}) (native)`;
+    }
+    // Fallback: python3 + Quartz subprocess
     try {
       const pyScript = `
 import Quartz, time
@@ -230,6 +257,12 @@ function typeText(text: string): string {
     return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${escaped.replace(/"/g, '`"')}"); Write-Host "Typed ${text.length} chars"`);
   }
   if (IS_MAC) {
+    // Prefer CGEventKeyboardSetUnicodeString via the native addon —
+    // handles unicode / CJK / emoji transparently and doesn't require
+    // escaping quotes like the osascript path does.
+    if (HAS_NATIVE && nativeKeyType(text)) {
+      return `Typed ${text.length} chars (native)`;
+    }
     return runOsa(`tell application "System Events" to keystroke "${text.replace(/"/g, '\\"')}"`);
   }
   return 'Unsupported platform';
@@ -283,6 +316,20 @@ function pressKey(key: string, repeat: number = 1): string {
     return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${prefix}${sendKey}"); Write-Host "Pressed ${key} x${repeat}"`);
   }
   if (IS_MAC) {
+    // Prefer CGEvent keyboard events via the native addon — supports
+    // all named keys in keyCodeForName + modifiers (cmd/shift/alt/ctrl).
+    if (HAS_NATIVE) {
+      let allOk = true;
+      for (let i = 0; i < repeat; i++) {
+        if (!nativeKeyPress(mainKey, modifiers)) {
+          allOk = false;
+          break;
+        }
+      }
+      if (allOk) return `Pressed ${key} x${repeat} (native)`;
+      // fall through to osascript on partial failure
+    }
+
     const keyCodeMap: Record<string, number> = {
       'enter': 36, 'return': 36, 'tab': 48, 'escape': 53, 'esc': 53,
       'delete': 51, 'backspace': 51, 'up': 126, 'down': 125, 'left': 123, 'right': 124,
@@ -352,6 +399,12 @@ function readClipboard(): string {
     return runPS('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::GetText()');
   }
   if (IS_MAC) {
+    // Prefer NSPasteboard via the native addon — no subprocess overhead
+    // and correct handling of multi-pasteboard-type contents.
+    if (HAS_NATIVE) {
+      const s = nativeClipboardGet();
+      if (s !== null) return s;
+    }
     try { return execSync('pbpaste', { encoding: 'utf8', timeout: 5000 }); }
     catch { return ''; }
   }
@@ -371,7 +424,10 @@ function writeClipboard(text: string): string {
     }
   }
   if (IS_MAC) {
-    // Use stdin pipe to avoid shell injection
+    if (HAS_NATIVE && nativeClipboardSet(text)) {
+      return 'Copied to clipboard (native)';
+    }
+    // Fallback: pbcopy via stdin pipe
     try {
       const result = spawnSync('pbcopy', [], { input: text, timeout: 5000, encoding: 'utf8' });
       return result.status === 0 ? 'Copied to clipboard' : (result.stderr || 'Failed');

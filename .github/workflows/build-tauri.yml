@@ -57,6 +57,24 @@ jobs:
         if: runner.os == 'macOS'
         run: node scripts/generate-dmg-background.js
 
+      - name: Build macOS native desktop addon
+        # Compiles native/macos-desktop/src/noobclaw_desktop.mm into a
+        # .node addon used by the sidecar's desktopControlMcp for fast
+        # screenshots (CGDisplayCreateImage), smooth 60fps mouse motion
+        # (CGEvent), real keyboard input (CGEvent + UnicodeString),
+        # clipboard read/verify (NSPasteboard) and active-window lookup
+        # (NSWorkspace + CGWindowListCopyWindowInfo).
+        # prepare-tauri-resources.js picks the build output up and
+        # copies it into src-tauri/resources/native/ so Tauri bundles
+        # it alongside the sidecar binary.
+        if: runner.os == 'macOS'
+        working-directory: native/macos-desktop
+        run: |
+          npm install
+          npx node-gyp rebuild --verbose
+          test -f build/Release/noobclaw_desktop.node
+          lipo -info build/Release/noobclaw_desktop.node || file build/Release/noobclaw_desktop.node
+
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 
