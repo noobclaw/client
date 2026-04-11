@@ -149,15 +149,16 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
-      - name: Patch macOS Info.plist
-        # Adds NSAppTransportSecurity loopback exceptions, TCC usage
-        # descriptions, LSApplicationCategoryType, and re-signs the
-        # bundle so the edits are notarization-compatible. See
-        # scripts/patch-macos-plist.js for the full rationale.
-        if: runner.os == 'macOS'
-        run: node scripts/patch-macos-plist.js --target=${{ matrix.target }}
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+      # NOTE: Info.plist extras (ATS loopback exception, TCC usage
+      # descriptions, LSApplicationCategoryType, NSHumanReadableCopyright)
+      # are now merged via src-tauri/Info.plist which Tauri v2's bundler
+      # picks up automatically via bundle.macOS.infoPlist defaulting to
+      # the file next to tauri.conf.json. Merging happens BEFORE codesign
+      # and notarization so no post-build step or re-sign is needed.
+      # Previously we had a `node scripts/patch-macos-plist.js` step here
+      # that ran after tauri build — it failed because Tauri cleans the
+      # staged .app once the dmg has been bundled, leaving no plist to
+      # patch on disk.
 
       - name: Verify macOS codesign
         if: runner.os == 'macOS'
