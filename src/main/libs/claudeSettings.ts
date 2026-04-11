@@ -157,14 +157,34 @@ function resolveMatchedProvider(appConfig: AppConfig): { matched: MatchedProvide
   const useNoobClawServer = appConfig.app?.useNoobClawServer !== false;
   if (useNoobClawServer) {
     const noobConfig = (providers['noobclawAI'] || {}) as ProviderConfig;
-    // Detect test mode from multiple sources:
-    // 1. appConfig.app.testMode — synced by renderer from VITE_TEST_MODE
-    // 2. NOOBCLAW_TEST_MODE env var — manual override
-    // 3. Stored noobclawAI.baseUrl pointing to localhost — renderer already determined test mode
+    // Detect test mode.
+    //
+    // In Tauri sidecar mode (identified by `--tauri-pid=<PID>` argv added
+    // by src-tauri/src/lib.rs), the ONLY valid test-mode signal is the
+    // explicit NOOBCLAW_TEST_MODE=1 environment variable. We deliberately
+    // ignore both `appConfig.app.testMode` and the stored
+    // noobclawAI.baseUrl heuristic in this branch because a historic
+    // config.ts bug on macOS WKWebView (hostname === 'localhost' under
+    // `tauri://`) wrote `testMode: true` + `noobclawAI.baseUrl: http://
+    // 127.0.0.1:3001/...` into every Mac user's SQLite store. That
+    // poison persists across app launches and silently routed all AI
+    // calls, the wallet-connect URL, and the backend API to a dead
+    // local port — surfacing to the user as "chat invisible / lucky
+    // bag invisible / wallet opens 127.0.0.1 / Lark API configuration
+    // not found". Locking the Tauri branch to env-var-only breaks any
+    // dev who was relying on stored testMode, but they can re-enable
+    // it with `NOOBCLAW_TEST_MODE=1 tauri dev`.
+    //
+    // In Electron mode the legacy behavior is preserved so existing
+    // Electron test-mode flows keep working.
+    const isTauriSidecar = process.argv.some((a) => a.startsWith('--tauri-pid='));
     const storedBaseUrl = typeof noobConfig.baseUrl === 'string' ? noobConfig.baseUrl : '';
-    const testMode = appConfig.app?.testMode === true
-      || process.env.NOOBCLAW_TEST_MODE === '1'
-      || /^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(storedBaseUrl);
+    const storedBaseUrlLooksLikeTest = /^https?:\/\/(127\.0\.0\.1|localhost)[:/]/.test(storedBaseUrl);
+    const testMode = isTauriSidecar
+      ? process.env.NOOBCLAW_TEST_MODE === '1'
+      : process.env.NOOBCLAW_TEST_MODE === '1'
+        || appConfig.app?.testMode === true
+        || storedBaseUrlLooksLikeTest;
     const backendBase = testMode ? 'http://127.0.0.1:3001' : 'https://api.noobclaw.com';
     const baseURL = `${backendBase}/api/ai/chat/completions`;
     // Use the user's selected model from config, not always the first model

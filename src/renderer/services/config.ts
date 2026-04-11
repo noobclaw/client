@@ -111,12 +111,29 @@ class ConfigService {
           }
           // Always override baseUrl to correct backend URL (ignore stale stored value)
           const buildTestMode = (import.meta as any).env?.VITE_TEST_MODE === 'true';
+          const isTauri = !!(window as any).__TAURI__;
           let testMode = buildTestMode;
-          if (!testMode) {
+          // Tauri webviews serve the frontend from `tauri://localhost/`
+          // (macOS WKWebView) or `http://tauri.localhost/` (Windows
+          // WebView2). On macOS specifically `hostname === 'localhost'`
+          // and the old check would falsely flip testMode = true, then
+          // persist it, then cascade through every downstream call
+          // (getWebsiteUrl / getBackendApiUrl / noobclawAI.baseUrl /
+          // claudeSettings.resolveMatchedProvider) — breaking wallet
+          // connect, AI chat, lucky bag, and Lark. Guard with both the
+          // Tauri global and the scheme check so the bug cannot reappear
+          // if Tauri ever changes its webview URL scheme on one platform.
+          if (!testMode && !isTauri) {
             try {
               const h = window.location.hostname;
               const proto = window.location.protocol;
-              if (proto !== 'file:' && (h === 'localhost' || h === '127.0.0.1')) testMode = true;
+              if (
+                proto !== 'file:' &&
+                proto !== 'tauri:' &&
+                (h === 'localhost' || h === '127.0.0.1')
+              ) {
+                testMode = true;
+              }
             } catch {}
           }
           noobProvider['noobclawAI'].baseUrl = testMode
