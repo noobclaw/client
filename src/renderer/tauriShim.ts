@@ -202,6 +202,36 @@ export function createTauriElectronShim(): typeof window.electron {
       oauthClear: (id: string) => ipcInvoke('mcp:oauth:clear', id).then(r => r ?? { success: false }),
     },
 
+    // ── User slash commands + shell hooks (settings.json-driven) ──
+    // Used by the composer autocomplete (slash commands) and the
+    // settings view (hooks list).
+    slashCommands: {
+      list: () => ipcInvoke('slashCommands:list').then((r: any) => r?.commands ?? []),
+      getDir: () => ipcInvoke('slashCommands:getDir').then((r: any) => r?.dir ?? null),
+    },
+    shellHooks: {
+      list: () => ipcInvoke('shellHooks:list').then((r: any) => r?.hooks ?? {}),
+    },
+    toolPolicy: {
+      get: () => ipcInvoke('toolPolicy:get').then((r: any) => r?.policy ?? { defaultMode: 'ask', rules: [] }),
+      set: (policy: any) => ipcInvoke('toolPolicy:set', policy).then((r: any) => r?.success ?? false),
+    },
+    coworkConfig: {
+      get: () => ipcInvoke('thinkingBudget:get').then((r: any) => ({ thinkingBudget: r?.budget ?? 10000 })),
+      setThinkingBudget: (budget: number) => ipcInvoke('thinkingBudget:set', budget).then((r: any) => r?.success ?? false),
+    },
+    workspace: {
+      listFiles: (root: string) => ipcInvoke('workspace:listFiles', root).then((r: any) => r?.entries ?? []),
+    },
+    searchMessages: (query: string, limit?: number) =>
+      ipcInvoke('cowork:search:messages', query, limit ?? 50).then((r: any) => r?.hits ?? []),
+    crashes: {
+      list: () => ipcInvoke('crashes:list').then((r: any) => r?.crashes ?? []),
+      getDir: () => ipcInvoke('crashes:getDir').then((r: any) => r?.dir ?? null),
+      onCrash: (cb: (detail: { kind: string; message: string; file: string | null; ts: string }) => void) =>
+        onSSE('system:crash', cb),
+    },
+
     // ── Permissions ──
     permissions: {
       checkCalendar: () => Promise.resolve({ status: 'denied' }),

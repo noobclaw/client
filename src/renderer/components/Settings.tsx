@@ -11,6 +11,7 @@ import { APP_ID, EXPORT_FORMAT_TYPE, EXPORT_PASSWORD } from '../constants/app';
 import lauraAvatarUrl from '/laura-avatar.png?url';
 import { isTestMode } from '../services/endpoints';
 import ErrorMessage from './ErrorMessage';
+import AdvancedSettingsPanel from './AdvancedSettingsPanel';
 import { XMarkIcon, SignalIcon, CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
 import { EyeIcon, EyeSlashIcon, XCircleIcon as XCircleIconSolid } from '@heroicons/react/20/solid';
 import PlusCircleIcon from './icons/PlusCircleIcon';
@@ -40,7 +41,7 @@ import {
   QwenIcon,
 } from './icons/providers';
 
-type TabType = 'general' | 'model' | 'coworkMemory' | 'email' | 'about';
+type TabType = 'general' | 'model' | 'coworkMemory' | 'email' | 'advanced' | 'about';
 
 export type SettingsOpenOptions = {
   initialTab?: TabType;
@@ -1586,6 +1587,7 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
     { key: 'model',          label: language === 'zh' ? 'AI服务' : 'AI Service', icon: <span className="text-base">&#x1F916;</span> },
     { key: 'email',          label: i18nService.t('emailTab'),       icon: <span className="text-base">&#x1F4E7;</span> },
     { key: 'coworkMemory',   label: i18nService.t('coworkMemoryTitle'), icon: <span className="text-base">&#x1F9E0;</span> },
+    { key: 'advanced',       label: language === 'zh' ? '高级' : 'Advanced', icon: <span className="text-base">&#x1F527;</span> },
     { key: 'about',          label: i18nService.t('about'),          icon: <span className="text-base">&#x2139;&#xFE0F;</span> },
   ], [language]);
 
@@ -2430,6 +2432,9 @@ const Settings: React.FC<SettingsProps> = ({ onClose, initialTab, notice, forceC
             )}
           </div>
         );
+
+      case 'advanced':
+        return <AdvancedSettingsPanel />;
 
       case 'about':
         return (

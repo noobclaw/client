@@ -554,6 +554,45 @@ const App: React.FC = () => {
     return () => window.removeEventListener('noobclaw:need-login', handler);
   }, []);
 
+  // Sidecar crash events — the crash reporter (main/libs/crashReporter.ts)
+  // broadcasts a system:crash SSE whenever it catches an uncaught
+  // exception or unhandled rejection in the sidecar. Surface it as a
+  // one-line toast so the user knows to restart or file a bug. The
+  // full record lives on disk and is retrievable via electron.crashes.list.
+  useEffect(() => {
+    const api = (window as any).electron?.crashes;
+    if (!api?.onCrash) return;
+    const off = api.onCrash((detail: { kind: string; message: string }) => {
+      setToastMessage(`Sidecar ${detail.kind}: ${detail.message.slice(0, 80)}`);
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, []);
+
+  // Renderer ErrorBoundary-adjacent global handlers: unhandled promise
+  // rejections and thrown errors in React callbacks land here. We
+  // emit them as manual crash reports via the sidecar IPC (if wired)
+  // and show a toast — this covers the renderer side of the crash
+  // pipeline without pulling in Sentry.
+  useEffect(() => {
+    const onError = (event: ErrorEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('[window.error]', event.error || event.message);
+      setToastMessage(`Error: ${(event.message || 'unknown').slice(0, 80)}`);
+    };
+    const onRejection = (event: PromiseRejectionEvent) => {
+      // eslint-disable-next-line no-console
+      console.error('[unhandledrejection]', event.reason);
+      const msg = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      setToastMessage(`Unhandled: ${msg.slice(0, 80)}`);
+    };
+    window.addEventListener('error', onError);
+    window.addEventListener('unhandledrejection', onRejection);
+    return () => {
+      window.removeEventListener('error', onError);
+      window.removeEventListener('unhandledrejection', onRejection);
+    };
+  }, []);
+
   // Listen for auth token from website (via electron IPC or deep link)
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).electron) {

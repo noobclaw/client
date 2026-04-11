@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { PaperAirplaneIcon, StopIcon, FolderIcon } from '@heroicons/react/24/solid';
 import { PhotoIcon } from '@heroicons/react/24/outline';
@@ -6,6 +6,8 @@ import PaperClipIcon from '../icons/PaperClipIcon';
 import XMarkIcon from '../icons/XMarkIcon';
 import ModelSelector from '../ModelSelector';
 import FolderSelectorPopover from './FolderSelectorPopover';
+import SlashCommandPicker from './SlashCommandPicker';
+import FileMentionPicker from './FileMentionPicker';
 import { SkillsButton, ActiveSkillBadge } from '../skills';
 import { i18nService } from '../../services/i18n';
 import { skillService } from '../../services/skill';
@@ -301,7 +303,87 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
   }, [onManageSkills]);
 
+  // Slash-command autocomplete popup state. Opens when the composer
+  // value starts with "/" on the first line and stays open until the
+  // user presses space or Escape. Navigation (arrows, Enter/Tab) is
+  // forwarded into the popup via slashMenuApiRef so we don't
+  // double-handle keys here.
+  const slashMenuOpen = /^\/[a-zA-Z0-9_.-]*$/.test(value);
+  const slashQuery = slashMenuOpen ? value.slice(1) : '';
+  const slashMenuApiRef = React.useRef<{
+    moveDown: () => void;
+    moveUp: () => void;
+    acceptCurrent: () => void;
+  } | null>(null);
+
+  // @mention file picker state. Detects an "@foo" token at the
+  // current cursor position (not just start-of-value, unlike slash),
+  // so the user can drop file references anywhere mid-prompt.
+  // The match anchors on either the beginning of the string or a
+  // whitespace character so "@" inside an email or code doesn't
+  // accidentally trigger it.
+  const [cursorPos, setCursorPos] = useState(0);
+  const mentionMatch = useMemo(() => {
+    if (!workingDirectory) return null;
+    const upToCursor = value.slice(0, cursorPos);
+    const m = /(^|\s)@([\w./\-]*)$/.exec(upToCursor);
+    if (!m) return null;
+    return { query: m[2], start: upToCursor.length - m[2].length - 1 };
+  }, [value, cursorPos, workingDirectory]);
+  const mentionMenuOpen = mentionMatch != null && !slashMenuOpen;
+  const mentionMenuApiRef = React.useRef<{
+    moveDown: () => void;
+    moveUp: () => void;
+    acceptCurrent: () => void;
+  } | null>(null);
+
+  const handleSelectMention = useCallback((rel: string) => {
+    if (!mentionMatch) return;
+    const before = value.slice(0, mentionMatch.start);
+    const after = value.slice(cursorPos);
+    const inserted = `@${rel} `;
+    const next = before + inserted + after;
+    setValue(next);
+    requestAnimationFrame(() => {
+      const newPos = (before + inserted).length;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(newPos, newPos);
+    });
+  }, [mentionMatch, value, cursorPos]);
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // If either autocomplete popup is open, capture navigation keys.
+    const activeMenuApi = slashMenuOpen
+      ? slashMenuApiRef.current
+      : mentionMenuOpen
+        ? mentionMenuApiRef.current
+        : null;
+    if (activeMenuApi) {
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        activeMenuApi.moveDown();
+        return;
+      }
+      if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        activeMenuApi.moveUp();
+        return;
+      }
+      if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) {
+        event.preventDefault();
+        activeMenuApi.acceptCurrent();
+        return;
+      }
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        // Closing the slash menu means clearing the value; closing the
+        // mention menu means inserting a space so the "@" no longer
+        // matches the trigger regex.
+        if (slashMenuOpen) setValue('');
+        else if (mentionMenuOpen) setValue(value + ' ');
+        return;
+      }
+    }
     // Enter to submit, Shift+Enter for new line
     const isComposing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
     if (event.key === 'Enter' && !event.shiftKey && !isComposing && !isStreaming && !disabled) {
@@ -309,6 +391,15 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
       handleSubmit();
     }
   };
+
+  const handleSelectSlashCommand = useCallback((name: string) => {
+    setValue(`/${name} `);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      const len = (`/${name} `).length;
+      textareaRef.current?.setSelectionRange(len, len);
+    });
+  }, []);
 
   const handleStopClick = () => {
     if (onStop) {
@@ -643,6 +734,23 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
           ))}
         </div>
       )}
+      {slashMenuOpen && (
+        <SlashCommandPicker
+          query={slashQuery}
+          onSelect={handleSelectSlashCommand}
+          onClose={() => setValue('')}
+          forwardRef={slashMenuApiRef}
+        />
+      )}
+      {mentionMenuOpen && mentionMatch && (
+        <FileMentionPicker
+          query={mentionMatch.query}
+          workingDirectory={workingDirectory || ''}
+          onSelect={handleSelectMention}
+          onClose={() => setValue(value + ' ')}
+          forwardRef={mentionMenuApiRef}
+        />
+      )}
       <div
         className={enhancedContainerClass}
         onDragEnter={handleDragEnter}
@@ -660,7 +768,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setCursorPos(e.target.selectionStart ?? e.target.value.length);
+              }}
+              onKeyUp={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              onClick={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              onSelect={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={placeholder}
@@ -747,7 +861,13 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
             <textarea
               ref={textareaRef}
               value={value}
-              onChange={(e) => setValue(e.target.value)}
+              onChange={(e) => {
+                setValue(e.target.value);
+                setCursorPos(e.target.selectionStart ?? e.target.value.length);
+              }}
+              onKeyUp={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              onClick={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
+              onSelect={(e) => setCursorPos((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
               onKeyDown={handleKeyDown}
               onPaste={handlePaste}
               placeholder={placeholder}

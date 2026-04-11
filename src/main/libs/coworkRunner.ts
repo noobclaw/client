@@ -3137,8 +3137,43 @@ export class CoworkRunner extends EventEmitter {
     }
     coworkLog('INFO', 'coworkRunner', `startSession enter: sessionId=${sessionId}, promptLen=${prompt.length}, hasSystemPrompt=${!!options.systemPrompt}`);
 
+    // SessionStart shell hooks — user-configured commands fire at the
+    // very start of a session (before any LLM call). Typical use: log
+    // kick-off to a journal, warm up a cache, bootstrap a venv. Failures
+    // are non-fatal; we never want a broken hook to block chat.
+    try {
+      const { runShellHooks } = await import('./shellHooks');
+      await runShellHooks('SessionStart', { sessionId, cwd: session.workingDirectory });
+    } catch (e) {
+      coworkLog('WARN', 'coworkRunner', `SessionStart shell hook error: ${e}`);
+    }
+
     // Sanitize user prompt: strip invisible Unicode chars to prevent prompt injection
     prompt = partiallySanitizeUnicode(prompt);
+
+    // Expand user-defined slash commands ("/foo args..." → contents of
+    // {UserDataPath}/commands/foo.md with $ARGUMENTS substituted).
+    // Only triggers when the prompt starts with a single "/" followed
+    // by a valid identifier character — so code snippets beginning
+    // with "/usr/local/bin" or "// comment" aren't mistaken for
+    // commands. See src/main/libs/userSlashCommands.ts for the format.
+    const slashMatch = /^\/([a-zA-Z0-9_.-]+)(?:\s+([\s\S]*))?$/.exec(prompt.trim());
+    if (slashMatch) {
+      try {
+        const { expandSlashCommand } = await import('./userSlashCommands');
+        const expanded = expandSlashCommand(slashMatch[1], slashMatch[2] || '');
+        if (expanded != null) {
+          coworkLog('INFO', 'coworkRunner', `Expanded slash command /${slashMatch[1]}`, {
+            sessionId,
+            argLen: (slashMatch[2] || '').length,
+            expandedLen: expanded.length,
+          });
+          prompt = expanded;
+        }
+      } catch (e) {
+        coworkLog('WARN', 'coworkRunner', `Slash command expansion failed: ${e}`);
+      }
+    }
 
     // Mark session as running
     this.store.updateSession(sessionId, { status: 'running' });
@@ -4502,13 +4537,33 @@ export class CoworkRunner extends EventEmitter {
       // which translates Anthropic-format requests to OpenAI format.
       // The @anthropic-ai/sdk sends Anthropic-format requests, and the proxy handles conversion.
       const isOpenAICompat = (apiConfig as any).apiType === 'openai';
+      // Resolve the extended-thinking budget from user settings with
+      // a sensible default. The UI slider in Advanced settings writes
+      // this value to {UserDataPath}/settings.json under the
+      // `thinkingBudget` key. OpenAI-compat endpoints don't support
+      // extended thinking, so we force-zero there.
+      let userThinkingBudget = 10000;
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const { getUserDataPath } = require('./platformAdapter');
+        const settingsFile = path.join(getUserDataPath(), 'settings.json');
+        if (fs.existsSync(settingsFile)) {
+          const raw = fs.readFileSync(settingsFile, 'utf8');
+          const parsed = JSON.parse(raw);
+          if (typeof parsed.thinkingBudget === 'number' && parsed.thinkingBudget >= 0) {
+            userThinkingBudget = parsed.thinkingBudget;
+          }
+        }
+      } catch { /* use default */ }
+
       const queryApiConfig: ApiConfig = {
         apiKey: apiConfig.apiKey || envVars.ANTHROPIC_API_KEY || '',
         baseUrl: apiConfig.baseURL || envVars.ANTHROPIC_BASE_URL || undefined,
         model: apiConfig.model || envVars.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514',
         maxTokens: 16384,
         // Only enable extended thinking for Anthropic direct (not OpenAI-compat proxy)
-        thinkingBudget: isOpenAICompat ? 0 : 10000,
+        thinkingBudget: isOpenAICompat ? 0 : userThinkingBudget,
         isOpenAICompat,
       };
 
@@ -4588,6 +4643,32 @@ export class CoworkRunner extends EventEmitter {
               + 'Finish your exploration and call ExitPlanMode with a plan summary first, '
               + 'then retry.',
           };
+        }
+
+        // User-configured tool permission policy (settings.json
+        // toolPermissions). Allows the user to pre-approve or pre-
+        // deny specific tools (or Bash commands containing a
+        // substring) without touching code. See
+        // src/main/libs/toolPermissionPolicy.ts for the format.
+        try {
+          const { evaluateToolPolicy } = await import('./toolPermissionPolicy');
+          const policy = evaluateToolPolicy(resolvedName, resolvedInput);
+          if (policy.mode === 'deny') {
+            coworkLog('INFO', 'canUseTool', 'Tool denied by user policy', { sessionId, tool: resolvedName, reason: policy.reason });
+            return {
+              behavior: 'deny',
+              message: policy.reason || `Tool "${resolvedName}" denied by user policy (settings.json toolPermissions).`,
+            };
+          }
+          if (policy.mode === 'allow') {
+            // Short-circuit even for tools that would normally prompt
+            // — the user already said yes to this category.
+            coworkLog('INFO', 'canUseTool', 'Tool allowed by user policy', { sessionId, tool: resolvedName });
+            return { behavior: 'allow' };
+          }
+          // `ask` falls through to the existing flow.
+        } catch (e) {
+          coworkLog('WARN', 'canUseTool', `toolPermissionPolicy error: ${e}`);
         }
 
         // AskUserQuestion is the AI's own structured question-asking UI,
@@ -4765,6 +4846,17 @@ export class CoworkRunner extends EventEmitter {
         runStopHooks(stopHookContext).catch(e =>
           coworkLog('ERROR', 'runClaudeCodeLocal', `Stop hooks error: ${e}`)
         );
+
+        // Also fire the user-configurable Stop shell hooks
+        // (settings.json). Separate from the in-process stop hooks above
+        // so users can plug in notifications / journal entries without
+        // touching the memory/suggestion pipeline.
+        import('./shellHooks').then(({ runShellHooks }) =>
+          runShellHooks('Stop', {
+            sessionId,
+            cwd: this.store.getSession(sessionId)?.workingDirectory,
+          }).catch((e) => coworkLog('WARN', 'runClaudeCodeLocal', `Stop shell hook error: ${e}`))
+        ).catch(() => {});
       }
     } catch (error) {
       if (this.stoppedSessions.has(sessionId)) {

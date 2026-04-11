@@ -18,6 +18,14 @@ interface CoworkSearchModalProps {
   onRenameSession: (sessionId: string, title: string) => void;
 }
 
+interface FtsHit {
+  sessionId: string;
+  title: string;
+  snippet: string;
+  messageId: string;
+  createdAt: number;
+}
+
 const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
   isOpen,
   onClose,
@@ -30,12 +38,54 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const [ftsHits, setFtsHits] = useState<FtsHit[]>([]);
+  const [ftsLoading, setFtsLoading] = useState(false);
+
+  // Fire an FTS5 search alongside the local title filter whenever the
+  // query is 2+ characters. Debounce through a 150ms timer so rapid
+  // typing doesn't thrash the sidecar. Hits are merged with the
+  // title-filter results below.
+  useEffect(() => {
+    if (!isOpen) return;
+    const trimmed = searchQuery.trim();
+    if (trimmed.length < 2) {
+      setFtsHits([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(async () => {
+      setFtsLoading(true);
+      try {
+        const api = (window as any).electron?.searchMessages;
+        if (typeof api === 'function') {
+          const hits: FtsHit[] = await api(trimmed, 50);
+          if (!cancelled) setFtsHits(Array.isArray(hits) ? hits : []);
+        }
+      } finally {
+        if (!cancelled) setFtsLoading(false);
+      }
+    }, 150);
+    return () => { cancelled = true; window.clearTimeout(t); };
+  }, [searchQuery, isOpen]);
 
   const filteredSessions = useMemo(() => {
     const trimmedQuery = searchQuery.trim().toLowerCase();
     if (!trimmedQuery) return sessions;
-    return sessions.filter((session) => session.title.toLowerCase().includes(trimmedQuery));
-  }, [sessions, searchQuery]);
+    // Union of title-match sessions and FTS-hit sessions, preserving
+    // title-match order first so they stay pinned at the top.
+    const titleHits = sessions.filter((session) => session.title.toLowerCase().includes(trimmedQuery));
+    const titleIds = new Set(titleHits.map((s) => s.id));
+    const ftsIds = new Set(ftsHits.map((h) => h.sessionId));
+    const ftsOnly = sessions.filter((s) => ftsIds.has(s.id) && !titleIds.has(s.id));
+    return [...titleHits, ...ftsOnly];
+  }, [sessions, searchQuery, ftsHits]);
+
+  // Quick lookup so the list can show the snippet next to each entry.
+  const snippetBySessionId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const h of ftsHits) m.set(h.sessionId, h.snippet);
+    return m;
+  }, [ftsHits]);
 
   useEffect(() => {
     if (isOpen) {
@@ -101,22 +151,50 @@ const CoworkSearchModal: React.FC<CoworkSearchModalProps> = ({
         <div className="px-3 py-3 max-h-[60vh] overflow-y-auto">
           {filteredSessions.length === 0 ? (
             <div className="py-10 text-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
-              {i18nService.t('searchNoResults')}
+              {ftsLoading ? 'Searching…' : i18nService.t('searchNoResults')}
             </div>
           ) : (
-            <CoworkSessionList
-              sessions={filteredSessions}
-              currentSessionId={currentSessionId}
-              isBatchMode={false}
-              selectedIds={emptySet}
-              showBatchOption={false}
-              onSelectSession={handleSelectSession}
-              onDeleteSession={onDeleteSession}
-              onTogglePin={onTogglePin}
-              onRenameSession={onRenameSession}
-              onToggleSelection={() => {}}
-              onEnterBatchMode={() => {}}
-            />
+            <>
+              <CoworkSessionList
+                sessions={filteredSessions}
+                currentSessionId={currentSessionId}
+                isBatchMode={false}
+                selectedIds={emptySet}
+                showBatchOption={false}
+                onSelectSession={handleSelectSession}
+                onDeleteSession={onDeleteSession}
+                onTogglePin={onTogglePin}
+                onRenameSession={onRenameSession}
+                onToggleSelection={() => {}}
+                onEnterBatchMode={() => {}}
+              />
+              {/* FTS snippet preview — shown below the session list so
+                  users can see WHERE their query matched inside a
+                  session (FTS5 bm25-ranked, with <mark> tags around
+                  the matched term). Renders as plain HTML so the
+                  highlight actually shows. */}
+              {searchQuery.trim().length >= 2 && snippetBySessionId.size > 0 && (
+                <div className="mt-3 pt-3 border-t dark:border-claude-darkBorder border-claude-border">
+                  <div className="text-[10px] uppercase tracking-wider dark:text-claude-darkTextSecondary text-claude-textSecondary px-2 mb-1">
+                    Matches in message content
+                  </div>
+                  {ftsHits.map((hit) => (
+                    <button
+                      key={hit.messageId}
+                      type="button"
+                      className="w-full text-left px-2 py-2 rounded hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover"
+                      onClick={() => handleSelectSession(hit.sessionId)}
+                    >
+                      <div className="text-xs font-medium dark:text-claude-darkText text-claude-text truncate">{hit.title}</div>
+                      <div
+                        className="text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary line-clamp-2"
+                        dangerouslySetInnerHTML={{ __html: hit.snippet }}
+                      />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>

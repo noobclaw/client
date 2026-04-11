@@ -8,6 +8,7 @@
 import type { ToolUseBlock } from './anthropicClient';
 import type { ToolDefinition, ToolResult, ToolContext, PermissionResult } from './toolSystem';
 import { coworkLog } from './coworkLogger';
+import { runShellHooks } from './shellHooks';
 
 // ── Types ──
 
@@ -142,6 +143,36 @@ async function executeOneTool(
       };
     }
 
+    // ── PreToolUse hooks ─────────────────────────────────────────────
+    // User-configured shell hooks (settings.json) fire BEFORE the tool
+    // executes. A non-zero exit from any pre-hook denies the tool —
+    // mirrors Claude Code's PreToolUse semantics where hooks can veto
+    // a dangerous action (e.g. block "rm -rf" by inspecting NC_TOOL_INPUT_JSON).
+    try {
+      const preResults = await runShellHooks('PreToolUse', {
+        sessionId: context.sessionId,
+        cwd: context.cwd,
+        toolName,
+        toolInput: finalInput as Record<string, unknown>,
+      });
+      const blocker = preResults.find((r) => r.code !== 0);
+      if (blocker) {
+        const reason = (blocker.stdout || blocker.stderr || `hook exited ${blocker.code}`).slice(0, 500);
+        coworkLog('WARN', 'toolOrchestration', `Tool "${toolName}" blocked by pre-hook`, { reason });
+        return {
+          toolUseId,
+          toolName,
+          result: {
+            content: [{ type: 'text', text: `Tool blocked by PreToolUse hook: ${reason}` }],
+            isError: true,
+          },
+        };
+      }
+    } catch (e) {
+      coworkLog('WARN', 'toolOrchestration', `PreToolUse hook crashed for "${toolName}": ${e}`);
+      // Hook failure is non-fatal — continue with the tool call
+    }
+
     // Execute tool with timeout
     coworkLog('INFO', 'toolOrchestration', `Executing tool "${toolName}"`, { toolUseId });
     const timeoutMs = DEFAULT_TOOL_TIMEOUT_MS;
@@ -155,6 +186,23 @@ async function executeOneTool(
       toolUseId,
       isError: result.isError,
     });
+
+    // ── PostToolUse hooks ────────────────────────────────────────────
+    // Fire-and-await but never block on errors. Typical use: auto-format
+    // after Edit/Write, run a linter, push a notification.
+    try {
+      const outputText = result.content.map((c) => c.text || '').join('\n');
+      await runShellHooks('PostToolUse', {
+        sessionId: context.sessionId,
+        cwd: context.cwd,
+        toolName,
+        toolInput: finalInput as Record<string, unknown>,
+        toolOutput: outputText,
+        toolIsError: result.isError === true,
+      });
+    } catch (e) {
+      coworkLog('WARN', 'toolOrchestration', `PostToolUse hook crashed for "${toolName}": ${e}`);
+    }
 
     return { toolUseId, toolName, result };
   } catch (e) {

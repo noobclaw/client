@@ -931,6 +931,19 @@ export class CoworkStore {
       sequence,
     ]);
 
+    // Maintain the FTS5 index alongside the main table. We only index
+    // text content (assistant and user messages); tool results are
+    // often huge JSON blobs and would balloon the index with noise.
+    // Failure here is non-fatal — search just won't match this row.
+    if (message.type === 'user' || message.type === 'assistant') {
+      try {
+        this.db.run(`
+          INSERT INTO cowork_messages_fts(content, session_id, message_id, created_at)
+          VALUES (?, ?, ?, ?)
+        `, [message.content, sessionId, id, now]);
+      } catch { /* FTS5 not available — silent no-op */ }
+    }
+
     this.db.run('UPDATE cowork_sessions SET updated_at = ? WHERE id = ?', [now, sessionId]);
 
     this.saveDb();
@@ -1674,5 +1687,102 @@ export class CoworkStore {
       human: this.getLatestMessageByType(row.id, 'user'),
       assistant: this.getLatestMessageByType(row.id, 'assistant'),
     }));
+  }
+
+  /**
+   * Full-text search across session titles + message content.
+   *
+   * Uses FTS5 MATCH when the virtual table is available (see
+   * sqliteStore.initSchema) and falls back to a plain LIKE scan
+   * otherwise. Returns one hit per session (de-duped by session id)
+   * with the highest-scoring snippet, so a single session doesn't
+   * spam the results list.
+   *
+   * Limit default 50 — the UI shows a scrollable list so users can
+   * page through more if needed. Empty query returns an empty array
+   * rather than every session to avoid an expensive full dump.
+   */
+  searchMessages(query: string, limit: number = 50): Array<{
+    sessionId: string;
+    title: string;
+    snippet: string;
+    messageId: string;
+    createdAt: number;
+  }> {
+    const trimmed = query.trim();
+    if (!trimmed) return [];
+
+    // Try FTS5 first. FTS5 MATCH wants a quoted string for phrases with
+    // non-alphanumeric chars; we quote the whole query defensively so
+    // users can type anything ("foo bar", "foo-bar", etc.) without
+    // worrying about MATCH syntax.
+    const ftsQuery = `"${trimmed.replace(/"/g, '""')}"`;
+
+    try {
+      const rows = this.db.exec(`
+        SELECT
+          s.id as session_id,
+          COALESCE(s.title, 'Untitled') as title,
+          fts.message_id as message_id,
+          fts.created_at as created_at,
+          snippet(cowork_messages_fts, 0, '<mark>', '</mark>', '…', 12) as snippet,
+          bm25(cowork_messages_fts) as rank
+        FROM cowork_messages_fts fts
+        JOIN cowork_sessions s ON s.id = fts.session_id
+        WHERE cowork_messages_fts MATCH ?
+        ORDER BY rank ASC
+        LIMIT ?
+      `, [ftsQuery, limit]);
+      const out = rows[0]?.values || [];
+      // De-dupe by session, keep the highest-scoring hit per session.
+      const seen = new Set<string>();
+      const deduped: Array<{ sessionId: string; title: string; snippet: string; messageId: string; createdAt: number }> = [];
+      for (const row of out) {
+        const sessionId = row[0] as string;
+        if (seen.has(sessionId)) continue;
+        seen.add(sessionId);
+        deduped.push({
+          sessionId,
+          title: row[1] as string,
+          messageId: row[2] as string,
+          createdAt: Number(row[3]) || 0,
+          snippet: (row[4] as string) || '',
+        });
+      }
+      return deduped;
+    } catch {
+      // FTS5 unavailable — fall back to LIKE over raw message content.
+      // Slower but correct for small databases.
+      const like = `%${trimmed.replace(/[%_]/g, (c) => `\\${c}`)}%`;
+      const rows = this.db.exec(`
+        SELECT
+          s.id as session_id,
+          COALESCE(s.title, 'Untitled') as title,
+          m.id as message_id,
+          m.created_at as created_at,
+          substr(m.content, 1, 200) as snippet
+        FROM cowork_messages m
+        JOIN cowork_sessions s ON s.id = m.session_id
+        WHERE m.content LIKE ? ESCAPE '\\' AND (m.type = 'user' OR m.type = 'assistant')
+        ORDER BY m.created_at DESC
+        LIMIT ?
+      `, [like, limit]);
+      const out = rows[0]?.values || [];
+      const seen = new Set<string>();
+      const deduped: Array<{ sessionId: string; title: string; snippet: string; messageId: string; createdAt: number }> = [];
+      for (const row of out) {
+        const sessionId = row[0] as string;
+        if (seen.has(sessionId)) continue;
+        seen.add(sessionId);
+        deduped.push({
+          sessionId,
+          title: row[1] as string,
+          messageId: row[2] as string,
+          createdAt: Number(row[3]) || 0,
+          snippet: (row[4] as string) || '',
+        });
+      }
+      return deduped;
+    }
   }
 }

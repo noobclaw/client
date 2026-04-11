@@ -1012,6 +1012,155 @@ const server = http.createServer(async (req, res) => {
             return writeJSON(res, 200, { status: 'ok' });
           }
 
+          // ── User slash commands ──
+          // Composer autocomplete reads this list when the user types
+          // "/" at the start of the input; body is NOT returned (too
+          // expensive, not needed until the command actually fires
+          // and the runner expands it server-side).
+          case 'slashCommands:list': {
+            try {
+              const { loadUserSlashCommands } = await import('./libs/userSlashCommands');
+              const cmds = loadUserSlashCommands().map(c => ({
+                name: c.name,
+                description: c.description,
+                file: c.file,
+              }));
+              return writeJSON(res, 200, { success: true, commands: cmds });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'slashCommands:getDir': {
+            const { getUserSlashCommandsDir } = await import('./libs/userSlashCommands');
+            return writeJSON(res, 200, { success: true, dir: getUserSlashCommandsDir() });
+          }
+
+          // ── Thinking budget (settings.json top-level key) ──
+          case 'thinkingBudget:get': {
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const { getUserDataPath } = await import('./libs/platformAdapter');
+              const file = path.join(getUserDataPath(), 'settings.json');
+              let budget = 10000;
+              try {
+                const raw = fs.readFileSync(file, 'utf8');
+                const parsed = JSON.parse(raw);
+                if (typeof parsed.thinkingBudget === 'number') budget = parsed.thinkingBudget;
+              } catch { /* use default */ }
+              return writeJSON(res, 200, { success: true, budget });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'thinkingBudget:set': {
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const { getUserDataPath } = await import('./libs/platformAdapter');
+              const file = path.join(getUserDataPath(), 'settings.json');
+              let current: Record<string, unknown> = {};
+              try {
+                const raw = fs.readFileSync(file, 'utf8');
+                current = JSON.parse(raw);
+              } catch { /* missing / malformed — start fresh */ }
+              const next = Math.max(0, Math.min(100000, Number(args[0]) || 0));
+              current.thinkingBudget = next;
+              fs.mkdirSync(path.dirname(file), { recursive: true });
+              fs.writeFileSync(file, JSON.stringify(current, null, 2), 'utf8');
+              return writeJSON(res, 200, { success: true, budget: next });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
+          // ── Tool permission policy (settings.json toolPermissions) ──
+          case 'toolPolicy:get': {
+            try {
+              const { getToolPermissionPolicy } = await import('./libs/toolPermissionPolicy');
+              return writeJSON(res, 200, { success: true, policy: getToolPermissionPolicy() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'toolPolicy:set': {
+            // Overwrite the toolPermissions block of settings.json. We
+            // deliberately do a read-modify-write so the hooks / other
+            // config survives untouched. Refuses if the file is malformed
+            // rather than silently clobbering it.
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const { getUserDataPath } = await import('./libs/platformAdapter');
+              const file = path.join(getUserDataPath(), 'settings.json');
+              let current: Record<string, unknown> = {};
+              try {
+                const raw = fs.readFileSync(file, 'utf8');
+                current = JSON.parse(raw);
+              } catch { /* missing / malformed — start fresh */ }
+              current.toolPermissions = args[0];
+              fs.mkdirSync(path.dirname(file), { recursive: true });
+              fs.writeFileSync(file, JSON.stringify(current, null, 2), 'utf8');
+              const { invalidateToolPolicyCache } = await import('./libs/toolPermissionPolicy');
+              invalidateToolPolicyCache();
+              return writeJSON(res, 200, { success: true });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
+          // ── Crash reporter: list recent crashes + get crash dir ──
+          case 'crashes:list': {
+            try {
+              const { recentCrashes } = await import('./libs/crashReporter');
+              return writeJSON(res, 200, { success: true, crashes: recentCrashes(20) });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'crashes:getDir': {
+            const { getCrashDir } = await import('./libs/crashReporter');
+            return writeJSON(res, 200, { success: true, dir: getCrashDir() });
+          }
+
+          // ── Session full-text search (FTS5 / LIKE fallback) ──
+          case 'cowork:search:messages': {
+            try {
+              const q = String(args[0] || '');
+              const limit = Math.min(Math.max(Number(args[1] ?? 50), 1), 200);
+              const hits = runner?.store?.searchMessages?.(q, limit) ?? [];
+              return writeJSON(res, 200, { success: true, hits });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
+          // ── Workspace file index (@mention composer autocomplete) ──
+          // Takes a root dir argument, returns up to 8_000 relative
+          // paths with type + size. Cached 10s server-side so rapid
+          // keystrokes are cheap. Renderer does the fuzzy scoring.
+          case 'workspace:listFiles': {
+            try {
+              const root = String(args[0] || '');
+              if (!root) return writeJSON(res, 200, { success: true, entries: [] });
+              const { listWorkspaceFiles } = await import('./libs/workspaceFileIndex');
+              const entries = listWorkspaceFiles(root);
+              return writeJSON(res, 200, { success: true, entries });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
+          // ── Shell hooks (settings.json-driven) ──
+          case 'shellHooks:list': {
+            try {
+              const { listConfiguredHooks } = await import('./libs/shellHooks');
+              return writeJSON(res, 200, { success: true, hooks: listConfiguredHooks() });
+            } catch (e: any) {
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+
           // ── App info ──
           case 'app:getVersion': return writeJSON(res, 200, '1.0.0');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
@@ -1360,6 +1509,17 @@ const server = http.createServer(async (req, res) => {
 if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
   console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
+
+  // Install the crash reporter. Broadcasts system:crash SSE on
+  // uncaughtException / unhandledRejection so the renderer can show
+  // a toast; writes a ndjson record to {UserDataPath}/crashes/ so
+  // the user can attach it to a bug report. See libs/crashReporter.ts
+  try {
+    const { installCrashReporter } = require('./libs/crashReporter');
+    installCrashReporter((event: string, data: unknown) => broadcastSSE(event, data));
+  } catch (e) {
+    coworkLog('WARN', 'sidecar-server', `crashReporter install failed: ${e}`);
+  }
 
   // Pre-warm Windows environment discovery caches (gitbash probe, registry
   // PATH reads, node shim creation, etc.) so the first Lark- or user-

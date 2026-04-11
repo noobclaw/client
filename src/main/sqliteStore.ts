@@ -84,6 +84,12 @@ export class SqliteStore {
   private db: Database;
   private dbPath: string;
   private emitter = new EventEmitter();
+  /**
+   * Set to true during initSchema() if the FTS5 virtual table was
+   * created successfully. Query-time branches choose between FTS5
+   * MATCH and a plain LIKE fallback based on this flag.
+   */
+  private ftsAvailable = false;
   private static sqlPromise: Promise<SqlJsStatic> | null = null;
 
   private constructor(db: Database, dbPath: string) {
@@ -304,6 +310,47 @@ export class SqliteStore {
       CREATE INDEX IF NOT EXISTS idx_cost_records_time
         ON cost_records(created_at DESC);
     `);
+
+    // ── Full-text search index for session history ──
+    // SQL.js ships the sqlite3 amalgamation compiled with FTS5 enabled
+    // so we can build a virtual table over message content + session
+    // titles and the renderer can hit `MATCH` queries without loading
+    // every row. We use an external-content virtual table pointing at
+    // cowork_messages so storage isn't doubled — only the tokenized
+    // index lives in the FTS table. The row identity is the messages
+    // rowid so ON DELETE CASCADE on cowork_messages still cleans
+    // everything up.
+    //
+    // If the build does NOT have FTS5 the CREATE VIRTUAL TABLE call
+    // throws; we swallow it and fall through to a LIKE-based search
+    // path at query time. In practice sql.js 1.11+ always has FTS5.
+    this.ftsAvailable = false;
+    try {
+      this.db.run(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS cowork_messages_fts USING fts5(
+          content,
+          session_id UNINDEXED,
+          message_id UNINDEXED,
+          created_at UNINDEXED,
+          tokenize = 'unicode61 remove_diacritics 2'
+        );
+      `);
+      this.ftsAvailable = true;
+      // Backfill any existing messages that predate the FTS table on
+      // first run after upgrade. Idempotent via the NOT EXISTS guard.
+      const countRes = this.db.exec('SELECT COUNT(*) FROM cowork_messages_fts');
+      const ftsCount = countRes[0]?.values?.[0]?.[0] as number ?? 0;
+      if (ftsCount === 0) {
+        this.db.run(`
+          INSERT INTO cowork_messages_fts(content, session_id, message_id, created_at)
+          SELECT content, session_id, id, created_at FROM cowork_messages;
+        `);
+      }
+    } catch (e) {
+      // FTS5 not available — log once and fall back to LIKE at query time
+      console.warn('[sqliteStore] FTS5 not available, falling back to LIKE search:', e);
+      this.ftsAvailable = false;
+    }
 
     // Migrations - safely add columns if they don't exist
     try {

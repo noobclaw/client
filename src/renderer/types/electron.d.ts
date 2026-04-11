@@ -261,6 +261,50 @@ interface IElectronAPI {
     }) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
     oauthClear?: (id: string) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
   };
+  slashCommands?: {
+    list: () => Promise<Array<{ name: string; description: string; file: string }>>;
+    getDir: () => Promise<string | null>;
+  };
+  shellHooks?: {
+    list: () => Promise<Record<string, Array<{ matcher?: string; command: string; timeoutMs?: number }>>>;
+  };
+  toolPolicy?: {
+    get: () => Promise<{
+      defaultMode: 'allow' | 'deny' | 'ask';
+      rules: Array<{
+        pattern: string;
+        mode: 'allow' | 'deny' | 'ask';
+        bashCommandContains?: string;
+        reason?: string;
+      }>;
+    }>;
+    set: (policy: any) => Promise<boolean>;
+  };
+  coworkConfig?: {
+    get: () => Promise<{ thinkingBudget: number }>;
+    setThinkingBudget: (budget: number) => Promise<boolean>;
+  };
+  workspace?: {
+    listFiles: (root: string) => Promise<Array<{ rel: string; size: number; kind: 'file' | 'dir' }>>;
+  };
+  searchMessages?: (query: string, limit?: number) => Promise<Array<{
+    sessionId: string;
+    title: string;
+    snippet: string;
+    messageId: string;
+    createdAt: number;
+  }>>;
+  crashes?: {
+    list: () => Promise<Array<{
+      ts: string;
+      kind: string;
+      message: string;
+      stack?: string;
+      file: string;
+    }>>;
+    getDir: () => Promise<string | null>;
+    onCrash: (callback: (detail: { kind: string; message: string; file: string | null; ts: string }) => void) => () => void;
+  };
   api: {
     fetch: (options: {
       url: string;

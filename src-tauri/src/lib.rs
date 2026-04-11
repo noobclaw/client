@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    AppHandle, Manager,
+    AppHandle, Emitter, Listener, Manager,
 };
 use tauri_plugin_shell::process::CommandChild;
 
@@ -207,8 +207,11 @@ impl Drop for SidecarState {
     }
 }
 
-/// Launch the Node.js sidecar server and return (port, child).
-fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> {
+/// Spawn the sidecar once and install the stdout/stderr pump. Used by
+/// both the initial startup path AND the supervisor restart path below.
+/// The caller is responsible for storing the returned CommandChild in
+/// SidecarState so it can be killed on app shutdown.
+fn spawn_sidecar_once(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> {
     use tauri_plugin_shell::ShellExt;
 
     let port: u16 = 18800;
@@ -240,9 +243,11 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
         msg
     })?;
 
-    // Log sidecar output in background — both to stdout (for `tauri dev`)
-    // and to a persistent log file so packaged macOS users can diagnose
-    // "sidecar unreachable" without a terminal attached.
+    // Pump stdout/stderr in a background task and signal the supervisor
+    // when the child terminates. We send the Terminated marker out via
+    // an internal channel so the supervisor can decide whether to
+    // restart without racing with a second spawn attempt.
+    let app_for_pump = app.clone();
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
@@ -267,6 +272,15 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
                     let msg = format!("[sidecar] Process terminated: {:?}", status);
                     eprintln!("{}", msg);
                     append_sidecar_log(&format!("[exit] {:?}", status));
+                    // Tell the supervisor to consider a restart. We
+                    // use a Tauri event rather than a channel so any
+                    // listener (renderer, supervisor) can observe.
+                    let _ = app_for_pump.emit(
+                        "sidecar://terminated",
+                        serde_json::json!({
+                            "exitCode": format!("{:?}", status),
+                        }),
+                    );
                     break;
                 }
                 _ => {}
@@ -275,6 +289,113 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
     });
 
     Ok((port, child))
+}
+
+/// Install the sidecar supervisor. Listens for "sidecar://terminated"
+/// events and restarts the child with exponential backoff (500ms →
+/// 30s ceiling). Three consecutive failed restarts within 10 seconds
+/// trip a circuit breaker and the supervisor gives up — the assumption
+/// is that something fundamental is broken (missing binary, corrupt
+/// install) and restart-looping would just burn CPU without helping.
+///
+/// The supervisor emits "sidecar://restarting" and "sidecar://ready"
+/// events so the renderer can show a "reconnecting…" banner.
+///
+/// Shutdown: on app exit, SidecarState::drop() kills the current child
+/// and the pump task breaks out on its own. The supervisor listens
+/// for "sidecar://shutdown" events fired from the WindowEvent::Destroyed
+/// handler below so it doesn't try to restart during app quit.
+fn install_sidecar_supervisor(app: tauri::AppHandle) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    let shutting_down = Arc::new(AtomicBool::new(false));
+    let shutting_down_clone = shutting_down.clone();
+    let app_clone = app.clone();
+
+    // Flip the flag when shutdown is announced so the supervisor stops
+    // restarting. Wired from the main window Destroyed event.
+    let _ = app.listen("sidecar://shutdown", move |_| {
+        shutting_down_clone.store(true, Ordering::SeqCst);
+    });
+
+    tauri::async_runtime::spawn(async move {
+        let mut recent_failures: Vec<std::time::Instant> = Vec::new();
+
+        'outer: loop {
+            // ── Wait for the next termination event ──
+            // The initial spawn happens in setup(), so on first loop
+            // iteration we just wait for that child to die. Subsequent
+            // iterations wait for the next death.
+            let (tx, rx) = tokio::sync::oneshot::channel::<()>();
+            let tx_cell = std::sync::Mutex::new(Some(tx));
+            let handler = app_clone.listen("sidecar://terminated", move |_| {
+                if let Ok(mut slot) = tx_cell.lock() {
+                    if let Some(tx) = slot.take() {
+                        let _ = tx.send(());
+                    }
+                }
+            });
+            let _ = rx.await;
+            app_clone.unlisten(handler);
+
+            if shutting_down.load(Ordering::SeqCst) {
+                append_sidecar_log("[supervisor] shutdown flag set, not restarting");
+                break;
+            }
+
+            // ── Retry loop: keep trying to spawn until success or
+            //     circuit breaker trip. Unlike the termination wait,
+            //     this is local to a single crash — if 3 spawns fail
+            //     in 10s we give up entirely.
+            let mut backoff_ms: u64 = 500;
+            loop {
+                // Circuit breaker check
+                let now = std::time::Instant::now();
+                recent_failures.retain(|t| now.duration_since(*t) < Duration::from_secs(10));
+                if recent_failures.len() >= 3 {
+                    append_sidecar_log("[supervisor] 3 failures in 10s, tripping circuit breaker");
+                    let _ = app_clone.emit(
+                        "sidecar://give-up",
+                        serde_json::json!({ "reason": "3 restart failures within 10s" }),
+                    );
+                    break 'outer;
+                }
+
+                append_sidecar_log(&format!("[supervisor] restarting sidecar in {}ms", backoff_ms));
+                let _ = app_clone.emit(
+                    "sidecar://restarting",
+                    serde_json::json!({ "delayMs": backoff_ms }),
+                );
+                tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+
+                match spawn_sidecar_once(&app_clone) {
+                    Ok((port, child)) => {
+                        append_sidecar_log(&format!("[supervisor] sidecar restarted on port {}", port));
+                        if let Some(state) = app_clone.try_state::<SidecarState>() {
+                            if let Ok(mut guard) = state.child.lock() {
+                                *guard = Some(child);
+                            }
+                        }
+                        let _ = app_clone.emit("sidecar://ready", serde_json::json!({ "port": port }));
+                        // Success — go back out to wait for the next
+                        // termination signal.
+                        break;
+                    }
+                    Err(e) => {
+                        append_sidecar_log(&format!("[supervisor] spawn failed: {}", e));
+                        recent_failures.push(now);
+                        backoff_ms = (backoff_ms * 2).min(30_000);
+                        // Loop again without waiting for a new
+                        // termination event — the spawn failed so
+                        // there is no child to die.
+                        continue;
+                    }
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -645,16 +766,16 @@ pub fn run() {
             // use case.
             if let Some(window) = app.get_webview_window("main") {
                 let win_clone = window.clone();
+                let shutdown_handle = handle.clone();
                 window.on_window_event(move |event| {
+                    // Drag-drop: forward native paths to the renderer
+                    // as a custom JS event.
                     if let tauri::WindowEvent::DragDrop(drag) = event {
                         if let tauri::DragDropEvent::Drop { paths, .. } = drag {
                             let json_paths: Vec<String> = paths
                                 .iter()
                                 .filter_map(|p| p.to_str().map(|s| s.to_string()))
                                 .collect();
-                            // Build a single JS array literal and
-                            // dispatch a CustomEvent the renderer can
-                            // intercept.
                             let arr = serde_json::to_string(&json_paths)
                                 .unwrap_or_else(|_| "[]".into());
                             let js = format!(
@@ -663,6 +784,12 @@ pub fn run() {
                             );
                             let _ = win_clone.eval(&js);
                         }
+                    }
+                    // Window destroyed: tell the sidecar supervisor
+                    // to stop restarting (otherwise it would race with
+                    // SidecarState::drop() during app quit).
+                    if matches!(event, tauri::WindowEvent::Destroyed) {
+                        let _ = shutdown_handle.emit("sidecar://shutdown", ());
                     }
                 });
             }
@@ -738,8 +865,11 @@ pub fn run() {
                 let _ = AXIsProcessTrusted();
             }
 
-            // Start the Node.js sidecar
-            match start_sidecar(&handle) {
+            // Start the Node.js sidecar and install the crash-restart
+            // supervisor. The supervisor listens for sidecar://terminated
+            // events (fired by spawn_sidecar_once's stdout pump when the
+            // child dies) and re-spawns with exponential backoff.
+            match spawn_sidecar_once(&handle) {
                 Ok((port, child)) => {
                     app.manage(SidecarState {
                         child: Mutex::new(Some(child)),
@@ -755,6 +885,17 @@ pub fn run() {
                     });
                 }
             }
+            // Supervisor runs regardless of whether the initial spawn
+            // succeeded — on failed initial spawn, the first "terminated"
+            // never fires and the supervisor sits idle, but that's
+            // harmless. (If we wanted to auto-retry the initial spawn
+            // we'd emit a synthetic event here.)
+            install_sidecar_supervisor(handle.clone());
+            // Note: the sidecar://shutdown event is emitted from the
+            // main window's WindowEvent::Destroyed handler above,
+            // folded into the same on_window_event closure that
+            // handles native drag-drop so we only register one
+            // listener on the window.
 
             // DevTools: only in debug builds (release builds use F12/Ctrl+Shift+I)
             #[cfg(debug_assertions)]

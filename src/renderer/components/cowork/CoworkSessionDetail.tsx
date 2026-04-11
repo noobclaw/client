@@ -542,8 +542,15 @@ const isRenderableAssistantOrSystemMessage = (message: CoworkMessage): boolean =
   if (hasText(message.content) || hasText(message.metadata?.error)) {
     return true;
   }
+  // Thinking blocks stay visible after streaming ends so the user can
+  // scroll back to see the model's reasoning. Previously we only
+  // rendered them while the turn was still live and isStreaming=true,
+  // which meant the block disappeared the moment the final text arrived
+  // — surprising and also makes retroactive "why did it do that?"
+  // inspection impossible. The ThinkingBlock component renders a
+  // collapsed preview so persisting doesn't wreck the layout.
   if (message.metadata?.isThinking) {
-    return Boolean(message.metadata?.isStreaming);
+    return true;
   }
   return false;
 };
