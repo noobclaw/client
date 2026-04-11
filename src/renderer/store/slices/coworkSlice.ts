@@ -194,6 +194,19 @@ const coworkSlice = createSlice({
       markSessionUnread(state, sessionId);
     },
 
+    updateMessageMetadata(state, action: PayloadAction<{ sessionId: string; messageId: string; metadata: Record<string, unknown> }>) {
+      const { sessionId, messageId, metadata } = action.payload;
+      if (state.currentSession?.id === sessionId) {
+        const messageIndex = state.currentSession.messages.findIndex(m => m.id === messageId);
+        if (messageIndex !== -1) {
+          state.currentSession.messages[messageIndex].metadata = {
+            ...(state.currentSession.messages[messageIndex].metadata || {}),
+            ...metadata,
+          } as any;
+        }
+      }
+    },
+
     setStreaming(state, action: PayloadAction<boolean>) {
       state.isStreaming = action.payload;
     },
@@ -273,6 +286,7 @@ export const {
   deleteSessions,
   addMessage,
   updateMessageContent,
+  updateMessageMetadata,
   setStreaming,
   updateSessionPinned,
   updateSessionTitle,

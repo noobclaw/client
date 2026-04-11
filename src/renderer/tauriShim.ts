@@ -269,6 +269,7 @@ export function createTauriElectronShim(): typeof window.electron {
 
       onStreamMessage: (cb: any) => onSSE('cowork:stream:message', cb),
       onStreamMessageUpdate: (cb: any) => onSSE('cowork:stream:messageUpdate', cb),
+      onStreamMessageMetadata: (cb: any) => onSSE('cowork:stream:messageMetadata', cb),
       onStreamPermission: (cb: any) => onSSE('cowork:stream:permission', cb),
       onStreamComplete: (cb: any) => onSSE('cowork:stream:complete', cb),
       onStreamError: (cb: any) => onSSE('cowork:stream:error', cb),

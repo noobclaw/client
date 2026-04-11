@@ -8,6 +8,7 @@ import {
   deleteSessions as deleteSessionsAction,
   addMessage,
   updateMessageContent,
+  updateMessageMetadata,
   setStreaming,
   updateSessionPinned,
   updateSessionTitle,
@@ -95,6 +96,20 @@ class CoworkService {
       store.dispatch(updateMessageContent({ sessionId, messageId, content }));
     });
     this.streamListenerCleanups.push(messageUpdateCleanup);
+
+    // Message metadata update listener (e.g. per-turn token usage) —
+    // fires after a stream completes and carries the usage field onto
+    // the last assistant message. Bubble UI reads metadata.usage to
+    // render the "12.5K in · 841 out" footer.
+    const coworkAny = cowork as unknown as {
+      onStreamMessageMetadata?: (cb: (data: { sessionId: string; messageId: string; metadata: Record<string, unknown> }) => void) => () => void;
+    };
+    if (typeof coworkAny.onStreamMessageMetadata === 'function') {
+      const metadataCleanup = coworkAny.onStreamMessageMetadata(({ sessionId, messageId, metadata }) => {
+        store.dispatch(updateMessageMetadata({ sessionId, messageId, metadata }));
+      });
+      this.streamListenerCleanups.push(metadataCleanup);
+    }
 
     // Permission request listener
     const permissionCleanup = cowork.onStreamPermission(({ sessionId, request }) => {

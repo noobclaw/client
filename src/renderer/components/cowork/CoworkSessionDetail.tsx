@@ -926,6 +926,41 @@ const UserMessageItem: React.FC<{ message: CoworkMessage; skills: Skill[]; onSho
   );
 });
 
+// Per-turn token usage shown as a small gray footer under an assistant
+// reply. Format numbers compactly (12345 → "12.3K"). Uses the metadata
+// field populated by coworkRunner's 'usage' event handler. Silent when
+// no usage data is attached (e.g. streaming-in-progress or older
+// messages from before this feature shipped).
+const formatTokenCount = (n: number): string => {
+  if (!Number.isFinite(n) || n <= 0) return '0';
+  if (n < 1000) return String(n);
+  if (n < 1000 * 1000) return `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}K`;
+  return `${(n / 1_000_000).toFixed(1)}M`;
+};
+
+const TokenUsageFooter: React.FC<{ metadata: CoworkMessage['metadata'] }> = ({ metadata }) => {
+  const usage = (metadata as any)?.usage as
+    | { inputTokens?: number; outputTokens?: number; cacheReadTokens?: number; cacheCreationTokens?: number }
+    | undefined;
+  if (!usage) return null;
+  const inTok = Number(usage.inputTokens ?? 0);
+  const outTok = Number(usage.outputTokens ?? 0);
+  const cacheRead = Number(usage.cacheReadTokens ?? 0);
+  if (inTok === 0 && outTok === 0 && cacheRead === 0) return null;
+  const parts: string[] = [];
+  parts.push(`↓ ${formatTokenCount(inTok)}`);
+  parts.push(`↑ ${formatTokenCount(outTok)}`);
+  if (cacheRead > 0) parts.push(`⚡ ${formatTokenCount(cacheRead)}`);
+  return (
+    <div
+      className="mt-1 text-[10px] tabular-nums dark:text-claude-darkTextSecondary/60 text-claude-textSecondary/60 select-none"
+      title={`Input: ${inTok} · Output: ${outTok}${cacheRead ? ` · Cache read: ${cacheRead}` : ''}`}
+    >
+      {parts.join('  ·  ')}
+    </div>
+  );
+};
+
 const AssistantMessageItem: React.FC<{
   message: CoworkMessage;
   resolveLocalFilePath?: (href: string, text: string) => string | null;
@@ -953,6 +988,7 @@ const AssistantMessageItem: React.FC<{
           resolveLocalFilePath={resolveLocalFilePath}
         />
       </div>
+      <TokenUsageFooter metadata={message.metadata} />
       {showCopyButton && (
         <div className="flex items-center gap-1.5 mt-1">
           <CopyButton

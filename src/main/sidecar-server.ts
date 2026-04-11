@@ -217,6 +217,9 @@ async function getRunner() {
     runnerInstance.on('messageUpdate', (sessionId: string, messageId: string, content: string) => {
       broadcastSSE('cowork:stream:messageUpdate', { sessionId, messageId, content });
     });
+    runnerInstance.on('messageMetadata', (sessionId: string, messageId: string, metadata: Record<string, unknown>) => {
+      broadcastSSE('cowork:stream:messageMetadata', { sessionId, messageId, metadata });
+    });
     runnerInstance.on('permissionRequest', (sessionId: string, request: any) => {
       broadcastSSE('cowork:stream:permission', { sessionId, request });
     });

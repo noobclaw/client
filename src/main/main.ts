@@ -619,6 +619,22 @@ const getCoworkRunner = () => {
       });
     });
 
+    coworkRunner.on('messageMetadata', (sessionId: string, messageId: string, metadata: Record<string, unknown>) => {
+      // Metadata-only updates (token usage, etc.) — forwarded to renderer
+      // so bubbles can display "12.5K in · 841 out" under the AI reply
+      // without re-adding the message to the Redux store.
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach(win => {
+        if (!win.isDestroyed()) {
+          try {
+            win.webContents.send('cowork:stream:messageMetadata', { sessionId, messageId, metadata });
+          } catch (error) {
+            console.error('Failed to forward cowork message metadata:', error);
+          }
+        }
+      });
+    });
+
     coworkRunner.on('permissionRequest', (sessionId: string, request: any) => {
       if (coworkRunner?.getSessionConfirmationMode(sessionId) === 'text') {
         return;

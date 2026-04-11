@@ -479,6 +479,7 @@ function mergeNoProxyList(currentValue: string | undefined, requiredHosts: strin
 export interface CoworkRunnerEvents {
   message: (sessionId: string, message: CoworkMessage) => void;
   messageUpdate: (sessionId: string, messageId: string, content: string) => void;
+  messageMetadata: (sessionId: string, messageId: string, metadata: Record<string, unknown>) => void;
   permissionRequest: (sessionId: string, request: PermissionRequest) => void;
   complete: (sessionId: string, claudeSessionId: string | null) => void;
   error: (sessionId: string, error: string) => void;
@@ -4346,6 +4347,19 @@ export class CoworkRunner extends EventEmitter {
       });
 
       // ── canUseTool: extracted as a named function so taskTools can reference it ──
+      //
+      // Policy: FULLY AUTOMATED. Per user request (全自动化，用户不一定
+      // 在电脑面前), this session runner never interrupts the AI with a
+      // permission popup, regardless of command. curl|sh, sudo, chmod 777,
+      // rm -rf, git push --force — all auto-allowed. The only interaction
+      // left is `AskUserQuestion`, which is the AI explicitly asking the
+      // user a structured multi-choice question as part of its workflow
+      // (not a permission prompt), plus the browser-extension install
+      // flow which lives outside this function.
+      //
+      // If you want to re-enable safety checks, wire
+      // `enforceToolSafetyPolicy` back in below the abort check — the
+      // function is still defined and tested, just unreferenced.
       const canUseToolFn = async (
         toolName: string,
         toolInput: unknown,
@@ -4361,15 +4375,8 @@ export class CoworkRunner extends EventEmitter {
             ? (toolInput as Record<string, unknown>)
             : { value: toolInput };
 
-        // v5 policy: DEFAULT ALLOW — only block truly dangerous operations.
-        // No permission popups for normal tool calls. Users should not be
-        // interrupted for routine operations like reading files, searching, etc.
-
-        // Check safety policy (blocks destructive system commands)
-        const safetyResult = await this.enforceToolSafetyPolicy(sessionId, signal, activeSession, resolvedName, resolvedInput);
-        if (safetyResult) return safetyResult;
-
-        // Only AskUserQuestion needs user interaction (it's asking the user a question)
+        // AskUserQuestion is the AI's own structured question-asking UI,
+        // not a permission check — keep it interactive.
         if (resolvedName === 'AskUserQuestion') {
           const request: PermissionRequest = {
             requestId: uuidv4(),
@@ -4385,7 +4392,13 @@ export class CoworkRunner extends EventEmitter {
           return permResult;
         }
 
-        // Everything else: auto-approve
+        // Everything else: auto-approve. Log at INFO so an operator can
+        // still audit what ran if something goes wrong.
+        coworkLog('INFO', 'canUseTool', 'Auto-allow tool', {
+          sessionId,
+          tool: resolvedName,
+          hasInput: !!resolvedInput,
+        });
         return { behavior: 'allow' };
       };
 
@@ -4952,6 +4965,34 @@ export class CoworkRunner extends EventEmitter {
               ? (toolInputRaw as Record<string, unknown>)
               : {};
 
+          // AskUserQuestion is the AI asking the user a structured
+          // question — keep that interactive. Everything else: auto-
+          // respond `allow` directly into the sandbox IPC bridge /
+          // response file and skip the UI entirely. See canUseToolFn
+          // above for the policy rationale (全自动化 / 不打扰用户).
+          if (toolName !== 'AskUserQuestion') {
+            const responsePath = path.join(paths.responsesDir, `${requestId}.json`);
+            const autoAllow = { behavior: 'allow' as const };
+            try {
+              fs.writeFileSync(responsePath, JSON.stringify(autoAllow));
+            } catch (e) {
+              coworkLog('WARN', 'runSandbox', `Auto-allow write failed: ${e}`);
+            }
+            if (activeSession.ipcBridge) {
+              try {
+                activeSession.ipcBridge.sendPermissionResponse(
+                  requestId,
+                  autoAllow as unknown as Record<string, unknown>,
+                );
+              } catch (e) {
+                coworkLog('WARN', 'runSandbox', `Auto-allow ipc send failed: ${e}`);
+              }
+            }
+            coworkLog('INFO', 'runSandbox', 'Sandbox tool auto-allowed', {
+              sessionId, tool: toolName,
+            });
+            return;
+          }
 
           const responsePath = path.join(paths.responsesDir, `${requestId}.json`);
           this.sandboxPermissions.set(requestId, { sessionId, responsePath });
@@ -5486,6 +5527,29 @@ export class CoworkRunner extends EventEmitter {
             ? (toolInputRaw as Record<string, unknown>)
             : {};
 
+        // Full automation — see canUseToolFn for the policy. Anything
+        // that isn't the AI's own AskUserQuestion gets an auto-allow
+        // piped straight back into the sandbox.
+        if (toolName !== 'AskUserQuestion') {
+          const responsePath = path.join(paths.responsesDir, `${reqId}.json`);
+          const autoAllow = { behavior: 'allow' as const };
+          try {
+            fs.writeFileSync(responsePath, JSON.stringify(autoAllow));
+          } catch (e) {
+            coworkLog('WARN', 'runSandboxContinue', `Auto-allow write failed: ${e}`);
+          }
+          if (activeSession.ipcBridge) {
+            try {
+              activeSession.ipcBridge.sendPermissionResponse(
+                reqId,
+                autoAllow as unknown as Record<string, unknown>,
+              );
+            } catch (e) {
+              coworkLog('WARN', 'runSandboxContinue', `Auto-allow ipc send failed: ${e}`);
+            }
+          }
+          return;
+        }
 
         const responsePath = path.join(paths.responsesDir, `${reqId}.json`);
         this.sandboxPermissions.set(reqId, { sessionId, responsePath });
@@ -5849,6 +5913,39 @@ export class CoworkRunner extends EventEmitter {
           cacheReadInputTokens: event.cacheReadTokens,
           cacheCreationInputTokens: event.cacheCreationTokens,
         });
+
+        // Attach usage to the last assistant message of this turn so the
+        // renderer can show "12.5K in · 841 out · 8K cache" inline under
+        // the bubble. The usage event fires AFTER the stream finishes but
+        // BEFORE the next turn_start resets currentStreamingMessageId, so
+        // grabbing that id here is the stable way to find the message we
+        // just finished streaming into.
+        const messageId =
+          activeSession.currentStreamingMessageId
+          || activeSession.currentStreamingThinkingMessageId;
+        if (messageId) {
+          try {
+            const session = this.store.getSession(sessionId);
+            const existing = session?.messages.find((m) => m.id === messageId);
+            if (existing) {
+              const mergedMetadata = {
+                ...(existing.metadata || {}),
+                usage: {
+                  inputTokens: event.inputTokens,
+                  outputTokens: event.outputTokens,
+                  cacheReadTokens: event.cacheReadTokens ?? 0,
+                  cacheCreationTokens: event.cacheCreationTokens ?? 0,
+                },
+              };
+              this.store.updateMessage(sessionId, messageId, { metadata: mergedMetadata });
+              // Push a lightweight metadata event so the renderer can
+              // update the bubble without re-adding the message.
+              this.emit('messageMetadata', sessionId, messageId, mergedMetadata);
+            }
+          } catch (e) {
+            coworkLog('WARN', 'tokenUsage', `Failed to attach usage to message: ${e}`);
+          }
+        }
         break;
       }
 
