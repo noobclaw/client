@@ -620,19 +620,32 @@ static NSString *axStringAttr(AXUIElementRef element, CFStringRef attr) {
   return s;
 }
 
+// Cast helper: CFTypeRef is `const void*` and AXValueRef is
+// `struct __AXValue*`. A plain C cast between them is legal in C but
+// C++ trips over dropping the const (clang error "no matching function
+// for call to 'AXValueGetValue'"). Strip the const via const_cast then
+// static_cast to the target pointer type.
+static inline AXValueRef castToAXValue(CFTypeRef v) {
+  return static_cast<AXValueRef>(const_cast<void *>(v));
+}
+
 static CGRect axFrameAttr(AXUIElementRef element) {
   CGPoint origin = CGPointZero;
   CGSize size = CGSizeZero;
 
   CFTypeRef posValue = NULL;
   if (AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &posValue) == kAXErrorSuccess && posValue) {
-    AXValueGetValue((AXValueRef)posValue, kAXValueCGPointType, &origin);
+    if (CFGetTypeID(posValue) == AXValueGetTypeID()) {
+      AXValueGetValue(castToAXValue(posValue), kAXValueCGPointType, &origin);
+    }
     CFRelease(posValue);
   }
 
   CFTypeRef sizeValue = NULL;
   if (AXUIElementCopyAttributeValue(element, kAXSizeAttribute, &sizeValue) == kAXErrorSuccess && sizeValue) {
-    AXValueGetValue((AXValueRef)sizeValue, kAXValueCGSizeType, &size);
+    if (CFGetTypeID(sizeValue) == AXValueGetTypeID()) {
+      AXValueGetValue(castToAXValue(sizeValue), kAXValueCGSizeType, &size);
+    }
     CFRelease(sizeValue);
   }
 
