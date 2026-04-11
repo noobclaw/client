@@ -55,27 +55,50 @@ function log(msg) {
 }
 
 function findAppBundle(targetTriple) {
-  // tauri build output layout:
-  //   src-tauri/target/<target-triple>/release/bundle/macos/NoobClaw.app
-  // If no target specified, fall back to the first one we find.
+  // Tauri v2 bundle output is usually:
+  //   src-tauri/target/<triple>/release/bundle/macos/<ProductName>.app
+  // but the directory layout has varied across versions (we've seen
+  // bundle/dmg/<ProductName>.app too after the dmg step). Walk the
+  // bundle dir recursively to be safe — same strategy the CI "Verify
+  // codesign" step uses with `find ... -name "*.app"`.
   const root = path.resolve(__dirname, '..', 'src-tauri', 'target');
-  const candidates = [];
+
+  const rootsToScan = [];
   if (targetTriple) {
-    candidates.push(path.join(root, targetTriple, 'release', 'bundle', 'macos'));
+    rootsToScan.push(path.join(root, targetTriple, 'release', 'bundle'));
   }
-  // Also scan all <triple>/release/bundle/macos in case --target wasn't set.
+  // Also scan every triple dir so the script still works without --target.
   try {
     for (const entry of fs.readdirSync(root)) {
-      candidates.push(path.join(root, entry, 'release', 'bundle', 'macos'));
+      rootsToScan.push(path.join(root, entry, 'release', 'bundle'));
     }
   } catch { /* target dir may not exist yet */ }
 
-  for (const dir of candidates) {
-    if (!fs.existsSync(dir)) continue;
-    const entries = fs.readdirSync(dir).filter((n) => n.endsWith('.app'));
-    if (entries.length > 0) {
-      return path.join(dir, entries[0]);
+  const visited = new Set();
+  const walk = (dir) => {
+    if (visited.has(dir)) return null;
+    visited.add(dir);
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return null;
     }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const full = path.join(dir, entry.name);
+      if (entry.name.endsWith('.app')) return full;
+      // Recurse one level into sub-bundle folders (macos/, dmg/, etc.).
+      const nested = walk(full);
+      if (nested) return nested;
+    }
+    return null;
+  };
+
+  for (const dir of rootsToScan) {
+    if (!fs.existsSync(dir)) continue;
+    const found = walk(dir);
+    if (found) return found;
   }
   return null;
 }

@@ -587,7 +587,11 @@ static HPOWERNOTIFY g_power_notify_handle = nullptr;
 static Napi::ThreadSafeFunction g_power_tsfn;
 static bool g_power_tsfn_valid = false;
 
-static ULONG CALLBACK PowerCallbackRoutine(PVOID /*Context*/, ULONG Type, PVOID /*Setting*/) {
+// Name avoids collision with Windows SDK — `OnPowerEvent` and
+// `PowerCallbackRoutine` are both reserved-ish in the power framework
+// headers, and MSVC emits "overloaded-function" errors if we try to
+// take their address from &.
+static ULONG CALLBACK NoobClawPowerCallback(PVOID /*Context*/, ULONG Type, PVOID /*Setting*/) {
   if (!g_power_tsfn_valid) return 0;
 
   const char *kind = nullptr;
@@ -620,7 +624,7 @@ static ULONG CALLBACK PowerCallbackRoutine(PVOID /*Context*/, ULONG Type, PVOID 
   return 0;
 }
 
-static Napi::Value OnPowerEvent(const Napi::CallbackInfo &info) {
+static Napi::Value OnPowerEventJS(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   if (info.Length() < 1 || !info[0].IsFunction()) {
     Napi::TypeError::New(env, "onPowerEvent requires a function").ThrowAsJavaScriptException();
@@ -648,7 +652,7 @@ static Napi::Value OnPowerEvent(const Napi::CallbackInfo &info) {
   // whole process lifetime).
   if (!g_power_notify_handle) {
     DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = {};
-    params.Callback = PowerCallbackRoutine;
+    params.Callback = NoobClawPowerCallback;
     params.Context = nullptr;
     ULONG rc = PowerRegisterSuspendResumeNotification(
       DEVICE_NOTIFY_CALLBACK,
@@ -682,7 +686,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("clipboardVerify", Napi::Function::New(env, ClipboardVerify));
   exports.Set("getActiveWindow", Napi::Function::New(env, GetActiveWindow));
   exports.Set("listWindows", Napi::Function::New(env, ListWindows));
-  exports.Set("onPowerEvent", Napi::Function::New(env, OnPowerEvent));
+  exports.Set("onPowerEvent", Napi::Function::New(env, OnPowerEventJS));
   return exports;
 }
 
