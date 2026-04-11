@@ -19,29 +19,64 @@ const USER_MEMORIES_MIGRATION_KEY = 'userMemories.migration.v1.completed';
 // and passing the buffer directly to initSqlJs bypasses Emscripten's file loading,
 // which can fail or hang when the install path contains Chinese characters on Windows.
 function loadWasmBinary(): ArrayBuffer | undefined {
+  // Every candidate the sidecar might see across (Electron prod, Electron
+  // dev, Tauri prod on Windows, Tauri prod on macOS, Tauri dev). Ordered by
+  // likelihood so the common cases short-circuit fast. Kept exhaustive
+  // because a missing WASM crashes SqliteStore.create() which takes the
+  // entire sidecar down and the user just sees "sidecar unreachable".
+  const exeDir = path.dirname(process.execPath);
+  const resourcesDir = getResourcesPath();
   const candidates = [
-    // Electron packaged
-    isPackaged() ? path.join(getResourcesPath(), 'app.asar.unpacked/node_modules/sql.js/dist/sql-wasm.wasm') : '',
-    // Electron dev
+    // ── Electron packaged (app.asar.unpacked path) ─────────────────
+    isPackaged() ? path.join(resourcesDir, 'app.asar.unpacked/node_modules/sql.js/dist/sql-wasm.wasm') : '',
+    // ── Electron dev ───────────────────────────────────────────────
     path.join(getAppPath(), 'node_modules/sql.js/dist/sql-wasm.wasm'),
-    // Tauri: in resources/ subdirectory
-    path.join(path.dirname(process.execPath), 'resources', 'sql-wasm.wasm'),
-    // Sidecar/pkg — try relative to executable
-    path.join(path.dirname(process.execPath), 'sql-wasm.wasm'),
-    path.join(path.dirname(process.execPath), 'binaries', 'sql-wasm.wasm'),
-    // Sidecar — try node_modules in cwd
+    // ── Tauri packaged (all OSes) ──────────────────────────────────
+    // prepare-tauri-resources.js puts sql-wasm.wasm at
+    // src-tauri/resources/sql-wasm.wasm and tauri.conf.json globs it in
+    // via "resources": ["resources/**/*"]. Tauri preserves the relative
+    // path, so on disk the file lands inside a nested resources/ dir
+    // under the platform's resource root.
+    //
+    //   Windows (NSIS): install-dir/resources/sql-wasm.wasm
+    //   macOS  (.app):  NoobClaw.app/Contents/Resources/resources/sql-wasm.wasm
+    //
+    // getResourcesPath() walks its candidate list and returns:
+    //   Windows: install-dir/resources
+    //   macOS:   NoobClaw.app/Contents/Resources
+    // So we need BOTH `resourcesDir/sql-wasm.wasm` (Windows — one-level
+    // nesting already walked) AND `resourcesDir/resources/sql-wasm.wasm`
+    // (macOS — we're one level above the nested dir).
+    path.join(resourcesDir, 'sql-wasm.wasm'),
+    path.join(resourcesDir, 'resources', 'sql-wasm.wasm'),
+    // ── macOS .app layout — explicit path from the sidecar exe ─────
+    // Belt-and-braces in case getResourcesPath's candidate walker ever
+    // returns a different parent. Sidecar sits at .app/Contents/MacOS/
+    // and Resources is a sibling of MacOS.
+    path.join(exeDir, '..', 'Resources', 'resources', 'sql-wasm.wasm'),
+    path.join(exeDir, '..', 'Resources', 'sql-wasm.wasm'),
+    // ── Tauri sidecar fallbacks — next to the binary ───────────────
+    path.join(exeDir, 'resources', 'sql-wasm.wasm'),
+    path.join(exeDir, 'sql-wasm.wasm'),
+    path.join(exeDir, 'binaries', 'sql-wasm.wasm'),
+    // ── Tauri dev — cwd-relative ───────────────────────────────────
     path.join(process.cwd(), 'node_modules/sql.js/dist/sql-wasm.wasm'),
   ].filter(Boolean);
 
+  const tried: string[] = [];
   for (const wasmPath of candidates) {
+    tried.push(wasmPath);
     try {
       if (fs.existsSync(wasmPath)) {
         const buf = fs.readFileSync(wasmPath);
+        console.log(`[SqliteStore] Loaded sql-wasm.wasm from ${wasmPath}`);
         return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
       }
     } catch {}
   }
-  // Return undefined — sql.js will try to fetch WASM itself
+  // Log the candidates so we can diagnose missing-WASM crashes from the
+  // sidecar stdout captured by Tauri.
+  console.error('[SqliteStore] sql-wasm.wasm not found. Tried:\n  ' + tried.join('\n  '));
   return undefined;
 }
 

@@ -565,50 +565,93 @@ export function initTauriShim(): void {
 }
 
 async function probeSidecarHealth(): Promise<void> {
-  const start = Date.now();
-  let status: 'ok' | 'unreachable' | 'degraded' = 'unreachable';
-  let detail = '';
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch(`${BASE_URL}/api/status`, { signal: controller.signal });
-    clearTimeout(timeout);
-    if (res.ok) {
-      status = 'ok';
-    } else {
-      status = 'degraded';
-      detail = `HTTP ${res.status}`;
+  // Retry for up to ~12 seconds before giving up. The sidecar on macOS
+  // can take a few seconds to cold-start (codesign + launchservices +
+  // Node init) and the first probe may legitimately race startup, so
+  // the banner would flash even on a healthy boot if we only tried once.
+  const attempts = 6;
+  const intervalMs = 2000;
+  let lastDetail = '';
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(`${BASE_URL}/api/status`, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (res.ok) {
+        console.log(`[TauriShim] Sidecar health: ok (attempt ${i + 1})`);
+        return;
+      }
+      lastDetail = `HTTP ${res.status}`;
+    } catch (e: any) {
+      lastDetail = String(e?.message || e);
     }
-  } catch (e: any) {
-    detail = String(e?.message || e);
+    console.log(`[TauriShim] Sidecar health: attempt ${i + 1}/${attempts} failed — ${lastDetail}`);
+    if (i < attempts - 1) await new Promise((r) => setTimeout(r, intervalMs));
   }
-  const elapsed = Date.now() - start;
-  console.log(`[TauriShim] Sidecar health: ${status} (${elapsed}ms)${detail ? ' — ' + detail : ''}`);
 
-  if (status === 'ok') return;
+  showSidecarErrorBanner(lastDetail);
+}
 
-  // Surface a non-dismissable diagnostic banner. Kept inline so it
-  // renders even if the React tree never mounts.
-  const banner = document.createElement('div');
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b91c1c;color:#fff;padding:10px 16px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;';
+async function fetchSidecarLogTail(): Promise<string> {
+  try {
+    const tauri = (window as any).__TAURI__;
+    if (tauri?.core?.invoke) {
+      const tail = await tauri.core.invoke('get_sidecar_log_tail');
+      return typeof tail === 'string' ? tail : '';
+    }
+  } catch (e) {
+    console.warn('[TauriShim] get_sidecar_log_tail failed:', e);
+  }
+  return '';
+}
+
+function showSidecarErrorBanner(detail: string): void {
   const isZh = navigator.language.startsWith('zh');
+  const existing = document.getElementById('nc-sidecar-error-banner');
+  if (existing) existing.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'nc-sidecar-error-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b91c1c;color:#fff;padding:10px 16px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;';
   const title = isZh ? '⚠️ 后台服务未启动' : '⚠️ Sidecar unreachable';
   const body = isZh
     ? `聊天与红包功能将无法工作。诊断：${detail || '无响应'}`
     : `Chat and lucky-bag features will not work. Diagnostic: ${detail || 'no response'}`;
   banner.innerHTML = `
-    <div style="flex:1;min-width:0;">
-      <strong>${title}</strong>
-      <div style="opacity:0.9;margin-top:2px;">${body}</div>
+    <div style="display:flex;align-items:flex-start;gap:12px;">
+      <div style="flex:1;min-width:0;">
+        <strong>${title}</strong>
+        <div style="opacity:0.9;margin-top:2px;">${body}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0;">
+        <button type="button" data-action="log" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '查看日志' : 'Show log'}</button>
+        <button type="button" data-action="retry" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '重试' : 'Retry'}</button>
+      </div>
     </div>
-    <button type="button" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '重试' : 'Retry'}</button>
+    <pre id="nc-sidecar-log-tail" style="display:none;background:rgba(0,0,0,0.35);color:#ffe4e4;padding:8px;border-radius:6px;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto;margin:0;"></pre>
   `;
-  const btn = banner.querySelector('button');
-  btn?.addEventListener('click', () => {
+
+  const retryBtn = banner.querySelector('[data-action="retry"]') as HTMLButtonElement | null;
+  const logBtn = banner.querySelector('[data-action="log"]') as HTMLButtonElement | null;
+  const logPre = banner.querySelector('#nc-sidecar-log-tail') as HTMLPreElement | null;
+
+  retryBtn?.addEventListener('click', () => {
     banner.remove();
     probeSidecarHealth();
   });
-  // Wait for body so the banner attaches even if called very early
+  logBtn?.addEventListener('click', async () => {
+    if (!logPre) return;
+    if (logPre.style.display !== 'none') {
+      logPre.style.display = 'none';
+      return;
+    }
+    logPre.style.display = 'block';
+    logPre.textContent = isZh ? '加载中…' : 'Loading…';
+    const tail = await fetchSidecarLogTail();
+    logPre.textContent = tail || (isZh ? '(日志为空或不可读)' : '(log empty or unreadable)');
+  });
+
   if (document.body) {
     document.body.appendChild(banner);
   } else {

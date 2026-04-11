@@ -1,6 +1,39 @@
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandChild;
+
+/// Resolve the on-disk log path for sidecar stdout/stderr capture.
+/// - macOS: ~/Library/Application Support/NoobClaw/logs/sidecar.log
+/// - Linux: ~/.noobclaw/logs/sidecar.log
+/// - Windows: %APPDATA%/NoobClaw/logs/sidecar.log
+///
+/// Created unconditionally so the user (or we, via the /api/diagnostic
+/// endpoint) can tail it after a failed startup.
+fn sidecar_log_path() -> Option<PathBuf> {
+    let base = if cfg!(target_os = "macos") {
+        dirs::home_dir()?.join("Library/Application Support/NoobClaw")
+    } else if cfg!(target_os = "windows") {
+        dirs::config_dir()?.join("NoobClaw")
+    } else {
+        dirs::home_dir()?.join(".noobclaw")
+    };
+    let logs = base.join("logs");
+    let _ = fs::create_dir_all(&logs);
+    Some(logs.join("sidecar.log"))
+}
+
+/// Append a line to the sidecar log. Silent on failure — we never want
+/// log plumbing to take down the app.
+fn append_sidecar_log(line: &str) {
+    if let Some(path) = sidecar_log_path() {
+        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = writeln!(f, "{}", line);
+        }
+    }
+}
 
 /// State holding the sidecar child process so we can kill it on exit.
 struct SidecarState {
@@ -31,33 +64,54 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
     // and shut itself down mid-cowork-session.
     let tauri_pid = std::process::id();
 
-    let (mut rx, child) = app
+    append_sidecar_log(&format!(
+        "\n========== sidecar start (tauri_pid={} port={}) ==========",
+        tauri_pid, port
+    ));
+
+    let spawn_result = app
         .shell()
         .sidecar("noobclaw-server")
-        .map_err(|e| format!("Failed to create sidecar command: {}", e))?
+        .map_err(|e| {
+            let msg = format!("Failed to create sidecar command: {}", e);
+            append_sidecar_log(&format!("[tauri] {}", msg));
+            msg
+        })?
         .args(&[port.to_string(), format!("--tauri-pid={}", tauri_pid)])
-        .spawn()
-        .map_err(|e| format!("Failed to spawn sidecar: {}", e))?;
+        .spawn();
+    let (mut rx, child) = spawn_result.map_err(|e| {
+        let msg = format!("Failed to spawn sidecar: {}", e);
+        append_sidecar_log(&format!("[tauri] {}", msg));
+        msg
+    })?;
 
-    // Log sidecar output in background
+    // Log sidecar output in background — both to stdout (for `tauri dev`)
+    // and to a persistent log file so packaged macOS users can diagnose
+    // "sidecar unreachable" without a terminal attached.
     tauri::async_runtime::spawn(async move {
         use tauri_plugin_shell::process::CommandEvent;
         while let Some(event) = rx.recv().await {
             match event {
                 CommandEvent::Stdout(line) => {
                     let s = String::from_utf8_lossy(&line);
-                    if !s.trim().is_empty() {
-                        println!("[sidecar] {}", s.trim());
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        println!("[sidecar] {}", trimmed);
+                        append_sidecar_log(&format!("[out] {}", trimmed));
                     }
                 }
                 CommandEvent::Stderr(line) => {
                     let s = String::from_utf8_lossy(&line);
-                    if !s.trim().is_empty() {
-                        eprintln!("[sidecar-err] {}", s.trim());
+                    let trimmed = s.trim();
+                    if !trimmed.is_empty() {
+                        eprintln!("[sidecar-err] {}", trimmed);
+                        append_sidecar_log(&format!("[err] {}", trimmed));
                     }
                 }
                 CommandEvent::Terminated(status) => {
-                    eprintln!("[sidecar] Process terminated: {:?}", status);
+                    let msg = format!("[sidecar] Process terminated: {:?}", status);
+                    eprintln!("{}", msg);
+                    append_sidecar_log(&format!("[exit] {:?}", status));
                     break;
                 }
                 _ => {}
@@ -71,6 +125,22 @@ fn start_sidecar(app: &tauri::AppHandle) -> Result<(u16, CommandChild), String> 
 #[tauri::command]
 fn get_server_port(state: tauri::State<'_, SidecarState>) -> u16 {
     state.port
+}
+
+/// Return the last ~200 lines of the sidecar log as a single string.
+/// Invoked from the renderer's health-banner fallback so the user can
+/// see *why* the sidecar failed to start without opening a terminal.
+#[tauri::command]
+fn get_sidecar_log_tail() -> String {
+    let Some(path) = sidecar_log_path() else {
+        return String::from("(sidecar log path unavailable)");
+    };
+    let Ok(contents) = fs::read_to_string(&path) else {
+        return format!("(no sidecar log at {})", path.display());
+    };
+    let lines: Vec<&str> = contents.lines().collect();
+    let start = lines.len().saturating_sub(200);
+    lines[start..].join("\n")
 }
 
 /// Handle a single `noobclaw://` deep link delivered either via argv
@@ -173,7 +243,7 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_port])
+        .invoke_handler(tauri::generate_handler![get_server_port, get_sidecar_log_tail])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
