@@ -8,7 +8,7 @@ import { StringDecoder } from 'string_decoder';
 import { v4 as uuidv4 } from 'uuid';
 import type { PermissionResult } from './toolSystem';
 import type { CoworkStore, CoworkMessage, CoworkExecutionMode } from '../coworkStore';
-import { getClaudeCodePath, getCurrentApiConfig } from './claudeSettings';
+import { getClaudeCodePath, getCurrentApiConfig, resolveCurrentApiConfig } from './claudeSettings';
 import { queryLoopStreaming, type QueryEvent, type Terminal } from './queryEngine';
 import { buildTool, type ToolDefinition, type ToolResult } from './toolSystem';
 import { getAnthropicClient, type ApiConfig } from './anthropicClient';
@@ -3386,9 +3386,19 @@ export class CoworkRunner extends EventEmitter {
     activeSession.lastStreamingTextUpdateAt = 0;
     activeSession.lastStreamingThinkingUpdateAt = 0;
 
-    const apiConfig = getCurrentApiConfig('local');
+    const apiResolution = resolveCurrentApiConfig('local');
+    const apiConfig = apiResolution.config;
     if (!apiConfig) {
-      this.handleError(sessionId, 'API configuration not found. Please configure model settings.');
+      const reason = apiResolution.error || 'unknown reason';
+      coworkLog('ERROR', 'runClaudeCodeLocal', 'Failed to resolve API config', {
+        sessionId,
+        executionMode: activeSession.executionMode,
+        reason,
+      });
+      this.handleError(
+        sessionId,
+        `API configuration not found (${reason}). Please configure model settings.`,
+      );
       this.clearPendingPermissions(sessionId);
       this.activeSessions.delete(sessionId);
       return;
@@ -4717,9 +4727,19 @@ export class CoworkRunner extends EventEmitter {
       return;
     }
 
-    const apiConfig = getCurrentApiConfig('sandbox');
+    const apiResolution = resolveCurrentApiConfig('sandbox');
+    const apiConfig = apiResolution.config;
     if (!apiConfig) {
-      this.handleError(sessionId, 'API configuration not found. Please configure model settings.');
+      const reason = apiResolution.error || 'unknown reason';
+      coworkLog('ERROR', 'runSandbox', 'Failed to resolve API config', {
+        sessionId,
+        executionMode: activeSession.executionMode,
+        reason,
+      });
+      this.handleError(
+        sessionId,
+        `API configuration not found (${reason}). Please configure model settings.`,
+      );
       this.clearPendingPermissions(sessionId);
       this.activeSessions.delete(sessionId);
       return;
@@ -5336,9 +5356,19 @@ export class CoworkRunner extends EventEmitter {
     activeSession.lastStreamingTextUpdateAt = 0;
     activeSession.lastStreamingThinkingUpdateAt = 0;
 
-    const apiConfig = getCurrentApiConfig('sandbox');
+    const apiResolution = resolveCurrentApiConfig('sandbox');
+    const apiConfig = apiResolution.config;
     if (!apiConfig) {
-      this.handleError(sessionId, 'API configuration not found. Please configure model settings.');
+      const reason = apiResolution.error || 'unknown reason';
+      coworkLog('ERROR', 'runSandboxContinue', 'Failed to resolve API config', {
+        sessionId,
+        executionMode: activeSession.executionMode,
+        reason,
+      });
+      this.handleError(
+        sessionId,
+        `API configuration not found (${reason}). Please configure model settings.`,
+      );
       return;
     }
 

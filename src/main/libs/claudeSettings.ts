@@ -52,14 +52,48 @@ export type ApiConfigResolution = {
 };
 
 // NoobClaw JWT auth token (set by renderer via IPC when user logs in/out)
+// Persisted to the SQLite store under `NOOBCLAW_AUTH_TOKEN_KEY` so that
+// sidecar-only restarts (where the renderer does not re-sync via IPC)
+// do not leave Lark-triggered sessions stranded with "Missing auth token".
+const NOOBCLAW_AUTH_TOKEN_KEY = 'noobclaw_auth_token';
 let _noobClawAuthToken: string | null = null;
+let _authTokenHydrated = false;
+
+function hydrateAuthTokenFromStore(): void {
+  if (_authTokenHydrated) return;
+  const sqliteStore = getStore();
+  if (!sqliteStore) return; // store not ready yet; retry on next call
+  try {
+    const persisted = sqliteStore.get<string>(NOOBCLAW_AUTH_TOKEN_KEY);
+    if (typeof persisted === 'string' && persisted) {
+      _noobClawAuthToken = persisted;
+    }
+  } catch {
+    /* ignore — treat as no persisted token */
+  }
+  _authTokenHydrated = true;
+}
 
 export function getNoobClawAuthToken(): string | null {
+  hydrateAuthTokenFromStore();
   return _noobClawAuthToken;
 }
 
 export function setNoobClawAuthToken(token: string | null): void {
   _noobClawAuthToken = token;
+  _authTokenHydrated = true;
+  const sqliteStore = getStore();
+  if (sqliteStore) {
+    try {
+      if (token) {
+        sqliteStore.set(NOOBCLAW_AUTH_TOKEN_KEY, token);
+      } else {
+        sqliteStore.delete(NOOBCLAW_AUTH_TOKEN_KEY);
+      }
+    } catch {
+      /* ignore — renderer will re-sync on next restart */
+    }
+  }
 }
 
 // Store getter function injected from main.ts
@@ -282,9 +316,15 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
 
   const resolvedBaseURL = matched.baseURL;
   const resolvedApiKey = matched.providerConfig.apiKey?.trim() || '';
-  // noobclawAI uses JWT auth instead of a static API key
-  if (matched.providerName === 'noobclawAI' && !_noobClawAuthToken) {
-    return { config: null, error: 'Missing auth token — please connect your wallet to use NoobClaw AI.' };
+  // noobclawAI uses JWT auth instead of a static API key.
+  // Hydrate from store here so sidecar-only restarts (Lark-triggered
+  // sessions arriving before the renderer re-syncs via IPC) still see
+  // the last known token.
+  if (matched.providerName === 'noobclawAI') {
+    hydrateAuthTokenFromStore();
+    if (!_noobClawAuthToken) {
+      return { config: null, error: 'Missing auth token — please connect your wallet to use NoobClaw AI.' };
+    }
   }
   const effectiveApiKey = matched.providerName === 'noobclawAI'
     ? (_noobClawAuthToken || '')
