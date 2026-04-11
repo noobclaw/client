@@ -25,12 +25,28 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   const [tab, setTab] = useState<TabKey>('home');
   const [reloadKey, setReloadKey] = useState(0);
 
-  const lang = useMemo(() => (i18nService as any).currentLanguage || 'zh', []);
+  // Narrow the client's 8-language i18n to just 'zh' | 'en' for the
+  // embedded website. The website only maintains two translations of the
+  // personality pages — Chinese and English — so we map:
+  //   zh, zh-TW  → zh
+  //   everything else (en, ko, ja, ru, fr, de) → en
+  // This way the website side can treat the lang param as a two-value
+  // enum instead of guessing across the full BCP-47 space.
+  const lang = useMemo<'zh' | 'en'>(() => {
+    const raw: string = (i18nService as any).currentLanguage
+      || (i18nService as any).getLanguage?.()
+      || 'zh';
+    return raw === 'zh' || raw === 'zh-TW' ? 'zh' : 'en';
+  }, []);
 
   const src = useMemo(() => {
     const path =
       tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : '/personality/';
-    // embed=1 隐藏网页顶部导航 + lang 指定语言 + v 防缓存
+    // embed=1 tells the website to hide ALL chrome (top header, logo,
+    //          language dropdown, Connect Wallet, footer).
+    // lang    forces the page into Chinese or English without the
+    //          website running its own locale detection / dropdown.
+    // v       cache-buster so the reload button actually fetches fresh HTML.
     return `${BASE_URL}${path}?embed=1&lang=${lang}&v=${reloadKey}`;
   }, [tab, lang, reloadKey]);
 
