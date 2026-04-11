@@ -12,6 +12,26 @@ import path from 'path';
 import { ensureDataDirs, getUserDataPath } from './libs/platformAdapter';
 import { coworkLog } from './libs/coworkLogger';
 
+// Top-level crash handlers — without these, a synchronous throw during
+// module init (e.g. sql.js failing to load WASM, or a bad require()) kills
+// the sidecar with an opaque stack trace that Tauri's stderr capture may
+// miss or truncate. Emit a clearly-marked line so the Rust side's
+// sidecar.log capture always contains something actionable on the final
+// output before the process exits.
+process.on('uncaughtException', (err) => {
+  try {
+    console.error('[sidecar] uncaughtException:', err?.stack || err);
+  } catch {}
+  // Exit with a distinctive code so the Rust side's Terminated event
+  // logs it and we can distinguish a crash from a clean shutdown.
+  process.exit(91);
+});
+process.on('unhandledRejection', (reason) => {
+  try {
+    console.error('[sidecar] unhandledRejection:', reason);
+  } catch {}
+});
+
 // ── Native Messaging Host mode ──────────────────────────────────────────
 // When the user's browser extension invokes the registered native messaging
 // host, Chrome spawns us with `--native-messaging-host` as argv[2] (via the

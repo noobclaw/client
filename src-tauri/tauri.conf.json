@@ -46,6 +46,7 @@
     ],
     "macOS": {
       "minimumSystemVersion": "10.15",
+      "entitlements": "entitlements.plist",
       "dmg": {
         "background": "icons/dmg-background.png",
         "appPosition": {

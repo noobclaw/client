@@ -26,12 +26,24 @@ fn sidecar_log_path() -> Option<PathBuf> {
 }
 
 /// Append a line to the sidecar log. Silent on failure — we never want
-/// log plumbing to take down the app.
+/// log plumbing to take down the app. Rotates when the file exceeds
+/// ~512 KB by renaming the current file to `sidecar.log.1` and starting
+/// fresh; we only keep one generation since the log is for diagnostics,
+/// not audit.
+const SIDECAR_LOG_MAX_BYTES: u64 = 512 * 1024;
+
 fn append_sidecar_log(line: &str) {
-    if let Some(path) = sidecar_log_path() {
-        if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
-            let _ = writeln!(f, "{}", line);
+    let Some(path) = sidecar_log_path() else { return };
+    // Rotate if needed — cheap stat call, ignored on error.
+    if let Ok(meta) = fs::metadata(&path) {
+        if meta.len() > SIDECAR_LOG_MAX_BYTES {
+            let rotated = path.with_extension("log.1");
+            let _ = fs::remove_file(&rotated);
+            let _ = fs::rename(&path, &rotated);
         }
+    }
+    if let Ok(mut f) = OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", line);
     }
 }
 

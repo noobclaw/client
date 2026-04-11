@@ -565,17 +565,23 @@ export function initTauriShim(): void {
 }
 
 async function probeSidecarHealth(): Promise<void> {
-  // Retry for up to ~12 seconds before giving up. The sidecar on macOS
-  // can take a few seconds to cold-start (codesign + launchservices +
-  // Node init) and the first probe may legitimately race startup, so
-  // the banner would flash even on a healthy boot if we only tried once.
+  // Retry budget: ~14s worst case, ~5s if the sidecar is hard-dead
+  // (connection refused throws immediately). The sidecar on macOS can
+  // take a few seconds to cold-start (codesign + launchservices + Node
+  // init) and the first probe may legitimately race startup, so the
+  // banner would flash on a healthy boot if we only tried once.
+  //
+  //   attempts=6, timeout=1500ms, interval=1000ms
+  //   hard-dead: 0 + 5*1000 = 5s
+  //   hanging:   6*1500 + 5*1000 = 14s
   const attempts = 6;
-  const intervalMs = 2000;
+  const fetchTimeoutMs = 1500;
+  const intervalMs = 1000;
   let lastDetail = '';
   for (let i = 0; i < attempts; i++) {
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 3000);
+      const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
       const res = await fetch(`${BASE_URL}/api/status`, { signal: controller.signal });
       clearTimeout(timeout);
       if (res.ok) {
@@ -591,6 +597,15 @@ async function probeSidecarHealth(): Promise<void> {
   }
 
   showSidecarErrorBanner(lastDetail);
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function fetchSidecarLogTail(): Promise<string> {
@@ -615,9 +630,10 @@ function showSidecarErrorBanner(detail: string): void {
   banner.id = 'nc-sidecar-error-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b91c1c;color:#fff;padding:10px 16px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;';
   const title = isZh ? '⚠️ 后台服务未启动' : '⚠️ Sidecar unreachable';
+  const safeDetail = escapeHtml(detail || (isZh ? '无响应' : 'no response'));
   const body = isZh
-    ? `聊天与红包功能将无法工作。诊断：${detail || '无响应'}`
-    : `Chat and lucky-bag features will not work. Diagnostic: ${detail || 'no response'}`;
+    ? `聊天与红包功能将无法工作。诊断：${safeDetail}`
+    : `Chat and lucky-bag features will not work. Diagnostic: ${safeDetail}`;
   banner.innerHTML = `
     <div style="display:flex;align-items:flex-start;gap:12px;">
       <div style="flex:1;min-width:0;">

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -29,7 +29,6 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   // this lets us show a "still loading / open in browser" fallback instead
   // of a silent black rectangle.
   const [iframeState, setIframeState] = useState<'loading' | 'loaded' | 'stuck'>('loading');
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Narrow the client's 8-language i18n to just 'zh' | 'en' for the
   // embedded website. The website only maintains two translations of the
@@ -165,7 +164,6 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
       {/* Content: iframe loads the online page in embed mode */}
       <div className="flex-1 min-h-0 relative dark:bg-claude-darkBg bg-claude-bg">
         <iframe
-          ref={iframeRef}
           key={src}
           src={src}
           title={i18nService.t('personalityTests')}
