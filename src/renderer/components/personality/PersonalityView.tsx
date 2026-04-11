@@ -29,6 +29,40 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   // this lets us show a "still loading / open in browser" fallback instead
   // of a silent black rectangle.
   const [iframeState, setIframeState] = useState<'loading' | 'loaded' | 'stuck'>('loading');
+  // Bumped whenever the i18nService broadcasts a language change so the
+  // `lang` useMemo below recomputes and the iframe src reloads with the
+  // new lang query param.
+  const [langBump, setLangBump] = useState(0);
+
+  // Subscribe to client language changes so the embedded page follows
+  // the user toggling the global language dropdown at runtime. Without
+  // this, the lang snapshot is frozen at mount and the iframe keeps
+  // the initial language until the component unmounts.
+  useEffect(() => {
+    const unsub = (i18nService as any).subscribe?.(() => setLangBump(n => n + 1));
+    return () => {
+      if (typeof unsub === 'function') unsub();
+    };
+  }, []);
+
+  // Listen for postMessage from the embedded website — on load each
+  // page sends { type: 'noobclaw-embed-page', page: 'home'|'sbti'|'web3bti' }.
+  // This keeps the React tab header in sync when the user navigates
+  // INSIDE the iframe (e.g. clicking a card on the personality index
+  // to jump into SBTI) instead of using the React tabs.
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      const data = e.data;
+      if (!data || typeof data !== 'object') return;
+      if (data.type !== 'noobclaw-embed-page') return;
+      const page = data.page;
+      if (page === 'home' || page === 'sbti' || page === 'web3bti') {
+        setTab(page);
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
 
   // Narrow the client's 8-language i18n to just 'zh' | 'en' for the
   // embedded website. The website only maintains two translations of the
@@ -37,12 +71,14 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   //   everything else (en, ko, ja, ru, fr, de) → en
   // This way the website side can treat the lang param as a two-value
   // enum instead of guessing across the full BCP-47 space.
+  // Recomputes whenever `langBump` changes (see subscribe effect above).
   const lang = useMemo<'zh' | 'en'>(() => {
     const raw: string = (i18nService as any).currentLanguage
       || (i18nService as any).getLanguage?.()
       || 'zh';
     return raw === 'zh' || raw === 'zh-TW' ? 'zh' : 'en';
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [langBump]);
 
   const src = useMemo(() => {
     const path =
