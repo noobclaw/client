@@ -35,6 +35,8 @@
 #include <windows.h>
 #include <shellscalingapi.h>
 #include <gdiplus.h>
+#include <powrprof.h>
+#include <powerbase.h>
 
 #include <napi.h>
 
@@ -47,6 +49,7 @@
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "shcore.lib")
+#pragma comment(lib, "powrprof.lib")
 
 // ─── GDI+ lifetime ──────────────────────────────────────────────────
 
@@ -564,6 +567,108 @@ static Napi::Value ListWindows(const Napi::CallbackInfo &info) {
   return out;
 }
 
+// ─── Sleep / Wake events ────────────────────────────────────────────
+//
+// Registers a callback for Windows power-state transitions via
+// PowerRegisterSuspendResumeNotification (Vista+, stable on Win8+). The
+// system calls DeviceNotifyCallbackRoutine on a worker thread when it is
+// about to suspend (PBT_APMSUSPEND) and again after it resumes
+// (PBT_APMRESUMESUSPEND / PBT_APMRESUMEAUTOMATIC). We forward those
+// events to the JS callback via a thread-safe function so the sidecar
+// can pause / resume cowork sessions in lockstep with the OS.
+//
+// Parity with the macOS addon's `onPowerEvent`: callback receives the
+// string "willSleep" or "didWake". Only one subscription is supported
+// at a time — calling onPowerEvent again just replaces the stored
+// thread-safe function (the native Windows subscription is created
+// once and reused).
+
+static HPOWERNOTIFY g_power_notify_handle = nullptr;
+static Napi::ThreadSafeFunction g_power_tsfn;
+static bool g_power_tsfn_valid = false;
+
+static ULONG CALLBACK PowerCallbackRoutine(PVOID /*Context*/, ULONG Type, PVOID /*Setting*/) {
+  if (!g_power_tsfn_valid) return 0;
+
+  const char *kind = nullptr;
+  switch (Type) {
+    case PBT_APMSUSPEND:
+      kind = "willSleep";
+      break;
+    case PBT_APMRESUMEAUTOMATIC:
+    case PBT_APMRESUMESUSPEND:
+      kind = "didWake";
+      break;
+    default:
+      return 0;
+  }
+
+  // Copy the string into a heap slot so the TSFN callback can own it
+  // past the return of this callback. The JS-side trampoline frees it
+  // after invoking the user's JS callback.
+  std::string *payload = new std::string(kind);
+  napi_status status = g_power_tsfn.NonBlockingCall(payload,
+    [](Napi::Env env, Napi::Function jsCallback, std::string *data) {
+      if (data) {
+        jsCallback.Call({ Napi::String::New(env, *data) });
+        delete data;
+      }
+    });
+  if (status != napi_ok) {
+    delete payload;
+  }
+  return 0;
+}
+
+static Napi::Value OnPowerEvent(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsFunction()) {
+    Napi::TypeError::New(env, "onPowerEvent requires a function").ThrowAsJavaScriptException();
+    return env.Undefined();
+  }
+
+  // Replace any prior subscription: release the old TSFN before
+  // creating a new one so the old JS callback can be GC'd.
+  if (g_power_tsfn_valid) {
+    g_power_tsfn.Release();
+    g_power_tsfn_valid = false;
+  }
+
+  g_power_tsfn = Napi::ThreadSafeFunction::New(
+    env,
+    info[0].As<Napi::Function>(),
+    "noobclaw_power_event",
+    0,  // unlimited queue
+    1); // single thread uses it
+  g_power_tsfn_valid = true;
+
+  // Register with the OS only on the first call. Re-registering on
+  // every call would leak handles since we never unregister from
+  // Windows until process exit (acceptable — we want events for the
+  // whole process lifetime).
+  if (!g_power_notify_handle) {
+    DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS params = {};
+    params.Callback = PowerCallbackRoutine;
+    params.Context = nullptr;
+    ULONG rc = PowerRegisterSuspendResumeNotification(
+      DEVICE_NOTIFY_CALLBACK,
+      reinterpret_cast<HANDLE>(&params),
+      &g_power_notify_handle);
+    if (rc != ERROR_SUCCESS) {
+      // Subscription failed — release the TSFN so we don't leak it
+      // and return false so the caller knows to fall back (e.g. to
+      // a polling approach). Most commonly fails on unsupported OS
+      // versions, which we don't officially target anyway.
+      g_power_tsfn.Release();
+      g_power_tsfn_valid = false;
+      g_power_notify_handle = nullptr;
+      return Napi::Boolean::New(env, false);
+    }
+  }
+
+  return Napi::Boolean::New(env, true);
+}
+
 // ─── Module init ────────────────────────────────────────────────────
 
 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -577,6 +682,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("clipboardVerify", Napi::Function::New(env, ClipboardVerify));
   exports.Set("getActiveWindow", Napi::Function::New(env, GetActiveWindow));
   exports.Set("listWindows", Napi::Function::New(env, ListWindows));
+  exports.Set("onPowerEvent", Napi::Function::New(env, OnPowerEvent));
   return exports;
 }
 

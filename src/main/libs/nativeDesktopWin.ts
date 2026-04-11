@@ -42,6 +42,8 @@ export interface NativeWinWindowInfo {
   pid: number;
 }
 
+export type NativeWinPowerEvent = 'willSleep' | 'didWake';
+
 export interface NativeDesktopWinModule {
   screenshot(options?: { quality?: number; format?: 'jpeg' | 'png' }): NativeScreenshotResult;
   mouseMove(x: number, y: number, options?: { durationMs?: number }): void;
@@ -53,6 +55,15 @@ export interface NativeDesktopWinModule {
   clipboardVerify(expected: string): boolean;
   getActiveWindow(): NativeWinWindowInfo | null;
   listWindows(): NativeWinWindowInfo[];
+  /**
+   * Register a callback for Windows power-state transitions via
+   * PowerRegisterSuspendResumeNotification. The callback receives
+   * `willSleep` before the system suspends and `didWake` after it
+   * resumes. Only one subscription is active at a time — calling
+   * again replaces the previous callback. Returns true if the OS
+   * subscription was created successfully, false otherwise.
+   */
+  onPowerEvent(callback: (kind: NativeWinPowerEvent) => void): boolean;
 }
 
 // ── Loader ──
@@ -196,4 +207,26 @@ export function nativeWinListWindows(): NativeWinWindowInfo[] | null {
   const mod = loadNativeDesktopWinModule();
   if (!mod) return null;
   try { return mod.listWindows(); } catch { return null; }
+}
+
+/**
+ * Register a callback fired when the system is about to suspend
+ * ("willSleep") or has just resumed ("didWake"). Mirrors the macOS
+ * `nativeOnPowerEvent` API so sidecar-server.ts can share the same
+ * pause/resume plumbing on both platforms. Returns false if the
+ * native addon isn't loaded or the Windows subscription failed —
+ * sidecar-server should treat this as "platform has no power events"
+ * and skip the pause/resume dance.
+ */
+export function nativeWinOnPowerEvent(
+  callback: (kind: NativeWinPowerEvent) => void,
+): boolean {
+  const mod = loadNativeDesktopWinModule();
+  if (!mod || typeof (mod as any).onPowerEvent !== 'function') return false;
+  try {
+    return mod.onPowerEvent(callback);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopWin', `Native Win onPowerEvent failed: ${e}`);
+    return false;
+  }
 }

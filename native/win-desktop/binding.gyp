@@ -21,7 +21,8 @@
             "-lgdi32.lib",
             "-lgdiplus.lib",
             "-lkernel32.lib",
-            "-lshcore.lib"
+            "-lshcore.lib",
+            "-lpowrprof.lib"
           ],
           "msvs_settings": {
             "VCCLCompilerTool": {
