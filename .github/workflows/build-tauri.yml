@@ -105,6 +105,31 @@ jobs:
           echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> $GITHUB_ENV
           echo "Found signing identity: $IDENTITY"
 
+      - name: Pre-sign native addon (macOS)
+        # Tauri's bundler signs externalBin binaries in Contents/MacOS/
+        # but does NOT reach Mach-O files nested under Contents/Resources/.
+        # Our noobclaw_desktop.node ends up at
+        # Contents/Resources/resources/native/ and the notary service
+        # rejects the whole bundle with "The signature does not include a
+        # secure timestamp." unless we pre-sign it ourselves with
+        # --timestamp --options runtime using the imported identity.
+        # Signing it BEFORE Tauri build means Tauri's subsequent deep
+        # sign either leaves it alone (signature already valid) or
+        # re-signs with the same settings, both of which notarization
+        # accepts.
+        if: runner.os == 'macOS'
+        run: |
+          ADDON=src-tauri/resources/native/noobclaw_desktop.node
+          if [ -f "$ADDON" ]; then
+            codesign --force --timestamp --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" "$ADDON"
+            codesign -dvv "$ADDON" || true
+          else
+            echo "ERROR: $ADDON not found — prepare-tauri-resources.js should have copied it"
+            ls -la src-tauri/resources/native/ || true
+            exit 1
+          fi
+
       - name: Build Tauri app
         run: npx tauri build --target ${{ matrix.target }}
         env:
