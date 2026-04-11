@@ -27,7 +27,6 @@
     "notification:allow-notify",
     "autostart:allow-enable",
     "autostart:allow-disable",
-    "autostart:allow-is-enabled",
-    "core:window:allow-set-badge-count"
+    "autostart:allow-is-enabled"
   ]
 }

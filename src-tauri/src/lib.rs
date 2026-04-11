@@ -96,6 +96,58 @@ fn open_microphone_settings() {
     }
 }
 
+// ─── Dock badge (macOS) ──────────────────────────────────────────────
+//
+// Shows a small red indicator with optional text on the Dock icon —
+// standard macOS pattern for "something is happening / pending count".
+// Tauri v2.10.3 does not expose `set_badge_label` on WebviewWindow so
+// we call NSApp.dockTile directly via the objc2 crate. Called from
+// tauriShim whenever a cowork session starts/completes so the user
+// sees a ● while an AI task is running even if the main window is
+// hidden or the tray is overflowing.
+//
+// Windows/Linux: no-op. The renderer still calls the command on
+// those platforms for simplicity; the target-cfg gate below makes
+// the body compile to nothing.
+
+#[tauri::command]
+fn set_dock_badge(label: Option<String>) {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        use objc2::runtime::AnyObject;
+        use objc2::{class, msg_send};
+        use objc2_foundation::NSString;
+
+        // NSApp.sharedApplication → NSApplication*
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        if app.is_null() {
+            return;
+        }
+
+        // NSApplication.dockTile → NSDockTile*
+        let dock_tile: *mut AnyObject = msg_send![app, dockTile];
+        if dock_tile.is_null() {
+            return;
+        }
+
+        // Set or clear the label.
+        match label.as_deref() {
+            Some(text) if !text.is_empty() => {
+                let ns = NSString::from_str(text);
+                let _: () = msg_send![dock_tile, setBadgeLabel: &*ns];
+            }
+            _ => {
+                let nil: *mut AnyObject = std::ptr::null_mut();
+                let _: () = msg_send![dock_tile, setBadgeLabel: nil];
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = label; // unused on non-mac
+    }
+}
+
 /// Resolve the on-disk log path for sidecar stdout/stderr capture.
 /// - macOS: ~/Library/Application Support/NoobClaw/logs/sidecar.log
 /// - Linux: ~/.noobclaw/logs/sidecar.log
@@ -591,6 +643,7 @@ pub fn run() {
             open_screen_recording_settings,
             open_accessibility_settings,
             open_microphone_settings,
+            set_dock_badge,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

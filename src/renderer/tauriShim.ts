@@ -315,10 +315,37 @@ export function createTauriElectronShim(): typeof window.electron {
       },
     },
 
-    // ── Auto Launch (not available in Tauri, return correct formats) ──
+    // ── Auto Launch — bridged to tauri-plugin-autostart ──
+    // Settings.tsx talks to `window.electron.autoLaunch.{get,set}` which
+    // on Electron hits the autoLaunchManager IPC. Under Tauri we route
+    // the same calls to the autostart plugin (Mac LaunchAgent, Windows
+    // registry Run key) so the user-facing toggle just works without
+    // any renderer changes.
     autoLaunch: {
-      get: () => Promise.resolve({ enabled: false }),
-      set: (_enabled: boolean) => Promise.resolve({ success: true }),
+      get: async () => {
+        try {
+          const tauri = (window as any).__TAURI__;
+          const enabled = await tauri?.autostart?.isEnabled?.();
+          return { enabled: !!enabled };
+        } catch (e) {
+          console.warn('[TauriShim] autostart.isEnabled failed:', e);
+          return { enabled: false };
+        }
+      },
+      set: async (enabled: boolean) => {
+        try {
+          const tauri = (window as any).__TAURI__;
+          if (enabled) {
+            await tauri?.autostart?.enable?.();
+          } else {
+            await tauri?.autostart?.disable?.();
+          }
+          return { success: true };
+        } catch (e: any) {
+          console.warn('[TauriShim] autostart toggle failed:', e);
+          return { success: false, error: String(e?.message || e) };
+        }
+      },
     },
 
     // ── App Info ──
@@ -555,15 +582,22 @@ export function initTauriShim(): void {
     }
   }) as EventListener);
 
-  // ── Notifications wired to cowork SSE events ──
+  // ── Dock badge + notifications wired to cowork SSE events ──
   //
-  // Dock badge is deferred until a follow-up commit that adds
-  // `objc2`-based NSApp.dockTile.badgeLabel setter — Tauri v2.10.3
-  // doesn't expose set_badge_label on WebviewWindow. System
-  // notifications DO work via the notification plugin: when a session
-  // completes or errors we fire a native macOS notification so the
-  // user knows their background task finished. Fails silently when
-  // the Tauri global isn't present or permission wasn't granted.
+  // While an AI session is running we show a "●" badge on the
+  // NoobClaw Dock icon (macOS only; Tauri command is a no-op on
+  // Windows/Linux). When the session completes or errors we clear
+  // the badge and fire a system notification so the user knows the
+  // background task finished even if the window is hidden.
+  const runningSessionIds = new Set<string>();
+  const updateDockBadge = () => {
+    try {
+      const tauri = (window as any).__TAURI__;
+      const count = runningSessionIds.size;
+      const label = count > 0 ? (count === 1 ? '●' : String(count)) : null;
+      tauri?.core?.invoke?.('set_dock_badge', { label });
+    } catch { /* ignore */ }
+  };
   const notifyComplete = (title: string, body: string) => {
     try {
       const notif = (window as any).__TAURI__?.notification;
@@ -589,16 +623,27 @@ export function initTauriShim(): void {
     } catch { /* ignore */ }
   };
 
-  // Notify user when a cowork session finishes. We only care about
-  // the terminal events — per-message events would spam notifications.
+  // Track which sessions are currently running by watching for the
+  // first stream event of each sessionId and the terminal complete/
+  // error events. Drives the Dock badge above.
+  const onSessionProgress = (sessionId: string) => {
+    if (!sessionId || runningSessionIds.has(sessionId)) return;
+    runningSessionIds.add(sessionId);
+    updateDockBadge();
+  };
   const onSessionEnd = (sessionId: string, kind: 'complete' | 'error') => {
     if (!sessionId) return;
+    if (runningSessionIds.delete(sessionId)) {
+      updateDockBadge();
+    }
     if (kind === 'complete') {
       notifyComplete('NoobClaw', 'AI task finished');
     } else {
       notifyComplete('NoobClaw', 'AI task failed');
     }
   };
+  onSSE('cowork:stream:message', (data: any) => onSessionProgress(data?.sessionId));
+  onSSE('cowork:stream:messageUpdate', (data: any) => onSessionProgress(data?.sessionId));
   onSSE('cowork:stream:complete', (data: any) => onSessionEnd(data?.sessionId, 'complete'));
   onSSE('cowork:stream:error', (data: any) => onSessionEnd(data?.sessionId, 'error'));
 

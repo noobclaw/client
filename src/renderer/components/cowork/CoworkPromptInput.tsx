@@ -403,6 +403,46 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     }
   }, [fileToBase64, workingDirectory]);
 
+  // Native drag & drop path (Tauri v2 Rust side dispatches
+  // `nc://file-drop` CustomEvent with real fs paths, because HTML5
+  // drag-drop in WKWebView only sees browser-style File blobs without
+  // paths). tauriShim exposes this as `electron.onFileDrop(cb)`. The
+  // Electron build sees no `onFileDrop` method so this effect is a
+  // no-op there and the existing HTML5 handler is used instead.
+  const handleNativeDroppedPaths = useCallback((paths: string[]) => {
+    if (disabled || isStreaming) return;
+    if (!Array.isArray(paths) || paths.length === 0) return;
+    for (const p of paths) {
+      if (!p) continue;
+      if (isImagePath(p) && modelSupportsImage) {
+        // Read as data URL so vision models can consume inline.
+        window.electron.dialog
+          .readFileAsDataUrl(p)
+          .then((result: { success: boolean; dataUrl?: string }) => {
+            if (result?.success && result.dataUrl) {
+              addAttachment(p, { isImage: true, dataUrl: result.dataUrl });
+            } else {
+              addAttachment(p);
+            }
+          })
+          .catch(() => addAttachment(p));
+      } else {
+        addAttachment(p);
+      }
+    }
+  }, [addAttachment, disabled, isStreaming, modelSupportsImage]);
+
+  useEffect(() => {
+    const anyElectron = window.electron as unknown as {
+      onFileDrop?: (cb: (paths: string[]) => void) => (() => void) | void;
+    };
+    if (typeof anyElectron?.onFileDrop !== 'function') return;
+    const off = anyElectron.onFileDrop(handleNativeDroppedPaths);
+    return () => {
+      if (typeof off === 'function') off();
+    };
+  }, [handleNativeDroppedPaths]);
+
   const handleIncomingFiles = useCallback(async (fileList: FileList | File[]) => {
     if (disabled || isStreaming) return;
     const files = Array.from(fileList ?? []);
