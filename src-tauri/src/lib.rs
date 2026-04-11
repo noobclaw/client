@@ -324,6 +324,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -367,6 +371,59 @@ pub fn run() {
                 if let Err(e) = app.global_shortcut().register(toggle_shortcut) {
                     eprintln!("Failed to register global shortcut: {}", e);
                 }
+            }
+
+            // ── Dock menu (macOS) ─────────────────────────────────────
+            // Right-click on the Dock icon shows a custom menu. Gives
+            // users a quick path to "New Chat" without opening the main
+            // window first. The menu is attached to the main AppHandle
+            // via set_dock_menu on macOS.
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::MenuBuilder;
+                let dock_menu = MenuBuilder::new(app)
+                    .text("dock_new_chat", "New Chat")
+                    .text("dock_show", "Show Window")
+                    .separator()
+                    .text("dock_quit", "Quit NoobClaw")
+                    .build()?;
+                if let Err(e) = app.set_dock_menu(Some(dock_menu)) {
+                    eprintln!("Failed to set dock menu: {}", e);
+                }
+            }
+
+            // ── Drag & drop wiring (main window) ──────────────────────
+            // Tauri v2 webviews have drag&drop enabled by default. The
+            // Rust side sees DragDrop events on the main window; we
+            // forward full file paths to the renderer as a custom
+            // `nc://file-drop` JS event (the renderer listens for it
+            // in tauriShim.ts and injects the files into the chat
+            // composer). HTML5 drag&drop inside the webview only
+            // exposes File blobs without real paths, so this native
+            // path is strictly better for our "drag a PDF into chat"
+            // use case.
+            if let Some(window) = app.get_webview_window("main") {
+                let win_clone = window.clone();
+                window.on_window_event(move |event| {
+                    if let tauri::WindowEvent::DragDrop(drag) = event {
+                        if let tauri::DragDropEvent::Drop { paths, .. } = drag {
+                            let json_paths: Vec<String> = paths
+                                .iter()
+                                .filter_map(|p| p.to_str().map(|s| s.to_string()))
+                                .collect();
+                            // Build a single JS array literal and
+                            // dispatch a CustomEvent the renderer can
+                            // intercept.
+                            let arr = serde_json::to_string(&json_paths)
+                                .unwrap_or_else(|_| "[]".into());
+                            let js = format!(
+                                "window.dispatchEvent(new CustomEvent('nc://file-drop', {{detail: {{paths: {}}}}}));",
+                                arr
+                            );
+                            let _ = win_clone.eval(&js);
+                        }
+                    }
+                });
             }
 
             // ── Menubar tray icon ────────────────────────────────────

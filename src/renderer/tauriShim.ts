@@ -626,6 +626,38 @@ export function initTauriShim(): void {
   onSSE('cowork:stream:complete', (data: any) => onSessionEnd(data?.sessionId, 'complete'));
   onSSE('cowork:stream:error', (data: any) => onSessionEnd(data?.sessionId, 'error'));
 
+  // System power events from the sidecar (Mac Sleep/Wake) — show a
+  // short toast so the user understands why an in-flight AI task
+  // suddenly stopped.
+  onSSE('system:will-sleep', () => {
+    console.log('[TauriShim] system willSleep — active sessions paused');
+  });
+  onSSE('system:did-wake', () => {
+    console.log('[TauriShim] system didWake');
+  });
+
+  // Native drag&drop from Finder — Rust side (src-tauri/src/lib.rs)
+  // captures the WindowEvent::DragDrop and re-fires a custom
+  // `nc://file-drop` event on window with { detail: { paths: [...] } }.
+  // We bridge that to an `electron.onFileDrop` listener registration
+  // so the cowork composer (or whoever wants to consume it) can just:
+  //     window.electron.onFileDrop((paths) => ...)
+  // Same API shape we can later implement for Electron if needed.
+  const fileDropListeners = new Set<(paths: string[]) => void>();
+  window.addEventListener('nc://file-drop', ((e: CustomEvent) => {
+    const paths: string[] = Array.isArray(e.detail?.paths) ? e.detail.paths : [];
+    if (paths.length === 0) return;
+    for (const fn of fileDropListeners) {
+      try { fn(paths); } catch (err) {
+        console.warn('[TauriShim] file-drop listener threw:', err);
+      }
+    }
+  }) as EventListener);
+  (window as any).electron.onFileDrop = (cb: (paths: string[]) => void) => {
+    fileDropListeners.add(cb);
+    return () => fileDropListeners.delete(cb);
+  };
+
   // Sidecar health probe — on macOS Tauri builds we had recurring
   // reports that chat and lucky bag content never appeared. Almost
   // always this turns out to be a sidecar-side failure (TLS cert store

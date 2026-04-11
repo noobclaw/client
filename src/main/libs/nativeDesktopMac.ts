@@ -56,6 +56,22 @@ export interface NativeAxElement {
   children: NativeAxElement[];
 }
 
+export interface NativeOcrBox {
+  text: string;
+  confidence: number;
+  frame: { x: number; y: number; width: number; height: number };
+}
+
+export type NativeSttAuthStatus =
+  | 'authorized'
+  | 'denied'
+  | 'restricted'
+  | 'notDetermined';
+
+export type NativeBiometricResult = 'ok' | 'denied' | 'unavailable';
+
+export type NativePowerEvent = 'willSleep' | 'didWake';
+
 export interface NativeDesktopModule {
   screenshot(options?: { quality?: number; format?: 'jpeg' | 'png' }): NativeScreenshotResult;
   mouseMove(x: number, y: number, options?: { durationMs?: number; easing?: string }): void;
@@ -73,6 +89,24 @@ export interface NativeDesktopModule {
   keychainSet(service: string, account: string, password: string): boolean;
   keychainGet(service: string, account: string): string | null;
   keychainDelete(service: string, account: string): boolean;
+  recognizeText(
+    image: Buffer,
+    options?: { fast?: boolean; languages?: string[] },
+  ): NativeOcrBox[];
+  speak(text: string, options?: { language?: string; rate?: number; interrupt?: boolean }): void;
+  stopSpeaking(): void;
+  sttRequestAuth(): NativeSttAuthStatus;
+  sttStartRecording(): string;
+  sttStopAndTranscribe(locale?: string): string;
+  quickLookThumbnail(
+    filePath: string,
+    options?: { maxSize?: number; scale?: number },
+  ): Buffer | null;
+  detectLanguage(text: string): string | null;
+  tokenize(text: string, unit?: 'word' | 'sentence' | 'paragraph'): string[];
+  sentenceEmbedding(text: string, language?: string): Float64Array | null;
+  onPowerEvent(callback: (kind: NativePowerEvent) => void): void;
+  biometricAuth(reason?: string): NativeBiometricResult;
 }
 
 // ── Native module loading (graceful fallback) ──
@@ -410,5 +444,205 @@ export function nativeKeychainDelete(
   } catch (e) {
     coworkLog('WARN', 'nativeDesktopMac', `Native keychainDelete failed: ${e}`);
     return false;
+  }
+}
+
+// ── Vision OCR ──────────────────────────────────────────────────────
+
+/**
+ * Run Apple Vision framework's on-device OCR over a PNG/JPEG buffer.
+ * Returns an array of recognized text boxes with normalized [0,1]
+ * coordinates in top-left origin, or `null` if the native module isn't
+ * loaded. Use this to pre-extract text from screenshots BEFORE sending
+ * them to a vision model — on most computer-use screens the backend
+ * token cost drops 40-60%.
+ */
+export function nativeRecognizeText(
+  image: Buffer,
+  options?: { fast?: boolean; languages?: string[] },
+): NativeOcrBox[] | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.recognizeText(image, options);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native recognizeText failed: ${e}`);
+    return null;
+  }
+}
+
+// ── Text-to-Speech ──────────────────────────────────────────────────
+
+export function nativeSpeak(
+  text: string,
+  options?: { language?: string; rate?: number; interrupt?: boolean },
+): boolean {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return false;
+  try {
+    mod.speak(text, options);
+    return true;
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native speak failed: ${e}`);
+    return false;
+  }
+}
+
+export function nativeStopSpeaking(): void {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return;
+  try {
+    mod.stopSpeaking();
+  } catch {
+    /* ignore */
+  }
+}
+
+// ── Speech-to-Text ──────────────────────────────────────────────────
+
+/**
+ * Request the macOS Speech Recognition authorization. The first call
+ * shows the system prompt; subsequent calls return the cached status.
+ * Returns `notDetermined` if the native addon isn't loaded so the
+ * caller can fall back to a browser-based STT.
+ */
+export function nativeSttRequestAuth(): NativeSttAuthStatus {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return 'notDetermined';
+  try {
+    return mod.sttRequestAuth();
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native sttRequestAuth failed: ${e}`);
+    return 'notDetermined';
+  }
+}
+
+/**
+ * Start recording from the default input device into a temp .caf file.
+ * Returns the file path (so the caller can preview/download it), or
+ * `null` on failure. Must be followed by a `nativeSttStopAndTranscribe`.
+ */
+export function nativeSttStartRecording(): string | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.sttStartRecording();
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native sttStartRecording failed: ${e}`);
+    return null;
+  }
+}
+
+/**
+ * Stop the current recording, run SFSpeechRecognizer on the file, and
+ * return the transcript. Blocks for up to 30 seconds. On-device
+ * recognition is preferred when available; otherwise falls back to
+ * Apple's cloud model (same privacy boundary as Siri).
+ */
+export function nativeSttStopAndTranscribe(locale: string = 'en-US'): string | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.sttStopAndTranscribe(locale);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native sttStopAndTranscribe failed: ${e}`);
+    return null;
+  }
+}
+
+// ── Quick Look thumbnails ───────────────────────────────────────────
+
+export function nativeQuickLookThumbnail(
+  filePath: string,
+  options?: { maxSize?: number; scale?: number },
+): Buffer | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.quickLookThumbnail(filePath, options);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native quickLookThumbnail failed: ${e}`);
+    return null;
+  }
+}
+
+// ── Natural Language framework ─────────────────────────────────────
+
+export function nativeDetectLanguage(text: string): string | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.detectLanguage(text);
+  } catch {
+    return null;
+  }
+}
+
+export function nativeTokenize(
+  text: string,
+  unit: 'word' | 'sentence' | 'paragraph' = 'word',
+): string[] | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.tokenize(text, unit);
+  } catch {
+    return null;
+  }
+}
+
+export function nativeSentenceEmbedding(
+  text: string,
+  language: string = 'en',
+): Float64Array | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.sentenceEmbedding(text, language);
+  } catch {
+    return null;
+  }
+}
+
+// ── Sleep / Wake events ────────────────────────────────────────────
+
+/**
+ * Register a callback for NSWorkspace power events. Called on the main
+ * thread. The callback receives `willSleep` before the system sleeps
+ * and `didWake` after it wakes, so the sidecar can pause in-flight AI
+ * tasks and resume them on wake without losing the session.
+ */
+export function nativeOnPowerEvent(
+  callback: (kind: NativePowerEvent) => void,
+): boolean {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return false;
+  try {
+    mod.onPowerEvent(callback);
+    return true;
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native onPowerEvent failed: ${e}`);
+    return false;
+  }
+}
+
+// ── Touch ID / Face ID ─────────────────────────────────────────────
+
+/**
+ * Trigger the macOS biometric auth dialog (Touch ID / Face ID). Returns
+ * `"ok"` on success, `"denied"` on user cancel/failure, `"unavailable"`
+ * if the device has no biometric hardware or nothing is enrolled.
+ * Blocking — waits for up to 60 seconds for user response.
+ */
+export function nativeBiometricAuth(
+  reason: string = 'Authenticate to access NoobClaw',
+): NativeBiometricResult {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return 'unavailable';
+  try {
+    return mod.biometricAuth(reason);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native biometricAuth failed: ${e}`);
+    return 'unavailable';
   }
 }

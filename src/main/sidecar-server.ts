@@ -128,6 +128,52 @@ if (process.platform === 'darwin' && !process.env.NODE_EXTRA_CA_CERTS) {
 const portArg = process.argv.slice(2).find((a) => /^\d+$/.test(a));
 const PORT = parseInt(portArg || '18800', 10);
 
+// ── macOS sleep/wake wiring ────────────────────────────────────────
+// On willSleep we ask the CoworkRunner to pause every active session
+// (saves context to SQLite, closes outbound HTTP connections) so the
+// system suspend doesn't leave us with half-streamed SSE responses
+// stranded on a dead TCP socket. On didWake we broadcast a signal so
+// the renderer can show a "resumed from sleep" toast; we don't auto-
+// restart sessions because the user may not want the AI to just
+// continue without them looking.
+if (process.platform === 'darwin' && !IS_NATIVE_MESSAGING_HOST) {
+  // Lazy import so non-macOS builds don't pull in the addon bridge.
+  setImmediate(async () => {
+    try {
+      const { nativeOnPowerEvent } = await import('./libs/nativeDesktopMac');
+      nativeOnPowerEvent((kind) => {
+        coworkLog('INFO', 'sidecar-server', `Power event: ${kind}`);
+        if (kind === 'willSleep') {
+          if (runnerInstance) {
+            try {
+              const running = runnerInstance.store
+                .listSessions()
+                .filter((s: any) => s.status === 'running');
+              for (const s of running) {
+                try {
+                  runnerInstance.stopSession(s.id);
+                  runnerInstance.store.updateSession(s.id, { status: 'idle' });
+                } catch (e) {
+                  coworkLog('WARN', 'sidecar-server', `Failed to pause session ${s.id}: ${e}`);
+                }
+              }
+              coworkLog('INFO', 'sidecar-server', `Paused ${running.length} active session(s) before sleep`);
+            } catch (e) {
+              coworkLog('WARN', 'sidecar-server', `Pause-on-sleep enumeration failed: ${e}`);
+            }
+          }
+          broadcastSSE('system:will-sleep', {});
+        } else if (kind === 'didWake') {
+          broadcastSSE('system:did-wake', {});
+        }
+      });
+      coworkLog('INFO', 'sidecar-server', 'Sleep/wake listener installed');
+    } catch (e) {
+      coworkLog('WARN', 'sidecar-server', `Sleep/wake listener install failed: ${e}`);
+    }
+  });
+}
+
 // ── SSE Client Management ──
 
 const sseClients = new Set<http.ServerResponse>();

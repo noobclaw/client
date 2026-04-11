@@ -25,7 +25,13 @@
             "-framework CoreFoundation",
             "-framework CoreServices",
             "-framework Security",
-            "-framework Carbon"
+            "-framework Carbon",
+            "-framework Vision",
+            "-framework AVFoundation",
+            "-framework Speech",
+            "-framework QuickLookThumbnailing",
+            "-framework NaturalLanguage",
+            "-framework LocalAuthentication"
           ],
           "xcode_settings": {
             "MACOSX_DEPLOYMENT_TARGET": "10.15",
