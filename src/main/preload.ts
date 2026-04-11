@@ -52,6 +52,24 @@ contextBridge.exposeInMainWorld('electron', {
     checkCalendar: () => ipcRenderer.invoke('permissions:checkCalendar'),
     requestCalendar: () => ipcRenderer.invoke('permissions:requestCalendar'),
   },
+  scenario: {
+    // Catalogue
+    listScenarios: () => ipcRenderer.invoke('scenario:listScenarios'),
+    // Tasks
+    listTasks: () => ipcRenderer.invoke('scenario:listTasks'),
+    getTask: (id: string) => ipcRenderer.invoke('scenario:getTask', id),
+    createTask: (input: unknown) => ipcRenderer.invoke('scenario:createTask', input),
+    updateTask: (id: string, patch: unknown) => ipcRenderer.invoke('scenario:updateTask', id, patch),
+    deleteTask: (id: string) => ipcRenderer.invoke('scenario:deleteTask', id),
+    runTaskNow: (id: string) => ipcRenderer.invoke('scenario:runTaskNow', id),
+    runStatus: (id: string) => ipcRenderer.invoke('scenario:runStatus', id),
+    // Drafts
+    listDrafts: (taskId?: string) => ipcRenderer.invoke('scenario:listDrafts', taskId),
+    pushDraft: (draftId: string) => ipcRenderer.invoke('scenario:pushDraft', draftId),
+    deleteDraft: (draftId: string) => ipcRenderer.invoke('scenario:deleteDraft', draftId),
+    markDraftPushed: (draftId: string) => ipcRenderer.invoke('scenario:markDraftPushed', draftId),
+    markDraftIgnored: (draftId: string) => ipcRenderer.invoke('scenario:markDraftIgnored', draftId),
+  },
   api: {
     // Regular API request (non-streaming)
     fetch: (options: {

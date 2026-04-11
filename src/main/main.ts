@@ -2709,6 +2709,79 @@ if (!gotTheLock) {
     return false;
   });
 
+  // ── Scenario Automation (XHS viral production etc.) ──
+  // Initialize once, then expose IPC for the renderer's "one-click" feature.
+  {
+    const userData = app.getPath('userData');
+    const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+    const scenarioTaskStore = require('./libs/scenario/taskStore');
+    const scenarioManager = require('./libs/scenario/scenarioManager');
+    const scenarioViralPool = require('./libs/scenario/viralPoolClient');
+    scenarioRiskGuard.initRiskGuard(userData);
+    scenarioTaskStore.initTaskStore(userData);
+
+    ipcMain.handle('scenario:listTasks', () => scenarioTaskStore.listTasks());
+    ipcMain.handle('scenario:getTask', (_e, id: string) => scenarioTaskStore.getTask(id));
+    ipcMain.handle('scenario:createTask', (_e, input: unknown) => scenarioTaskStore.createTask(input as any));
+    ipcMain.handle('scenario:updateTask', (_e, id: string, patch: unknown) =>
+      scenarioTaskStore.updateTask(id, patch as any),
+    );
+    ipcMain.handle('scenario:deleteTask', (_e, id: string) => scenarioTaskStore.deleteTask(id));
+
+    ipcMain.handle('scenario:runTaskNow', async (_e, id: string) => {
+      const task = scenarioTaskStore.getTask(id);
+      if (!task) return { status: 'failed', reason: 'task_not_found' };
+      return await scenarioManager.runTask(task);
+    });
+
+    ipcMain.handle('scenario:listDrafts', (_e, task_id?: string) =>
+      scenarioTaskStore.listDrafts(task_id),
+    );
+    ipcMain.handle('scenario:deleteDraft', (_e, id: string) => scenarioTaskStore.deleteDraft(id));
+    ipcMain.handle('scenario:markDraftPushed', (_e, id: string) =>
+      scenarioTaskStore.updateDraft(id, { status: 'pushed', pushed_at: Date.now() }),
+    );
+    ipcMain.handle('scenario:markDraftIgnored', (_e, id: string) =>
+      scenarioTaskStore.updateDraft(id, { status: 'ignored' }),
+    );
+
+    ipcMain.handle('scenario:pushDraft', async (_e, draft_id: string) => {
+      const draft = scenarioTaskStore.getDraft(draft_id);
+      if (!draft) return { status: 'failed', error: 'draft_not_found' };
+      // Load the pack to get the creator URL + selectors
+      const pack = await scenarioViralPool.fetchScenarioPack(
+        scenarioTaskStore.getTask(draft.task_id)?.scenario_id,
+      );
+      if (!pack?.manifest) return { status: 'failed', error: 'scenario_pack_not_found' };
+      const { uploadXhsDraft } = require('./libs/scenario/xhsDriver');
+      const result = await uploadXhsDraft({
+        manifest: pack.manifest,
+        variant: draft.variant,
+        images: draft.source_post.images || [],
+      });
+      if (result.status === 'ready_for_user') {
+        scenarioTaskStore.updateDraft(draft_id, { status: 'pushed', pushed_at: Date.now() });
+      }
+      return result;
+    });
+
+    ipcMain.handle('scenario:listScenarios', async () => {
+      try {
+        const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+        const res = await fetch(`${base}/api/viral/scenarios`);
+        if (!res.ok) return { scenarios: [] };
+        return await res.json();
+      } catch {
+        return { scenarios: [] };
+      }
+    });
+
+    ipcMain.handle('scenario:runStatus', (_e, task_id: string) => ({
+      runs: scenarioRiskGuard.getRuns(task_id),
+      cooldown_ends_at: scenarioRiskGuard.getCooldown(task_id),
+    }));
+  }
+
   // Set Content Security Policy
   const setContentSecurityPolicy = () => {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
