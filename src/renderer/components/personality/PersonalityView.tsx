@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -29,15 +29,14 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   // this lets us show a "still loading / open in browser" fallback instead
   // of a silent black rectangle.
   const [iframeState, setIframeState] = useState<'loading' | 'loaded' | 'stuck'>('loading');
-  // Bumped whenever the i18nService broadcasts a language change so the
-  // `lang` useMemo below recomputes and the iframe src reloads with the
-  // new lang query param.
+  // Bumped whenever the i18nService broadcasts a language change. We use
+  // this to push a postMessage into the iframe instead of rebuilding its
+  // src — see the lang-driven useEffect below.
   const [langBump, setLangBump] = useState(0);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Subscribe to client language changes so the embedded page follows
-  // the user toggling the global language dropdown at runtime. Without
-  // this, the lang snapshot is frozen at mount and the iframe keeps
-  // the initial language until the component unmounts.
+  // the user toggling the global language dropdown at runtime.
   useEffect(() => {
     const unsub = (i18nService as any).subscribe?.(() => setLangBump(n => n + 1));
     return () => {
@@ -80,16 +79,33 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [langBump]);
 
+  // iframe src intentionally does NOT include `lang` in the dependency
+  // list — language switching is handled via postMessage (see effect
+  // below) so we avoid tearing down the iframe on every lang toggle.
+  // The initial `?lang=` query is still what the page boots with on
+  // first mount / tab switch / reload, so the website bootstrap script
+  // gets a sane default before the postMessage arrives.
   const src = useMemo(() => {
     const path =
       tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : '/personality/';
-    // embed=1 tells the website to hide ALL chrome (top header, logo,
-    //          language dropdown, Connect Wallet, footer).
-    // lang    forces the page into Chinese or English without the
-    //          website running its own locale detection / dropdown.
-    // v       cache-buster so the reload button actually fetches fresh HTML.
     return `${BASE_URL}${path}?embed=1&lang=${lang}&v=${reloadKey}`;
-  }, [tab, lang, reloadKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, reloadKey]);
+
+  // Push language changes into the currently-loaded iframe via
+  // postMessage. The website pages listen for
+  // { type: 'noobclaw-embed-setlang', lang } and re-run applyLang()
+  // without reloading, so the switch is instant and immune to
+  // bfcache / CDN cache behaviour.
+  useEffect(() => {
+    const w = iframeRef.current?.contentWindow;
+    if (!w) return;
+    try {
+      w.postMessage({ type: 'noobclaw-embed-setlang', lang }, '*');
+    } catch {
+      /* cross-origin postMessage never throws for same-origin check, but guard */
+    }
+  }, [lang]);
 
   const tabButtonClass = (active: boolean) =>
     `px-3 py-1.5 text-sm rounded-lg transition-colors ${
@@ -200,13 +216,27 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
       {/* Content: iframe loads the online page in embed mode */}
       <div className="flex-1 min-h-0 relative dark:bg-claude-darkBg bg-claude-bg">
         <iframe
+          ref={iframeRef}
           key={src}
           src={src}
           title={i18nService.t('personalityTests')}
           className="w-full h-full border-0"
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
           referrerPolicy="no-referrer"
-          onLoad={handleIframeLoad}
+          onLoad={() => {
+            handleIframeLoad();
+            // As soon as the iframe's load event fires, push the current
+            // language in. This matters on the first mount and on every
+            // tab switch — the page bootstraps with whatever lang was in
+            // the URL, but we may already be on a different language by
+            // the time it finishes loading.
+            try {
+              iframeRef.current?.contentWindow?.postMessage(
+                { type: 'noobclaw-embed-setlang', lang },
+                '*',
+              );
+            } catch { /* ignore */ }
+          }}
         />
         {iframeState !== 'loaded' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
