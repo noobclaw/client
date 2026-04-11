@@ -149,6 +149,16 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      - name: Patch macOS Info.plist
+        # Adds NSAppTransportSecurity loopback exceptions, TCC usage
+        # descriptions, LSApplicationCategoryType, and re-signs the
+        # bundle so the edits are notarization-compatible. See
+        # scripts/patch-macos-plist.js for the full rationale.
+        if: runner.os == 'macOS'
+        run: node scripts/patch-macos-plist.js --target=${{ matrix.target }}
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+
       - name: Verify macOS codesign
         if: runner.os == 'macOS'
         run: |

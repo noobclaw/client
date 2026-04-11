@@ -647,6 +647,8 @@ export class CoworkRunner extends EventEmitter {
     env?: Record<string, string>;
     url?: string;
     headers?: Record<string, string>;
+    oauth?: any;
+    onOAuthRefreshed?: (updated: any) => void;
   }>;
 
   constructor(store: CoworkStore) {
@@ -738,6 +740,8 @@ export class CoworkRunner extends EventEmitter {
     env?: Record<string, string>;
     url?: string;
     headers?: Record<string, string>;
+    oauth?: any;
+    onOAuthRefreshed?: (updated: any) => void;
   }>): void {
     this.mcpServerProvider = provider;
   }
@@ -4460,6 +4464,8 @@ export class CoworkRunner extends EventEmitter {
               env: s.env,
               url: s.url,
               headers: s.headers,
+              oauth: s.oauth,
+              onOAuthRefreshed: s.onOAuthRefreshed,
             }));
             const mcpTools = await connectAllMcpServers(mcpConfigs, 30_000);
             allTools.push(...mcpTools);

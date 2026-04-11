@@ -561,9 +561,29 @@ const getCoworkRunner = () => {
       }
     });
 
-    // Provide MCP server configuration to the runner
+    // Provide MCP server configuration to the runner. Each entry carries
+    // its oauth config (if any) and an onOAuthRefreshed callback so the
+    // mcpClient can persist refreshed access tokens back into McpStore
+    // without coworkRunner needing to know about persistence.
     coworkRunner.setMcpServerProvider(() => {
-      return getMcpStore().getEnabledServers();
+      const servers = getMcpStore().getEnabledServers();
+      return servers.map((s) => ({
+        name: s.name,
+        transportType: s.transportType,
+        command: s.command,
+        args: s.args,
+        env: s.env,
+        url: s.url,
+        headers: s.headers,
+        oauth: s.oauth,
+        onOAuthRefreshed: (updated: any) => {
+          try {
+            getMcpStore().setOAuth(s.id, updated);
+          } catch (e) {
+            console.warn('[mcp] failed to persist refreshed oauth token:', e);
+          }
+        },
+      }));
     });
 
     // Set up event listeners to forward to renderer
@@ -1290,6 +1310,77 @@ if (!gotTheLock) {
       return { success: true, servers };
     } catch (error) {
       return { success: false, error: error instanceof Error ? error.message : 'Failed to update MCP server' };
+    }
+  });
+
+  // ── MCP OAuth 2.0 authorization-code flow ──
+  //
+  // Renderer calls `mcp:oauth:begin` with a server id and the provider's
+  // authorizeUrl / tokenUrl / clientId / scope. We spin up a loopback
+  // HTTP server, construct the authorize URL, open it in the default
+  // browser via shell.openExternal, wait for the callback on loopback,
+  // exchange the code for tokens, and persist the tokens onto the
+  // McpServerRecord via setOAuth(). No prompts or permission gates —
+  // OAuth is the user's explicit intent by invoking this handler from
+  // the MCP config UI.
+  ipcMain.handle('mcp:oauth:begin', async (_event, options: {
+    id: string;
+    authorizeUrl: string;
+    tokenUrl: string;
+    clientId: string;
+    clientSecret?: string;
+    scope?: string;
+  }) => {
+    try {
+      const server = getMcpStore().getServer(options.id);
+      if (!server) return { success: false, error: 'MCP server not found' };
+
+      const { beginMcpOAuthFlow } = await import('./libs/mcpOAuth');
+      const flow = await beginMcpOAuthFlow({
+        authorizeUrl: options.authorizeUrl,
+        tokenUrl: options.tokenUrl,
+        clientId: options.clientId,
+        clientSecret: options.clientSecret,
+        scope: options.scope,
+      });
+
+      // Open the provider's authorize URL in the user's default browser.
+      try { shell.openExternal(flow.authorizeUrl); } catch (e) {
+        console.warn('[mcp:oauth] openExternal failed:', e);
+      }
+
+      // Wait for the callback (up to 5 minutes). If it resolves, persist
+      // the tokens back onto the server record.
+      const oauth = await flow.waitForCallback;
+      getMcpStore().setOAuth(options.id, oauth);
+      const servers = getMcpStore().listServers();
+      return { success: true, servers };
+    } catch (error) {
+      console.warn('[mcp:oauth] flow failed:', error);
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('mcp:oauth:clear', async (_event, id: string) => {
+    try {
+      const server = getMcpStore().getServer(id);
+      if (!server) return { success: false, error: 'MCP server not found' };
+      // Clear by setting an oauth record with no tokens but preserving
+      // the provider metadata so the user doesn't have to re-enter it.
+      if (server.oauth) {
+        getMcpStore().setOAuth(id, {
+          type: 'oauth',
+          authorizeUrl: server.oauth.authorizeUrl,
+          tokenUrl: server.oauth.tokenUrl,
+          clientId: server.oauth.clientId,
+          clientSecret: server.oauth.clientSecret,
+          scope: server.oauth.scope,
+        });
+      }
+      const servers = getMcpStore().listServers();
+      return { success: true, servers };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 

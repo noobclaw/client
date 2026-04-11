@@ -899,6 +899,60 @@ const server = http.createServer(async (req, res) => {
             ms?.setEnabled?.(args[0]?.id, args[0]?.enabled);
             return writeJSON(res, 200, { success: true, servers: ms?.listServers?.() ?? [] });
           }
+          case 'mcp:oauth:begin': {
+            // Kick off the OAuth authorization-code flow for a given MCP
+            // server. Opens the authorize URL via platformAdapter's
+            // openExternal (which in sidecar mode delegates to xdg-open /
+            // powershell start / tauri's shell plugin through the Tauri
+            // bridge), waits for the loopback callback, and persists the
+            // resulting tokens back onto the McpServerRecord via setOAuth.
+            const opts = args[0] || {};
+            try {
+              const ms = await getMcpStoreInstance();
+              if (!ms) return writeJSON(res, 200, { success: false, error: 'McpStore not initialized' });
+              const server = ms.getServer?.(opts.id);
+              if (!server) return writeJSON(res, 200, { success: false, error: 'MCP server not found' });
+
+              const { beginMcpOAuthFlow } = await import('./libs/mcpOAuth');
+              const flow = await beginMcpOAuthFlow({
+                authorizeUrl: opts.authorizeUrl,
+                tokenUrl: opts.tokenUrl,
+                clientId: opts.clientId,
+                clientSecret: opts.clientSecret,
+                scope: opts.scope,
+              });
+              try {
+                const { openExternal } = await import('./libs/platformAdapter');
+                await openExternal(flow.authorizeUrl);
+              } catch (e) {
+                console.warn('[mcp:oauth] openExternal failed:', e);
+              }
+              const oauth = await flow.waitForCallback;
+              ms.setOAuth?.(opts.id, oauth);
+              return writeJSON(res, 200, { success: true, servers: ms.listServers?.() ?? [] });
+            } catch (e: any) {
+              console.warn('[mcp:oauth] flow failed:', e?.message || e);
+              return writeJSON(res, 200, { success: false, error: e?.message || String(e) });
+            }
+          }
+          case 'mcp:oauth:clear': {
+            const id = args[0];
+            const ms = await getMcpStoreInstance();
+            if (!ms) return writeJSON(res, 200, { success: false, error: 'McpStore not initialized' });
+            const server = ms.getServer?.(id);
+            if (!server) return writeJSON(res, 200, { success: false, error: 'MCP server not found' });
+            if (server.oauth) {
+              ms.setOAuth?.(id, {
+                type: 'oauth',
+                authorizeUrl: server.oauth.authorizeUrl,
+                tokenUrl: server.oauth.tokenUrl,
+                clientId: server.oauth.clientId,
+                clientSecret: server.oauth.clientSecret,
+                scope: server.oauth.scope,
+              });
+            }
+            return writeJSON(res, 200, { success: true, servers: ms.listServers?.() ?? [] });
+          }
           case 'mcp:fetchMarketplace': {
             try {
               const mpRes = await fetch('https://api-overmind.noobclaw.com/api/v1/kv/mcp-marketplace');

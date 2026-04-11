@@ -12,6 +12,11 @@ import { z } from 'zod';
 import { spawn } from 'child_process';
 import { coworkLog } from './coworkLogger';
 import { buildTool, type ToolDefinition, type ToolResult } from './toolSystem';
+import {
+  ensureFreshOAuthToken,
+  oauthAuthorizationHeader,
+  type McpOAuthConfig,
+} from './mcpOAuth';
 
 // ── Types ──
 
@@ -23,6 +28,19 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /**
+   * Optional OAuth 2.0 config. When present and complete (accessToken set),
+   * we inject `Authorization: Bearer <token>` into the transport headers and
+   * refresh via refresh_token when the token is within 60s of expiry.
+   */
+  oauth?: McpOAuthConfig;
+  /**
+   * Optional callback fired when a token refresh produced a new access
+   * token. The caller (main.ts) persists the updated oauth config back to
+   * McpStore via setOAuth(). Optional so the mcpClient module stays
+   * framework-agnostic.
+   */
+  onOAuthRefreshed?: (updated: McpOAuthConfig) => void;
 }
 
 interface McpConnection {
@@ -81,19 +99,40 @@ export async function connectMcpServer(
         if (!config.url) {
           throw new Error(`MCP server "${config.name}": ${config.transportType} transport requires a url`);
         }
+
+        // Build request headers, merging static user headers with OAuth
+        // Authorization header if an oauth config is present. Refresh the
+        // access token first if it's within 60s of expiry.
+        let mergedHeaders: Record<string, string> | undefined = config.headers
+          ? { ...config.headers }
+          : undefined;
+        if (config.oauth) {
+          const { config: refreshedOauth, refreshed } = await ensureFreshOAuthToken(config.oauth);
+          if (refreshed && config.onOAuthRefreshed) {
+            try { config.onOAuthRefreshed(refreshedOauth); } catch { /* ignore */ }
+          }
+          const authHeader = oauthAuthorizationHeader(refreshedOauth);
+          if (authHeader) {
+            mergedHeaders = { ...(mergedHeaders || {}), ...authHeader };
+            coworkLog('INFO', 'mcpClient', `"${config.name}": injecting OAuth Bearer token`);
+          } else {
+            coworkLog('WARN', 'mcpClient', `"${config.name}": oauth config has no access token, connecting unauthenticated`);
+          }
+        }
+
         // Use SSE transport for both sse and http
         // Dynamic import since SSE transport may vary by SDK version
         try {
           const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
           transport = new SSEClientTransport(new URL(config.url), {
-            requestInit: config.headers ? { headers: config.headers } : undefined,
+            requestInit: mergedHeaders ? { headers: mergedHeaders } : undefined,
           } as any);
         } catch {
           // Fallback: try StreamableHTTP transport
           try {
             const { StreamableHTTPClientTransport } = await import('@modelcontextprotocol/sdk/client/streamableHttp.js');
             transport = new StreamableHTTPClientTransport(new URL(config.url), {
-              requestInit: config.headers ? { headers: config.headers } : undefined,
+              requestInit: mergedHeaders ? { headers: mergedHeaders } : undefined,
             } as any);
           } catch {
             throw new Error(`MCP server "${config.name}": no SSE or HTTP transport available in MCP SDK`);

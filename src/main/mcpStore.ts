@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Database } from 'sql.js';
+import type { McpOAuthConfig } from './libs/mcpOAuth';
 
 export interface McpServerRecord {
   id: string;
@@ -15,6 +16,12 @@ export interface McpServerRecord {
   isBuiltIn: boolean;
   githubUrl?: string;
   registryId?: string;
+  /**
+   * Optional OAuth 2.0 config. When present and complete (accessToken set),
+   * mcpClient injects `Authorization: Bearer <token>` into the transport
+   * headers. See src/main/libs/mcpOAuth.ts for the flow.
+   */
+  oauth?: McpOAuthConfig;
   createdAt: number;
   updatedAt: number;
 }
@@ -31,6 +38,7 @@ export interface McpServerFormData {
   isBuiltIn?: boolean;
   githubUrl?: string;
   registryId?: string;
+  oauth?: McpOAuthConfig;
 }
 
 interface McpServerRow {
@@ -53,6 +61,7 @@ interface McpConfigJson {
   isBuiltIn?: boolean;
   githubUrl?: string;
   registryId?: string;
+  oauth?: McpOAuthConfig;
 }
 
 export class McpStore {
@@ -97,6 +106,7 @@ export class McpStore {
       isBuiltIn: config.isBuiltIn === true,
       githubUrl: config.githubUrl,
       registryId: config.registryId,
+      oauth: config.oauth,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -112,6 +122,7 @@ export class McpStore {
     if (data.isBuiltIn) config.isBuiltIn = true;
     if (data.githubUrl) config.githubUrl = data.githubUrl;
     if (data.registryId) config.registryId = data.registryId;
+    if (data.oauth) config.oauth = data.oauth;
     return JSON.stringify(config);
   }
 
@@ -164,6 +175,7 @@ export class McpStore {
       isBuiltIn: data.isBuiltIn !== undefined ? data.isBuiltIn : existing.isBuiltIn,
       githubUrl: data.githubUrl !== undefined ? data.githubUrl : existing.githubUrl,
       registryId: data.registryId !== undefined ? data.registryId : existing.registryId,
+      oauth: data.oauth !== undefined ? data.oauth : existing.oauth,
     };
 
     const configJson = this.serializeConfig(merged);
@@ -194,6 +206,38 @@ export class McpStore {
     this.db.run(
       'UPDATE mcp_servers SET enabled = ?, updated_at = ? WHERE id = ?',
       [enabled ? 1 : 0, now, id]
+    );
+    this.saveDb();
+    return true;
+  }
+
+  /**
+   * Persist an updated OAuth config back onto a server record. Called after
+   * beginMcpOAuthFlow() resolves and after ensureFreshOAuthToken() refreshes
+   * an access token in mcpClient.connectMcpServer.
+   */
+  setOAuth(id: string, oauth: McpOAuthConfig): boolean {
+    const existing = this.getServer(id);
+    if (!existing) return false;
+    const merged: McpServerFormData = {
+      name: existing.name,
+      description: existing.description,
+      transportType: existing.transportType,
+      command: existing.command,
+      args: existing.args,
+      env: existing.env,
+      url: existing.url,
+      headers: existing.headers,
+      isBuiltIn: existing.isBuiltIn,
+      githubUrl: existing.githubUrl,
+      registryId: existing.registryId,
+      oauth,
+    };
+    const configJson = this.serializeConfig(merged);
+    const now = Date.now();
+    this.db.run(
+      'UPDATE mcp_servers SET config_json = ?, updated_at = ? WHERE id = ?',
+      [configJson, now, id]
     );
     this.saveDb();
     return true;

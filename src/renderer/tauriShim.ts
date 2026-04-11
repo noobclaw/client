@@ -195,6 +195,11 @@ export function createTauriElectronShim(): typeof window.electron {
       delete: (id: string) => ipcInvoke('mcp:delete', id).then(r => r ?? { success: true }),
       setEnabled: (opts: any) => ipcInvoke('mcp:setEnabled', opts).then(r => r ?? { success: true }),
       fetchMarketplace: () => ipcInvoke('mcp:fetchMarketplace').then(r => r ?? []),
+      // OAuth flow — see src/main/libs/mcpOAuth.ts. oauthBegin can block
+      // up to 5 minutes while the user approves in their browser, so
+      // callers should show a pending UI while waiting.
+      oauthBegin: (options: any) => ipcInvoke('mcp:oauth:begin', options).then(r => r ?? { success: false }),
+      oauthClear: (id: string) => ipcInvoke('mcp:oauth:clear', id).then(r => r ?? { success: false }),
     },
 
     // ── Permissions ──

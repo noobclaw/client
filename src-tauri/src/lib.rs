@@ -345,6 +345,110 @@ fn keychain_delete_token() -> Result<(), String> {
     }
 }
 
+// ─── NSPanel-style command bar (spotlight clone) ─────────────────────
+//
+// A second Tauri WebviewWindow (label "command-bar") is declared in
+// tauri.conf.json with decorations:false, transparent:true,
+// alwaysOnTop:true, skipTaskbar:true. On macOS that's *almost* enough to
+// get a Spotlight-style floating panel — the remaining problem is that
+// Tauri backs the window with a plain NSWindow, not NSPanel, so it
+// steals key-window focus from whatever the user was typing in, and it
+// does NOT float above full-screen apps. The fix is to flip three bits
+// on the underlying NSWindow using objc2:
+//
+//   1. setLevel: NSStatusWindowLevel (floats above regular windows)
+//   2. setCollectionBehavior: CanJoinAllSpaces | FullScreenAuxiliary
+//      (shows on every Space including full-screen apps)
+//   3. setHidesOnDeactivate: YES  (auto-hides when user clicks away)
+//
+// NSPanel subclass swap is possible but requires IMP-swizzling which
+// objc2 doesn't expose ergonomically; setting the three properties above
+// gives 95% of the user-visible behavior for 5% of the code.
+//
+// Windows/Linux: skipped — the alwaysOnTop + decorations:false window is
+// already pretty close to spotlight behavior on those platforms.
+
+#[tauri::command]
+fn show_command_bar(app: AppHandle) {
+    let Some(window) = app.get_webview_window("command-bar") else {
+        return;
+    };
+
+    // Re-center on the active screen before showing. The user may have
+    // moved between monitors since last invocation.
+    if let Ok(Some(monitor)) = window.current_monitor() {
+        let screen = monitor.size();
+        let win_size = window.outer_size().unwrap_or(tauri::PhysicalSize {
+            width: 680,
+            height: 60,
+        });
+        let x = (screen.width as i32 - win_size.width as i32) / 2;
+        // Place ~22% down from the top — Spotlight's position.
+        let y = (screen.height as f64 * 0.22) as i32;
+        let _ = window.set_position(tauri::PhysicalPosition { x, y });
+    }
+
+    let _ = window.show();
+    let _ = window.set_focus();
+
+    // Elevate to panel-like behavior on macOS.
+    #[cfg(target_os = "macos")]
+    elevate_command_bar_to_panel(&window);
+}
+
+#[tauri::command]
+fn hide_command_bar(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("command-bar") {
+        let _ = window.hide();
+    }
+}
+
+#[tauri::command]
+fn toggle_command_bar(app: AppHandle) {
+    let Some(window) = app.get_webview_window("command-bar") else {
+        return;
+    };
+    let visible = window.is_visible().unwrap_or(false);
+    if visible {
+        let _ = window.hide();
+    } else {
+        show_command_bar(app);
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn elevate_command_bar_to_panel(window: &tauri::WebviewWindow) {
+    use objc2::runtime::AnyObject;
+    use objc2::msg_send;
+
+    // NSStatusWindowLevel = 25, floats above regular app windows.
+    const NS_STATUS_WINDOW_LEVEL: i64 = 25;
+    // NSWindowCollectionBehaviorCanJoinAllSpaces = 1 << 0
+    // NSWindowCollectionBehaviorFullScreenAuxiliary = 1 << 8
+    const CAN_JOIN_ALL_SPACES: u64 = 1 << 0;
+    const FULL_SCREEN_AUX: u64 = 1 << 8;
+
+    let Ok(ns_window_ptr) = window.ns_window() else {
+        return;
+    };
+    let ns_window = ns_window_ptr as *mut AnyObject;
+    if ns_window.is_null() {
+        return;
+    }
+
+    unsafe {
+        let _: () = msg_send![ns_window, setLevel: NS_STATUS_WINDOW_LEVEL];
+        let behavior: u64 = CAN_JOIN_ALL_SPACES | FULL_SCREEN_AUX;
+        let _: () = msg_send![ns_window, setCollectionBehavior: behavior];
+        // Auto-hide when user clicks away — Spotlight behavior.
+        let _: () = msg_send![ns_window, setHidesOnDeactivate: true];
+        // Make sure we sit above all app windows but do not steal
+        // first-responder status from the app the user was in — the
+        // webview's own input element will grab focus on mousedown.
+        let _: () = msg_send![ns_window, orderFrontRegardless];
+    }
+}
+
 // ─── Toggle main window visibility ───────────────────────────────────
 // Shared helper used by the global-shortcut hotkey, the tray icon click,
 // and the single-instance second-launch callback. Keeping one place for
@@ -425,6 +529,15 @@ pub fn run() {
     #[cfg(not(target_os = "macos"))]
     let toggle_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyN);
 
+    // Spotlight-style command bar: ⌥⌘Space on macOS, Ctrl+Alt+Space on
+    // Windows/Linux. Chosen so it does NOT clash with ⌘Space (Spotlight)
+    // or Win+Space (Input language switcher). Toggles the command-bar
+    // window's visibility via toggle_command_bar.
+    #[cfg(target_os = "macos")]
+    let command_bar_shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::Space);
+    #[cfg(not(target_os = "macos"))]
+    let command_bar_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::Space);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
@@ -438,8 +551,17 @@ pub fn run() {
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
-                    if shortcut == &toggle_shortcut && event.state() == ShortcutState::Pressed {
+                    if event.state() != ShortcutState::Pressed {
+                        return;
+                    }
+                    if shortcut == &toggle_shortcut {
                         toggle_main_window(app);
+                    } else if shortcut == &command_bar_shortcut {
+                        // Toggle the floating command bar. Same semantics
+                        // as clicking the tray menu: show if hidden, hide
+                        // if visible.
+                        let cloned = app.clone();
+                        toggle_command_bar(cloned);
                     }
                 })
                 .build(),
@@ -476,7 +598,27 @@ pub fn run() {
             {
                 use tauri_plugin_global_shortcut::GlobalShortcutExt;
                 if let Err(e) = app.global_shortcut().register(toggle_shortcut) {
-                    eprintln!("Failed to register global shortcut: {}", e);
+                    eprintln!("Failed to register toggle shortcut: {}", e);
+                }
+                if let Err(e) = app.global_shortcut().register(command_bar_shortcut) {
+                    eprintln!("Failed to register command-bar shortcut: {}", e);
+                }
+            }
+
+            // ── Command bar NSPanel elevation on startup ─────────────
+            // The command-bar window is declared `visible:false` in
+            // tauri.conf.json, but we still need to elevate it to panel
+            // level so the first show is instant. Doing it here avoids
+            // a visible window frame flash on the first ⌥⌘Space press.
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(cb) = app.get_webview_window("command-bar") {
+                    elevate_command_bar_to_panel(&cb);
+                    // Hide esc-hide behavior: close on ESC or focus loss.
+                    // The renderer handles ESC; here we just ensure the
+                    // window is actually hidden after the panel upgrade
+                    // (setHidesOnDeactivate sometimes flashes it on startup).
+                    let _ = cb.hide();
                 }
             }
 
@@ -644,6 +786,9 @@ pub fn run() {
             open_accessibility_settings,
             open_microphone_settings,
             set_dock_badge,
+            show_command_bar,
+            hide_command_bar,
+            toggle_command_bar,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

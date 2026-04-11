@@ -190,6 +190,32 @@ const CoworkPromptInput = React.forwardRef<CoworkPromptInputRef, CoworkPromptInp
     };
   }, []);
 
+  // Listen for command-bar → composer prefill. The floating NSPanel
+  // command bar (src/renderer/components/commandBar/CommandBarView.tsx)
+  // cannot directly call the composer's imperative handle across Tauri
+  // webviews, so it dispatches `noobclaw:prefill-prompt` which App.tsx
+  // forwards after switching to the cowork view.
+  useEffect(() => {
+    const handlePrefill = (event: Event) => {
+      const detail = (event as CustomEvent<{ prompt?: string }>).detail;
+      if (!detail?.prompt) return;
+      setValue(detail.prompt);
+      requestAnimationFrame(() => {
+        const textarea = textareaRef.current;
+        if (textarea) {
+          textarea.style.height = 'auto';
+          textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, minHeight), maxHeight)}px`;
+          textarea.focus();
+          // Put the caret at the end so the user can keep typing.
+          const len = textarea.value.length;
+          textarea.setSelectionRange(len, len);
+        }
+      });
+    };
+    window.addEventListener('noobclaw:prefill-prompt', handlePrefill);
+    return () => window.removeEventListener('noobclaw:prefill-prompt', handlePrefill);
+  }, [minHeight, maxHeight]);
+
   useEffect(() => {
     if (workingDirectory?.trim()) {
       setShowFolderRequiredWarning(false);

@@ -19,6 +19,24 @@
         "height": 800,
         "resizable": true,
         "fullscreen": false
+      },
+      {
+        "label": "command-bar",
+        "title": "NoobClaw Command Bar",
+        "url": "index.html#command-bar",
+        "width": 680,
+        "height": 60,
+        "resizable": false,
+        "decorations": false,
+        "transparent": true,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "visible": false,
+        "center": true,
+        "focus": false,
+        "shadow": false,
+        "hiddenTitle": true,
+        "acceptFirstMouse": true
       }
     ],
     "security": {

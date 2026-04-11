@@ -33,6 +33,20 @@ contextBridge.exposeInMainWorld('electron', {
     delete: (id: string) => ipcRenderer.invoke('mcp:delete', id),
     setEnabled: (options: { id: string; enabled: boolean }) => ipcRenderer.invoke('mcp:setEnabled', options),
     fetchMarketplace: () => ipcRenderer.invoke('mcp:fetchMarketplace'),
+    // OAuth 2.0 authorization-code flow for MCP servers that expose an
+    // OAuth endpoint (e.g. Claude Code's remote MCP servers). Begin opens
+    // the authorize URL in the system browser and waits for the loopback
+    // callback; clear wipes stored tokens while keeping the provider
+    // metadata so the user can re-authorize without re-entering config.
+    oauthBegin: (options: {
+      id: string;
+      authorizeUrl: string;
+      tokenUrl: string;
+      clientId: string;
+      clientSecret?: string;
+      scope?: string;
+    }) => ipcRenderer.invoke('mcp:oauth:begin', options),
+    oauthClear: (id: string) => ipcRenderer.invoke('mcp:oauth:clear', id),
   },
   permissions: {
     checkCalendar: () => ipcRenderer.invoke('permissions:checkCalendar'),

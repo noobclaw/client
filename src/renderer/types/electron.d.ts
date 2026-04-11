@@ -251,6 +251,15 @@ interface IElectronAPI {
     delete: (id: string) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
     setEnabled: (options: { id: string; enabled: boolean }) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
     fetchMarketplace: () => Promise<{ success: boolean; data?: McpMarketplaceData; error?: string }>;
+    oauthBegin?: (options: {
+      id: string;
+      authorizeUrl: string;
+      tokenUrl: string;
+      clientId: string;
+      clientSecret?: string;
+      scope?: string;
+    }) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
+    oauthClear?: (id: string) => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;
   };
   api: {
     fetch: (options: {

@@ -502,6 +502,51 @@ const App: React.FC = () => {
     return () => window.removeEventListener('noobclaw:show-wallet', handler);
   }, []);
 
+  // Listen for command-bar submissions from the floating NSPanel window
+  // (src/renderer/components/commandBar/CommandBarView.tsx). When the
+  // user hits ⌘K / Ctrl+K and enters a prompt, the command bar uses a
+  // BroadcastChannel to push the text here; we switch to the cowork
+  // view and dispatch a custom `noobclaw:prefill-prompt` event which
+  // the composer picks up. Also checked on mount against localStorage
+  // as a fallback for webviews without BroadcastChannel.
+  useEffect(() => {
+    const forward = (payload: { prompt?: string; source?: string }) => {
+      if (!payload?.prompt) return;
+      setMainView('cowork');
+      // Give React a tick to mount the cowork view before dispatching.
+      setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent('noobclaw:prefill-prompt', {
+            detail: { prompt: payload.prompt, source: payload.source || 'command-bar' },
+          })
+        );
+      }, 50);
+    };
+
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('noobclaw-command-bar');
+      bc.onmessage = (ev) => {
+        if (ev?.data?.type === 'submit') forward(ev.data.payload);
+      };
+    } catch { /* older webviews */ }
+
+    // Fallback: consume pending prompt persisted by the command bar.
+    try {
+      const pending = localStorage.getItem('noobclaw:command-bar:pending');
+      if (pending) {
+        localStorage.removeItem('noobclaw:command-bar:pending');
+        forward(JSON.parse(pending));
+      }
+    } catch { /* ignore */ }
+
+    return () => {
+      if (bc) {
+        try { bc.close(); } catch { /* ignore */ }
+      }
+    };
+  }, []);
+
   // Listen for need-login event from api.ts
   useEffect(() => {
     const handler = () => setShowLoginWall(true);
