@@ -13,7 +13,15 @@ jobs:
             target: x86_64-pc-windows-msvc
           - platform: macos-latest
             target: aarch64-apple-darwin
-          - platform: macos-13
+          # Intel macOS build. GitHub Actions retired the `macos-13` label
+          # on 2025-12-08 (see
+          # https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/)
+          # so the old `- platform: macos-13` line started failing with
+          # "The configuration 'macos-13-us-default' is not supported" on
+          # every run after deprecation. `macos-15-intel` is the currently
+          # supported Intel runner per
+          # https://docs.github.com/en/actions/reference/runners/github-hosted-runners
+          - platform: macos-15-intel
             target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
@@ -33,6 +41,14 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Sync version from package.json
+        # Single source of truth is package.json. This writes the same
+        # version into src-tauri/tauri.conf.json, src-tauri/Cargo.toml,
+        # and src/main/sidecar-server.ts so every artifact carries the
+        # same number. Run BEFORE build-sidecar so the sidecar's
+        # /api/version endpoint reports the bumped version too.
+        run: node scripts/sync-version.js
 
       - name: Install @yao-pkg/pkg
         run: npm install -g @yao-pkg/pkg

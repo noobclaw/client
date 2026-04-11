@@ -32,6 +32,7 @@ import { WalletView } from './components/wallet/WalletView';
 import { InviteView } from './components/invite/InviteView';
 import { QuickUseView } from './components/quickuse/QuickUseView';
 import PartnersView from './components/partners/PartnersView';
+import PersonalityView from './components/personality/PersonalityView';
 import LoginWall from './components/LoginWall';
 import TokenInsufficientDialog from './components/TokenInsufficientDialog';
 import { noobClawAuth } from './services/noobclawAuth';
@@ -39,7 +40,7 @@ import { noobClawAuth } from './services/noobclawAuth';
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners'>('cowork');
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners' | 'personality'>('cowork');
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -307,8 +308,15 @@ const App: React.FC = () => {
   const handleConfirmUpdate = useCallback(async () => {
     if (!updateInfo) return;
 
+    // Tauri always delegates updates to the OS browser — the user
+    // downloads the new installer and runs it manually, exactly like the
+    // first install. No in-app downloader, no binary replacement, no
+    // updater plugin. Fall into the same code path as the Electron
+    // fallback page branch below.
+    const isTauri = !!(window as any).__TAURI__;
+
     // If the URL is a fallback page (not a direct file download), open in browser
-    if (updateInfo.url.includes('#') || updateInfo.url.endsWith('/download-list')) {
+    if (isTauri || updateInfo.url.includes('#') || updateInfo.url.endsWith('/download-list')) {
       setShowUpdateModal(false);
       try {
         const result = await window.electron.shell.openExternal(updateInfo.url);
@@ -672,6 +680,7 @@ const App: React.FC = () => {
   const handleShowQuickUse = () => setMainView('quickuse');
   const handleShowWeb3News = () => setMainView('web3news');
   const handleShowPartners = () => setMainView('partners');
+  const handleShowPersonality = () => setMainView('personality');
 
   return (
     <div className="relative h-screen overflow-hidden flex flex-col dark:bg-claude-darkSurfaceMuted bg-claude-surfaceMuted">
@@ -706,6 +715,7 @@ const App: React.FC = () => {
           onShowInvite={handleShowInvite}
           onShowQuickUse={handleShowQuickUse}
           onShowWeb3News={handleShowWeb3News}
+          onShowPersonality={handleShowPersonality}
           onShowPartners={handleShowPartners}
           onNewChat={handleNewChat}
           isCollapsed={isSidebarCollapsed}
@@ -758,6 +768,13 @@ const App: React.FC = () => {
               />
             ) : mainView === 'partners' ? (
               <PartnersView
+                isSidebarCollapsed={isSidebarCollapsed}
+                onToggleSidebar={handleToggleSidebar}
+                onNewChat={handleNewChat}
+                updateBadge={isSidebarCollapsed ? updateBadge : null}
+              />
+            ) : mainView === 'personality' ? (
+              <PersonalityView
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

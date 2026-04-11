@@ -325,11 +325,40 @@ export function createTauriElectronShim(): typeof window.electron {
       getSystemLocale: () => Promise.resolve(navigator.language),
     },
 
-    // ── App Update (stub — Tauri has its own update mechanism) ──
+    // ── App Update ──
+    //
+    // Tauri intentionally does NOT do in-app auto-updates. Every
+    // `appUpdate.download(url)` call is redirected into the OS browser
+    // (same path shell.openExternal takes), so users always download the
+    // new installer the same way they did the first one and run it
+    // manually. This mirrors the "fallback page" code path that App.tsx
+    // already uses when the update endpoint returns a non-direct URL —
+    // we just make it unconditional for Tauri. No signing keys, no
+    // backend manifest, no Tauri updater plugin, no mystery binary
+    // replacement. The Electron build keeps its in-app downloader; only
+    // Tauri users follow the manual reinstall flow.
     appUpdate: {
-      download: () => Promise.resolve({ success: false }),
+      download: async (url?: string) => {
+        if (!url) return { success: false, error: 'No download URL' };
+        try {
+          const tauri = (window as any).__TAURI__;
+          if (tauri?.opener?.openUrl) {
+            await tauri.opener.openUrl(url);
+          } else {
+            window.open(url, '_blank');
+          }
+          // Return success with no filePath so App.tsx's handleConfirmUpdate
+          // treats it as an externally-handled download and skips the
+          // install() step below.
+          return { success: true, filePath: null };
+        } catch (e: any) {
+          return { success: false, error: e?.message || 'Failed to open download URL' };
+        }
+      },
       cancelDownload: () => Promise.resolve(),
-      install: () => Promise.resolve({ success: false }),
+      // Install is a no-op in Tauri — the installer the user just downloaded
+      // handles everything itself. Returning success keeps the UI happy.
+      install: () => Promise.resolve({ success: true }),
       onDownloadProgress: () => () => {},
     },
 
