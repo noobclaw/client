@@ -623,23 +623,15 @@ pub fn run() {
             }
 
             // ── Dock menu (macOS) ─────────────────────────────────────
-            // Right-click on the Dock icon shows a custom menu. Gives
-            // users a quick path to "New Chat" without opening the main
-            // window first. The menu is attached to the main AppHandle
-            // via set_dock_menu on macOS.
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::menu::MenuBuilder;
-                let dock_menu = MenuBuilder::new(app)
-                    .text("dock_new_chat", "New Chat")
-                    .text("dock_show", "Show Window")
-                    .separator()
-                    .text("dock_quit", "Quit NoobClaw")
-                    .build()?;
-                if let Err(e) = app.set_dock_menu(Some(dock_menu)) {
-                    eprintln!("Failed to set dock menu: {}", e);
-                }
-            }
+            // Tauri v2.10 does not expose `set_dock_menu` on either App or
+            // AppHandle — it's still in the private API pending their menu
+            // rewrite. We could call -[NSApp setDockMenu:] directly via
+            // objc2 (same pattern as set_dock_badge) but building an
+            // NSMenu tree from scratch in objc2 is ~150 lines of obj-c
+            // glue for a minor feature. Leaving the OS default dock menu
+            // for now — right-click still gives Show / Hide / Quit which
+            // covers the common cases. Tracked to revisit when Tauri
+            // promotes their Menu API out of the private-api gate.
 
             // ── Drag & drop wiring (main window) ──────────────────────
             // Tauri v2 webviews have drag&drop enabled by default. The
