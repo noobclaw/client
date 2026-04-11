@@ -15,16 +15,43 @@ import { execSync } from 'child_process';
 
 let _mode: 'electron' | 'sidecar' | null = null;
 
+/**
+ * Detect which runtime we are in.
+ *
+ * Historical implementation:
+ *   try { require('electron'); _mode = 'electron' } catch { _mode = 'sidecar' }
+ *
+ * That looked sensible but was wrong in packaged Tauri mode. The Tauri
+ * sidecar is produced by esbuild-bundling then running @yao-pkg/pkg, which
+ * walks all reachable requires in the bundle and snapshots them into the
+ * single exe. Because this repo also targets Electron, `electron` is in
+ * node_modules and gets snapshotted alongside everything else — strings
+ * of the installed noobclaw-server.exe show:
+ *   C:\snapshot\client\node_modules\electron\index.js
+ * So `require('electron')` SUCCEEDS inside the Tauri sidecar, the detector
+ * returns 'electron', and every `if (isElectronMode())` branch in the whole
+ * codebase takes the wrong path. That is how registerNativeMessagingHost
+ * kept writing the Electron-flavored bat (pointing at a nonexistent
+ * `D:\NoobClaw\node-runtime\node.exe`) even after I switched the else
+ * branch to the `--native-messaging-host` sidecar invocation — the else
+ * branch was simply never taken.
+ *
+ * Reliable signals instead:
+ *   1. `process.versions.electron` — only set when running inside an
+ *      actual Electron runtime (ELECTRON_RUN_AS_NODE does NOT set it),
+ *      true for both main and renderer processes, false in plain Node
+ *      and in pkg-bundled Node.
+ *   2. `process.type` — Electron populates it with 'browser', 'renderer',
+ *      or 'worker'. Additional redundant check in case electron changes.
+ */
 export function getPlatformMode(): 'electron' | 'sidecar' {
   if (_mode) return _mode;
 
-  try {
-    // If we can import electron's app module, we're in Electron
-    require('electron');
-    _mode = 'electron';
-  } catch {
-    _mode = 'sidecar';
-  }
+  const isElectronRuntime =
+    !!(process as NodeJS.Process & { versions?: { electron?: string } }).versions?.electron
+    || !!(process as NodeJS.Process & { type?: string }).type;
+
+  _mode = isElectronRuntime ? 'electron' : 'sidecar';
   return _mode;
 }
 
