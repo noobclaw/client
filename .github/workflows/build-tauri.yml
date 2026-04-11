@@ -71,6 +71,19 @@ jobs:
           test -f build/Release/noobclaw_desktop.node
           lipo -info build/Release/noobclaw_desktop.node || file build/Release/noobclaw_desktop.node
 
+      - name: Build Windows native desktop addon
+        # Compiles native/win-desktop/src/noobclaw_desktop_win.cc into a
+        # .node addon. Uses BitBlt for screenshots and SendInput for
+        # mouse / keyboard, replacing the slow PowerShell subprocess
+        # fallbacks in desktopControlMcp.ts.
+        if: runner.os == 'Windows'
+        working-directory: native/win-desktop
+        shell: bash
+        run: |
+          npm install
+          npx node-gyp rebuild --verbose
+          test -f build/Release/noobclaw_desktop_win.node
+
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 

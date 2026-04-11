@@ -24,10 +24,21 @@ import {
   nativeRecognizeText,
   hasNativeDesktop,
 } from './nativeDesktopMac';
+import {
+  nativeWinScreenshot,
+  nativeWinMouseMove,
+  nativeWinMouseClick,
+  nativeWinKeyType,
+  nativeWinKeyPress,
+  nativeWinClipboardGet,
+  nativeWinClipboardSet,
+  hasNativeDesktopWin,
+} from './nativeDesktopWin';
 
 const IS_WIN = process.platform === 'win32';
 const IS_MAC = process.platform === 'darwin';
 const HAS_NATIVE = IS_MAC && hasNativeDesktop();
+const HAS_NATIVE_WIN = IS_WIN && hasNativeDesktopWin();
 
 // ── Blocked system key combos (from Claude Code keyBlocklist.ts) ──
 
@@ -147,6 +158,23 @@ function ocrScreenshotBuffer(buf: Buffer): string | null {
 
 function screenshot(savePath: string = 'screenshot.png'): string {
   if (IS_WIN) {
+    // Prefer the C++ BitBlt addon (~30-80ms, DPI-aware). PowerShell
+    // fallback still uses Add-Type System.Drawing — slow (~500ms per
+    // invocation because it re-loads the assembly every time) and
+    // non-DPI-aware on scaled displays.
+    if (HAS_NATIVE_WIN) {
+      try {
+        const buf = nativeWinScreenshot(0.75);
+        if (buf) {
+          const fs = require('fs');
+          fs.writeFileSync(savePath, buf);
+          coworkLog('INFO', 'screenshot', `Native Win screenshot saved: ${savePath} (${buf.length} bytes)`);
+          return `Saved ${savePath} (native)`;
+        }
+      } catch (e) {
+        coworkLog('WARN', 'screenshot', `Native Win screenshot failed, falling back to PowerShell: ${e}`);
+      }
+    }
     return runPS(
       `Add-Type -AssemblyName System.Windows.Forms; $s=[System.Windows.Forms.Screen]::PrimaryScreen; ` +
       `$bmp=New-Object System.Drawing.Bitmap($s.Bounds.Width,$s.Bounds.Height); ` +
@@ -217,6 +245,9 @@ function zoom(x0: number, y0: number, x1: number, y1: number, savePath: string =
 
 function click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left', clicks: number = 1): string {
   if (IS_WIN) {
+    if (HAS_NATIVE_WIN && nativeWinMouseClick(x, y, button, clicks)) {
+      return `Clicked ${button} at (${x},${y}) x${clicks} (native)`;
+    }
     const ps = winClick(x, y, button, clicks) + ` Write-Host "${button}-clicked (${x},${y}) x${clicks}"`;
     return runPS(ps);
   }
@@ -235,6 +266,9 @@ function click(x: number, y: number, button: 'left' | 'right' | 'middle' = 'left
 
 function mouseMove(x: number, y: number): string {
   if (IS_WIN) {
+    if (HAS_NATIVE_WIN && nativeWinMouseMove(x, y, 0)) {
+      return `Moved to (${x},${y}) (native)`;
+    }
     return runPS(winSendInputMove(x, y) + `; Write-Host "Moved to (${x},${y})"`);
   }
   if (IS_MAC) {
@@ -304,6 +338,9 @@ Quartz.CGEventPost(Quartz.kCGHIDEventTap,e)
 
 function typeText(text: string): string {
   if (IS_WIN) {
+    if (HAS_NATIVE_WIN && nativeWinKeyType(text)) {
+      return `Typed ${text.length} chars (native)`;
+    }
     // Escape SendKeys special chars
     const escaped = text.replace(/[+^%~(){}[\]]/g, '{$&}');
     return runPS(`Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("${escaped.replace(/"/g, '`"')}"); Write-Host "Typed ${text.length} chars"`);
@@ -339,6 +376,17 @@ function pressKey(key: string, repeat: number = 1): string {
   if (!mainKey && modifiers.length > 0) mainKey = modifiers.pop()!;
 
   if (IS_WIN) {
+    // Prefer the C++ SendInput addon — real VK press/release events
+    // instead of SendKeys (which is a high-level text-typing API and
+    // misses modifiers like the Win key).
+    if (HAS_NATIVE_WIN) {
+      let allOk = true;
+      for (let i = 0; i < repeat; i++) {
+        if (!nativeWinKeyPress(mainKey, modifiers)) { allOk = false; break; }
+      }
+      if (allOk) return `Pressed ${key} x${repeat} (native)`;
+    }
+
     const keyMap: Record<string, string> = {
       'enter': '{ENTER}', 'tab': '{TAB}', 'escape': '{ESC}', 'esc': '{ESC}',
       'backspace': '{BACKSPACE}', 'delete': '{DELETE}', 'del': '{DELETE}',
@@ -448,6 +496,10 @@ function getCursorPosition(): string {
 
 function readClipboard(): string {
   if (IS_WIN) {
+    if (HAS_NATIVE_WIN) {
+      const s = nativeWinClipboardGet();
+      if (s !== null) return s;
+    }
     return runPS('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::GetText()');
   }
   if (IS_MAC) {
@@ -465,6 +517,9 @@ function readClipboard(): string {
 
 function writeClipboard(text: string): string {
   if (IS_WIN) {
+    if (HAS_NATIVE_WIN && nativeWinClipboardSet(text)) {
+      return 'Copied to clipboard (native)';
+    }
     // Use stdin pipe to avoid PowerShell injection
     try {
       const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',

@@ -106,6 +106,34 @@ function main() {
     }
   }
 
+  // 5c. Windows native desktop addon — same pattern as 5b but for the
+  //     C++ BitBlt/SendInput addon built from native/win-desktop/. The
+  //     sidecar loader at src/main/libs/nativeDesktopWin.ts looks for
+  //     the .node file in the same <resources>/native/ directory.
+  if (process.platform === 'win32') {
+    const winAddonSrc = path.join(
+      ROOT,
+      'native',
+      'win-desktop',
+      'build',
+      'Release',
+      'noobclaw_desktop_win.node'
+    );
+    if (fs.existsSync(winAddonSrc)) {
+      const nativeDestDir = path.join(RESOURCES_DIR, 'native');
+      fs.mkdirSync(nativeDestDir, { recursive: true });
+      const winAddonDest = path.join(nativeDestDir, 'noobclaw_desktop_win.node');
+      fs.copyFileSync(winAddonSrc, winAddonDest);
+      const sizeKb = Math.round(fs.statSync(winAddonDest).size / 1024);
+      console.log(`  native/noobclaw_desktop_win.node: copied (${sizeKb} KB)`);
+    } else {
+      console.warn(
+        '  native/noobclaw_desktop_win.node: NOT FOUND — sidecar will fall back to PowerShell. ' +
+          'Build it first with: cd native/win-desktop && npm install && npm run build'
+      );
+    }
+  }
+
   // 6. Native messaging host JS source only. The .bat / .sh wrappers are
   //    generated at runtime by registerNativeMessagingHost() using absolute
   //    paths derived from the actual install location, and in Tauri mode
