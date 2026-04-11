@@ -318,6 +318,44 @@ async function getIMGatewayManagerInstance(): Promise<any> {
     // Wire IM events to SSE
     imGatewayManagerInstance.on?.('statusChange', (status: any) => broadcastSSE('im:status:change', status));
     imGatewayManagerInstance.on?.('message', (msg: any) => broadcastSSE('im:message:received', msg));
+
+    // CRITICAL: call initialize() to wire LLM config provider and set up
+    // per-gateway onMessageCallback handlers. Electron's main.ts does this
+    // in main.ts:693 but sidecar-server.ts was missing the equivalent call.
+    // Without it, every gateway's onMessageCallback stays undefined, so
+    // handleInboundMessage() silently drops every incoming IM event at the
+    // "if (this.onMessageCallback)" check — exactly why Lark bot never
+    // replied even though Inbound im.message.receive_v1 appeared in the log.
+    try {
+      imGatewayManagerInstance.initialize({
+        getLLMConfig: async () => {
+          // Resolve the currently-active API config the same way cowork
+          // does. We reuse claudeSettings.getCurrentApiConfig so the bot
+          // uses whatever model the user has selected in Settings.
+          const { getCurrentApiConfig } = await import('./libs/claudeSettings');
+          const cfg = getCurrentApiConfig('local');
+          if (!cfg) return null;
+          return {
+            apiKey: cfg.apiKey,
+            baseUrl: (cfg as any).baseURL ?? (cfg as any).baseUrl ?? '',
+            model: cfg.model,
+            provider: (cfg as any).provider,
+          };
+        },
+        getSkillsPrompt: async () => {
+          try {
+            const sm = await getSkillManagerInstance();
+            return sm?.buildAutoRoutingPrompt?.() ?? null;
+          } catch {
+            return null;
+          }
+        },
+      });
+      coworkLog('INFO', 'sidecar-server', 'IMGatewayManager.initialize() complete — message callbacks wired');
+    } catch (initErr: any) {
+      coworkLog('ERROR', 'sidecar-server', `IMGatewayManager.initialize() failed: ${initErr?.message || initErr}`);
+    }
+
     return imGatewayManagerInstance;
   } catch (e) {
     coworkLog('WARN', 'sidecar', `IMGatewayManager init failed: ${e}`);

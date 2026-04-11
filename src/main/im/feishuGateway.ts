@@ -1008,14 +1008,24 @@ export class FeishuGateway extends EventEmitter {
     // Add processing reaction (fire-and-forget)
     this.addReaction(ctx.messageId, 'OnIt').catch(() => {});
 
-    // Call message callback if set
+    // Call message callback if set. If it isn't wired, SHOUT about it —
+    // we used to silently drop the message here, which was how the Tauri
+    // sidecar sat for weeks "receiving" Lark events but never replying.
     if (this.onMessageCallback) {
+      coworkLog('INFO', 'feishu-gateway', `Dispatching to onMessageCallback: messageId=${ctx.messageId}`);
       try {
         await this.onMessageCallback(message, replyFn);
       } catch (error: any) {
         console.error(`[Feishu Gateway] Error in message callback: ${error.message}`);
+        coworkLog('ERROR', 'feishu-gateway', `onMessageCallback threw: ${error?.message || error}`);
         await replyFn(`抱歉，处理消息时出现错误：${error.message}`);
       }
+    } else {
+      coworkLog(
+        'ERROR',
+        'feishu-gateway',
+        `onMessageCallback is not wired! Message dropped: messageId=${ctx.messageId}, chat=${ctx.chatId}. This means IMGatewayManager.initialize() was never called — check sidecar-server.ts getIMGatewayManagerInstance.`
+      );
     }
   }
 
