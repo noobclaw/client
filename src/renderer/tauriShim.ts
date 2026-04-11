@@ -254,6 +254,15 @@ export function createTauriElectronShim(): typeof window.electron {
 
       respondToPermission: (opts: any) => apiPost('/api/permission/respond', opts),
 
+      // Cost / token tracking (B2d) — reads from cost_records table
+      // via sidecar HTTP routes. Matches the Electron preload shape.
+      getCostSummary: (range: 'today' | 'week' | 'month' | 'all') =>
+        apiGet(`/api/cost/summary?range=${range}`),
+      getCostHistogramDaily: (days?: number) =>
+        apiGet(`/api/cost/histogram?days=${days ?? 14}`),
+      getSessionCost: (sessionId: string) =>
+        apiGet(`/api/cost/session?sessionId=${encodeURIComponent(sessionId)}`),
+
       getConfig: () => apiGet('/api/config'),
       setConfig: (config: any) => apiPost('/api/config', config),
 

@@ -311,6 +311,41 @@ interface IElectronAPI {
       defaultFileName?: string;
     }) => Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }>;
     respondToPermission: (options: { requestId: string; result: CoworkPermissionResult }) => Promise<{ success: boolean; error?: string }>;
+    // Cost / token usage (B2d)
+    getCostSummary: (range: 'today' | 'week' | 'month' | 'all') => Promise<{
+      success: boolean;
+      range?: string;
+      since?: number;
+      summary?: {
+        turnCount: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        cacheCreationTokens: number;
+      };
+      error?: string;
+    }>;
+    getCostHistogramDaily: (days?: number) => Promise<{
+      success: boolean;
+      buckets?: Array<{
+        dayStart: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+        turnCount: number;
+      }>;
+      error?: string;
+    }>;
+    getSessionCost: (sessionId: string) => Promise<{
+      success: boolean;
+      stats?: {
+        turnCount: number;
+        inputTokens: number;
+        outputTokens: number;
+        cacheReadTokens: number;
+      };
+      error?: string;
+    }>;
     getConfig: () => Promise<{ success: boolean; config?: CoworkConfig; error?: string }>;
     setConfig: (config: CoworkConfigUpdate) => Promise<{ success: boolean; error?: string }>;
     listMemoryEntries: (input: {

@@ -1599,6 +1599,49 @@ if (!gotTheLock) {
     }
   });
 
+  // ── Cost / token usage (B2d) ────────────────────────────────
+  ipcMain.handle('cowork:cost:summary', async (_event, range: 'today' | 'week' | 'month' | 'all') => {
+    try {
+      const store = getCoworkStore();
+      const now = Date.now();
+      const DAY = 24 * 60 * 60 * 1000;
+      let since: number;
+      if (range === 'today') {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        since = today.getTime();
+      } else if (range === 'week') {
+        since = now - 7 * DAY;
+      } else if (range === 'month') {
+        since = now - 30 * DAY;
+      } else {
+        since = 0;
+      }
+      const summary = store.getCostSummary(since);
+      return { success: true, range, since, summary };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('cowork:cost:histogram', async (_event, days: number) => {
+    try {
+      const buckets = getCoworkStore().getCostHistogramDaily(Number(days) || 14);
+      return { success: true, buckets };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
+  ipcMain.handle('cowork:cost:session', async (_event, sessionId: string) => {
+    try {
+      const stats = getCoworkStore().getSessionCost(String(sessionId || ''));
+      return { success: true, stats };
+    } catch (error) {
+      return { success: false, error: error instanceof Error ? error.message : String(error) };
+    }
+  });
+
   ipcMain.handle('cowork:session:exportResultImage', async (
     event,
     options: {

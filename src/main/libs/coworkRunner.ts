@@ -3564,6 +3564,11 @@ export class CoworkRunner extends EventEmitter {
       model: apiConfig.model,
       hasApiKey: Boolean(apiConfig.apiKey),
     });
+    // Stash the resolved model on the active session so the cost
+    // tracker's addCostRecord call in the 'usage' event handler can
+    // log the real model name (it doesn't have direct access to
+    // apiConfig).
+    (activeSession as any)._apiConfigModel = apiConfig.model;
 
     const tBeforeEnv = Date.now();
     const claudeCodePath = getClaudeCodePath();
@@ -6126,6 +6131,36 @@ export class CoworkRunner extends EventEmitter {
           cacheReadInputTokens: event.cacheReadTokens,
           cacheCreationInputTokens: event.cacheCreationTokens,
         });
+
+        // Feed the prompt-cache monitor so it can spot low-hit turns.
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { reportUsage } = require('./promptCacheMonitor');
+          reportUsage(sessionId, {
+            inputTokens: event.inputTokens,
+            cacheReadTokens: event.cacheReadTokens,
+            cacheCreationTokens: event.cacheCreationTokens,
+          });
+        } catch { /* monitor not available */ }
+
+        // Persist a row in cost_records for the wallet-page chart.
+        // We look up the model from the session's current apiConfig —
+        // fall back to a neutral "unknown" label so older schema
+        // doesn't break when upgrading.
+        try {
+          const modelName = (activeSession as any)._apiConfigModel
+            || 'unknown';
+          this.store.addCostRecord({
+            sessionId,
+            model: String(modelName),
+            inputTokens: Number(event.inputTokens || 0),
+            outputTokens: Number(event.outputTokens || 0),
+            cacheReadTokens: Number(event.cacheReadTokens || 0),
+            cacheCreationTokens: Number(event.cacheCreationTokens || 0),
+          });
+        } catch (e) {
+          coworkLog('WARN', 'tokenUsage', `Failed to persist cost record: ${e}`);
+        }
 
         // ── Session-level cumulative brake ───────────────────────────
         // Add this turn's tokens to the running session total and check

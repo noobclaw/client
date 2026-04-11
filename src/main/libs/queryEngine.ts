@@ -17,6 +17,7 @@ import {
 import type { ToolDefinition, PermissionResult, ToolContext } from './toolSystem';
 import { toolsToApiSchemas } from './toolSystem';
 import { executeCompact, microcompactMessages, shouldCompact } from './coworkCompact';
+import { hashPromptCacheKey, reportCacheKey } from './promptCacheMonitor';
 import { StreamingToolExecutor } from './streamingToolExecutor';
 import {
   buildUserMessage,
@@ -295,6 +296,14 @@ export async function* queryLoop(params: QueryParams): AsyncGenerator<QueryEvent
     const maxTokens = state.maxOutputTokensRecoveryCount > 0
       ? ESCALATED_MAX_TOKENS
       : (apiConfig.maxTokens ?? DEFAULT_MAX_TOKENS);
+
+    // Report the prompt-cache key BEFORE the request is issued. If the
+    // hash drifts turn-over-turn the monitor logs a WARN; the operator
+    // can then trace which component made the prompt prefix unstable.
+    try {
+      const cacheKey = hashPromptCacheKey(systemPrompt, apiTools as unknown as unknown[]);
+      reportCacheKey(sessionId, cacheKey, state.turnCount);
+    } catch { /* non-fatal */ }
 
     try {
       const stream = await createMessageStream({

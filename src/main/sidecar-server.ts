@@ -515,6 +515,55 @@ const server = http.createServer(async (req, res) => {
       return writeJSON(res, 200, { success: true, sessions });
     }
 
+    // ── Cost / token usage (B2d) ─────────────────────────────
+    if (pathname === '/api/cost/summary' && req.method === 'GET') {
+      const range = (url.searchParams.get('range') || 'all') as 'today' | 'week' | 'month' | 'all';
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
+      try {
+        const now = Date.now();
+        const DAY = 24 * 60 * 60 * 1000;
+        let since = 0;
+        if (range === 'today') {
+          const t = new Date();
+          t.setHours(0, 0, 0, 0);
+          since = t.getTime();
+        } else if (range === 'week') {
+          since = now - 7 * DAY;
+        } else if (range === 'month') {
+          since = now - 30 * DAY;
+        }
+        const summary = runner.store.getCostSummary(since);
+        return writeJSON(res, 200, { success: true, range, since, summary });
+      } catch (e: any) {
+        return writeJSON(res, 200, { success: false, error: String(e?.message || e) });
+      }
+    }
+
+    if (pathname === '/api/cost/histogram' && req.method === 'GET') {
+      const days = parseInt(url.searchParams.get('days') || '14', 10);
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
+      try {
+        const buckets = runner.store.getCostHistogramDaily(Number.isFinite(days) ? days : 14);
+        return writeJSON(res, 200, { success: true, buckets });
+      } catch (e: any) {
+        return writeJSON(res, 200, { success: false, error: String(e?.message || e) });
+      }
+    }
+
+    if (pathname === '/api/cost/session' && req.method === 'GET') {
+      const sessionId = url.searchParams.get('sessionId') || '';
+      const runner = await getRunner();
+      if (!runner) return writeJSON(res, 200, { success: false, error: 'Runner not ready' });
+      try {
+        const stats = runner.store.getSessionCost(sessionId);
+        return writeJSON(res, 200, { success: true, stats });
+      } catch (e: any) {
+        return writeJSON(res, 200, { success: false, error: String(e?.message || e) });
+      }
+    }
+
     if (pathname === '/api/session/start' && req.method === 'POST') {
       const body = JSON.parse(await readBody(req));
       const runner = await getRunner();

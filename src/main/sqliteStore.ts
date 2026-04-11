@@ -279,6 +279,32 @@ export class SqliteStore {
       );
     `);
 
+    // ── Cost records ────────────────────────────────────────────────
+    // One row per API turn. Accumulated from the 'usage' event in
+    // coworkRunner and used by WalletView to show daily / weekly
+    // token consumption curves. No dollar conversion — we store raw
+    // token counts and model name, the UI formats compactly.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS cost_records (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_read_tokens INTEGER NOT NULL DEFAULT 0,
+        cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL
+      );
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_cost_records_session
+        ON cost_records(session_id, created_at DESC);
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_cost_records_time
+        ON cost_records(created_at DESC);
+    `);
+
     // Migrations - safely add columns if they don't exist
     try {
       // Check if execution_mode column exists

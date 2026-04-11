@@ -671,6 +671,152 @@ export class CoworkStore {
     this.saveDb();
   }
 
+  // ── Cost records ──────────────────────────────────────────────
+  // One row per API turn, captured by coworkRunner's `usage` event
+  // handler. We intentionally store only raw token counts (not
+  // dollar or currency conversions) — pricing is volatile and the
+  // UI layer can format however it wants.
+
+  addCostRecord(record: {
+    sessionId: string;
+    model: string;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens?: number;
+    cacheCreationTokens?: number;
+  }): void {
+    const id = uuidv4();
+    const now = Date.now();
+    this.db.run(
+      `INSERT INTO cost_records
+        (id, session_id, model, input_tokens, output_tokens,
+         cache_read_tokens, cache_creation_tokens, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        id,
+        record.sessionId,
+        record.model,
+        record.inputTokens || 0,
+        record.outputTokens || 0,
+        record.cacheReadTokens || 0,
+        record.cacheCreationTokens || 0,
+        now,
+      ],
+    );
+    this.saveDb();
+  }
+
+  /**
+   * Sum tokens between `sinceMs` and `untilMs`. Used by WalletView
+   * to render "today / this week / this month" totals. Omitting
+   * untilMs means "up to now". Returns an aggregate snapshot grouped
+   * by nothing — call once per bucket you want.
+   */
+  getCostSummary(sinceMs: number, untilMs?: number): {
+    turnCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  } {
+    interface SummaryRow {
+      turn_count: number;
+      input_sum: number;
+      output_sum: number;
+      cache_read_sum: number;
+      cache_create_sum: number;
+    }
+    const cap = untilMs ?? Number.MAX_SAFE_INTEGER;
+    const row = this.getOne<SummaryRow>(
+      `SELECT
+         COUNT(*) AS turn_count,
+         COALESCE(SUM(input_tokens), 0) AS input_sum,
+         COALESCE(SUM(output_tokens), 0) AS output_sum,
+         COALESCE(SUM(cache_read_tokens), 0) AS cache_read_sum,
+         COALESCE(SUM(cache_creation_tokens), 0) AS cache_create_sum
+       FROM cost_records
+       WHERE created_at >= ? AND created_at <= ?`,
+      [sinceMs, cap],
+    );
+    return {
+      turnCount: Number(row?.turn_count || 0),
+      inputTokens: Number(row?.input_sum || 0),
+      outputTokens: Number(row?.output_sum || 0),
+      cacheReadTokens: Number(row?.cache_read_sum || 0),
+      cacheCreationTokens: Number(row?.cache_create_sum || 0),
+    };
+  }
+
+  /**
+   * Session-level cost total, for a small indicator on the session
+   * card.
+   */
+  getSessionCost(sessionId: string): {
+    turnCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+  } {
+    interface SessionSummaryRow {
+      turn_count: number;
+      input_sum: number;
+      output_sum: number;
+      cache_read_sum: number;
+    }
+    const row = this.getOne<SessionSummaryRow>(
+      `SELECT
+         COUNT(*) AS turn_count,
+         COALESCE(SUM(input_tokens), 0) AS input_sum,
+         COALESCE(SUM(output_tokens), 0) AS output_sum,
+         COALESCE(SUM(cache_read_tokens), 0) AS cache_read_sum
+       FROM cost_records
+       WHERE session_id = ?`,
+      [sessionId],
+    );
+    return {
+      turnCount: Number(row?.turn_count || 0),
+      inputTokens: Number(row?.input_sum || 0),
+      outputTokens: Number(row?.output_sum || 0),
+      cacheReadTokens: Number(row?.cache_read_sum || 0),
+    };
+  }
+
+  /**
+   * 14-day rolling bucket histogram for the wallet-page chart.
+   * Returns one entry per day, indexed 0..13 where 0 is the oldest.
+   */
+  getCostHistogramDaily(days: number = 14): Array<{
+    dayStart: number;
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    turnCount: number;
+  }> {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const endOfToday = today.getTime() + 24 * 60 * 60 * 1000;
+    const buckets: Array<{
+      dayStart: number;
+      inputTokens: number;
+      outputTokens: number;
+      cacheReadTokens: number;
+      turnCount: number;
+    }> = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const dayStart = today.getTime() - i * 24 * 60 * 60 * 1000;
+      const dayEnd = dayStart + 24 * 60 * 60 * 1000;
+      const summary = this.getCostSummary(dayStart, Math.min(dayEnd, endOfToday));
+      buckets.push({
+        dayStart,
+        inputTokens: summary.inputTokens,
+        outputTokens: summary.outputTokens,
+        cacheReadTokens: summary.cacheReadTokens,
+        turnCount: summary.turnCount,
+      });
+    }
+    return buckets;
+  }
+
   listSessions(): CoworkSessionSummary[] {
     interface SessionSummaryRow {
       id: string;

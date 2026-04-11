@@ -148,6 +148,14 @@ contextBridge.exposeInMainWorld('electron', {
     respondToPermission: (options: { requestId: string; result: any }) =>
       ipcRenderer.invoke('cowork:permission:respond', options),
 
+    // Cost / token usage stats (B2d) — raw token aggregates, no currency
+    getCostSummary: (range: 'today' | 'week' | 'month' | 'all') =>
+      ipcRenderer.invoke('cowork:cost:summary', range),
+    getCostHistogramDaily: (days?: number) =>
+      ipcRenderer.invoke('cowork:cost:histogram', days ?? 14),
+    getSessionCost: (sessionId: string) =>
+      ipcRenderer.invoke('cowork:cost:session', sessionId),
+
     // Configuration
     getConfig: () =>
       ipcRenderer.invoke('cowork:config:get'),

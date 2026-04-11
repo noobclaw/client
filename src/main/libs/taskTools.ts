@@ -9,6 +9,7 @@
 import { z } from 'zod';
 import { buildTool, type ToolDefinition, type ToolContext } from './toolSystem';
 import { executeTask, cancelRunningTask, waitForTask, getActiveExecutionCount } from './taskExecutor';
+import { summarizeAgentResult } from './agentSummary';
 import {
   getTask,
   getAllTasks,
@@ -97,6 +98,30 @@ export function buildTaskTools(
           };
         }
 
+        // Agent Summary pass: subagent results that exceed the
+        // summarization threshold are compressed down to a dense
+        // bullet summary before being injected into the parent's
+        // tool-result message, so 3K-8K token raw outputs don't
+        // explode the parent's context window. Failures are a
+        // graceful passthrough — we never fail a task because
+        // summarization broke.
+        const rawResult = completed.result || '';
+        let resultText = rawResult || '(no result)';
+        let summaryNote = '';
+        if (completed.status === 'succeeded' && rawResult.length > 0) {
+          try {
+            const summary = await summarizeAgentResult({
+              goal: task.goal,
+              rawResult,
+              status: 'succeeded',
+            });
+            if (summary.compressed) {
+              resultText = summary.text;
+              summaryNote = `\n\n(Compressed ${summary.originalChars} chars → ${summary.text.length} chars by Agent Summary)`;
+            }
+          } catch { /* silent passthrough */ }
+        }
+
         return {
           content: [{
             type: 'text',
@@ -106,7 +131,7 @@ export function buildTaskTools(
               `Duration: ${completed.completedAt && completed.startedAt ? Math.round((completed.completedAt - completed.startedAt) / 1000) + 's' : 'N/A'}`,
               '',
               completed.status === 'succeeded'
-                ? `Result:\n${completed.result || '(no result)'}`
+                ? `Result:\n${resultText}${summaryNote}`
                 : `Error: ${completed.error || 'Unknown'}`,
             ].join('\n'),
           }],
