@@ -9,6 +9,93 @@ use tauri::{
 };
 use tauri_plugin_shell::process::CommandChild;
 
+// ─── macOS TCC bridge ────────────────────────────────────────────────
+//
+// The sidecar (noobclaw-server) is a separate Mach-O binary, so when it
+// calls CGDisplayCreateImage or CGEventPost the TCC database attributes
+// the request to `noobclaw-server` — NOT the main NoobClaw bundle — and
+// the user finds NO "NoobClaw" row in System Settings → Privacy →
+// Screen Recording / Accessibility. Solution: call the preflight
+// functions from the MAIN Rust binary at startup so TCC registers the
+// main bundle. Once the user toggles it on, everything inside the .app
+// (including the sidecar) gains the permission too IF the sidecar is
+// signed with the same team identifier, which it is in our CI.
+//
+// These are plain C functions linked from CoreGraphics /
+// ApplicationServices — no objc2 crate needed.
+#[cfg(target_os = "macos")]
+#[link(name = "CoreGraphics", kind = "framework")]
+extern "C" {
+    fn CGPreflightScreenCaptureAccess() -> bool;
+    fn CGRequestScreenCaptureAccess() -> bool;
+}
+
+#[cfg(target_os = "macos")]
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn AXIsProcessTrusted() -> bool;
+}
+
+#[tauri::command]
+fn check_screen_recording_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return CGPreflightScreenCaptureAccess();
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+#[tauri::command]
+fn request_screen_recording_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return CGRequestScreenCaptureAccess();
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+#[tauri::command]
+fn check_accessibility_permission() -> bool {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        return AXIsProcessTrusted();
+    }
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
+#[tauri::command]
+fn open_screen_recording_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+            .spawn();
+    }
+}
+
+#[tauri::command]
+fn open_accessibility_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+            .spawn();
+    }
+}
+
+#[tauri::command]
+fn open_microphone_settings() {
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")
+            .spawn();
+    }
+}
+
 /// Resolve the on-disk log path for sidecar stdout/stderr capture.
 /// - macOS: ~/Library/Application Support/NoobClaw/logs/sidecar.log
 /// - Linux: ~/.noobclaw/logs/sidecar.log
@@ -203,38 +290,6 @@ fn keychain_delete_token() -> Result<(), String> {
         // Absent-item is not an error for delete semantics.
         Err(keyring::Error::NoEntry) => Ok(()),
         Err(e) => Err(format!("keychain delete failed: {}", e)),
-    }
-}
-
-// ─── Dock badge + progress ───────────────────────────────────────────
-//
-// Tauri v2's window API exposes set_badge_label / set_progress_bar that
-// on macOS route through NSApp.dockTile — so badges and progress appear
-// on our Dock icon when the AI is running / completes a task. Exposed as
-// commands so the renderer can toggle them from cowork session events.
-
-#[tauri::command]
-fn set_dock_badge(app: AppHandle, label: Option<String>) {
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.set_badge_label(label);
-    }
-}
-
-#[tauri::command]
-fn set_dock_progress(app: AppHandle, progress: Option<f64>) {
-    use tauri::window::{ProgressBarState, ProgressBarStatus};
-    if let Some(window) = app.get_webview_window("main") {
-        let state = match progress {
-            Some(v) if v >= 0.0 && v <= 1.0 => ProgressBarState {
-                status: Some(ProgressBarStatus::Normal),
-                progress: Some((v * 100.0) as u64),
-            },
-            _ => ProgressBarState {
-                status: Some(ProgressBarStatus::None),
-                progress: Some(0),
-            },
-        };
-        let _ = window.set_progress_bar(state);
     }
 }
 
@@ -483,6 +538,20 @@ pub fn run() {
                     .build(app)?;
             }
 
+            // ── macOS TCC priming ────────────────────────────────────
+            // Force-register the main app binary with the TCC database
+            // for Screen Recording and Accessibility so the user SEES
+            // "NoobClaw" in System Settings → Privacy instead of having
+            // to hunt for `noobclaw-server`. These two calls are
+            // documented as "silent preflight" — they do NOT prompt the
+            // user unless we also call the `Request` variant, which we
+            // defer until the user actually needs the capability.
+            #[cfg(target_os = "macos")]
+            unsafe {
+                let _ = CGPreflightScreenCaptureAccess();
+                let _ = AXIsProcessTrusted();
+            }
+
             // Start the Node.js sidecar
             match start_sidecar(&handle) {
                 Ok((port, child)) => {
@@ -515,9 +584,13 @@ pub fn run() {
             keychain_set_token,
             keychain_get_token,
             keychain_delete_token,
-            set_dock_badge,
-            set_dock_progress,
             show_main_window,
+            check_screen_recording_permission,
+            request_screen_recording_permission,
+            check_accessibility_permission,
+            open_screen_recording_settings,
+            open_accessibility_settings,
+            open_microphone_settings,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

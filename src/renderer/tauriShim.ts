@@ -553,23 +553,15 @@ export function initTauriShim(): void {
     }
   }) as EventListener);
 
-  // ── Dock badge + notifications wired to cowork SSE events ──
+  // ── Notifications wired to cowork SSE events ──
   //
-  // While an AI session is running we show a "●" badge on the NoobClaw
-  // Dock icon (and on Windows a taskbar marker via set_badge_label,
-  // which is mapped to window.setBadgeLabel). When the session
-  // completes or errors we clear the badge and fire a system
-  // notification so the user knows their background task finished.
-  // Both paths fail silently when the Tauri global isn't present or
-  // the user hasn't granted Notification permission.
-  let activeSessionCount = 0;
-  const updateDockBadge = () => {
-    try {
-      const tauri = (window as any).__TAURI__;
-      const label = activeSessionCount > 0 ? '●' : null;
-      tauri?.core?.invoke?.('set_dock_badge', { label });
-    } catch { /* ignore */ }
-  };
+  // Dock badge is deferred until a follow-up commit that adds
+  // `objc2`-based NSApp.dockTile.badgeLabel setter — Tauri v2.10.3
+  // doesn't expose set_badge_label on WebviewWindow. System
+  // notifications DO work via the notification plugin: when a session
+  // completes or errors we fire a native macOS notification so the
+  // user knows their background task finished. Fails silently when
+  // the Tauri global isn't present or permission wasn't granted.
   const notifyComplete = (title: string, body: string) => {
     try {
       const notif = (window as any).__TAURI__?.notification;
@@ -595,34 +587,16 @@ export function initTauriShim(): void {
     } catch { /* ignore */ }
   };
 
-  // A session "started" signal doesn't exist as its own SSE event, so
-  // we increment on the first stream_message for a session we haven't
-  // seen yet, and decrement on complete/error. Using a Set keeps us
-  // safe against double-counting if multiple events arrive for the
-  // same session.
-  const runningSessions = new Set<string>();
-  const onSessionTick = (sessionId: string) => {
-    if (!sessionId) return;
-    if (!runningSessions.has(sessionId)) {
-      runningSessions.add(sessionId);
-      activeSessionCount = runningSessions.size;
-      updateDockBadge();
-    }
-  };
+  // Notify user when a cowork session finishes. We only care about
+  // the terminal events — per-message events would spam notifications.
   const onSessionEnd = (sessionId: string, kind: 'complete' | 'error') => {
     if (!sessionId) return;
-    if (runningSessions.delete(sessionId)) {
-      activeSessionCount = runningSessions.size;
-      updateDockBadge();
-    }
     if (kind === 'complete') {
       notifyComplete('NoobClaw', 'AI task finished');
     } else {
       notifyComplete('NoobClaw', 'AI task failed');
     }
   };
-  onSSE('cowork:stream:message', (data: any) => onSessionTick(data?.sessionId));
-  onSSE('cowork:stream:messageUpdate', (data: any) => onSessionTick(data?.sessionId));
   onSSE('cowork:stream:complete', (data: any) => onSessionEnd(data?.sessionId, 'complete'));
   onSSE('cowork:stream:error', (data: any) => onSessionEnd(data?.sessionId, 'error'));
 
