@@ -633,10 +633,17 @@ static CGRect axFrameAttr(AXUIElementRef element) {
   CGPoint origin = CGPointZero;
   CGSize size = CGSizeZero;
 
+  // NOTE: Xcode 16.4's SDK demotes the legacy
+  //   kAXValueCGPointType / kAXValueCGSizeType
+  // constants to raw `const UInt32` so C++ refuses to implicitly
+  // convert them to `AXValueType`. Use the post-10.11 replacements
+  //   kAXValueTypeCGPoint / kAXValueTypeCGSize
+  // which are properly typed. These resolve to the same integer
+  // values so older SDKs would accept them too.
   CFTypeRef posValue = NULL;
   if (AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &posValue) == kAXErrorSuccess && posValue) {
     if (CFGetTypeID(posValue) == AXValueGetTypeID()) {
-      AXValueGetValue(castToAXValue(posValue), kAXValueCGPointType, &origin);
+      AXValueGetValue(castToAXValue(posValue), kAXValueTypeCGPoint, &origin);
     }
     CFRelease(posValue);
   }
@@ -644,7 +651,7 @@ static CGRect axFrameAttr(AXUIElementRef element) {
   CFTypeRef sizeValue = NULL;
   if (AXUIElementCopyAttributeValue(element, kAXSizeAttribute, &sizeValue) == kAXErrorSuccess && sizeValue) {
     if (CFGetTypeID(sizeValue) == AXValueGetTypeID()) {
-      AXValueGetValue(castToAXValue(sizeValue), kAXValueCGSizeType, &size);
+      AXValueGetValue(castToAXValue(sizeValue), kAXValueTypeCGSize, &size);
     }
     CFRelease(sizeValue);
   }
