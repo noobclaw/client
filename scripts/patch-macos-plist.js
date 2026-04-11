@@ -67,6 +67,9 @@ function findAppBundle(targetTriple) {
   if (targetTriple) {
     rootsToScan.push(path.join(root, targetTriple, 'release', 'bundle'));
   }
+  // When --target matches the host, cargo sometimes skips the triple
+  // subdir and writes straight to target/release/bundle. Scan that too.
+  rootsToScan.push(path.join(root, 'release', 'bundle'));
   // Also scan every triple dir so the script still works without --target.
   try {
     for (const entry of fs.readdirSync(root)) {
@@ -120,6 +123,13 @@ function main() {
   const appPath = findAppBundle(targetTriple);
   if (!appPath) {
     log('ERROR: Could not locate .app bundle. Did `tauri build` succeed?');
+    // Diagnostic dump — list everything under target/<triple>/release/bundle
+    // so the CI log tells us exactly where to look next time.
+    const root = path.resolve(__dirname, '..', 'src-tauri', 'target');
+    log(`Diagnostic listing of ${root}:`);
+    try {
+      execSync(`find "${root}" -maxdepth 6 -name "*.app" -o -name "bundle" -type d 2>&1 | head -50`, { stdio: 'inherit' });
+    } catch { /* ignore */ }
     process.exit(1);
   }
   log(`Patching: ${appPath}`);

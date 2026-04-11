@@ -521,7 +521,12 @@ static std::string WindowClassUtf8(HWND hwnd) {
   return WideToUtf8(std::wstring(buf, n));
 }
 
-static Napi::Value GetActiveWindow(const Napi::CallbackInfo &info) {
+// Renamed from `GetActiveWindow` — that name collides with user32.h's
+// `HWND GetActiveWindow(void)` and MSVC refuses to take the address at
+// Napi::Function::New with "overloaded-function" (C2665). Our function
+// and the Win32 one have different signatures, but C++ overload
+// resolution at &-taking time can't pick one, so we rename.
+static Napi::Value JSGetActiveWindow(const Napi::CallbackInfo &info) {
   Napi::Env env = info.Env();
   HWND hwnd = GetForegroundWindow();
   if (!hwnd) return env.Null();
@@ -684,7 +689,7 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("clipboardGet", Napi::Function::New(env, ClipboardGet));
   exports.Set("clipboardSet", Napi::Function::New(env, ClipboardSet));
   exports.Set("clipboardVerify", Napi::Function::New(env, ClipboardVerify));
-  exports.Set("getActiveWindow", Napi::Function::New(env, GetActiveWindow));
+  exports.Set("getActiveWindow", Napi::Function::New(env, JSGetActiveWindow));
   exports.Set("listWindows", Napi::Function::New(env, ListWindows));
   exports.Set("onPowerEvent", Napi::Function::New(env, OnPowerEventJS));
   return exports;
