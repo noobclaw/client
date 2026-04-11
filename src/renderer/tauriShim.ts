@@ -552,4 +552,66 @@ export function initTauriShim(): void {
       }
     }
   }) as EventListener);
+
+  // Sidecar health probe — on macOS Tauri builds we had recurring
+  // reports that chat and lucky bag content never appeared. Almost
+  // always this turns out to be a sidecar-side failure (TLS cert store
+  // missing, pkg binary not executable, port conflict, etc.) that
+  // leaves the renderer with a broken EventSource and no visible
+  // signal. Ping /api/status and /api/diagnostic at startup and show a
+  // persistent banner when the probe fails so the user sees *something*
+  // actionable instead of a silent empty UI.
+  probeSidecarHealth();
+}
+
+async function probeSidecarHealth(): Promise<void> {
+  const start = Date.now();
+  let status: 'ok' | 'unreachable' | 'degraded' = 'unreachable';
+  let detail = '';
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${BASE_URL}/api/status`, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      status = 'ok';
+    } else {
+      status = 'degraded';
+      detail = `HTTP ${res.status}`;
+    }
+  } catch (e: any) {
+    detail = String(e?.message || e);
+  }
+  const elapsed = Date.now() - start;
+  console.log(`[TauriShim] Sidecar health: ${status} (${elapsed}ms)${detail ? ' — ' + detail : ''}`);
+
+  if (status === 'ok') return;
+
+  // Surface a non-dismissable diagnostic banner. Kept inline so it
+  // renders even if the React tree never mounts.
+  const banner = document.createElement('div');
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b91c1c;color:#fff;padding:10px 16px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:12px;';
+  const isZh = navigator.language.startsWith('zh');
+  const title = isZh ? '⚠️ 后台服务未启动' : '⚠️ Sidecar unreachable';
+  const body = isZh
+    ? `聊天与红包功能将无法工作。诊断：${detail || '无响应'}`
+    : `Chat and lucky-bag features will not work. Diagnostic: ${detail || 'no response'}`;
+  banner.innerHTML = `
+    <div style="flex:1;min-width:0;">
+      <strong>${title}</strong>
+      <div style="opacity:0.9;margin-top:2px;">${body}</div>
+    </div>
+    <button type="button" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '重试' : 'Retry'}</button>
+  `;
+  const btn = banner.querySelector('button');
+  btn?.addEventListener('click', () => {
+    banner.remove();
+    probeSidecarHealth();
+  });
+  // Wait for body so the banner attaches even if called very early
+  if (document.body) {
+    document.body.appendChild(banner);
+  } else {
+    window.addEventListener('DOMContentLoaded', () => document.body.appendChild(banner), { once: true });
+  }
 }

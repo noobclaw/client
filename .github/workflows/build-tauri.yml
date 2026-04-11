@@ -53,6 +53,10 @@ jobs:
       - name: Install @yao-pkg/pkg
         run: npm install -g @yao-pkg/pkg
 
+      - name: Generate DMG background (macOS only)
+        if: runner.os == 'macOS'
+        run: node scripts/generate-dmg-background.js
+
       - name: Build sidecar
         run: node scripts/build-sidecar.js
 

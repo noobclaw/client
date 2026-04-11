@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -24,6 +24,12 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   const [tab, setTab] = useState<TabKey>('home');
   const [reloadKey, setReloadKey] = useState(0);
+  // iframe load state — tracks whether the cross-origin embed loaded.
+  // On macOS Tauri builds some users reported the iframe rendering blank;
+  // this lets us show a "still loading / open in browser" fallback instead
+  // of a silent black rectangle.
+  const [iframeState, setIframeState] = useState<'loading' | 'loaded' | 'stuck'>('loading');
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Narrow the client's 8-language i18n to just 'zh' | 'en' for the
   // embedded website. The website only maintains two translations of the
@@ -62,6 +68,22 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
     const url = src.split('?')[0]; // 去掉 embed=1
     window.electron?.shell?.openExternal?.(url);
   };
+
+  // Reset load state whenever the iframe source changes (tab switch,
+  // reload click, or language change triggers a new src).
+  useEffect(() => {
+    setIframeState('loading');
+    const timer = window.setTimeout(() => {
+      // If onLoad never fires within 8s the cross-origin iframe is likely
+      // wedged — on macOS WKWebView this has been observed when ATS or a
+      // sandboxing plugin blocks the third-party HTTPS load. Surface the
+      // fallback so the user isn't left staring at a black box.
+      setIframeState(prev => (prev === 'loading' ? 'stuck' : prev));
+    }, 8000);
+    return () => window.clearTimeout(timer);
+  }, [src]);
+
+  const handleIframeLoad = () => setIframeState('loaded');
 
   return (
     <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
@@ -141,15 +163,51 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
       </div>
 
       {/* Content: iframe loads the online page in embed mode */}
-      <div className="flex-1 min-h-0 bg-black">
+      <div className="flex-1 min-h-0 relative dark:bg-claude-darkBg bg-claude-bg">
         <iframe
+          ref={iframeRef}
           key={src}
           src={src}
           title={i18nService.t('personalityTests')}
           className="w-full h-full border-0"
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
           referrerPolicy="no-referrer"
+          onLoad={handleIframeLoad}
         />
+        {iframeState !== 'loaded' && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="pointer-events-auto flex flex-col items-center gap-3 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+              {iframeState === 'loading' ? (
+                <>
+                  <div className="h-6 w-6 rounded-full border-2 border-claude-accent border-t-transparent animate-spin" />
+                  <div className="text-xs">{i18nService.t('personalityLoading') || 'Loading…'}</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-sm">
+                    {i18nService.t('personalityLoadFailed') || 'Failed to load. Try reload or open in browser.'}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleReload}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-claude-accent/15 text-claude-accent hover:bg-claude-accent/25 transition-colors"
+                    >
+                      {i18nService.t('personalityReload') || 'Reload'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleOpenExternal}
+                      className="px-3 py-1.5 text-xs rounded-lg bg-claude-surfaceHover dark:bg-claude-darkSurfaceHover hover:bg-claude-border dark:hover:bg-claude-darkBorder transition-colors"
+                    >
+                      {i18nService.t('personalityOpenExternal') || 'Open in browser'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

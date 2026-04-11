@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_shell::process::CommandChild;
 
 /// State holding the sidecar child process so we can kill it on exit.
@@ -73,6 +73,45 @@ fn get_server_port(state: tauri::State<'_, SidecarState>) -> u16 {
     state.port
 }
 
+/// Handle a single `noobclaw://` deep link delivered either via argv
+/// (Windows/Linux single-instance second launch) or via the macOS
+/// `application:openURL:` Apple Event (tauri-plugin-deep-link's
+/// `on_open_url` callback). macOS does NOT put the URL in argv, so
+/// without this code path the existing app instance would silently
+/// drop the auth redirect and the user's click would appear to "open
+/// a new application" (the OS launching a fresh process because nobody
+/// claimed the URL). Keep this function sync + side-effect-free aside
+/// from the window.eval + focus, so both callers can reuse it.
+fn handle_deep_link(app: &AppHandle, raw: &str) {
+    if !raw.starts_with("noobclaw://") {
+        return;
+    }
+    let Ok(parsed) = url::Url::parse(raw) else { return };
+    if parsed.host_str() != Some("auth") {
+        return;
+    }
+    let token = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "token")
+        .map(|(_, v)| v.to_string());
+    let wallet = parsed
+        .query_pairs()
+        .find(|(k, _)| k == "wallet")
+        .map(|(_, v)| v.to_string());
+    let (Some(t), Some(w)) = (token, wallet) else { return };
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+        let js = format!(
+            "window.dispatchEvent(new CustomEvent('noobclaw-auth', {{detail: {{token: '{}', wallet: '{}'}}}}));",
+            t.replace('\'', "\\'"),
+            w.replace('\'', "\\'")
+        );
+        let _ = window.eval(&js);
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -81,38 +120,32 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
-            // When a second instance is launched, focus the existing window
+            // Windows/Linux: second-instance launch delivers the deep link
+            // via argv. macOS uses the on_open_url path below — never argv.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.unminimize();
                 let _ = window.set_focus();
             }
-            // If the second instance carried a deep link URL, handle it
             for arg in args.iter() {
-                if arg.starts_with("noobclaw://") {
-                    if let Ok(parsed) = url::Url::parse(arg) {
-                        if parsed.host_str() == Some("auth") {
-                            let token = parsed.query_pairs()
-                                .find(|(k, _)| k == "token")
-                                .map(|(_, v)| v.to_string());
-                            let wallet = parsed.query_pairs()
-                                .find(|(k, _)| k == "wallet")
-                                .map(|(_, v)| v.to_string());
-                            if let (Some(t), Some(w)) = (token, wallet) {
-                                if let Some(window) = app.get_webview_window("main") {
-                                    let js = format!(
-                                        "window.dispatchEvent(new CustomEvent('noobclaw-auth', {{detail: {{token: '{}', wallet: '{}'}}}}));",
-                                        t.replace('\'', "\\'"), w.replace('\'', "\\'")
-                                    );
-                                    let _ = window.eval(&js);
-                                }
-                            }
-                        }
-                    }
-                }
+                handle_deep_link(app, arg);
             }
         }))
         .setup(|app| {
             let handle = app.handle().clone();
+
+            // Register the macOS deep-link listener. Without this, clicking
+            // `noobclaw://auth?...` from the system browser never reaches
+            // the running app — macOS would silently drop the URL (or, in
+            // some launch paths, appear to spawn a duplicate process).
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                let dl_handle = handle.clone();
+                app.deep_link().on_open_url(move |event| {
+                    for url in event.urls() {
+                        handle_deep_link(&dl_handle, url.as_str());
+                    }
+                });
+            }
 
             // Start the Node.js sidecar
             match start_sidecar(&handle) {
