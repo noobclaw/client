@@ -2,7 +2,11 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::{AppHandle, Manager};
+use tauri::{
+    menu::{Menu, MenuItem},
+    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    AppHandle, Manager,
+};
 use tauri_plugin_shell::process::CommandChild;
 
 /// Resolve the on-disk log path for sidecar stdout/stderr capture.
@@ -155,6 +159,114 @@ fn get_sidecar_log_tail() -> String {
     lines[start..].join("\n")
 }
 
+// ─── Keychain token storage ──────────────────────────────────────────
+//
+// Historic behavior: the NoobClaw JWT auth token was persisted to the
+// SQLite kv store as plaintext. That works but is not aligned with how
+// native Mac apps store secrets, and it leaks the token to anyone who
+// can read `~/Library/Application Support/NoobClaw/noobclaw.sqlite`.
+// The keyring crate uses the macOS Security framework's Keychain
+// Services under the hood, so tokens land in the login keychain where
+// only this app bundle (codesigned with our identity) can read them.
+//
+// Semantics:
+//   SERVICE = "com.noobclaw.desktop"       (matches bundle identifier)
+//   ACCOUNT = "noobclaw-jwt"               (fixed, we only store one token)
+//
+// Called from the sidecar via the Tauri command bridge — see
+// src/main/libs/claudeSettings.ts's keychain wrapper.
+
+const KEYCHAIN_SERVICE: &str = "com.noobclaw.desktop";
+const KEYCHAIN_ACCOUNT: &str = "noobclaw-jwt";
+
+#[tauri::command]
+fn keychain_set_token(token: String) -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        .map_err(|e| format!("keyring Entry::new failed: {}", e))?;
+    entry
+        .set_password(&token)
+        .map_err(|e| format!("keychain write failed: {}", e))
+}
+
+#[tauri::command]
+fn keychain_get_token() -> Option<String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).ok()?;
+    entry.get_password().ok()
+}
+
+#[tauri::command]
+fn keychain_delete_token() -> Result<(), String> {
+    let entry = keyring::Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT)
+        .map_err(|e| format!("keyring Entry::new failed: {}", e))?;
+    match entry.delete_credential() {
+        Ok(()) => Ok(()),
+        // Absent-item is not an error for delete semantics.
+        Err(keyring::Error::NoEntry) => Ok(()),
+        Err(e) => Err(format!("keychain delete failed: {}", e)),
+    }
+}
+
+// ─── Dock badge + progress ───────────────────────────────────────────
+//
+// Tauri v2's window API exposes set_badge_label / set_progress_bar that
+// on macOS route through NSApp.dockTile — so badges and progress appear
+// on our Dock icon when the AI is running / completes a task. Exposed as
+// commands so the renderer can toggle them from cowork session events.
+
+#[tauri::command]
+fn set_dock_badge(app: AppHandle, label: Option<String>) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.set_badge_label(label);
+    }
+}
+
+#[tauri::command]
+fn set_dock_progress(app: AppHandle, progress: Option<f64>) {
+    use tauri::window::{ProgressBarState, ProgressBarStatus};
+    if let Some(window) = app.get_webview_window("main") {
+        let state = match progress {
+            Some(v) if v >= 0.0 && v <= 1.0 => ProgressBarState {
+                status: Some(ProgressBarStatus::Normal),
+                progress: Some((v * 100.0) as u64),
+            },
+            _ => ProgressBarState {
+                status: Some(ProgressBarStatus::None),
+                progress: Some(0),
+            },
+        };
+        let _ = window.set_progress_bar(state);
+    }
+}
+
+// ─── Toggle main window visibility ───────────────────────────────────
+// Shared helper used by the global-shortcut hotkey, the tray icon click,
+// and the single-instance second-launch callback. Keeping one place for
+// the show+focus sequence avoids subtle bugs where some paths focus but
+// forget to unminimize etc.
+fn toggle_main_window(app: &AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let visible = window.is_visible().unwrap_or(false);
+    let focused = window.is_focused().unwrap_or(false);
+    if visible && focused {
+        let _ = window.hide();
+    } else {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn show_main_window(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+}
+
 /// Handle a single `noobclaw://` deep link delivered either via argv
 /// (Windows/Linux single-instance second launch) or via the macOS
 /// `application:openURL:` Apple Event (tauri-plugin-deep-link's
@@ -196,11 +308,31 @@ fn handle_deep_link(app: &AppHandle, raw: &str) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Default global hotkey to summon the window: ⌥⌘N on macOS, Ctrl+Alt+N
+    // everywhere else. Deliberately NOT ⌘Space (Spotlight) or ⌘Tab (app
+    // switcher). Chosen to be unlikely to collide with Finder, browsers,
+    // or VS Code keybindings.
+    use tauri_plugin_global_shortcut::{Code, Modifiers, Shortcut, ShortcutState};
+    #[cfg(target_os = "macos")]
+    let toggle_shortcut = Shortcut::new(Some(Modifiers::SUPER | Modifiers::ALT), Code::KeyN);
+    #[cfg(not(target_os = "macos"))]
+    let toggle_shortcut = Shortcut::new(Some(Modifiers::CONTROL | Modifiers::ALT), Code::KeyN);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(move |app, shortcut, event| {
+                    if shortcut == &toggle_shortcut && event.state() == ShortcutState::Pressed {
+                        toggle_main_window(app);
+                    }
+                })
+                .build(),
+        )
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             // Windows/Linux: second-instance launch delivers the deep link
             // via argv. macOS uses the on_open_url path below — never argv.
@@ -212,7 +344,7 @@ pub fn run() {
                 handle_deep_link(app, arg);
             }
         }))
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
 
             // Register the macOS deep-link listener. Without this, clicking
@@ -227,6 +359,71 @@ pub fn run() {
                         handle_deep_link(&dl_handle, url.as_str());
                     }
                 });
+            }
+
+            // ── Global shortcut registration ─────────────────────────
+            {
+                use tauri_plugin_global_shortcut::GlobalShortcutExt;
+                if let Err(e) = app.global_shortcut().register(toggle_shortcut) {
+                    eprintln!("Failed to register global shortcut: {}", e);
+                }
+            }
+
+            // ── Menubar tray icon ────────────────────────────────────
+            // One menu: Show / Quit. Left-clicking the tray icon itself
+            // toggles the main window visibility (same semantics as the
+            // global hotkey). We use the default app icon for the tray
+            // image on macOS the OS will automatically template it.
+            {
+                let show_item = MenuItem::with_id(
+                    app,
+                    "tray_show",
+                    "Show NoobClaw",
+                    true,
+                    None::<&str>,
+                )?;
+                let quit_item = MenuItem::with_id(
+                    app,
+                    "tray_quit",
+                    "Quit NoobClaw",
+                    true,
+                    None::<&str>,
+                )?;
+                let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
+
+                let _tray = TrayIconBuilder::with_id("main-tray")
+                    .icon(app.default_window_icon().cloned().unwrap_or_else(|| {
+                        // Fallback: empty 1x1 image if the default icon is
+                        // somehow missing. Tray won't be visible but we
+                        // avoid crashing.
+                        tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
+                    }))
+                    .menu(&tray_menu)
+                    .menu_on_left_click(false)
+                    .on_menu_event(|app, event| match event.id.as_ref() {
+                        "tray_show" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                            }
+                        }
+                        "tray_quit" => {
+                            app.exit(0);
+                        }
+                        _ => {}
+                    })
+                    .on_tray_icon_event(|tray, event| {
+                        if let TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } = event
+                        {
+                            toggle_main_window(tray.app_handle());
+                        }
+                    })
+                    .build(app)?;
             }
 
             // Start the Node.js sidecar
@@ -255,7 +452,16 @@ pub fn run() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![get_server_port, get_sidecar_log_tail])
+        .invoke_handler(tauri::generate_handler![
+            get_server_port,
+            get_sidecar_log_tail,
+            keychain_set_token,
+            keychain_get_token,
+            keychain_delete_token,
+            set_dock_badge,
+            set_dock_progress,
+            show_main_window,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

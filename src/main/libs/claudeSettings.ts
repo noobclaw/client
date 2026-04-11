@@ -51,22 +51,66 @@ export type ApiConfigResolution = {
   error?: string;
 };
 
-// NoobClaw JWT auth token (set by renderer via IPC when user logs in/out)
-// Persisted to the SQLite store under `NOOBCLAW_AUTH_TOKEN_KEY` so that
-// sidecar-only restarts (where the renderer does not re-sync via IPC)
-// do not leave Lark-triggered sessions stranded with "Missing auth token".
+// NoobClaw JWT auth token (set by renderer via IPC when user logs in/out).
+//
+// Storage layering:
+//   1. macOS Tauri sidecar with the native addon loaded → keychain
+//      (com.noobclaw.desktop / noobclaw-jwt) via the Security framework.
+//      This is the preferred path — tokens are no longer plaintext in
+//      the user's SQLite file.
+//   2. Everything else (Electron, Windows, Linux, dev builds without
+//      the .node addon) → SQLite kv store. Same `NOOBCLAW_AUTH_TOKEN_KEY`
+//      as before so existing users don't lose their login.
+//
+// On macOS we try keychain first on read, and if it misses we also
+// check SQLite — this lets the migration from plaintext SQLite →
+// keychain happen transparently on first launch (if a token is found
+// in SQLite it'll be promoted to keychain and deleted from SQLite).
 const NOOBCLAW_AUTH_TOKEN_KEY = 'noobclaw_auth_token';
+const KEYCHAIN_ACCOUNT = 'noobclaw-jwt';
+
 let _noobClawAuthToken: string | null = null;
 let _authTokenHydrated = false;
 
 function hydrateAuthTokenFromStore(): void {
   if (_authTokenHydrated) return;
+
+  // Try keychain first on macOS. Lazy-require to avoid a circular import
+  // at module load time (nativeDesktopMac → coworkLogger → … → here).
+  if (process.platform === 'darwin') {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { nativeKeychainGet } = require('./nativeDesktopMac');
+      const kc = nativeKeychainGet(KEYCHAIN_ACCOUNT);
+      if (typeof kc === 'string' && kc) {
+        _noobClawAuthToken = kc;
+        _authTokenHydrated = true;
+        return;
+      }
+    } catch {
+      /* native addon not loaded — fall through to SQLite */
+    }
+  }
+
   const sqliteStore = getStore();
   if (!sqliteStore) return; // store not ready yet; retry on next call
   try {
     const persisted = sqliteStore.get<string>(NOOBCLAW_AUTH_TOKEN_KEY);
     if (typeof persisted === 'string' && persisted) {
       _noobClawAuthToken = persisted;
+      // One-shot migration: promote any SQLite-persisted token to
+      // keychain, then clear the SQLite copy so the plaintext doesn't
+      // linger. Silent on failure — the next setNoobClawAuthToken()
+      // call will retry.
+      if (process.platform === 'darwin') {
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-var-requires
+          const { nativeKeychainSet } = require('./nativeDesktopMac');
+          if (nativeKeychainSet(KEYCHAIN_ACCOUNT, persisted)) {
+            try { sqliteStore.delete(NOOBCLAW_AUTH_TOKEN_KEY); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+      }
     }
   } catch {
     /* ignore — treat as no persisted token */
@@ -82,16 +126,45 @@ export function getNoobClawAuthToken(): string | null {
 export function setNoobClawAuthToken(token: string | null): void {
   _noobClawAuthToken = token;
   _authTokenHydrated = true;
-  const sqliteStore = getStore();
-  if (sqliteStore) {
+
+  // macOS: write to keychain. On failure, fall through to SQLite so
+  // persistence still works on dev builds without the native addon.
+  let keychainOk = false;
+  if (process.platform === 'darwin') {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { nativeKeychainSet, nativeKeychainDelete } = require('./nativeDesktopMac');
       if (token) {
-        sqliteStore.set(NOOBCLAW_AUTH_TOKEN_KEY, token);
+        keychainOk = nativeKeychainSet(KEYCHAIN_ACCOUNT, token);
       } else {
-        sqliteStore.delete(NOOBCLAW_AUTH_TOKEN_KEY);
+        keychainOk = nativeKeychainDelete(KEYCHAIN_ACCOUNT);
       }
     } catch {
-      /* ignore — renderer will re-sync on next restart */
+      /* native addon not loaded */
+    }
+  }
+
+  // SQLite fallback (and also: keep the legacy row in sync when the
+  // native addon isn't present, so existing callers keep working).
+  if (!keychainOk) {
+    const sqliteStore = getStore();
+    if (sqliteStore) {
+      try {
+        if (token) {
+          sqliteStore.set(NOOBCLAW_AUTH_TOKEN_KEY, token);
+        } else {
+          sqliteStore.delete(NOOBCLAW_AUTH_TOKEN_KEY);
+        }
+      } catch {
+        /* ignore — renderer will re-sync on next restart */
+      }
+    }
+  } else {
+    // Keychain write succeeded — also clear any stale SQLite entry so
+    // we don't keep a plaintext copy around forever.
+    const sqliteStore = getStore();
+    if (sqliteStore) {
+      try { sqliteStore.delete(NOOBCLAW_AUTH_TOKEN_KEY); } catch { /* ignore */ }
     }
   }
 }

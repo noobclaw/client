@@ -19,6 +19,11 @@
     "shell:allow-spawn",
     "shell:allow-stdin-write",
     "dialog:default",
-    "deep-link:default"
+    "deep-link:default",
+    "global-shortcut:allow-is-registered",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "notification:default",
+    "notification:allow-notify"
   ]
 }

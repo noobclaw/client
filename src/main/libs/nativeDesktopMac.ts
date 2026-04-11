@@ -46,6 +46,16 @@ export interface NativeWindowInfo {
   pid: number;
 }
 
+export interface NativeAxElement {
+  role: string;
+  title?: string;
+  label?: string;
+  value?: string;
+  help?: string;
+  frame: { x: number; y: number; width: number; height: number };
+  children: NativeAxElement[];
+}
+
 export interface NativeDesktopModule {
   screenshot(options?: { quality?: number; format?: 'jpeg' | 'png' }): NativeScreenshotResult;
   mouseMove(x: number, y: number, options?: { durationMs?: number; easing?: string }): void;
@@ -59,6 +69,10 @@ export interface NativeDesktopModule {
   getActiveWindow(): NativeWindowInfo | null;
   listWindows(): NativeWindowInfo[];
   isAccessibilityTrusted(options?: { prompt?: boolean }): boolean;
+  getAxTree(pid: number, maxDepth?: number): NativeAxElement;
+  keychainSet(service: string, account: string, password: string): boolean;
+  keychainGet(service: string, account: string): string | null;
+  keychainDelete(service: string, account: string): boolean;
 }
 
 // ── Native module loading (graceful fallback) ──
@@ -313,6 +327,88 @@ export function nativeIsAccessibilityTrusted(prompt: boolean = false): boolean {
   try {
     return mod.isAccessibilityTrusted({ prompt });
   } catch {
+    return false;
+  }
+}
+
+/**
+ * Read the Accessibility UI element tree for a running app (by PID).
+ * Returns `null` if the native module is unavailable, the app can't
+ * be read, or Accessibility permission has not been granted. The
+ * returned tree contains `role`, `title`, `label`, `value`, `frame`
+ * and nested `children` — enough to let an AI address UI elements
+ * semantically ("click the Submit button") rather than by pixel
+ * coordinates from a screenshot.
+ *
+ * maxDepth defaults to 4 to keep trees manageable on document-heavy
+ * apps. Per-level fan-out is capped at 64 children inside the addon.
+ */
+export function nativeGetAxTree(pid: number, maxDepth: number = 4): NativeAxElement | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    return mod.getAxTree(pid, maxDepth);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native getAxTree failed: ${e}`);
+    return null;
+  }
+}
+
+// ── Keychain (macOS Security framework) ──
+
+const KEYCHAIN_SERVICE_DEFAULT = 'com.noobclaw.desktop';
+
+/**
+ * Persist a secret to the macOS login keychain. Returns false if the
+ * native module is not loaded (non-macOS, missing addon, or a dev
+ * build without the compiled .node file). Caller should then fall
+ * back to SQLite for cross-platform parity.
+ */
+export function nativeKeychainSet(
+  account: string,
+  password: string,
+  service: string = KEYCHAIN_SERVICE_DEFAULT,
+): boolean {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return false;
+  try {
+    return mod.keychainSet(service, account, password);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native keychainSet failed: ${e}`);
+    return false;
+  }
+}
+
+/**
+ * Read a secret from the macOS login keychain. Returns null on miss
+ * OR when native module is not loaded. Caller should fall through
+ * to the SQLite path so the same code works cross-platform.
+ */
+export function nativeKeychainGet(
+  account: string,
+  service: string = KEYCHAIN_SERVICE_DEFAULT,
+): string | null {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return null;
+  try {
+    const v = mod.keychainGet(service, account);
+    return typeof v === 'string' && v.length > 0 ? v : null;
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native keychainGet failed: ${e}`);
+    return null;
+  }
+}
+
+export function nativeKeychainDelete(
+  account: string,
+  service: string = KEYCHAIN_SERVICE_DEFAULT,
+): boolean {
+  const mod = loadNativeDesktopModule();
+  if (!mod) return false;
+  try {
+    return mod.keychainDelete(service, account);
+  } catch (e) {
+    coworkLog('WARN', 'nativeDesktopMac', `Native keychainDelete failed: ${e}`);
     return false;
   }
 }

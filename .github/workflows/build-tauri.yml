@@ -53,10 +53,6 @@ jobs:
       - name: Install @yao-pkg/pkg
         run: npm install -g @yao-pkg/pkg
 
-      - name: Generate DMG background (macOS only)
-        if: runner.os == 'macOS'
-        run: node scripts/generate-dmg-background.js
-
       - name: Build macOS native desktop addon
         # Compiles native/macos-desktop/src/noobclaw_desktop.mm into a
         # .node addon used by the sidecar's desktopControlMcp for fast

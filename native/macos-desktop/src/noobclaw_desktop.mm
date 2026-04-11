@@ -38,7 +38,8 @@
 #import <ApplicationServices/ApplicationServices.h>
 #import <ImageIO/ImageIO.h>
 #import <CoreServices/CoreServices.h>
-#import <Carbon/Carbon.h>   // virtual key codes (kVK_*)
+#import <Security/Security.h> // Keychain Services
+#import <Carbon/Carbon.h>     // virtual key codes (kVK_*)
 
 #include <algorithm>
 #include <string>
@@ -584,6 +585,234 @@ static Napi::Value ListWindows(const Napi::CallbackInfo &info) {
   return result;
 }
 
+// ─── AXUIElement — structured UI tree reader ─────────────────────────
+//
+// Unlike screenshot+vision, this returns the *semantic* control tree of
+// a running Mac app (buttons, text fields, groups, labels…) — role,
+// title, value, frame and children, recursively. This is the single
+// biggest gap between us and Claude Code's computer-use-swift: with
+// this, an AI can say "click the Submit button" instead of guessing
+// pixel coordinates from a screenshot.
+//
+// Depth-limited (default 4) because the Accessibility tree of a full
+// app window can have thousands of nodes (every text run, every
+// decorative line). Callers can request deeper traversal when needed.
+//
+// Requires the user to have granted Accessibility permission
+// (System Settings → Privacy → Accessibility). `isAccessibilityTrusted`
+// returns the current state and can optionally prompt.
+
+static NSString *axStringAttr(AXUIElementRef element, CFStringRef attr) {
+  CFTypeRef value = NULL;
+  AXError err = AXUIElementCopyAttributeValue(element, attr, &value);
+  if (err != kAXErrorSuccess || value == NULL) return nil;
+  if (CFGetTypeID(value) != CFStringGetTypeID()) {
+    CFRelease(value);
+    return nil;
+  }
+  NSString *s = (__bridge_transfer NSString *)value;
+  return s;
+}
+
+static CGRect axFrameAttr(AXUIElementRef element) {
+  CGPoint origin = CGPointZero;
+  CGSize size = CGSizeZero;
+
+  CFTypeRef posValue = NULL;
+  if (AXUIElementCopyAttributeValue(element, kAXPositionAttribute, &posValue) == kAXErrorSuccess && posValue) {
+    AXValueGetValue((AXValueRef)posValue, kAXValueCGPointType, &origin);
+    CFRelease(posValue);
+  }
+
+  CFTypeRef sizeValue = NULL;
+  if (AXUIElementCopyAttributeValue(element, kAXSizeAttribute, &sizeValue) == kAXErrorSuccess && sizeValue) {
+    AXValueGetValue((AXValueRef)sizeValue, kAXValueCGSizeType, &size);
+    CFRelease(sizeValue);
+  }
+
+  return CGRectMake(origin.x, origin.y, size.width, size.height);
+}
+
+static Napi::Value serializeAxElement(Napi::Env env, AXUIElementRef element, int depth, int maxDepth);
+
+static Napi::Value serializeAxChildren(Napi::Env env, AXUIElementRef element, int depth, int maxDepth) {
+  Napi::Array out = Napi::Array::New(env);
+  if (depth >= maxDepth) return out;
+
+  CFTypeRef childrenRef = NULL;
+  AXError err = AXUIElementCopyAttributeValue(element, kAXChildrenAttribute, &childrenRef);
+  if (err != kAXErrorSuccess || childrenRef == NULL) return out;
+
+  if (CFGetTypeID(childrenRef) != CFArrayGetTypeID()) {
+    CFRelease(childrenRef);
+    return out;
+  }
+
+  CFArrayRef children = (CFArrayRef)childrenRef;
+  CFIndex count = CFArrayGetCount(children);
+  uint32_t outIdx = 0;
+  // Cap per-level fan-out to avoid gigantic trees on document-heavy apps.
+  const CFIndex maxChildrenPerLevel = 64;
+  CFIndex effective = count > maxChildrenPerLevel ? maxChildrenPerLevel : count;
+  for (CFIndex i = 0; i < effective; i++) {
+    AXUIElementRef child = (AXUIElementRef)CFArrayGetValueAtIndex(children, i);
+    if (!child) continue;
+    out.Set(outIdx++, serializeAxElement(env, child, depth + 1, maxDepth));
+  }
+  CFRelease(childrenRef);
+  return out;
+}
+
+static Napi::Value serializeAxElement(Napi::Env env, AXUIElementRef element, int depth, int maxDepth) {
+  Napi::Object obj = Napi::Object::New(env);
+
+  NSString *role = axStringAttr(element, kAXRoleAttribute);
+  NSString *title = axStringAttr(element, kAXTitleAttribute);
+  NSString *label = axStringAttr(element, kAXDescriptionAttribute);
+  NSString *value = axStringAttr(element, kAXValueAttribute);
+  NSString *help = axStringAttr(element, kAXHelpAttribute);
+
+  obj.Set("role", Napi::String::New(env, role ? [role UTF8String] : ""));
+  if (title) obj.Set("title", Napi::String::New(env, [title UTF8String]));
+  if (label) obj.Set("label", Napi::String::New(env, [label UTF8String]));
+  if (value) obj.Set("value", Napi::String::New(env, [value UTF8String]));
+  if (help) obj.Set("help", Napi::String::New(env, [help UTF8String]));
+
+  CGRect frame = axFrameAttr(element);
+  Napi::Object frameObj = Napi::Object::New(env);
+  frameObj.Set("x", Napi::Number::New(env, frame.origin.x));
+  frameObj.Set("y", Napi::Number::New(env, frame.origin.y));
+  frameObj.Set("width", Napi::Number::New(env, frame.size.width));
+  frameObj.Set("height", Napi::Number::New(env, frame.size.height));
+  obj.Set("frame", frameObj);
+
+  obj.Set("children", serializeAxChildren(env, element, depth, maxDepth));
+  return obj;
+}
+
+static Napi::Value GetAxTree(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 1 || !info[0].IsNumber()) {
+    Napi::TypeError::New(env, "getAxTree(pid, maxDepth?): pid required")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  pid_t pid = (pid_t)info[0].As<Napi::Number>().Int32Value();
+  int maxDepth = 4;
+  if (info.Length() > 1 && info[1].IsNumber()) {
+    maxDepth = info[1].As<Napi::Number>().Int32Value();
+    if (maxDepth < 1) maxDepth = 1;
+    if (maxDepth > 12) maxDepth = 12;
+  }
+
+  // AXUIElementCreateApplication takes a pid and returns an element
+  // representing the app's top-level accessibility container. If
+  // Accessibility permission isn't granted, the subsequent attribute
+  // reads return kAXErrorCannotComplete and we emit an empty tree
+  // rather than throwing — the caller can check
+  // isAccessibilityTrusted() to surface a prompt.
+  AXUIElementRef app = AXUIElementCreateApplication(pid);
+  if (!app) {
+    Napi::Object empty = Napi::Object::New(env);
+    empty.Set("role", Napi::String::New(env, ""));
+    empty.Set("children", Napi::Array::New(env));
+    return empty;
+  }
+
+  Napi::Value result = serializeAxElement(env, app, 0, maxDepth);
+  CFRelease(app);
+  return result;
+}
+
+// ─── Keychain token storage ──────────────────────────────────────────
+//
+// Used by the sidecar to persist the NoobClaw JWT auth token in the
+// macOS login keychain instead of writing it plaintext into SQLite.
+// Wrapped via native[KeychainSet|Get|Delete] in
+// src/main/libs/nativeDesktopMac.ts.
+
+static Napi::Value KeychainSet(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 3 || !info[0].IsString() || !info[1].IsString() || !info[2].IsString()) {
+    Napi::TypeError::New(env, "keychainSet(service, account, password) requires 3 strings")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  @autoreleasepool {
+    NSString *service = NSFromStd(info[0].As<Napi::String>().Utf8Value());
+    NSString *account = NSFromStd(info[1].As<Napi::String>().Utf8Value());
+    NSString *password = NSFromStd(info[2].As<Napi::String>().Utf8Value());
+    NSData *passwordData = [password dataUsingEncoding:NSUTF8StringEncoding];
+
+    // Try update first; if the entry doesn't exist, fall through to add.
+    NSDictionary *query = @{
+      (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
+      (__bridge id)kSecAttrService : service,
+      (__bridge id)kSecAttrAccount : account,
+    };
+    NSDictionary *update = @{(__bridge id)kSecValueData : passwordData};
+    OSStatus status =
+        SecItemUpdate((__bridge CFDictionaryRef)query, (__bridge CFDictionaryRef)update);
+
+    if (status == errSecItemNotFound) {
+      NSMutableDictionary *add = [query mutableCopy];
+      add[(__bridge id)kSecValueData] = passwordData;
+      status = SecItemAdd((__bridge CFDictionaryRef)add, NULL);
+    }
+    return Napi::Boolean::New(env, status == errSecSuccess);
+  }
+}
+
+static Napi::Value KeychainGet(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsString() || !info[1].IsString()) {
+    Napi::TypeError::New(env, "keychainGet(service, account) requires 2 strings")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  @autoreleasepool {
+    NSString *service = NSFromStd(info[0].As<Napi::String>().Utf8Value());
+    NSString *account = NSFromStd(info[1].As<Napi::String>().Utf8Value());
+    NSDictionary *query = @{
+      (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
+      (__bridge id)kSecAttrService : service,
+      (__bridge id)kSecAttrAccount : account,
+      (__bridge id)kSecReturnData : @YES,
+      (__bridge id)kSecMatchLimit : (__bridge id)kSecMatchLimitOne,
+    };
+    CFTypeRef result = NULL;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
+    if (status != errSecSuccess || result == NULL) return env.Null();
+
+    NSData *data = (__bridge_transfer NSData *)result;
+    NSString *password = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (!password) return env.Null();
+    return Napi::String::New(env, [password UTF8String] ?: "");
+  }
+}
+
+static Napi::Value KeychainDelete(const Napi::CallbackInfo &info) {
+  Napi::Env env = info.Env();
+  if (info.Length() < 2 || !info[0].IsString() || !info[1].IsString()) {
+    Napi::TypeError::New(env, "keychainDelete(service, account) requires 2 strings")
+        .ThrowAsJavaScriptException();
+    return env.Null();
+  }
+  @autoreleasepool {
+    NSString *service = NSFromStd(info[0].As<Napi::String>().Utf8Value());
+    NSString *account = NSFromStd(info[1].As<Napi::String>().Utf8Value());
+    NSDictionary *query = @{
+      (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
+      (__bridge id)kSecAttrService : service,
+      (__bridge id)kSecAttrAccount : account,
+    };
+    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)query);
+    // Treat "not found" as success — caller wants the key gone.
+    bool ok = (status == errSecSuccess || status == errSecItemNotFound);
+    return Napi::Boolean::New(env, ok);
+  }
+}
+
 // ─── Module init ──────────────────────────────────────────────────────
 
 static Napi::Object Init(Napi::Env env, Napi::Object exports) {
@@ -600,6 +829,10 @@ static Napi::Object Init(Napi::Env env, Napi::Object exports) {
   exports.Set("listWindows", Napi::Function::New(env, ListWindows));
   exports.Set("isAccessibilityTrusted",
               Napi::Function::New(env, IsAccessibilityTrusted));
+  exports.Set("getAxTree", Napi::Function::New(env, GetAxTree));
+  exports.Set("keychainSet", Napi::Function::New(env, KeychainSet));
+  exports.Set("keychainGet", Napi::Function::New(env, KeychainGet));
+  exports.Set("keychainDelete", Napi::Function::New(env, KeychainDelete));
   return exports;
 }
 

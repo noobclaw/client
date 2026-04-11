@@ -24,6 +24,7 @@
             "-framework ImageIO",
             "-framework CoreFoundation",
             "-framework CoreServices",
+            "-framework Security",
             "-framework Carbon"
           ],
           "xcode_settings": {
