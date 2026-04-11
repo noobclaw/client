@@ -329,7 +329,12 @@ fn install_sidecar_supervisor(app: tauri::AppHandle) {
             // iteration we just wait for that child to die. Subsequent
             // iterations wait for the next death.
             let (tx, rx) = tokio::sync::oneshot::channel::<()>();
-            let tx_cell = std::sync::Mutex::new(Some(tx));
+            // Explicit type annotation — otherwise rustc can't infer
+            // the Option's inner generic in the closure below (E0282),
+            // because the only use-site is `slot.take()` which
+            // returns Option<_>.
+            let tx_cell: std::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>> =
+                std::sync::Mutex::new(Some(tx));
             let handler = app_clone.listen("sidecar://terminated", move |_| {
                 if let Ok(mut slot) = tx_cell.lock() {
                     if let Some(tx) = slot.take() {
