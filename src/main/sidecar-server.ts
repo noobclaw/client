@@ -1141,6 +1141,23 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
   getRunner().then(async (runner) => {
     if (runner) {
       coworkLog('INFO', 'sidecar-server', 'Runner pre-initialized successfully');
+
+      // Reset orphan "running" sessions left over from a previous sidecar
+      // that crashed or was killed mid-turn (e.g. the parent-watchdog
+      // regression before commit a5b4e6e). Without this, sqlite still
+      // says status='running', the frontend reads that on next app
+      // launch, sets isStreaming=true, and the send button becomes
+      // permanently disabled for that session — user types, hits enter,
+      // and nothing happens because the UI thinks the session is still
+      // in progress. Electron's main.ts:2875 does the same thing.
+      try {
+        const resetCount = runner.store?.resetRunningSessions?.() ?? 0;
+        if (resetCount > 0) {
+          coworkLog('INFO', 'sidecar-server', `Reset ${resetCount} orphan running session(s) to idle`);
+        }
+      } catch (e: any) {
+        coworkLog('WARN', 'sidecar-server', `resetRunningSessions failed: ${e?.message || e}`);
+      }
       // Pre-initialize IM, Skills, etc so they're ready when frontend loads
       try {
         const img = await getIMGatewayManagerInstance();
