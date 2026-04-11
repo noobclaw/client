@@ -270,6 +270,7 @@ export function createTauriElectronShim(): typeof window.electron {
       onStreamMessage: (cb: any) => onSSE('cowork:stream:message', cb),
       onStreamMessageUpdate: (cb: any) => onSSE('cowork:stream:messageUpdate', cb),
       onStreamMessageMetadata: (cb: any) => onSSE('cowork:stream:messageMetadata', cb),
+      onStreamStuck: (cb: any) => onSSE('cowork:stream:stuck', cb),
       onStreamPermission: (cb: any) => onSSE('cowork:stream:permission', cb),
       onStreamComplete: (cb: any) => onSSE('cowork:stream:complete', cb),
       onStreamError: (cb: any) => onSSE('cowork:stream:error', cb),
@@ -600,6 +601,15 @@ export function initTauriShim(): void {
   };
   onSSE('cowork:stream:complete', (data: any) => onSessionEnd(data?.sessionId, 'complete'));
   onSSE('cowork:stream:error', (data: any) => onSessionEnd(data?.sessionId, 'error'));
+
+  // Stuck watchdog — long-silent sessions surface as a desktop
+  // notification so unattended users come back and see why something
+  // stalled. The in-app system message is already appended by the
+  // sidecar (see runStuckWatchdog in coworkRunner.ts).
+  onSSE('cowork:stream:stuck', (data: any) => {
+    const minutes = Math.round((Number(data?.idleMs) || 0) / 60_000);
+    notifyComplete('NoobClaw', `会话 ${minutes} 分钟无进展 — 可能卡住了`);
+  });
 
   // System power events from the sidecar (Mac Sleep/Wake) — show a
   // short toast so the user understands why an in-flight AI task

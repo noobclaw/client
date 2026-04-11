@@ -36,6 +36,12 @@ import { truncateToolResult } from './toolHooks';
 import { buildLSPTools } from './lspClient';
 import { runStopHooks, registerDefaultStopHooks, type StopHookContext } from './stopHooks';
 import { shouldUsePlanMode, getPlanModePrompt } from './planMode';
+import {
+  buildEnterPlanModeTool,
+  buildExitPlanModeTool,
+  isReadOnlyToolForPlanMode,
+  type PlanModeToggle,
+} from './planModeTools';
 import { shouldUseCoordinatorMode, getCoordinatorPrompt } from './coordinatorMode';
 import { generateDiff, formatDiff } from './diffUtils';
 import { recordFileRead, checkFileReadBeforeEdit, recordFileWrite } from './fileStateCache';
@@ -151,6 +157,33 @@ const GIT_CLEAN_COMMAND_RE = /\bgit\s+clean\b/i;
 
 // ── Dangerous command patterns (ported from Claude Code bashSecurity.ts) ──
 // These catch dangerous patterns beyond simple delete operations.
+// Session-level cumulative token ceiling. The active session aborts when
+// `activeSession.cumulativeTokens` crosses this threshold. Default 2M
+// is roughly "a full day of heavy AI work on one task" — enough that a
+// normal session never hits it, tight enough that a runaway loop stops
+// before burning a whole month's budget. Override via env var for
+// users who know what they're doing. `0` disables the brake entirely.
+const SESSION_TOKEN_CEILING = (() => {
+  const raw = process.env.NOOBCLAW_MAX_SESSION_TOKENS || process.env.NOOBCLAW_SESSION_BUDGET;
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  }
+  return 2_000_000;
+})();
+
+// Idle time before the stuck-watchdog fires a single notification for a
+// session that is still marked "running" but has had no forward progress
+// (no new message, no tool_result, no streaming update) in that window.
+const STUCK_WATCHDOG_MS = (() => {
+  const raw = process.env.NOOBCLAW_STUCK_WATCHDOG_MS;
+  if (raw) {
+    const parsed = parseInt(raw, 10);
+    if (Number.isFinite(parsed) && parsed >= 30_000) return parsed;
+  }
+  return 10 * 60 * 1000; // 10 minutes
+})();
+
 const DANGEROUS_PATTERNS: Array<{ re: RegExp; label: string }> = [
   // Pipe to shell — arbitrary code execution
   { re: /\|\s*(?:bash|sh|zsh|ksh|csh|fish|dash)\b/i, label: 'pipe-to-shell' },
@@ -483,6 +516,7 @@ export interface CoworkRunnerEvents {
   permissionRequest: (sessionId: string, request: PermissionRequest) => void;
   complete: (sessionId: string, claudeSessionId: string | null) => void;
   error: (sessionId: string, error: string) => void;
+  stuck: (sessionId: string, detail: { idleMs: number }) => void;
 }
 
 export interface PermissionRequest {
@@ -523,6 +557,23 @@ interface ActiveSession {
   sandboxTurnResolve?: (result: { status: 'ok' } | { status: 'error'; message: string; hvfDenied: boolean; memoryFailed: boolean }) => void;
   /** When true, auto-approve all tool permissions (for scheduled tasks) */
   autoApprove?: boolean;
+  /**
+   * Running total of input + output tokens consumed by THIS session
+   * across all turns (not just the current turn). Incremented in the
+   * handleQueryEvent 'usage' handler. Compared against
+   * SESSION_TOKEN_CEILING after every update; an overshoot triggers a
+   * hard abort so unattended runs cannot drain an unlimited amount of
+   * tokens if the AI gets stuck in a loop nobody is watching.
+   */
+  cumulativeTokens: number;
+  /** Last time the session received ANY forward progress (message,
+   *  messageUpdate, tool_result). Used by the stuck watchdog to notify
+   *  the user when an active session has gone silent for too long. */
+  lastActivityAt: number;
+  /** When true, the canUseToolFn filter refuses every tool that could
+   *  mutate the workspace — used by `EnterPlanMode` so the AI can
+   *  explore a task before touching anything. */
+  planMode: boolean;
 }
 
 interface PendingPermission {
@@ -603,7 +654,73 @@ export class CoworkRunner extends EventEmitter {
     this.store = store;
     // Initialize knowledge graph database
     initKnowledgeGraph();
+    // Start the shared stuck-watchdog tick. One interval scans every
+    // active session and notifies once when lastActivityAt is older
+    // than STUCK_WATCHDOG_MS. Using a single interval rather than one
+    // per session so we don't flood the event loop with dozens of
+    // timers on heavy workloads.
+    if (STUCK_WATCHDOG_MS > 0) {
+      this.stuckWatchdogInterval = setInterval(() => this.runStuckWatchdog(), 60_000);
+      // allow Node to exit even if the interval is still pending
+      if (typeof this.stuckWatchdogInterval.unref === 'function') {
+        this.stuckWatchdogInterval.unref();
+      }
+    }
   }
+
+  /**
+   * Walk every active session; for any that has been silent for
+   * STUCK_WATCHDOG_MS, fire one `stuck` event to the UI/notifications.
+   * We mark `stuckNotifiedAt` on the session so we don't spam the user
+   * every minute — one notification per stuck incident is enough.
+   */
+  private runStuckWatchdog(): void {
+    const now = Date.now();
+    for (const [sessionId, active] of this.activeSessions.entries()) {
+      // Sessions that aren't running aren't "stuck" — they finished.
+      const session = this.store.getSession(sessionId);
+      if (!session || session.status !== 'running') continue;
+
+      const idle = now - (active.lastActivityAt || now);
+      if (idle < STUCK_WATCHDOG_MS) continue;
+
+      // Already notified for this stuck incident?
+      if ((active as any).stuckNotifiedAt) continue;
+      (active as any).stuckNotifiedAt = now;
+
+      const minutes = Math.round(idle / 60_000);
+      coworkLog('WARN', 'stuckWatchdog', `Session silent for ${minutes} minutes`, { sessionId });
+      try {
+        const stuckMessage = this.store.addMessage(sessionId, {
+          type: 'system',
+          content: `⏸ 这个会话已经 ${minutes} 分钟没有任何进展（既没有新消息也没有工具结果）。AI 可能卡住了——建议手动检查或停止。`,
+          metadata: { isStuckNotice: true },
+        });
+        this.emit('message', sessionId, stuckMessage);
+        // Also fire a dedicated event so the renderer can show a toast /
+        // system notification — main.ts + sidecar-server.ts both
+        // subscribe to the `stuck` event.
+        (this as unknown as NodeJS.EventEmitter).emit('stuck', sessionId, { idleMs: idle });
+      } catch { /* ignore */ }
+    }
+  }
+
+  /**
+   * Mark forward progress on an active session. Call after any event
+   * that proves the session is still making progress — message,
+   * messageUpdate, tool_use, tool_result. Clears the stuck-notified
+   * flag so a subsequent stall triggers another notification.
+   */
+  private touchSessionActivity(sessionId: string): void {
+    const active = this.activeSessions.get(sessionId);
+    if (!active) return;
+    active.lastActivityAt = Date.now();
+    if ((active as any).stuckNotifiedAt) {
+      (active as any).stuckNotifiedAt = 0;
+    }
+  }
+
+  private stuckWatchdogInterval: ReturnType<typeof setInterval> | null = null;
 
   setAiAssistantNameProvider(provider: () => string): void {
     this.aiAssistantNameProvider = provider;
@@ -795,22 +912,54 @@ export class CoworkRunner extends EventEmitter {
       .replace(/'/g, '&apos;');
   }
 
-  private buildUserMemoriesXml(): string {
+  private buildUserMemoriesXml(queryForRelevance?: string): string {
     const config = this.store.getConfig();
     if (!config.memoryEnabled) {
       return '<userMemories></userMemories>';
     }
 
-    const memories = this.store.listUserMemories({
+    // Fetch more than the final cap so the semantic ranker has a real
+    // candidate pool to rank. If there are fewer memories than the
+    // wide pool, listUserMemories just returns what's available.
+    const WIDE_POOL_MULTIPLIER = 4;
+    const poolLimit = Math.max(
+      config.memoryUserMemoriesMaxItems,
+      config.memoryUserMemoriesMaxItems * WIDE_POOL_MULTIPLIER,
+    );
+    const pool = this.store.listUserMemories({
       status: 'created',
       includeDeleted: false,
-      limit: config.memoryUserMemoriesMaxItems,
+      limit: poolLimit,
       offset: 0,
     });
 
-    if (memories.length === 0) {
+    if (pool.length === 0) {
       return '<userMemories></userMemories>';
     }
+
+    // Try semantic ranking first — Mac-only, zero-cost local NLEmbedding.
+    // Falls through to default updated_at order on non-macOS / no addon
+    // / empty query.
+    let orderedMemories: typeof pool = pool;
+    if (queryForRelevance && queryForRelevance.trim().length > 0) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { rankMemoriesSemantic } = require('./memorySemanticSearch');
+        const ranked = rankMemoriesSemantic(
+          queryForRelevance,
+          pool,
+          config.memoryUserMemoriesMaxItems,
+        );
+        if (ranked && ranked.length > 0) {
+          orderedMemories = ranked.map((r: { memory: typeof pool[number] }) => r.memory);
+        }
+      } catch (e) {
+        coworkLog('WARN', 'buildUserMemoriesXml', `semantic rank failed, fallback to recency: ${e}`);
+      }
+    }
+
+    // Cap the final emitted list to the user-configured max.
+    const memories = orderedMemories.slice(0, config.memoryUserMemoriesMaxItems);
 
     const MAX_ITEM_CHARS = 200;
     const MAX_TOTAL_CHARS = 2000;
@@ -2713,9 +2862,11 @@ export class CoworkRunner extends EventEmitter {
    * These are prepended to the user message (not the system prompt) so that
    * the system prompt stays stable across turns and can benefit from prompt caching.
    */
-  private buildPromptPrefix(): string {
+  private buildPromptPrefix(queryForRelevance?: string): string {
     const localTimePrompt = this.buildLocalTimeContextPrompt();
-    const userMemoriesXml = this.buildUserMemoriesXml();
+    // Pass the user prompt through so the memory block can be ranked
+    // by semantic relevance (Mac) instead of recency.
+    const userMemoriesXml = this.buildUserMemoriesXml(queryForRelevance);
     return [localTimePrompt, userMemoriesXml]
       .filter((section) => section?.trim())
       .join('\n\n');
@@ -3035,6 +3186,9 @@ export class CoworkRunner extends EventEmitter {
       hasAssistantThinkingOutput: false,
       executionMode: 'local',
       autoApprove: options.autoApprove ?? false,
+      cumulativeTokens: 0,
+      lastActivityAt: Date.now(),
+      planMode: false,
     };
     this.activeSessions.set(sessionId, activeSession);
     if (session.cwd !== sessionCwd) {
@@ -3056,7 +3210,7 @@ export class CoworkRunner extends EventEmitter {
     // Run claude-code using the SDK
     try {
       const tBeforePrefix = Date.now();
-      const promptPrefix = this.buildPromptPrefix();
+      const promptPrefix = this.buildPromptPrefix(prompt);
       const tAfterPrefix = Date.now();
       let effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
 
@@ -3171,7 +3325,7 @@ export class CoworkRunner extends EventEmitter {
     );
 
     try {
-      const promptPrefix = this.buildPromptPrefix();
+      const promptPrefix = this.buildPromptPrefix(prompt);
       let effectivePrompt = promptPrefix ? `${promptPrefix}\n\n---\n\n${prompt}` : prompt;
 
       // Inject knowledge graph context
@@ -4238,7 +4392,39 @@ export class CoworkRunner extends EventEmitter {
         });
       });
 
-      allTools.push(...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs, ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs, ...processToolDefs, ...extraToolDefs, ...lspToolDefs, askUserTool);
+      // Plan-mode toggles — these use closure over `activeSession` so
+      // the current session's `planMode` flag is what gets flipped.
+      // When the flag is set, canUseToolFn refuses anything that isn't
+      // on the isReadOnlyToolForPlanMode whitelist.
+      const planModeToggle: PlanModeToggle = {
+        enter: (sid) => {
+          const s = this.activeSessions.get(sid);
+          if (s) s.planMode = true;
+        },
+        exit: (sid, plan) => {
+          const s = this.activeSessions.get(sid);
+          if (s) s.planMode = false;
+          if (plan) {
+            try {
+              const msg = this.store.addMessage(sid, {
+                type: 'system',
+                content: `📋 Plan (from plan mode):\n\n${plan}`,
+                metadata: { isPlanSummary: true },
+              });
+              this.emit('message', sid, msg);
+            } catch { /* ignore */ }
+          }
+        },
+      };
+      const enterPlanTool = buildEnterPlanModeTool(planModeToggle, () => sessionId);
+      const exitPlanTool = buildExitPlanModeTool(planModeToggle, () => sessionId);
+
+      allTools.push(
+        ...taskTools, ...agentTools, ...dreamingMemoryTools, ...webhookToolDefs,
+        ...canvasToolDefs, ...cdpToolDefs, ...voiceToolDefs, ...gmailToolDefs,
+        ...processToolDefs, ...extraToolDefs, ...lspToolDefs,
+        askUserTool, enterPlanTool, exitPlanTool,
+      );
 
       // Context engine: apply deferred tool loading if too many tools
       // Set user message for intent-based tool selection (reduces token usage)
@@ -4374,6 +4560,24 @@ export class CoworkRunner extends EventEmitter {
           toolInput && typeof toolInput === 'object'
             ? (toolInput as Record<string, unknown>)
             : { value: toolInput };
+
+        // Plan mode gate — while the session is in plan mode, refuse
+        // anything that isn't on the read-only allowlist. The deny
+        // message is sent back to the model as a tool result so it
+        // sees WHY the call was blocked and can call ExitPlanMode.
+        if (activeSession.planMode && !isReadOnlyToolForPlanMode(resolvedName)) {
+          coworkLog('INFO', 'canUseTool', 'Plan-mode block (non-read-only tool)', {
+            sessionId,
+            tool: resolvedName,
+          });
+          return {
+            behavior: 'deny',
+            message:
+              `Tool "${resolvedName}" is blocked because the session is in PLAN MODE. `
+              + 'Finish your exploration and call ExitPlanMode with a plan summary first, '
+              + 'then retry.',
+          };
+        }
 
         // AskUserQuestion is the AI's own structured question-asking UI,
         // not a permission check — keep it interactive.
@@ -5823,6 +6027,15 @@ export class CoworkRunner extends EventEmitter {
   ): void {
     if (this.isSessionStopRequested(sessionId, activeSession)) return;
 
+    // Any query event is forward progress — reset the stuck timer so
+    // the watchdog doesn't fire on a session that IS actively making
+    // API calls. Specifically exclude `turn_start` since it arrives at
+    // the beginning of a turn even when the previous turn already ran
+    // for a while — we only want progress on actual content.
+    if (event.type !== 'turn_start') {
+      this.touchSessionActivity(sessionId);
+    }
+
     switch (event.type) {
       case 'stream_event': {
         // Forward raw stream events to the existing streaming handler
@@ -5913,6 +6126,49 @@ export class CoworkRunner extends EventEmitter {
           cacheReadInputTokens: event.cacheReadTokens,
           cacheCreationInputTokens: event.cacheCreationTokens,
         });
+
+        // ── Session-level cumulative brake ───────────────────────────
+        // Add this turn's tokens to the running session total and check
+        // against SESSION_TOKEN_CEILING. If exceeded we hard-abort the
+        // session — the user asked for full automation during
+        // unattended runs, so we need a backstop against the AI getting
+        // stuck in a loop and draining token balance while nobody is
+        // watching. This complements the existing per-turn budgetTracker
+        // (diminishing-returns / single-turn overshoot) — that one is
+        // for wasted tokens within a single turn, this one is for the
+        // session as a whole.
+        const turnCost =
+          (Number(event.inputTokens) || 0) + (Number(event.outputTokens) || 0);
+        activeSession.cumulativeTokens = (activeSession.cumulativeTokens || 0) + turnCost;
+        activeSession.lastActivityAt = Date.now();
+        if (
+          SESSION_TOKEN_CEILING > 0
+          && activeSession.cumulativeTokens >= SESSION_TOKEN_CEILING
+        ) {
+          coworkLog('WARN', 'tokenBudget', 'Session exceeded cumulative ceiling — aborting', {
+            sessionId,
+            cumulative: activeSession.cumulativeTokens,
+            ceiling: SESSION_TOKEN_CEILING,
+          });
+          try {
+            // Surface a system message in the chat so when the user comes
+            // back they see WHY the session stopped, not just that it did.
+            const brakeMessage = this.store.addMessage(sessionId, {
+              type: 'system',
+              content:
+                `⛔ 本会话已达到 token 预算上限 `
+                + `${Math.round(SESSION_TOKEN_CEILING / 1000)}K，`
+                + `累计消耗 ${Math.round(activeSession.cumulativeTokens / 1000)}K，自动暂停以避免无人值守时继续消耗余额。`
+                + ` 如需继续请调高 NOOBCLAW_MAX_SESSION_TOKENS 或手动续上。`,
+              metadata: { isBudgetBrake: true },
+            });
+            this.emit('message', sessionId, brakeMessage);
+          } catch { /* ignore */ }
+          activeSession.abortController.abort();
+          this.store.updateSession(sessionId, { status: 'idle' });
+          this.handleError(sessionId, 'Session token budget exceeded');
+          break;
+        }
 
         // Attach usage to the last assistant message of this turn so the
         // renderer can show "12.5K in · 841 out · 8K cache" inline under

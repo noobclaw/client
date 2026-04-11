@@ -213,6 +213,11 @@ contextBridge.exposeInMainWorld('electron', {
       ipcRenderer.on('cowork:stream:messageMetadata', handler);
       return () => ipcRenderer.removeListener('cowork:stream:messageMetadata', handler);
     },
+    onStreamStuck: (callback: (data: { sessionId: string; idleMs: number }) => void) => {
+      const handler = (_event: any, data: { sessionId: string; idleMs: number }) => callback(data);
+      ipcRenderer.on('cowork:stream:stuck', handler);
+      return () => ipcRenderer.removeListener('cowork:stream:stuck', handler);
+    },
     onStreamPermission: (callback: (data: { sessionId: string; request: any }) => void) => {
       const handler = (_event: any, data: { sessionId: string; request: any }) => callback(data);
       ipcRenderer.on('cowork:stream:permission', handler);

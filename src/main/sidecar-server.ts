@@ -136,11 +136,20 @@ const PORT = parseInt(portArg || '18800', 10);
 // the renderer can show a "resumed from sleep" toast; we don't auto-
 // restart sessions because the user may not want the AI to just
 // continue without them looking.
+// Session ids that were running when the system went to sleep. Refilled
+// on willSleep, drained on didWake where we kick off auto-resume.
+// Declared at module scope so both branches of the power-event callback
+// share the same list.
+let pausedForSleep: string[] = [];
+
 if (process.platform === 'darwin' && !IS_NATIVE_MESSAGING_HOST) {
   // Lazy import so non-macOS builds don't pull in the addon bridge.
   setImmediate(async () => {
     try {
       const { nativeOnPowerEvent } = await import('./libs/nativeDesktopMac');
+      // Track which sessions were running when sleep started so we can
+      // auto-resume them on wake. Stored at module scope above the
+      // callback so both willSleep and didWake branches share state.
       nativeOnPowerEvent((kind) => {
         coworkLog('INFO', 'sidecar-server', `Power event: ${kind}`);
         if (kind === 'willSleep') {
@@ -149,6 +158,7 @@ if (process.platform === 'darwin' && !IS_NATIVE_MESSAGING_HOST) {
               const running = runnerInstance.store
                 .listSessions()
                 .filter((s: any) => s.status === 'running');
+              pausedForSleep = running.map((s: any) => s.id);
               for (const s of running) {
                 try {
                   runnerInstance.stopSession(s.id);
@@ -157,14 +167,49 @@ if (process.platform === 'darwin' && !IS_NATIVE_MESSAGING_HOST) {
                   coworkLog('WARN', 'sidecar-server', `Failed to pause session ${s.id}: ${e}`);
                 }
               }
-              coworkLog('INFO', 'sidecar-server', `Paused ${running.length} active session(s) before sleep`);
+              coworkLog('INFO', 'sidecar-server', `Paused ${running.length} active session(s) before sleep`, {
+                sessionIds: pausedForSleep,
+              });
             } catch (e) {
               coworkLog('WARN', 'sidecar-server', `Pause-on-sleep enumeration failed: ${e}`);
             }
           }
           broadcastSSE('system:will-sleep', {});
         } else if (kind === 'didWake') {
-          broadcastSSE('system:did-wake', {});
+          // Auto-resume the sessions we stopped at sleep time. We wait
+          // a few seconds after wake for network + file system + the
+          // renderer IPC to settle, otherwise resumed turns may hit
+          // "connection refused" on their first API call.
+          const toResume = pausedForSleep.slice();
+          pausedForSleep = [];
+          broadcastSSE('system:did-wake', { willResumeCount: toResume.length });
+          if (toResume.length > 0 && runnerInstance) {
+            setTimeout(async () => {
+              for (const sid of toResume) {
+                try {
+                  const session = runnerInstance.store.getSession(sid);
+                  if (!session) continue;
+                  // Pull the last user message as the resume prompt.
+                  // If there isn't one (shouldn't happen but defensive)
+                  // we emit a neutral "continue where you left off" so
+                  // the AI has something to act on.
+                  const lastUser = [...session.messages]
+                    .reverse()
+                    .find((m: any) => m.type === 'user');
+                  const resumePrompt = lastUser?.content
+                    || '[System] Session resumed after sleep — continue where you left off.';
+                  coworkLog('INFO', 'sidecar-server', 'Resuming session after wake', { sessionId: sid });
+                  runnerInstance
+                    .continueSession(sid, resumePrompt)
+                    .catch((e: unknown) => {
+                      coworkLog('WARN', 'sidecar-server', `Resume failed for ${sid}: ${e}`);
+                    });
+                } catch (e) {
+                  coworkLog('WARN', 'sidecar-server', `Resume enumeration failed: ${e}`);
+                }
+              }
+            }, 5000);
+          }
         }
       });
       coworkLog('INFO', 'sidecar-server', 'Sleep/wake listener installed');
@@ -219,6 +264,9 @@ async function getRunner() {
     });
     runnerInstance.on('messageMetadata', (sessionId: string, messageId: string, metadata: Record<string, unknown>) => {
       broadcastSSE('cowork:stream:messageMetadata', { sessionId, messageId, metadata });
+    });
+    runnerInstance.on('stuck', (sessionId: string, detail: { idleMs: number }) => {
+      broadcastSSE('cowork:stream:stuck', { sessionId, ...detail });
     });
     runnerInstance.on('permissionRequest', (sessionId: string, request: any) => {
       broadcastSSE('cowork:stream:permission', { sessionId, request });

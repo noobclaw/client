@@ -635,6 +635,23 @@ const getCoworkRunner = () => {
       });
     });
 
+    coworkRunner.on('stuck', (sessionId: string, detail: { idleMs: number }) => {
+      // Fired by the stuck watchdog when a running session has had no
+      // forward progress for STUCK_WATCHDOG_MS. Forwarded to renderer
+      // so it can show a toast / system notification — users running
+      // overnight jobs come back to see WHY a task stalled.
+      const windows = BrowserWindow.getAllWindows();
+      windows.forEach(win => {
+        if (!win.isDestroyed()) {
+          try {
+            win.webContents.send('cowork:stream:stuck', { sessionId, ...detail });
+          } catch (error) {
+            console.error('Failed to forward cowork stuck event:', error);
+          }
+        }
+      });
+    });
+
     coworkRunner.on('permissionRequest', (sessionId: string, request: any) => {
       if (coworkRunner?.getSessionConfirmationMode(sessionId) === 'text') {
         return;
