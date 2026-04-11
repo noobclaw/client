@@ -377,13 +377,29 @@ export function resolveCurrentApiConfig(target: OpenAICompatProxyTarget = 'local
 
     const proxyBaseURL = getCoworkOpenAICompatProxyBaseURL(target);
     if (proxyBaseURL) {
+      // NOTE: `isOpenAICompat: true` MUST be set here even though the
+      // Anthropic SDK is the caller. The proxy translates between
+      // Anthropic and OpenAI payload shapes internally, and several
+      // downstream code paths use this flag to:
+      //   - queryEngine.ts:558 → take the non-streaming codepath so
+      //     the SDK's MessageStream.js doesn't crash on the proxy's
+      //     message_start event (which lacks a `content: []` field,
+      //     causing `this._currentMessage.content.push(...)` to throw
+      //     "Cannot read properties of undefined (reading 'push')").
+      //   - anthropicClient.ts:64 → skip the SDK's model validation
+      //     round-trip (proxy returns 404 for /v1/models).
+      //   - createMessageStream → strip cache_control / thinking /
+      //     beta headers the proxy doesn't understand.
+      // Forgetting this flag here is what made noobclawAI chat hang
+      // silently on macOS packaged builds after Event #2.
       return {
         config: {
           apiKey: resolvedApiKey || 'noobclaw-openai-compat',
           baseURL: proxyBaseURL,
           model: matched.modelId,
           apiType: 'openai',
-        },
+          isOpenAICompat: true,
+        } as any,
       };
     }
   }
