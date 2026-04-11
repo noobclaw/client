@@ -50,6 +50,10 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     myWallet: '我的钱包',
     inviteFriends: '邀请好友赚币',
     hotTopics: '行业热点',
+    personalityTests: '人格测试',
+    personalityTabHome: '首页',
+    personalityReload: '刷新',
+    personalityOpenExternal: '在浏览器中打开',
     eventsPartners: '活动与合作',
 
     // API settings
@@ -1095,6 +1099,10 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     myWallet: 'My Wallet',
     inviteFriends: 'Invite & Earn',
     hotTopics: 'Hot Topics',
+    personalityTests: 'Personality Tests',
+    personalityTabHome: 'Home',
+    personalityReload: 'Reload',
+    personalityOpenExternal: 'Open in browser',
     eventsPartners: 'Events & Partners',
 
     // API Settings
@@ -2110,7 +2118,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: '主題', appearance: '外觀', language: '語言', light: '淺色', dark: '深色', system: '跟隨系統',
     chinese: '简体中文', english: 'English', zhTW: '繁體中文', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
     quickUse: '一鍵使用', myWallet: '我的錢包', inviteFriends: '邀請好友賺幣',
-    hotTopics: '行業熱點', eventsPartners: '活動與合作',
+    hotTopics: '行業熱點', personalityTests: '人格測試', personalityTabHome: '首頁', personalityReload: '重新載入', personalityOpenExternal: '在瀏覽器中開啟', eventsPartners: '活動與合作',
     // API settings
     apiKey: 'API Key', apiKeyPlaceholder: '輸入你的 API Key',
     baseUrl: 'API Base URL', baseUrlPlaceholder: '輸入 API 基礎 URL',
@@ -2754,7 +2762,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: '테마', appearance: '외관', language: '언어', light: '라이트', dark: '다크', system: '시스템',
     chinese: '간체 중국어', english: 'English', zhTW: '번체 중국어', korean: '한국어', japanese: '일본어', russian: '러시아어', french: '프랑스어', german: '독일어',
     quickUse: '빠른 사용', myWallet: '내 지갑', inviteFriends: '초대 & 보상',
-    hotTopics: '인기 토픽', eventsPartners: '이벤트 & 파트너',
+    hotTopics: '인기 토픽', personalityTests: '성격 테스트', personalityTabHome: '홈', personalityReload: '새로고침', personalityOpenExternal: '브라우저에서 열기', eventsPartners: '이벤트 & 파트너',
     // API settings
     apiKey: 'API Key', apiKeyPlaceholder: 'API Key 입력',
     baseUrl: 'API Base URL', baseUrlPlaceholder: 'API 기본 URL 입력',
@@ -3398,7 +3406,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: 'テーマ', appearance: '外観', language: '言語', light: 'ライト', dark: 'ダーク', system: 'システム',
     chinese: '簡体字中国語', english: 'English', zhTW: '繁体字中国語', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
     quickUse: 'クイック', myWallet: 'ウォレット', inviteFriends: '招待＆報酬',
-    hotTopics: 'トピック', eventsPartners: 'イベント',
+    hotTopics: 'トピック', personalityTests: '性格テスト', personalityTabHome: 'ホーム', personalityReload: '再読み込み', personalityOpenExternal: 'ブラウザで開く', eventsPartners: 'イベント',
     // API settings
     apiKey: 'API Key', apiKeyPlaceholder: 'API Keyを入力',
     baseUrl: 'API Base URL', baseUrlPlaceholder: 'APIベースURLを入力',
@@ -4040,7 +4048,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: 'Тема', appearance: 'Вид', language: 'Язык', light: 'Светлая', dark: 'Тёмная', system: 'Системная',
     chinese: 'Кит. (упр.)', english: 'English', zhTW: 'Кит. (трад.)', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
     quickUse: 'Быстрый старт', myWallet: 'Кошелёк', inviteFriends: 'Пригласить',
-    hotTopics: 'Актуальное', eventsPartners: 'События',
+    hotTopics: 'Актуальное', personalityTests: 'Тесты личности', personalityTabHome: 'Главная', personalityReload: 'Обновить', personalityOpenExternal: 'Открыть в браузере', eventsPartners: 'События',
     apiKey: 'API Key', apiKeyPlaceholder: 'Введите API Key',
     baseUrl: 'API Base URL', baseUrlPlaceholder: 'Введите базовый URL',
     baseUrlHint1: 'Обычно достаточно домена, путь добавится автоматически',
@@ -4633,7 +4641,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: 'Thème', appearance: 'Apparence', language: 'Langue', light: 'Clair', dark: 'Sombre', system: 'Système',
     chinese: 'Chinois (simp.)', english: 'English', zhTW: 'Chinois (trad.)', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
     quickUse: 'Accès rapide', myWallet: 'Portefeuille', inviteFriends: 'Inviter',
-    hotTopics: 'Tendances', eventsPartners: 'Événements',
+    hotTopics: 'Tendances', personalityTests: 'Tests de personnalité', personalityTabHome: 'Accueil', personalityReload: 'Recharger', personalityOpenExternal: 'Ouvrir dans le navigateur', eventsPartners: 'Événements',
     apiKey: 'Clé API', apiKeyPlaceholder: 'Entrez la clé API',
     baseUrl: 'URL de base', baseUrlPlaceholder: 'Entrez l\'URL de base',
     baseUrlHint1: 'Le domaine suffit, le chemin est ajouté automatiquement',
@@ -5225,7 +5233,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     theme: 'Design', appearance: 'Aussehen', language: 'Sprache', light: 'Hell', dark: 'Dunkel', system: 'System',
     chinese: 'Chin. (vereinf.)', english: 'English', zhTW: 'Chin. (trad.)', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
     quickUse: 'Schnellstart', myWallet: 'Wallet', inviteFriends: 'Einladen',
-    hotTopics: 'Trends', eventsPartners: 'Events',
+    hotTopics: 'Trends', personalityTests: 'Persönlichkeitstests', personalityTabHome: 'Startseite', personalityReload: 'Neu laden', personalityOpenExternal: 'Im Browser öffnen', eventsPartners: 'Events',
     apiKey: 'API Key', apiKeyPlaceholder: 'API Key eingeben',
     baseUrl: 'API Base URL', baseUrlPlaceholder: 'Basis-URL eingeben',
     baseUrlHint1: 'Nur die Domain reicht, der Pfad wird automatisch ergänzt',

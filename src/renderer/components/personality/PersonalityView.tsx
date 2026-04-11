@@ -1,0 +1,142 @@
+import React, { useMemo, useState } from 'react';
+import SidebarToggleIcon from '../icons/SidebarToggleIcon';
+import ComposeIcon from '../icons/ComposeIcon';
+import WindowTitleBar from '../window/WindowTitleBar';
+import { i18nService } from '../../services/i18n';
+
+interface PersonalityViewProps {
+  isSidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
+  onNewChat?: () => void;
+  updateBadge?: React.ReactNode;
+}
+
+type TabKey = 'home' | 'sbti' | 'web3bti';
+
+const BASE_URL = 'https://noobclaw.com';
+
+const PersonalityView: React.FC<PersonalityViewProps> = ({
+  isSidebarCollapsed,
+  onToggleSidebar,
+  onNewChat,
+  updateBadge,
+}) => {
+  const isMac = window.electron.platform === 'darwin';
+  const [tab, setTab] = useState<TabKey>('home');
+  const [reloadKey, setReloadKey] = useState(0);
+
+  const lang = useMemo(() => (i18nService as any).currentLanguage || 'zh', []);
+
+  const src = useMemo(() => {
+    const path =
+      tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : '/personality/';
+    // embed=1 隐藏网页顶部导航 + lang 指定语言 + v 防缓存
+    return `${BASE_URL}${path}?embed=1&lang=${lang}&v=${reloadKey}`;
+  }, [tab, lang, reloadKey]);
+
+  const tabButtonClass = (active: boolean) =>
+    `px-3 py-1.5 text-sm rounded-lg transition-colors ${
+      active
+        ? 'bg-claude-accent/15 text-claude-accent'
+        : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+    }`;
+
+  const handleReload = () => setReloadKey(k => k + 1);
+  const handleOpenExternal = () => {
+    const url = src.split('?')[0]; // 去掉 embed=1
+    window.electron?.shell?.openExternal?.(url);
+  };
+
+  return (
+    <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
+      {/* Header */}
+      <div className="draggable flex h-12 items-center justify-between px-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+        <div className="flex items-center space-x-3 h-8 min-w-0">
+          {isSidebarCollapsed && (
+            <div className={`non-draggable flex items-center gap-1 ${isMac ? 'pl-[68px]' : ''}`}>
+              <button
+                type="button"
+                onClick={onToggleSidebar}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+                aria-label="toggle sidebar"
+              >
+                <SidebarToggleIcon className="h-4 w-4" isCollapsed={true} />
+              </button>
+              <button
+                type="button"
+                onClick={onNewChat}
+                className="h-8 w-8 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+                aria-label="new chat"
+              >
+                <ComposeIcon className="h-4 w-4" />
+              </button>
+              {updateBadge}
+            </div>
+          )}
+          <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text truncate">
+            🧠 {i18nService.t('personalityTests')}
+          </h1>
+          <div className="non-draggable hidden sm:flex items-center gap-1 ml-2">
+            <button type="button" onClick={() => setTab('home')} className={tabButtonClass(tab === 'home')}>
+              {i18nService.t('personalityTabHome')}
+            </button>
+            <button type="button" onClick={() => setTab('sbti')} className={tabButtonClass(tab === 'sbti')}>
+              SBTI
+            </button>
+            <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
+              WEB3BTI
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleReload}
+            className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+            title={i18nService.t('personalityReload')}
+            aria-label="reload"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /><path d="M3 21v-5h5" /></svg>
+          </button>
+          <button
+            type="button"
+            onClick={handleOpenExternal}
+            className="non-draggable h-8 w-8 inline-flex items-center justify-center rounded-lg dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors"
+            title={i18nService.t('personalityOpenExternal')}
+            aria-label="open in browser"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /></svg>
+          </button>
+          <WindowTitleBar inline />
+        </div>
+      </div>
+
+      {/* Mobile-sized tabs row (visible on very narrow windows) */}
+      <div className="non-draggable sm:hidden flex items-center gap-1 px-3 py-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+        <button type="button" onClick={() => setTab('home')} className={tabButtonClass(tab === 'home')}>
+          {i18nService.t('personalityTabHome')}
+        </button>
+        <button type="button" onClick={() => setTab('sbti')} className={tabButtonClass(tab === 'sbti')}>
+          SBTI
+        </button>
+        <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
+          WEB3BTI
+        </button>
+      </div>
+
+      {/* Content: iframe loads the online page in embed mode */}
+      <div className="flex-1 min-h-0 bg-black">
+        <iframe
+          key={src}
+          src={src}
+          title={i18nService.t('personalityTests')}
+          className="w-full h-full border-0"
+          sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+    </div>
+  );
+};
+
+export default PersonalityView;

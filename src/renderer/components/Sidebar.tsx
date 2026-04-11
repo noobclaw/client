@@ -13,7 +13,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners' | 'personality';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -22,6 +22,7 @@ interface SidebarProps {
   onShowInvite: () => void;
   onShowQuickUse: () => void;
   onShowWeb3News: () => void;
+  onShowPersonality: () => void;
   onShowPartners: () => void;
   onNewChat: () => void;
   isCollapsed: boolean;
@@ -40,6 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowInvite,
   onShowQuickUse,
   onShowWeb3News,
+  onShowPersonality,
   onShowPartners,
   onNewChat,
   isCollapsed,
@@ -275,6 +277,20 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <span className="text-sm">🎁</span>
             {i18nService.t('inviteFriends')}
+          </button>
+
+          {/* Personality Tests */}
+          <button
+            type="button"
+            onClick={() => { setIsSearchOpen(false); onShowPersonality(); }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'personality'
+                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <span className="text-sm">🧠</span>
+            {i18nService.t('personalityTests')}
           </button>
 
           {/* Events & Partners */}
