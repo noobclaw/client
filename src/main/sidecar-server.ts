@@ -1406,6 +1406,120 @@ const server = http.createServer(async (req, res) => {
             }
           }
 
+          // ── Scenario automation (XHS viral production etc.) ──
+          case 'scenario:listScenarios': {
+            try {
+              const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+              const r = await fetch(`${base}/api/viral/scenarios`);
+              if (!r.ok) return writeJSON(res, 200, { scenarios: [] });
+              return writeJSON(res, 200, await r.json());
+            } catch { return writeJSON(res, 200, { scenarios: [] }); }
+          }
+          case 'scenario:listTasks':
+          case 'scenario:getTask':
+          case 'scenario:createTask':
+          case 'scenario:updateTask':
+          case 'scenario:deleteTask':
+          case 'scenario:listDrafts':
+          case 'scenario:deleteDraft':
+          case 'scenario:markDraftPushed':
+          case 'scenario:markDraftIgnored': {
+            // Lazy-init the scenario task store (JSON file persistence)
+            const scenarioTaskStore = require('./libs/scenario/taskStore');
+            if (!scenarioTaskStore._loaded) {
+              scenarioTaskStore.initTaskStore(getUserDataPath());
+              scenarioTaskStore._loaded = true;
+            }
+            switch (channel) {
+              case 'scenario:listTasks': return writeJSON(res, 200, scenarioTaskStore.listTasks());
+              case 'scenario:getTask': return writeJSON(res, 200, scenarioTaskStore.getTask(args[0]));
+              case 'scenario:createTask': return writeJSON(res, 200, scenarioTaskStore.createTask(args[0]));
+              case 'scenario:updateTask': return writeJSON(res, 200, scenarioTaskStore.updateTask(args[0], args[1]));
+              case 'scenario:deleteTask': return writeJSON(res, 200, scenarioTaskStore.deleteTask(args[0]));
+              case 'scenario:listDrafts': return writeJSON(res, 200, scenarioTaskStore.listDrafts(args[0]));
+              case 'scenario:deleteDraft': return writeJSON(res, 200, scenarioTaskStore.deleteDraft(args[0]));
+              case 'scenario:markDraftPushed': return writeJSON(res, 200, scenarioTaskStore.updateDraft(args[0], { status: 'pushed', pushed_at: Date.now() }));
+              case 'scenario:markDraftIgnored': return writeJSON(res, 200, scenarioTaskStore.updateDraft(args[0], { status: 'ignored' }));
+              default: return writeJSON(res, 200, null);
+            }
+          }
+          case 'scenario:runTaskNow': {
+            const scenarioTaskStore = require('./libs/scenario/taskStore');
+            if (!scenarioTaskStore._loaded) {
+              scenarioTaskStore.initTaskStore(getUserDataPath());
+              scenarioTaskStore._loaded = true;
+            }
+            const task = scenarioTaskStore.getTask(args[0]);
+            if (!task) return writeJSON(res, 200, { status: 'failed', reason: 'task_not_found' });
+            try {
+              const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+              if (!scenarioRiskGuard._loaded) {
+                scenarioRiskGuard.initRiskGuard(getUserDataPath());
+                scenarioRiskGuard._loaded = true;
+              }
+              const scenarioManager = require('./libs/scenario/scenarioManager');
+              const result = await scenarioManager.runTask(task);
+              return writeJSON(res, 200, result);
+            } catch (e: any) {
+              return writeJSON(res, 200, { status: 'failed', reason: e.message || String(e) });
+            }
+          }
+          case 'scenario:runStatus': {
+            const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+            if (!scenarioRiskGuard._loaded) {
+              scenarioRiskGuard.initRiskGuard(getUserDataPath());
+              scenarioRiskGuard._loaded = true;
+            }
+            return writeJSON(res, 200, {
+              runs: scenarioRiskGuard.getRuns(args[0]),
+              cooldown_ends_at: scenarioRiskGuard.getCooldown(args[0]),
+            });
+          }
+          case 'scenario:pushDraft': {
+            const scenarioTaskStore = require('./libs/scenario/taskStore');
+            if (!scenarioTaskStore._loaded) {
+              scenarioTaskStore.initTaskStore(getUserDataPath());
+              scenarioTaskStore._loaded = true;
+            }
+            const draft = scenarioTaskStore.getDraft(args[0]);
+            if (!draft) return writeJSON(res, 200, { status: 'failed', error: 'draft_not_found' });
+            try {
+              const viralPool = require('./libs/scenario/viralPoolClient');
+              const packRes = await viralPool.fetchScenarioPack(
+                scenarioTaskStore.getTask(draft.task_id)?.scenario_id
+              );
+              if (!packRes?.manifest) return writeJSON(res, 200, { status: 'failed', error: 'scenario_pack_not_found' });
+              const { uploadXhsDraft } = require('./libs/scenario/xhsDriver');
+              const result = await uploadXhsDraft({
+                manifest: packRes.manifest,
+                variant: draft.variant,
+                images: draft.source_post?.images || [],
+              });
+              if (result.status === 'ready_for_user') {
+                scenarioTaskStore.updateDraft(args[0], { status: 'pushed', pushed_at: Date.now() });
+              }
+              return writeJSON(res, 200, result);
+            } catch (e: any) {
+              return writeJSON(res, 200, { status: 'failed', error: e.message || String(e) });
+            }
+          }
+          case 'scenario:checkXhsLogin': {
+            try {
+              const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
+              return writeJSON(res, 200, await checkXhsLogin());
+            } catch (e: any) {
+              return writeJSON(res, 200, { loggedIn: false, reason: 'sidecar_error: ' + e.message });
+            }
+          }
+          case 'scenario:openXhsLogin': {
+            try {
+              const { openXhsLogin } = require('./libs/scenario/xhsDriver');
+              return writeJSON(res, 200, await openXhsLogin());
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, reason: e.message });
+            }
+          }
+
           default:
             coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);
             return writeJSON(res, 200, null);

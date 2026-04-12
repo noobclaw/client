@@ -22,10 +22,14 @@ let storePath: string | null = null;
 let store: StoreShape = { tasks: [], drafts: [], seen_post_ids: {} };
 let loaded = false;
 
+/** Exposed so sidecar-server can check if init has been called. */
+export let _loaded = false;
+
 const MAX_SEEN_PER_TASK = 500;
 const MAX_DRAFTS_PER_TASK = 200;
 
 export function initTaskStore(userDataPath: string): void {
+  _loaded = true;
   storePath = path.join(userDataPath, 'scenario-task-store.json');
   try {
     if (fs.existsSync(storePath)) {

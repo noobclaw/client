@@ -28,7 +28,11 @@ let stateFilePath: string | null = null;
 let state: GuardState = { runs: {}, cooldowns: {} };
 let loaded = false;
 
+/** Exposed so sidecar-server can check if init has been called. */
+export let _loaded = false;
+
 export function initRiskGuard(userDataPath: string): void {
+  _loaded = true;
   stateFilePath = path.join(userDataPath, 'scenario-risk-guard.json');
   try {
     if (fs.existsSync(stateFilePath)) {
