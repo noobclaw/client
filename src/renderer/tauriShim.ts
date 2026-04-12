@@ -238,6 +238,25 @@ export function createTauriElectronShim(): typeof window.electron {
       requestCalendar: () => Promise.resolve({ status: 'denied' }),
     },
 
+    // ── Scenario automation (XHS viral production etc.) ──
+    scenario: {
+      listScenarios: () => ipcInvoke('scenario:listScenarios').then(r => r ?? { scenarios: [] }),
+      listTasks: () => ipcInvoke('scenario:listTasks').then(r => r ?? []),
+      getTask: (id: string) => ipcInvoke('scenario:getTask', id),
+      createTask: (input: any) => ipcInvoke('scenario:createTask', input),
+      updateTask: (id: string, patch: any) => ipcInvoke('scenario:updateTask', id, patch),
+      deleteTask: (id: string) => ipcInvoke('scenario:deleteTask', id),
+      runTaskNow: (id: string) => ipcInvoke('scenario:runTaskNow', id).then(r => r ?? { status: 'failed', reason: 'ipc_error' }),
+      runStatus: (id: string) => ipcInvoke('scenario:runStatus', id).then(r => r ?? { runs: [], cooldown_ends_at: 0 }),
+      listDrafts: (taskId?: string) => ipcInvoke('scenario:listDrafts', taskId).then(r => r ?? []),
+      pushDraft: (draftId: string) => ipcInvoke('scenario:pushDraft', draftId).then(r => r ?? { status: 'failed', error: 'ipc_error' }),
+      deleteDraft: (draftId: string) => ipcInvoke('scenario:deleteDraft', draftId),
+      markDraftPushed: (draftId: string) => ipcInvoke('scenario:markDraftPushed', draftId),
+      markDraftIgnored: (draftId: string) => ipcInvoke('scenario:markDraftIgnored', draftId),
+      checkXhsLogin: () => ipcInvoke('scenario:checkXhsLogin').then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
+      openXhsLogin: () => ipcInvoke('scenario:openXhsLogin').then(r => r ?? { ok: false }),
+    },
+
     // ── API proxy (for Settings provider validation) ──
     api: {
       fetch: (opts: any) => ipcInvoke('api:fetch', opts).then(r => r ?? { ok: false, status: 0, body: '' }),
