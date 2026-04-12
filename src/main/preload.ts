@@ -69,6 +69,9 @@ contextBridge.exposeInMainWorld('electron', {
     deleteDraft: (draftId: string) => ipcRenderer.invoke('scenario:deleteDraft', draftId),
     markDraftPushed: (draftId: string) => ipcRenderer.invoke('scenario:markDraftPushed', draftId),
     markDraftIgnored: (draftId: string) => ipcRenderer.invoke('scenario:markDraftIgnored', draftId),
+    // XHS login gate
+    checkXhsLogin: () => ipcRenderer.invoke('scenario:checkXhsLogin'),
+    openXhsLogin: () => ipcRenderer.invoke('scenario:openXhsLogin'),
   },
   api: {
     // Regular API request (non-streaming)

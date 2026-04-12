@@ -15,6 +15,7 @@ import type {
   ScenarioPlatform,
   ScenarioWorkflowType,
   ScenarioTaskRun,
+  XhsLoginStatus,
 } from '../types/scenario';
 
 export type Scenario = ScenarioManifestIPC;
@@ -102,6 +103,24 @@ class ScenarioService {
 
   markDraftIgnored(draftId: string): Promise<Draft | null> {
     return window.electron.scenario.markDraftIgnored(draftId);
+  }
+
+  // ── XHS login gate ──
+
+  async checkXhsLogin(): Promise<XhsLoginStatus> {
+    try {
+      return await window.electron.scenario.checkXhsLogin();
+    } catch (err) {
+      return { loggedIn: false, reason: 'browser_not_connected' };
+    }
+  }
+
+  async openXhsLogin(): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      return await window.electron.scenario.openXhsLogin();
+    } catch (err) {
+      return { ok: false, reason: String(err) };
+    }
   }
 
   // ── Derived helpers ──

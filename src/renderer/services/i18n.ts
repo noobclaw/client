@@ -1058,6 +1058,34 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTitle: '和 Playwright / Claude Code 路线的区别',
     scenarioAdvantageCompareTable: '对比',
 
+    // Quick-start banner (XhsWorkflowsPage)
+    scenarioQuickStartTitle: '一键开始 · 小红书爆款仿写',
+    scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
+    scenarioQuickStartBtn: '立即开始',
+    scenarioQuickStartContinueBtn: '继续使用',
+
+    // Login gate modal
+    scenarioLoginRequiredTitle: '请先登录小红书',
+    scenarioLoginRequiredDesc: 'NoobClaw 需要在你已登录的小红书账号下运行，请先在浏览器中打开小红书完成登录后再试。',
+    scenarioLoginNotLoggedIn: '检测到你的小红书还未登录。请在浏览器里登录后再回来点"我已登录"。',
+    scenarioLoginBrowserNotConnected: '未检测到 NoobClaw 浏览器插件。请确认已安装并启用浏览器助手。',
+    scenarioLoginNoXhsTab: '浏览器里还没有打开小红书。点下面按钮我帮你开一个。',
+    scenarioLoginAfterOpenHint: '小红书已在浏览器打开，请完成登录后回来点"我已登录"。',
+    scenarioLoginOpenBrowser: '在浏览器打开小红书',
+    scenarioLoginRetryCheck: '我已登录，重试',
+    scenarioLoginChecking: '检查中...',
+
+    // Config wizard — track picker + daily time
+    scenarioWizardKeywordsLabel: '关键词（已根据赛道自动填充，可手动修改）',
+    scenarioWizardKeywordsHint: '用空格或逗号分隔。NoobClaw 会围绕这些词识别发现页上的爆款。',
+    scenarioWizardPersonaSuggestion: '赛道建议',
+    scenarioWizardPersonaUseHint: '使用建议',
+    scenarioWizardDailyTime: '每日运行时间',
+    scenarioWizardDailyTimeHint: '我们会在这个时间点前后的 15 分钟内随机启动，模拟人类节奏。',
+    scenarioWizardConfirmTrack: '赛道',
+    scenarioWizardConfirmPostsPerDay: '条/天',
+    scenarioWizardConfirmVariantsEach: '份仿写',
+
     // Sections
     scenarioSectionMyTasks: '我的任务',
     scenarioSectionNoTasks: '暂无任务。从下面选一个场景开始。',
@@ -2256,6 +2284,34 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageRiskDesc: 'Max 3 posts per day. Min 8 hours between runs. One forced rest day per week.',
     scenarioAdvantageCompareTitle: 'How we differ from Playwright / Claude Code lines',
     scenarioAdvantageCompareTable: 'Comparison',
+
+    // Quick-start banner
+    scenarioQuickStartTitle: 'One-click start · Xiaohongshu viral rewrite',
+    scenarioQuickStartDesc: 'NoobClaw auto-discovers viral posts in your logged-in Xiaohongshu session, extracts them with AI, rewrites in your persona, and drops them into the creator-center draft box.',
+    scenarioQuickStartBtn: 'Start now',
+    scenarioQuickStartContinueBtn: 'Continue',
+
+    // Login gate modal
+    scenarioLoginRequiredTitle: 'Please log in to Xiaohongshu',
+    scenarioLoginRequiredDesc: 'NoobClaw needs to run inside your already-logged-in Xiaohongshu session. Please open Xiaohongshu in your browser and log in before retrying.',
+    scenarioLoginNotLoggedIn: "We couldn't detect a logged-in Xiaohongshu session. Please log in in your browser, then come back and click \"I'm logged in\".",
+    scenarioLoginBrowserNotConnected: "NoobClaw Browser Assistant isn't connected. Make sure the extension is installed and enabled.",
+    scenarioLoginNoXhsTab: "No Xiaohongshu tab is open yet. Click below and we'll open one for you.",
+    scenarioLoginAfterOpenHint: "Xiaohongshu is now open in your browser. Log in, then click \"I'm logged in\".",
+    scenarioLoginOpenBrowser: 'Open Xiaohongshu in browser',
+    scenarioLoginRetryCheck: "I'm logged in, retry",
+    scenarioLoginChecking: 'Checking...',
+
+    // Config wizard — track picker + daily time
+    scenarioWizardKeywordsLabel: 'Keywords (auto-filled from the track; you can still edit)',
+    scenarioWizardKeywordsHint: 'Comma or space separated. NoobClaw searches the discovery feed for these terms.',
+    scenarioWizardPersonaSuggestion: 'Suggested persona',
+    scenarioWizardPersonaUseHint: 'Use suggestion',
+    scenarioWizardDailyTime: 'Daily run time',
+    scenarioWizardDailyTimeHint: 'We start within ±15 minutes of this time to look human.',
+    scenarioWizardConfirmTrack: 'Track',
+    scenarioWizardConfirmPostsPerDay: 'posts/day',
+    scenarioWizardConfirmVariantsEach: 'rewrites each',
 
     scenarioSectionMyTasks: 'My Tasks',
     scenarioSectionNoTasks: 'No tasks yet. Pick a scenario below to get started.',

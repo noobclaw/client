@@ -59,11 +59,19 @@ export interface ScenarioManifestIPC {
 export interface ScenarioTaskIPC {
   id: string;
   scenario_id: string;
+  /** Fine-grained niche id (e.g. "career_side_hustle"). Used to organize
+   *  saved artifacts on disk by date/track and to seed default keywords. */
+  track: string;
   keywords: string[];
   persona: string;
   daily_count: number;
   variants_per_post: number;
-  schedule_window: string;
+  /** Preferred daily run time in HH:MM (24h local). The run loop adds a
+   *  small random jitter (± ~15 min) around this value to look human. */
+  daily_time: string;
+  /** Legacy: original "HH:MM-HH:MM" window string. Kept for backward
+   *  compatibility with tasks created before the v2 wizard. */
+  schedule_window?: string;
   enabled: boolean;
   created_at: number;
   updated_at: number;
@@ -143,4 +151,15 @@ export interface ScenarioRunOutcome {
   collected_count?: number;
   draft_count?: number;
   drafts?: ScenarioDraftIPC[];
+}
+
+export interface XhsLoginStatus {
+  loggedIn: boolean;
+  /**
+   * Machine-readable code explaining why. Stable values:
+   *   login_page | login_modal | sign_in_button
+   *   no_response | browser_not_connected | xhs_tab_not_reachable
+   *   probe_error
+   */
+  reason?: string;
 }

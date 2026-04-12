@@ -21,6 +21,7 @@ import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
 import * as localExtractor from './localExtractor';
 import { discoverXhsNotes } from './xhsDriver';
+import { writeTaskArtifacts } from './artifactWriter';
 import type {
   DiscoveredNote,
   Draft,
@@ -115,7 +116,17 @@ export async function runTask(task: ScenarioTask): Promise<RunOutcome> {
       }
     }
 
-    if (drafts.length > 0) taskStore.addDrafts(drafts);
+    if (drafts.length > 0) {
+      taskStore.addDrafts(drafts);
+      // Persist originals + rewrites to disk organized by date/track.
+      // Non-fatal on failure — we still consider the run successful if
+      // the drafts got stored in the local task store.
+      try {
+        await writeTaskArtifacts(task, drafts);
+      } catch (err) {
+        coworkLog('WARN', 'scenarioManager', 'artifact save failed', { err: String(err) });
+      }
+    }
 
     riskGuard.markRunSuccess(task.id, notes.length, drafts.length);
 

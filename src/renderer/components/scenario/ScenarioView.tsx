@@ -130,11 +130,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
   const handleWizardSave = async (input: {
     scenario_id: string;
+    track: string;
     keywords: string[];
     persona: string;
     daily_count: number;
     variants_per_post: number;
-    schedule_window: string;
+    daily_time: string;
   }) => {
     if (wizardEditingTask) {
       await scenarioService.updateTask(wizardEditingTask.id, input);

@@ -29,6 +29,115 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// ── Login state check (used before runs, before draft pushes, and from UI) ──
+
+const LOGIN_PROBE_CODE = `
+(function() {
+  try {
+    var url = location.href || '';
+    if (/\\/login|\\/signin/i.test(url)) {
+      return JSON.stringify({ loggedIn: false, reason: 'login_page' });
+    }
+    if (document.querySelector('.login-container, [class*="login-panel"], iframe[src*="login"]')) {
+      return JSON.stringify({ loggedIn: false, reason: 'login_modal' });
+    }
+    var signIn = document.querySelector('[class*="sign-in"], [class*="login-btn"], [class*="SignInBtn"]');
+    if (signIn && signIn.offsetParent !== null && (signIn.textContent || '').match(/登录|sign/i)) {
+      return JSON.stringify({ loggedIn: false, reason: 'sign_in_button' });
+    }
+    // Positive signal: user avatar / greeting / side menu
+    var user = document.querySelector('.user-avatar, [class*="user-info"], [class*="Avatar"], [data-testid*="avatar"]');
+    if (user) return JSON.stringify({ loggedIn: true });
+    return JSON.stringify({ loggedIn: true });
+  } catch (err) {
+    return JSON.stringify({ loggedIn: false, reason: 'probe_error:' + String(err) });
+  }
+})()
+`;
+
+export interface XhsLoginStatus {
+  loggedIn: boolean;
+  /** Machine-readable code explaining why */
+  reason?:
+    | 'login_page'
+    | 'login_modal'
+    | 'sign_in_button'
+    | 'no_response'
+    | 'browser_not_connected'
+    | 'xhs_tab_not_reachable'
+    | 'probe_error'
+    | string;
+}
+
+/**
+ * Check whether the user is currently logged into Xiaohongshu in their real
+ * browser. Never opens a new tab on failure — if there is no XHS tab, it
+ * reports "no tab" back to the caller so the UI can decide whether to open
+ * one (via `openXhsLogin`). This keeps the check cheap and non-intrusive.
+ *
+ * Contract:
+ *   - If browser extension is not connected → { loggedIn: false, reason: 'browser_not_connected' }
+ *   - If no tab on *.xiaohongshu.com exists → { loggedIn: false, reason: 'xhs_tab_not_reachable' }
+ *   - Otherwise runs a DOM probe on that tab and returns its verdict
+ */
+export async function checkXhsLogin(): Promise<XhsLoginStatus> {
+  // 1. Find an existing xhs tab (don't create one — that's the caller's call)
+  let tabs: any[] = [];
+  try {
+    const res = await sendBrowserCommand('tab_list', {}, 5000);
+    tabs = Array.isArray(res?.tabs) ? res.tabs : [];
+  } catch (err) {
+    coworkLog('WARN', 'xhsDriver', 'tab_list failed', { err: String(err) });
+    return { loggedIn: false, reason: 'browser_not_connected' };
+  }
+
+  const xhsTab = tabs.find(
+    (t: any) => typeof t.url === 'string' && /xiaohongshu\.com/i.test(t.url)
+  );
+  if (!xhsTab || typeof xhsTab.id !== 'number') {
+    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
+  }
+
+  // 2. Make it the active tab so content-script primitives target it
+  try {
+    await sendBrowserCommand('tab_switch', { tabId: xhsTab.id }, 5000);
+    await sleep(randInt(300, 800));
+  } catch (err) {
+    coworkLog('WARN', 'xhsDriver', 'tab_switch failed', { err: String(err) });
+    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
+  }
+
+  // 3. Run the DOM probe
+  try {
+    const result = await sendBrowserCommand('javascript', { code: LOGIN_PROBE_CODE }, 5000);
+    const raw = result?.result;
+    if (typeof raw !== 'string') return { loggedIn: false, reason: 'no_response' };
+    const parsed = JSON.parse(raw);
+    return { loggedIn: Boolean(parsed?.loggedIn), reason: parsed?.reason };
+  } catch (err) {
+    coworkLog('WARN', 'xhsDriver', 'login probe failed', { err: String(err) });
+    return { loggedIn: false, reason: 'probe_error' };
+  }
+}
+
+/**
+ * Open Xiaohongshu in a new browser tab so the user can log in. Called from
+ * the LoginRequiredModal when the user clicks "open login page".
+ */
+export async function openXhsLogin(): Promise<{ ok: boolean; reason?: string }> {
+  try {
+    await sendBrowserCommand(
+      'tab_create',
+      { url: 'https://www.xiaohongshu.com' },
+      10000
+    );
+    return { ok: true };
+  } catch (err) {
+    coworkLog('WARN', 'xhsDriver', 'openXhsLogin failed', { err: String(err) });
+    return { ok: false, reason: String(err) };
+  }
+}
+
 async function humanPause(caps: RiskCaps): Promise<void> {
   await sleep(randInt(caps.min_scroll_delay_ms, caps.max_scroll_delay_ms));
 }

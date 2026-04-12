@@ -8,6 +8,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
+import { LoginRequiredModal } from './LoginRequiredModal';
+import type { XhsLoginStatus } from '../../types/scenario';
 
 interface Props {
   task: Task;
@@ -47,6 +49,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const [running, setRunning] = useState(false);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [pushingDraft, setPushingDraft] = useState<string | null>(null);
+  const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const [d, s] = await Promise.all([
@@ -66,7 +69,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     setTimeout(() => setToast(null), 5000);
   };
 
-  const handleRunNow = async () => {
+  const executeRun = async () => {
     if (running) return;
     setRunning(true);
     try {
@@ -88,6 +91,26 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       await onChanged();
     } finally {
       setRunning(false);
+    }
+  };
+
+  const handleRunNow = async () => {
+    if (running) return;
+    // Gate on XHS login first
+    const status = await scenarioService.checkXhsLogin();
+    if (!status.loggedIn) {
+      setLoginModalReason(status.reason || 'not_logged_in');
+      return;
+    }
+    await executeRun();
+  };
+
+  const handleLoginRetry = async (status: XhsLoginStatus) => {
+    if (status.loggedIn) {
+      setLoginModalReason(null);
+      await executeRun();
+    } else {
+      setLoginModalReason(status.reason || 'not_logged_in');
     }
   };
 
@@ -253,6 +276,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           </div>
         )}
       </section>
+
+      {loginModalReason && (
+        <LoginRequiredModal
+          reason={loginModalReason}
+          onCancel={() => setLoginModalReason(null)}
+          onRetry={handleLoginRetry}
+        />
+      )}
     </div>
   );
 };

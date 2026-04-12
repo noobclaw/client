@@ -2780,6 +2780,16 @@ if (!gotTheLock) {
       runs: scenarioRiskGuard.getRuns(task_id),
       cooldown_ends_at: scenarioRiskGuard.getCooldown(task_id),
     }));
+
+    ipcMain.handle('scenario:checkXhsLogin', async () => {
+      const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
+      return await checkXhsLogin();
+    });
+
+    ipcMain.handle('scenario:openXhsLogin', async () => {
+      const { openXhsLogin } = require('./libs/scenario/xhsDriver');
+      return await openXhsLogin();
+    });
   }
 
   // Set Content Security Policy
