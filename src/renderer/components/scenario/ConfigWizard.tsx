@@ -11,9 +11,6 @@
 import React, { useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
-import { scenarioService } from '../../services/scenario';
-import { LoginRequiredModal } from './LoginRequiredModal';
-import type { XhsLoginStatus } from '../../types/scenario';
 
 // ── Track presets (mirrors main-process XHS_TRACK_PRESETS) ──
 type TrackPreset = {
@@ -106,7 +103,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
   // Confirm step
   const [termsAccepted, setTermsAccepted] = useState([false, false, false]);
-  const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
+  // Login check removed from wizard — save creates the task without requiring
+  // XHS login. Login is only checked when user clicks "立即运行" in the task
+  // detail page.
 
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
@@ -143,23 +142,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   };
 
   const handleFinish = async () => {
-    if (!canFinish || saving) return;
-    // Gate on XHS login before actually creating the task
-    const status = await scenarioService.checkXhsLogin();
-    if (!status.loggedIn) {
-      setLoginModalReason(status.reason || 'not_logged_in');
-      return;
-    }
     await doSave();
-  };
-
-  const handleLoginRetry = async (status: XhsLoginStatus) => {
-    if (status.loggedIn) {
-      setLoginModalReason(null);
-      await doSave();
-    } else {
-      setLoginModalReason(status.reason || 'not_logged_in');
-    }
   };
 
   return (
@@ -446,13 +429,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         </div>
       </div>
 
-      {loginModalReason && (
-        <LoginRequiredModal
-          reason={loginModalReason}
-          onCancel={() => setLoginModalReason(null)}
-          onRetry={handleLoginRetry}
-        />
-      )}
     </>
   );
 };

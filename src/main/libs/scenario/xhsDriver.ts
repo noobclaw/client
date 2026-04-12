@@ -9,7 +9,7 @@
  */
 
 import { coworkLog } from '../coworkLogger';
-import { sendBrowserCommand } from '../browserBridge';
+import { sendBrowserCommand, getBrowserBridgeStatus } from '../browserBridge';
 import * as riskGuard from './riskGuard';
 import type {
   DiscoveredNote,
@@ -81,14 +81,27 @@ export interface XhsLoginStatus {
  *   - Otherwise runs a DOM probe on that tab and returns its verdict
  */
 export async function checkXhsLogin(): Promise<XhsLoginStatus> {
-  // 1. Find an existing xhs tab (don't create one — that's the caller's call)
+  // 0. Check whether the browser extension bridge is actually connected.
+  //    This distinguishes "extension not installed" from "tab_list timed out".
+  try {
+    const bridgeStatus = getBrowserBridgeStatus();
+    if (!bridgeStatus.connected) {
+      return { loggedIn: false, reason: 'browser_not_connected' };
+    }
+  } catch {
+    return { loggedIn: false, reason: 'browser_not_connected' };
+  }
+
+  // 1. Find an existing xhs tab
   let tabs: any[] = [];
   try {
-    const res = await sendBrowserCommand('tab_list', {}, 5000);
+    const res = await sendBrowserCommand('tab_list', {}, 8000);
     tabs = Array.isArray(res?.tabs) ? res.tabs : [];
   } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'tab_list failed', { err: String(err) });
-    return { loggedIn: false, reason: 'browser_not_connected' };
+    coworkLog('WARN', 'xhsDriver', 'tab_list failed (bridge connected but command threw)', { err: String(err) });
+    // Bridge is connected but command failed — still report as connected,
+    // just say "can't reach xhs tab" so the modal shows step 2 not step 1.
+    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
   }
 
   const xhsTab = tabs.find(
