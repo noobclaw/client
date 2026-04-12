@@ -112,60 +112,60 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Quick-start banner (this is the "一键按钮") */}
-      {primaryScenario && (
-        <section className="mb-6">
-          <div className="relative rounded-2xl border border-green-500/30 bg-gradient-to-br from-green-500/10 via-emerald-500/5 to-transparent p-6 overflow-hidden">
-            <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-green-500/10 blur-3xl pointer-events-none" />
-            <div className="relative flex items-center justify-between gap-6 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <div className="inline-flex items-center gap-1.5 text-xs font-medium text-green-500 mb-2">
-                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                  {i18nService.t('scenarioWorkflowAvailable')}
-                </div>
-                <h2 className="text-xl sm:text-2xl font-bold dark:text-white mb-1.5">
-                  🔥 {i18nService.t('scenarioQuickStartTitle')}
-                </h2>
-                <p className="text-sm text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
-                  {i18nService.t('scenarioQuickStartDesc')}
-                </p>
+      {/* Quick-start banner — ALWAYS visible, even before scenario list loads */}
+      <section className="mb-6">
+        <div className="relative rounded-2xl border border-green-500/30 bg-gradient-to-br from-green-500/10 via-emerald-500/5 to-transparent p-6 sm:p-8 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-48 h-48 rounded-full bg-green-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex items-center justify-between gap-6 flex-wrap">
+            <div className="flex-1 min-w-0">
+              <div className="inline-flex items-center gap-1.5 text-xs font-medium text-green-500 mb-2">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                {i18nService.t('scenarioWorkflowAvailable')}
               </div>
-              <button
-                type="button"
-                onClick={handleQuickStart}
-                disabled={checkingLogin}
-                className="shrink-0 px-6 py-3 text-sm font-bold rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/20 transition-all disabled:opacity-50"
-              >
-                {checkingLogin
-                  ? i18nService.t('scenarioLoginChecking')
-                  : primaryTask
-                    ? i18nService.t('scenarioQuickStartContinueBtn') + ' →'
-                    : i18nService.t('scenarioQuickStartBtn') + ' →'}
-              </button>
+              <h2 className="text-xl sm:text-2xl font-bold dark:text-white mb-1.5">
+                🔥 {i18nService.t('scenarioQuickStartTitle')}
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-300 max-w-2xl leading-relaxed">
+                {i18nService.t('scenarioQuickStartDesc')}
+              </p>
             </div>
-          </div>
-        </section>
-      )}
-
-      {/* NoobClaw advantages — 5 cards */}
-      <section className="mb-8">
-        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-3">
-          ✨ {i18nService.t('scenarioAdvantageTitle')}
-        </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          {ADVANTAGES.map(adv => (
-            <div
-              key={adv.titleKey}
-              className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3"
+            <button
+              type="button"
+              onClick={() => {
+                if (primaryTask) {
+                  onOpenTask(primaryTask.id);
+                } else if (primaryScenario) {
+                  void handleQuickStart();
+                } else {
+                  // Scenario list hasn't loaded yet — go to workflow detail page
+                  onOpenWorkflow('viral_production');
+                }
+              }}
+              disabled={checkingLogin}
+              className="shrink-0 px-8 py-4 text-base font-bold rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/25 transition-all disabled:opacity-50 active:scale-95"
             >
-              <div className="text-lg mb-1.5">{adv.icon}</div>
-              <div className="text-xs font-semibold dark:text-white mb-1 line-clamp-2">
-                {i18nService.t(adv.titleKey)}
-              </div>
-              <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-snug line-clamp-3">
-                {i18nService.t(adv.descKey)}
-              </div>
-            </div>
+              {checkingLogin
+                ? i18nService.t('scenarioLoginChecking')
+                : primaryTask
+                  ? '📋 ' + i18nService.t('scenarioQuickStartContinueBtn') + ' →'
+                  : '🚀 ' + i18nService.t('scenarioQuickStartBtn') + ' →'}
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* NoobClaw advantages — compact inline pills (visually distinct from workflow cards) */}
+      <section className="mb-6">
+        <div className="flex flex-wrap items-center gap-2">
+          {ADVANTAGES.map(adv => (
+            <span
+              key={adv.titleKey}
+              title={i18nService.t(adv.descKey)}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-300 cursor-default"
+            >
+              <span>{adv.icon}</span>
+              <span>{i18nService.t(adv.titleKey)}</span>
+            </span>
           ))}
         </div>
       </section>
