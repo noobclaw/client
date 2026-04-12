@@ -1125,6 +1125,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioTaskReasonInterval: '距离上次运行未到最小间隔',
     scenarioTaskReasonWeeklyRest: '本周强制休息日',
     scenarioTaskReasonCooldown: '冷却中',
+    scenarioTaskReasonAnotherRunning: '有另一个任务正在运行，请等它完成后再试',
+    scenarioTaskMutexHint: '💡 你可以保存多个任务，但同一时间只能运行一个（避免多任务同时操作浏览器导致互相干扰）',
 
     // Drafts
     scenarioDraftsEmpty: '还没有生成草稿。点"立即运行"试一次。',
@@ -2350,6 +2352,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioTaskReasonInterval: 'Minimum interval not met',
     scenarioTaskReasonWeeklyRest: 'Weekly rest day',
     scenarioTaskReasonCooldown: 'Cooldown',
+    scenarioTaskReasonAnotherRunning: 'Another task is currently running. Please wait for it to finish.',
+    scenarioTaskMutexHint: 'You can save multiple tasks, but only one can run at a time (to avoid browser conflicts).',
 
     scenarioDraftsEmpty: 'No drafts yet. Hit "Run now" to try once.',
     scenarioDraftVariantRoute: 'Angle',

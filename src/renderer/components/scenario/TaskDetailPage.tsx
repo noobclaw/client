@@ -39,6 +39,7 @@ function reasonText(key: string): string {
     interval_not_met: 'scenarioTaskReasonInterval',
     weekly_rest_enforced: 'scenarioTaskReasonWeeklyRest',
     cooldown_active: 'scenarioTaskReasonCooldown',
+    another_task_running: 'scenarioTaskReasonAnotherRunning',
   };
   return i18nService.t(map[key] || 'scenarioTaskRunFailed').replace('{reason}', key);
 }
@@ -230,6 +231,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           ⏳ {i18nService.t('scenarioTaskCooldownActive').replace('{hours}', String(cooldownHoursLeft))}
         </div>
       )}
+
+      {/* Mutex hint — always visible so user understands the rule */}
+      <div className="mb-6 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-600 dark:text-blue-400">
+        {i18nService.t('scenarioTaskMutexHint')}
+      </div>
 
       {/* Toast */}
       {toast && (

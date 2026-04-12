@@ -58,7 +58,28 @@ export interface RunOutcome {
   drafts?: Draft[];
 }
 
+// ── Global mutex: only one scenario task can run at a time ──
+let runningTaskId: string | null = null;
+
+export function getRunningTaskId(): string | null {
+  return runningTaskId;
+}
+
 export async function runTask(task: ScenarioTask): Promise<RunOutcome> {
+  // 0. Global mutex — one task at a time across ALL scenarios
+  if (runningTaskId) {
+    return { status: 'skipped', reason: 'another_task_running' };
+  }
+  runningTaskId = task.id;
+
+  try {
+    return await _runTaskInner(task);
+  } finally {
+    runningTaskId = null;
+  }
+}
+
+async function _runTaskInner(task: ScenarioTask): Promise<RunOutcome> {
   // 1. Load pack
   const pack = await loadPack(task.scenario_id);
   if (!pack) return { status: 'failed', reason: 'scenario_pack_not_found' };
