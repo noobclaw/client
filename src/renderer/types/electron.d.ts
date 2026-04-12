@@ -165,6 +165,17 @@ interface EmailConnectivityTestResult {
   checks: EmailConnectivityCheck[];
 }
 
+// Scenario automation IPC types live in ./scenario.ts and are imported
+// where needed. We re-import them here so IElectronAPI.scenario can refer
+// to them without polluting the global namespace.
+import type {
+  ScenarioManifestIPC,
+  ScenarioTaskIPC,
+  ScenarioDraftIPC,
+  ScenarioRunOutcome,
+  ScenarioTaskRun,
+} from './scenario';
+
 type CoworkPermissionResult =
   | {
       behavior: 'allow';
@@ -243,6 +254,21 @@ interface IElectronAPI {
       config: Record<string, string>
     ) => Promise<{ success: boolean; result?: EmailConnectivityTestResult; error?: string }>;
     onChanged: (callback: () => void) => () => void;
+  };
+  scenario: {
+    listScenarios: () => Promise<{ scenarios: ScenarioManifestIPC[] }>;
+    listTasks: () => Promise<ScenarioTaskIPC[]>;
+    getTask: (id: string) => Promise<ScenarioTaskIPC | null>;
+    createTask: (input: Omit<ScenarioTaskIPC, 'id' | 'created_at' | 'updated_at'>) => Promise<ScenarioTaskIPC>;
+    updateTask: (id: string, patch: Partial<ScenarioTaskIPC>) => Promise<ScenarioTaskIPC | null>;
+    deleteTask: (id: string) => Promise<boolean>;
+    runTaskNow: (id: string) => Promise<ScenarioRunOutcome>;
+    runStatus: (id: string) => Promise<{ runs: ScenarioTaskRun[]; cooldown_ends_at: number }>;
+    listDrafts: (taskId?: string) => Promise<ScenarioDraftIPC[]>;
+    pushDraft: (draftId: string) => Promise<{ status: 'ready_for_user' | 'failed'; error?: string }>;
+    deleteDraft: (draftId: string) => Promise<boolean>;
+    markDraftPushed: (draftId: string) => Promise<ScenarioDraftIPC | null>;
+    markDraftIgnored: (draftId: string) => Promise<ScenarioDraftIPC | null>;
   };
   mcp: {
     list: () => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;

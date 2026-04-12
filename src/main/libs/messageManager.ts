@@ -11,9 +11,19 @@ import { coworkLog } from './coworkLogger';
 // ── Constants ──
 
 /** Max characters for a single tool result before truncation.
- * This is the DEFAULT — actual limit is computed proportionally to context window.
- * See getToolResultMaxChars(). */
-export const TOOL_RESULT_MAX_CHARS = 30_000;
+ *
+ * Tightened from 30_000 → 8_192 (8 KB ≈ 2K tokens) to slash prompt-cache
+ * bloat. Every tool_result ends up in the conversation history forever
+ * and is re-sent on every subsequent turn; at the old 30K ceiling a
+ * handful of Read / Bash calls could quietly dump 50K+ tokens into the
+ * cache prefix. 8 KB is enough to show the head + tail of most file
+ * reads / command outputs, and the truncation is now MIDDLE-cut
+ * (see `truncateText` below) so both the beginning of a file and its
+ * most recent output are preserved.
+ *
+ * If the caller genuinely needs more, it should pass a larger `maxChars`
+ * explicitly — or re-read with Read offset/limit params. */
+export const TOOL_RESULT_MAX_CHARS = 8_192;
 
 /** Maximum share of context window a single tool result can occupy.
  * Reference: OpenClaw tool-result-truncation.ts MAX_TOOL_RESULT_CONTEXT_SHARE = 0.3 */
@@ -313,20 +323,53 @@ export function extractTextContent(message: MessageParam): string {
 }
 
 /**
- * Truncate text to max chars with indicator.
+ * Truncate text to max chars with a MIDDLE cut. Keeps the first ~half
+ * and the last ~half of the budget and drops the middle, replacing it
+ * with a `[N characters omitted]` marker. We prefer middle truncation
+ * over tail truncation for tool results because:
+ *
+ *   - the HEAD of a file read / command output usually carries the
+ *     filename, header lines, column definitions, or the command echo
+ *     — useful anchors for the model
+ *   - the TAIL usually carries the most recent progress, the final
+ *     error message, or the success indicator — the part the model
+ *     actually needs to decide "what next"
+ *   - the middle is typically the noisy body (logs, repeated rows,
+ *     long stack frames) that the model rarely references after the
+ *     first turn
+ *
+ * Reference: Claude Code's messages.ts truncates tool results with a
+ * similar head+tail strategy.
  */
 export function truncateText(text: string, maxChars?: number): string {
   const limit = maxChars ?? getToolResultMaxChars();
   if (text.length <= limit) return text;
 
-  // Try to break at a newline boundary for cleaner truncation
-  let cutPoint = limit;
-  const lastNewline = text.lastIndexOf('\n', limit);
-  if (lastNewline > limit * 0.8) {
-    cutPoint = lastNewline;
+  // Roughly split the budget evenly between head and tail. Reserve a
+  // little room for the truncation marker itself.
+  const marker = '\n\n[... {N} characters omitted from the middle ...]\n\n';
+  const budget = Math.max(limit - marker.length, 256);
+  const headBudget = Math.floor(budget / 2);
+  const tailBudget = budget - headBudget;
+
+  // Try to snap head cut to a newline so we don't slice mid-token.
+  let headCut = headBudget;
+  const lastHeadNewline = text.lastIndexOf('\n', headBudget);
+  if (lastHeadNewline > headBudget * 0.8) {
+    headCut = lastHeadNewline;
   }
 
-  const truncated = text.slice(0, cutPoint);
-  const remaining = text.length - cutPoint;
-  return truncated + `\n\n[Content truncated — ${remaining} characters omitted]`;
+  // Try to snap tail start to a newline going forward.
+  const tailStartIdx = text.length - tailBudget;
+  let tailStart = tailStartIdx;
+  const firstTailNewline = text.indexOf('\n', tailStartIdx);
+  if (firstTailNewline >= 0 && firstTailNewline < tailStartIdx + tailBudget * 0.2) {
+    tailStart = firstTailNewline + 1;
+  }
+
+  const head = text.slice(0, headCut);
+  const tail = text.slice(tailStart);
+  const omitted = text.length - head.length - tail.length;
+  if (omitted <= 0) return text; // safety: nothing to cut
+  return head + marker.replace('{N}', String(omitted)) + tail;
 }

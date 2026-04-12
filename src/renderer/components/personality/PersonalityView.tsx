@@ -134,7 +134,19 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
     return () => window.clearTimeout(timer);
   }, [src]);
 
-  const handleIframeLoad = () => setIframeState('loaded');
+  const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    setIframeState('loaded');
+    // Belt-and-suspenders: as soon as the embed finishes loading, push
+    // the current lang in via postMessage. The website's bootstrap
+    // already reads ?lang= from the URL, but if an intermediate cache
+    // / bfcache layer ever serves a stale HTML whose sessionStorage
+    // still has the previous value, this forces an immediate re-apply
+    // on the correct language without waiting for another reload.
+    try {
+      const w = (e.currentTarget as HTMLIFrameElement).contentWindow;
+      w?.postMessage({ type: 'noobclaw-embed-setlang', lang }, '*');
+    } catch { /* ignore cross-origin edge cases */ }
+  };
 
   return (
     <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
@@ -223,20 +235,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
           className="w-full h-full border-0"
           sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads"
           referrerPolicy="no-referrer"
-          onLoad={() => {
-            handleIframeLoad();
-            // As soon as the iframe's load event fires, push the current
-            // language in. This matters on the first mount and on every
-            // tab switch — the page bootstraps with whatever lang was in
-            // the URL, but we may already be on a different language by
-            // the time it finishes loading.
-            try {
-              iframeRef.current?.contentWindow?.postMessage(
-                { type: 'noobclaw-embed-setlang', lang },
-                '*',
-              );
-            } catch { /* ignore */ }
-          }}
+          onLoad={handleIframeLoad}
         />
         {iframeState !== 'loaded' && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

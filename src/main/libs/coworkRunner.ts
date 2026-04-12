@@ -916,24 +916,26 @@ export class CoworkRunner extends EventEmitter {
       .replace(/'/g, '&apos;');
   }
 
-  private buildUserMemoriesXml(queryForRelevance?: string): string {
+  private buildUserMemoriesXml(_queryForRelevance?: string): string {
     const config = this.store.getConfig();
     if (!config.memoryEnabled) {
       return '<userMemories></userMemories>';
     }
 
-    // Fetch more than the final cap so the semantic ranker has a real
-    // candidate pool to rank. If there are fewer memories than the
-    // wide pool, listUserMemories just returns what's available.
-    const WIDE_POOL_MULTIPLIER = 4;
-    const poolLimit = Math.max(
-      config.memoryUserMemoriesMaxItems,
-      config.memoryUserMemoriesMaxItems * WIDE_POOL_MULTIPLIER,
-    );
+    // Cache-friendly: use a STABLE order (listUserMemories returns
+    // updated_at DESC, which is deterministic per turn) and drop the
+    // per-query semantic re-ranking we used to do here. The ranker
+    // produced a different memory subset & ordering for every user
+    // prompt, which meant the first user-message slot in the prompt
+    // varied on every single turn — the exact worst case for prompt
+    // caching. Losing semantic relevance is a small hit because the
+    // memory cap is already small (usually 10-20 items) and the model
+    // can scan all of them in one pass; the cache savings are much
+    // larger.
     const pool = this.store.listUserMemories({
       status: 'created',
       includeDeleted: false,
-      limit: poolLimit,
+      limit: config.memoryUserMemoriesMaxItems,
       offset: 0,
     });
 
@@ -941,29 +943,7 @@ export class CoworkRunner extends EventEmitter {
       return '<userMemories></userMemories>';
     }
 
-    // Try semantic ranking first — Mac-only, zero-cost local NLEmbedding.
-    // Falls through to default updated_at order on non-macOS / no addon
-    // / empty query.
-    let orderedMemories: typeof pool = pool;
-    if (queryForRelevance && queryForRelevance.trim().length > 0) {
-      try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { rankMemoriesSemantic } = require('./memorySemanticSearch');
-        const ranked = rankMemoriesSemantic(
-          queryForRelevance,
-          pool,
-          config.memoryUserMemoriesMaxItems,
-        );
-        if (ranked && ranked.length > 0) {
-          orderedMemories = ranked.map((r: { memory: typeof pool[number] }) => r.memory);
-        }
-      } catch (e) {
-        coworkLog('WARN', 'buildUserMemoriesXml', `semantic rank failed, fallback to recency: ${e}`);
-      }
-    }
-
-    // Cap the final emitted list to the user-configured max.
-    const memories = orderedMemories.slice(0, config.memoryUserMemoriesMaxItems);
+    const memories = pool;
 
     const MAX_ITEM_CHARS = 200;
     const MAX_TOTAL_CHARS = 2000;
@@ -2567,20 +2547,28 @@ export class CoworkRunner extends EventEmitter {
   }
 
   private buildLocalTimeContextPrompt(): string {
+    // Truncate to the current HOUR bucket so this prefix only changes
+    // once an hour. Previously we included second + millisecond
+    // precision, which burned ~150 tokens per turn into the user
+    // message prefix for zero practical benefit — nothing Claude does
+    // downstream needs sub-hour resolution, and scheduled tasks use
+    // their own real-time clock at fire time. Hour-level keeps the
+    // prompt prefix stable within a working session, letting prompt
+    // caching stay hot across multiple back-to-back turns.
     const now = new Date();
+    const hourFloor = new Date(
+      now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0,
+    );
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'unknown';
-    const localDateTime = this.formatLocalDateTime(now);
-    const localIsoNoTz = this.formatLocalIsoWithoutTimezone(now);
-    const utcOffset = this.formatUtcOffset(now);
+    const localHour = this.formatLocalDateTime(hourFloor);
+    const utcOffset = this.formatUtcOffset(hourFloor);
     return [
       '## Local Time Context',
-      '- Treat this section as the authoritative current local time for this machine.',
-      `- Current local datetime: ${localDateTime} (timezone: ${timezone}, UTC${utcOffset})`,
-      `- Current local ISO datetime (no timezone suffix): ${localIsoNoTz}`,
-      `- Current unix timestamp (ms): ${now.getTime()}`,
-      '- For relative time requests (e.g. "1 minute later", "tomorrow 9am"), compute from this local time unless the user specifies another timezone.',
-      '- When creating one-time scheduled tasks (`schedule.type = "at"`), use local wall-clock datetime format `YYYY-MM-DDTHH:mm:ss` without trailing `Z`.',
-      '- For short-delay one-time tasks (for example, within 10 minutes), create the scheduled task immediately before any time-consuming tool calls.',
+      '- Treat this section as the authoritative current local wall-clock hour for this machine.',
+      `- Current local hour (floor, YYYY-MM-DD HH:00): ${localHour} (timezone: ${timezone}, UTC${utcOffset})`,
+      '- For relative time requests (e.g. "tomorrow 9am"), compute from this local hour unless the user specifies another timezone.',
+      '- For sub-hour precision (e.g. "in 5 minutes"), trust the scheduler\'s real-time clock — it evaluates `schedule.type = "at"` at fire time, so you only need hour-level accuracy when authoring the task prompt.',
+      '- When creating one-time scheduled tasks, use local wall-clock datetime format `YYYY-MM-DDTHH:mm:ss` without trailing `Z`.',
       '- Scheduled task prompts should describe what to do at runtime. Do not pre-run data collection and paste stale results into the task prompt.',
     ].join('\n');
   }
