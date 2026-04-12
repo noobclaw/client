@@ -140,7 +140,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (wizardEditingTask) {
       await scenarioService.updateTask(wizardEditingTask.id, input);
     } else {
-      await scenarioService.createTask({ ...input, enabled: true });
+      await scenarioService.createTask({ ...input, enabled: true, active: true });
     }
     closeWizard();
     await refreshAll();

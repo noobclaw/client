@@ -91,6 +91,10 @@ export interface ScenarioTask {
    *  still parse. */
   schedule_window?: string;
   enabled: boolean;
+  /** Only the 'active' task is eligible for scheduled auto-runs.
+   *  When multiple tasks exist, user must explicitly pick which one is active.
+   *  If only one task exists, it's auto-marked active. */
+  active: boolean;
   created_at: number;
   updated_at: number;
 }

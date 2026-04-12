@@ -73,6 +73,9 @@ export interface ScenarioTaskIPC {
    *  compatibility with tasks created before the v2 wizard. */
   schedule_window?: string;
   enabled: boolean;
+  /** Only the active task gets auto-run by the scheduler. At most 1 task
+   *  can be active at a time. User switches via "设为运行" button. */
+  active: boolean;
   created_at: number;
   updated_at: number;
 }

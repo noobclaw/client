@@ -70,6 +70,8 @@ contextBridge.exposeInMainWorld('electron', {
     markDraftPushed: (draftId: string) => ipcRenderer.invoke('scenario:markDraftPushed', draftId),
     markDraftIgnored: (draftId: string) => ipcRenderer.invoke('scenario:markDraftIgnored', draftId),
     // XHS login gate
+    setActiveTask: (id: string) => ipcRenderer.invoke('scenario:setActiveTask', id),
+    getActiveTask: () => ipcRenderer.invoke('scenario:getActiveTask'),
     checkXhsLogin: () => ipcRenderer.invoke('scenario:checkXhsLogin'),
     openXhsLogin: () => ipcRenderer.invoke('scenario:openXhsLogin'),
   },

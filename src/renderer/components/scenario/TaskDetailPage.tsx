@@ -115,11 +115,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     }
   };
 
-  const handlePauseResume = async () => {
-    await scenarioService.updateTask(task.id, { enabled: !task.enabled });
-    await onChanged();
-  };
-
   const handleDelete = async () => {
     if (!confirm(i18nService.t('scenarioTaskRunConfirmDelete'))) return;
     await scenarioService.deleteTask(task.id);
@@ -177,11 +172,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           ← {i18nService.t('scenarioTaskBack')}
         </button>
         <div className="flex items-center gap-2">
+          {/* Active toggle — most important action */}
+          {task.active ? (
+            <span className="px-3 py-2 text-xs font-semibold rounded-lg bg-green-500/10 text-green-500 border border-green-500/30">
+              ● {i18nService.t('scenarioTaskActiveLabel')}
+            </span>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                await scenarioService.setActiveTask(task.id);
+                await onChanged();
+              }}
+              className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
+            >
+              🎯 {i18nService.t('scenarioTaskSetActive')}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleRunNow}
             disabled={running}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50"
+            className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {running ? i18nService.t('scenarioTaskRunningNow') : '▶ ' + i18nService.t('scenarioTaskRunNow')}
           </button>
@@ -194,13 +206,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           </button>
           <button
             type="button"
-            onClick={handlePauseResume}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            {task.enabled ? i18nService.t('scenarioTaskPause') : i18nService.t('scenarioTaskResume')}
-          </button>
-          <button
-            type="button"
             onClick={handleDelete}
             className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors"
           >
@@ -209,12 +214,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         </div>
       </div>
 
-      {/* Title */}
+      {/* Title + active status */}
       <div className="mb-6">
-        <div className="text-3xl mb-1">{scenario?.icon || '🔥'}</div>
-        <h1 className="text-2xl font-bold dark:text-white">{scenario?.name_zh || task.scenario_id}</h1>
-        <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {task.keywords.join(' · ')}
+        <div className="flex items-center gap-3">
+          <div className="text-3xl">{scenario?.icon || '🔥'}</div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold dark:text-white">{scenario?.name_zh || task.scenario_id}</h1>
+              {task.active && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/30">
+                  {i18nService.t('scenarioTaskActiveLabel')}
+                </span>
+              )}
+              {!task.active && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500">
+                  {i18nService.t('scenarioTaskStandbyLabel')}
+                </span>
+              )}
+            </div>
+            <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
+              {task.keywords.join(' · ')}
+            </div>
+          </div>
         </div>
       </div>
 

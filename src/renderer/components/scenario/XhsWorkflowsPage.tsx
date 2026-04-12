@@ -207,13 +207,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {task.enabled ? (
+                    {task.active ? (
                       <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30">
-                        {i18nService.t('scenarioCardTaskRunning')}
+                        ● {i18nService.t('scenarioTaskActiveLabel')}
                       </span>
                     ) : (
                       <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
-                        {i18nService.t('scenarioCardTaskPaused')}
+                        {i18nService.t('scenarioTaskStandbyLabel')}
                       </span>
                     )}
                     {pendingCount > 0 && (

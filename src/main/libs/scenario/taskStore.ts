@@ -76,10 +76,48 @@ export function getTask(id: string): ScenarioTask | null {
 export function createTask(input: Omit<ScenarioTask, 'id' | 'created_at' | 'updated_at'>): ScenarioTask {
   ensureLoaded();
   const now = Date.now();
-  const task: ScenarioTask = { ...input, id: crypto.randomUUID(), created_at: now, updated_at: now };
+  // If this is the only task, auto-mark it as active.
+  // If other tasks exist, new task starts as inactive (standby).
+  const isOnlyTask = store.tasks.length === 0;
+  const task: ScenarioTask = {
+    ...input,
+    active: isOnlyTask ? true : (input.active ?? false),
+    id: crypto.randomUUID(),
+    created_at: now,
+    updated_at: now,
+  };
+  // If this task is active, deactivate all others
+  if (task.active) {
+    for (const t of store.tasks) t.active = false;
+  }
   store.tasks.push(task);
   persist();
   return task;
+}
+
+/**
+ * Set exactly one task as "active" (eligible for auto-run).
+ * All other tasks are deactivated. Returns the newly-active task.
+ */
+export function setActiveTask(id: string): ScenarioTask | null {
+  ensureLoaded();
+  let target: ScenarioTask | null = null;
+  for (const t of store.tasks) {
+    if (t.id === id) {
+      t.active = true;
+      t.updated_at = Date.now();
+      target = t;
+    } else {
+      t.active = false;
+    }
+  }
+  persist();
+  return target;
+}
+
+export function getActiveTask(): ScenarioTask | null {
+  ensureLoaded();
+  return store.tasks.find(t => t.active) || null;
 }
 
 export function updateTask(id: string, patch: Partial<ScenarioTask>): ScenarioTask | null {

@@ -105,6 +105,16 @@ class ScenarioService {
     return window.electron.scenario.markDraftIgnored(draftId);
   }
 
+  // ── Active task management ──
+
+  setActiveTask(id: string): Promise<Task | null> {
+    return window.electron.scenario.setActiveTask(id);
+  }
+
+  getActiveTask(): Promise<Task | null> {
+    return window.electron.scenario.getActiveTask();
+  }
+
   // ── XHS login gate ──
 
   async checkXhsLogin(): Promise<XhsLoginStatus> {

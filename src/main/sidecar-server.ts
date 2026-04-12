@@ -1420,6 +1420,8 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:createTask':
           case 'scenario:updateTask':
           case 'scenario:deleteTask':
+          case 'scenario:setActiveTask':
+          case 'scenario:getActiveTask':
           case 'scenario:listDrafts':
           case 'scenario:deleteDraft':
           case 'scenario:markDraftPushed':
@@ -1436,6 +1438,8 @@ const server = http.createServer(async (req, res) => {
               case 'scenario:createTask': return writeJSON(res, 200, scenarioTaskStore.createTask(args[0]));
               case 'scenario:updateTask': return writeJSON(res, 200, scenarioTaskStore.updateTask(args[0], args[1]));
               case 'scenario:deleteTask': return writeJSON(res, 200, scenarioTaskStore.deleteTask(args[0]));
+              case 'scenario:setActiveTask': return writeJSON(res, 200, scenarioTaskStore.setActiveTask(args[0]));
+              case 'scenario:getActiveTask': return writeJSON(res, 200, scenarioTaskStore.getActiveTask());
               case 'scenario:listDrafts': return writeJSON(res, 200, scenarioTaskStore.listDrafts(args[0]));
               case 'scenario:deleteDraft': return writeJSON(res, 200, scenarioTaskStore.deleteDraft(args[0]));
               case 'scenario:markDraftPushed': return writeJSON(res, 200, scenarioTaskStore.updateDraft(args[0], { status: 'pushed', pushed_at: Date.now() }));
