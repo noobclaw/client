@@ -30,7 +30,7 @@ import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateModal from './components/update/AppUpdateModal';
 import { WalletView } from './components/wallet/WalletView';
 import { InviteView } from './components/invite/InviteView';
-import { QuickUseView } from './components/quickuse/QuickUseView';
+import { ScenarioView } from './components/scenario/ScenarioView';
 import PartnersView from './components/partners/PartnersView';
 import PersonalityView from './components/personality/PersonalityView';
 import LoginWall from './components/LoginWall';
@@ -805,7 +805,7 @@ const App: React.FC = () => {
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
             ) : mainView === 'quickuse' ? (
-              <QuickUseView
+              <ScenarioView
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
