@@ -148,6 +148,18 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Tauri v2's macOS dmg bundler normally passes `--skip-jenkins`
+          # to bundle_dmg.sh when it detects `CI=true`, which skips the
+          # Finder-prettifying AppleScript — the one step that actually
+          # applies our tauri.conf.json appPosition / applicationFolderPosition
+          # values. Without it the DMG ships with the default Finder
+          # layout (Applications on the left, app on the right) and all
+          # our icon-position config is silently ignored.
+          #
+          # Setting TAURI_BUNDLER_DMG_IGNORE_CI=1 tells Tauri to NOT add
+          # --skip-jenkins, so the AppleScript runs and our positions
+          # actually show up in the generated .DS_Store.
+          TAURI_BUNDLER_DMG_IGNORE_CI: '1'
 
       # NOTE: Info.plist extras (ATS loopback exception, TCC usage
       # descriptions, LSApplicationCategoryType, NSHumanReadableCopyright)
