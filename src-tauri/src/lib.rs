@@ -856,17 +856,26 @@ pub fn run() {
                     .build(app)?;
             }
 
-            // ── macOS TCC priming ────────────────────────────────────
-            // Force-register the main app binary with the TCC database
-            // for Screen Recording and Accessibility so the user SEES
-            // "NoobClaw" in System Settings → Privacy instead of having
-            // to hunt for `noobclaw-server`. These two calls are
-            // documented as "silent preflight" — they do NOT prompt the
-            // user unless we also call the `Request` variant, which we
-            // defer until the user actually needs the capability.
+            // ── macOS TCC registration ───────────────────────────────
+            // Call CGRequestScreenCaptureAccess() at startup so the app
+            // appears in System Settings → Privacy → Screen Recording.
+            // CGPreflightScreenCaptureAccess (what we had before) only
+            // QUERIES the TCC database — it never writes a row, so
+            // NoobClaw never showed up in the settings list and users
+            // couldn't grant the permission even if they wanted to.
+            //
+            // CGRequestScreenCaptureAccess triggers a one-time system
+            // dialog on the first launch ("NoobClaw wants to record
+            // your screen"). After that — whether the user approves or
+            // denies — NoobClaw stays in the list and the user can
+            // toggle it later without us needing to ask again.
+            //
+            // AXIsProcessTrusted is different: it registers the app in
+            // the Accessibility list as a side effect even though it's
+            // technically a query. So we keep calling it as-is.
             #[cfg(target_os = "macos")]
             unsafe {
-                let _ = CGPreflightScreenCaptureAccess();
+                let _ = CGRequestScreenCaptureAccess();
                 let _ = AXIsProcessTrusted();
             }
 
