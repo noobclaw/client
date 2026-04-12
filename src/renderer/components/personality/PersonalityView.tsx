@@ -118,7 +118,19 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
     return () => window.clearTimeout(timer);
   }, [src]);
 
-  const handleIframeLoad = () => setIframeState('loaded');
+  const handleIframeLoad = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    setIframeState('loaded');
+    // Belt-and-suspenders: as soon as the embed finishes loading, push
+    // the current lang in via postMessage. The website's bootstrap
+    // already reads ?lang= from the URL, but if an intermediate cache
+    // / bfcache layer ever serves a stale HTML whose sessionStorage
+    // still has the previous value, this forces an immediate re-apply
+    // on the correct language without waiting for another reload.
+    try {
+      const w = (e.currentTarget as HTMLIFrameElement).contentWindow;
+      w?.postMessage({ type: 'noobclaw-embed-setlang', lang }, '*');
+    } catch { /* ignore cross-origin edge cases */ }
+  };
 
   return (
     <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
