@@ -123,9 +123,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     }
   };
 
-  const doSave = async () => {
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleFinish = async () => {
     if (!canFinish || saving) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await onSave({
         scenario_id: scenario.id,
@@ -136,13 +139,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         variants_per_post: variants,
         daily_time: dailyTime,
       });
+    } catch (err) {
+      console.error('[ConfigWizard] save failed:', err);
+      setSaveError(String(err instanceof Error ? err.message : err) || '保存失败，请重试');
     } finally {
       setSaving(false);
     }
-  };
-
-  const handleFinish = async () => {
-    await doSave();
   };
 
   return (
@@ -356,6 +358,20 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </div>
                 </div>
 
+                {/* ⚠️ 使用须知 — prominent warning box */}
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
+                  <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
+                    ⚠️ 使用须知（重要）
+                  </div>
+                  <ul className="text-xs text-gray-700 dark:text-gray-300 space-y-1.5 leading-relaxed">
+                    <li>🤖 所有操作都是<strong>模拟你本人在小红书上的行为</strong>，NoobClaw 会像你一样浏览、滚动、点击</li>
+                    <li>🌐 任务运行期间请<strong>不要关闭 Chrome 中的小红书页面</strong></li>
+                    <li>🔐 请<strong>不要退出小红书登录</strong>，否则任务会中断</li>
+                    <li>🔄 每次任务执行前，NoobClaw 会<strong>自动检查你的登录状态</strong>，确认正常后才开始</li>
+                    <li>⏰ 任务运行时你可以正常使用电脑做其他事，但请保持 Chrome 打开</li>
+                  </ul>
+                </div>
+
                 <div className="space-y-2">
                   <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
                     📋 {i18nService.t('scenarioWizardConfirmTermsTitle')}
@@ -380,6 +396,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </label>
                   ))}
                 </div>
+
+                {/* Save error feedback */}
+                {saveError && (
+                  <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+                    ❌ {saveError}
+                  </div>
+                )}
               </div>
             )}
           </div>
