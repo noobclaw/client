@@ -79,26 +79,21 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
   // Parse existing schedule for edit mode
   const parsed = task ? parseScheduleToUI(task.schedule) : null;
 
-  // Sensible defaults for a brand-new task: one hour from now, in the
-  // user's LOCAL timezone. Previously scheduleDate defaulted to an
-  // empty string, so the first validate() call hit `!scheduleDate` and
-  // reported "执行时间必须在未来" — but the error message was wrong and
-  // users who just typed a time (without clicking the date field, where
-  // Chrome's placeholder "YYYY/MM/DD" looks like a real value) saw a
-  // confusing "must be in the future" toast even though their time was
-  // clearly in the future. Defaulting to `now + 1h` avoids the trap AND
-  // is what most users want anyway.
-  const defaultFireAt = new Date(Date.now() + 60 * 60 * 1000);
-  const pad2 = (n: number) => n.toString().padStart(2, '0');
-  const defaultDate =
-    `${defaultFireAt.getFullYear()}-${pad2(defaultFireAt.getMonth() + 1)}-${pad2(defaultFireAt.getDate())}`;
-  const defaultTime = `${pad2(defaultFireAt.getHours())}:${pad2(defaultFireAt.getMinutes())}`;
-
+  // For NEW tasks we deliberately leave scheduleDate/scheduleTime empty
+  // so both macOS and Windows behave identically: user must actively
+  // pick both fields. We tried auto-filling with `now + 1h` earlier,
+  // but on macOS Chrome the rendered `type="date"` input displayed the
+  // auto-filled value but the native date picker still required the
+  // user to re-select it once — a confusing extra click. Leaving both
+  // empty keeps platform parity and matches Windows's pre-existing
+  // behavior. The split validation error messages below make the
+  // "date required" vs "must be in future" case clear.
+  //
   // Form state
   const [name, setName] = useState(task?.name ?? '');
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(parsed?.mode ?? 'once');
-  const [scheduleDate, setScheduleDate] = useState(parsed?.date ?? defaultDate);
-  const [scheduleTime, setScheduleTime] = useState(parsed?.time ?? defaultTime);
+  const [scheduleDate, setScheduleDate] = useState(parsed?.date ?? '');
+  const [scheduleTime, setScheduleTime] = useState(parsed?.time ?? '');
   const [weekday, setWeekday] = useState(parsed?.weekday ?? 1);
   const [monthDay, setMonthDay] = useState(parsed?.monthDay ?? 1);
   const [prompt, setPrompt] = useState(task?.prompt ?? '');
