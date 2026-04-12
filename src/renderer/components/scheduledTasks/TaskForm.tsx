@@ -79,11 +79,26 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
   // Parse existing schedule for edit mode
   const parsed = task ? parseScheduleToUI(task.schedule) : null;
 
+  // Sensible defaults for a brand-new task: one hour from now, in the
+  // user's LOCAL timezone. Previously scheduleDate defaulted to an
+  // empty string, so the first validate() call hit `!scheduleDate` and
+  // reported "执行时间必须在未来" — but the error message was wrong and
+  // users who just typed a time (without clicking the date field, where
+  // Chrome's placeholder "YYYY/MM/DD" looks like a real value) saw a
+  // confusing "must be in the future" toast even though their time was
+  // clearly in the future. Defaulting to `now + 1h` avoids the trap AND
+  // is what most users want anyway.
+  const defaultFireAt = new Date(Date.now() + 60 * 60 * 1000);
+  const pad2 = (n: number) => n.toString().padStart(2, '0');
+  const defaultDate =
+    `${defaultFireAt.getFullYear()}-${pad2(defaultFireAt.getMonth() + 1)}-${pad2(defaultFireAt.getDate())}`;
+  const defaultTime = `${pad2(defaultFireAt.getHours())}:${pad2(defaultFireAt.getMinutes())}`;
+
   // Form state
   const [name, setName] = useState(task?.name ?? '');
   const [scheduleMode, setScheduleMode] = useState<ScheduleMode>(parsed?.mode ?? 'once');
-  const [scheduleDate, setScheduleDate] = useState(parsed?.date ?? '');
-  const [scheduleTime, setScheduleTime] = useState(parsed?.time ?? '09:00');
+  const [scheduleDate, setScheduleDate] = useState(parsed?.date ?? defaultDate);
+  const [scheduleTime, setScheduleTime] = useState(parsed?.time ?? defaultTime);
   const [weekday, setWeekday] = useState(parsed?.weekday ?? 1);
   const [monthDay, setMonthDay] = useState(parsed?.monthDay ?? 1);
   const [prompt, setPrompt] = useState(task?.prompt ?? '');
@@ -154,15 +169,35 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
     if (!(workingDirectory.trim() || defaultWorkingDirectory.trim())) {
       newErrors.workingDirectory = i18nService.t('scheduledTasksFormValidationWorkingDirectoryRequired');
     }
+    // Schedule validation — branch by mode so the error messages stay
+    // accurate. Previously the "once" branch reported
+    // "执行时间必须在未来" for BOTH a missing date and a past datetime,
+    // which led to the "time is in the future but it still complains"
+    // bug when scheduleDate was empty. Now:
+    //   - missing date / time → a specific "required" error
+    //   - past datetime → the "must be in future" error
     if (scheduleMode === 'once') {
-      if (!scheduleDate || !scheduleTime) {
-        newErrors.schedule = i18nService.t('scheduledTasksFormValidationDatetimeFuture');
-      } else if (new Date(`${scheduleDate}T${scheduleTime}`).getTime() <= Date.now()) {
-        newErrors.schedule = i18nService.t('scheduledTasksFormValidationDatetimeFuture');
+      if (!scheduleDate) {
+        newErrors.schedule = i18nService.t('scheduledTasksFormValidationDateRequired');
+      } else if (!scheduleTime) {
+        newErrors.schedule = i18nService.t('scheduledTasksFormValidationTimeRequired');
+      } else {
+        // Local-time comparison — `new Date("YYYY-MM-DDTHH:MM")` with
+        // no trailing Z is parsed as local time per ECMAScript 2015+.
+        // Small grace window (30s) so a user who picks "now" doesn't
+        // race the clock on submit.
+        const fireAt = new Date(`${scheduleDate}T${scheduleTime}`).getTime();
+        if (Number.isNaN(fireAt)) {
+          newErrors.schedule = i18nService.t('scheduledTasksFormValidationDatetimeFuture');
+        } else if (fireAt <= Date.now() - 30_000) {
+          newErrors.schedule = i18nService.t('scheduledTasksFormValidationDatetimeFuture');
+        }
       }
-    }
-    if (!scheduleTime) {
-      newErrors.schedule = i18nService.t('scheduledTasksFormValidationTimeRequired');
+    } else {
+      // Recurring modes only need a time.
+      if (!scheduleTime) {
+        newErrors.schedule = i18nService.t('scheduledTasksFormValidationTimeRequired');
+      }
     }
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
