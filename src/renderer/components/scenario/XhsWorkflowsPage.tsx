@@ -17,7 +17,7 @@
 
 import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
+import { type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import type { XhsLoginStatus } from '../../types/scenario';
 
@@ -66,7 +66,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 }) => {
   const scenarioById = new Map(scenarios.map(s => [s.id, s]));
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
-  const [checkingLogin, setCheckingLogin] = useState(false);
 
   // Find the default viral-production scenario. If the backend scenario list
   // hasn't loaded yet, use a hardcoded fallback so the "立即开始" button
