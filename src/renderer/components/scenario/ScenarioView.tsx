@@ -70,9 +70,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         scenarioService.listTasks().catch(() => []),
         scenarioService.listDrafts().catch(() => []),
       ]);
-      setScenarios(s);
-      setTasks(t);
-      setDrafts(d);
+      setScenarios(Array.isArray(s) ? s : []);
+      setTasks(Array.isArray(t) ? t : []);
+      setDrafts(Array.isArray(d) ? d : []);
     } catch (err) {
       console.error('[ScenarioView] refreshAll failed:', err);
       setFatalError(String(err instanceof Error ? err.message : err));

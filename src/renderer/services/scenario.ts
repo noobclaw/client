@@ -47,7 +47,8 @@ class ScenarioService {
 
   async listTasks(): Promise<Task[]> {
     try {
-      return (await window.electron.scenario.listTasks()) || [];
+      const r = await window.electron.scenario.listTasks();
+      return Array.isArray(r) ? r : [];
     } catch {
       return [];
     }
@@ -87,7 +88,8 @@ class ScenarioService {
 
   async listDrafts(taskId?: string): Promise<Draft[]> {
     try {
-      return (await window.electron.scenario.listDrafts(taskId)) || [];
+      const r = await window.electron.scenario.listDrafts(taskId);
+      return Array.isArray(r) ? r : [];
     } catch {
       return [];
     }
