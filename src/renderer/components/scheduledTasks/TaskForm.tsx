@@ -302,16 +302,31 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
             ))}
           </select>
 
-          {/* Second column: date/weekday/monthday or time (for daily) */}
+          {/* Second column: date/weekday/monthday or time (for daily).
+              For the "once" date and the standalone "time" inputs we
+              wrap in a relative div and overlay a placeholder when the
+              value is empty. This is needed because macOS Chrome
+              renders an empty <input type="date"> with today's date
+              shown in the input's main text color (not a grayed-out
+              placeholder), which looks like a real value and confuses
+              users. The overlay is pointer-events:none so clicks pass
+              through to the input and still open the native picker. */}
           {scheduleMode === 'once' ? (
-            <input
-              type="date"
-              value={scheduleDate}
-              onChange={(e) => setScheduleDate(e.target.value)}
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-              className={inputClass}
-              min={new Date().toISOString().slice(0, 10)}
-            />
+            <div className="relative">
+              <input
+                type="date"
+                value={scheduleDate}
+                onChange={(e) => setScheduleDate(e.target.value)}
+                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+                className={`${inputClass} ${!scheduleDate ? '[&::-webkit-datetime-edit]:opacity-0' : ''}`}
+                min={new Date().toISOString().slice(0, 10)}
+              />
+              {!scheduleDate && (
+                <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70">
+                  {i18nService.t('scheduledTasksFormSchedulePickDate')}
+                </div>
+              )}
+            </div>
           ) : scheduleMode === 'weekly' ? (
             <select
               value={weekday}
@@ -337,26 +352,41 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
               ))}
             </select>
           ) : (
-            <input
-              type="time"
-              value={scheduleTime}
-              onChange={(e) => setScheduleTime(e.target.value)}
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+                className={`${inputClass} ${!scheduleTime ? '[&::-webkit-datetime-edit]:opacity-0' : ''}`}
+              />
+              {!scheduleTime && (
+                <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70">
+                  {i18nService.t('scheduledTasksFormSchedulePickTime')}
+                </div>
+              )}
+            </div>
           )}
 
-          {/* Third column: time picker (or empty for daily) */}
+          {/* Third column: time picker (or empty for daily) — same
+              overlay trick as the date column above. */}
           {scheduleMode === 'daily' ? (
             <div />
           ) : (
-            <input
-              type="time"
-              value={scheduleTime}
-              onChange={(e) => setScheduleTime(e.target.value)}
-              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-              className={inputClass}
-            />
+            <div className="relative">
+              <input
+                type="time"
+                value={scheduleTime}
+                onChange={(e) => setScheduleTime(e.target.value)}
+                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+                className={`${inputClass} ${!scheduleTime ? '[&::-webkit-datetime-edit]:opacity-0' : ''}`}
+              />
+              {!scheduleTime && (
+                <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70">
+                  {i18nService.t('scheduledTasksFormSchedulePickTime')}
+                </div>
+              )}
+            </div>
           )}
         </div>
         {errors.schedule && <p className={errorClass}>{errors.schedule}</p>}
@@ -393,14 +423,26 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
           </span>
         </label>
         <div className="flex items-center gap-2">
-          <input
-            type="date"
-            value={expiresAt}
-            onChange={(e) => setExpiresAt(e.target.value)}
-            onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-            className={inputClass + ' flex-1'}
-            min={new Date().toISOString().slice(0, 10)}
-          />
+          {/* Expires date picker — same overlay pattern as the
+              schedule date above; hides the macOS Chrome auto-display
+              when value is empty. Expires is optional so the field
+              stays empty by default and the overlay is the only thing
+              the user sees until they pick a date. */}
+          <div className="relative flex-1">
+            <input
+              type="date"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+              onClick={(e) => (e.target as HTMLInputElement).showPicker()}
+              className={`${inputClass} w-full ${!expiresAt ? '[&::-webkit-datetime-edit]:opacity-0' : ''}`}
+              min={new Date().toISOString().slice(0, 10)}
+            />
+            {!expiresAt && (
+              <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70">
+                {i18nService.t('scheduledTasksFormSchedulePickDate')}
+              </div>
+            )}
+          </div>
           {expiresAt && (
             <button
               type="button"
