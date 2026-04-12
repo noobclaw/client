@@ -156,10 +156,13 @@ jobs:
           # layout (Applications on the left, app on the right) and all
           # our icon-position config is silently ignored.
           #
-          # Setting TAURI_BUNDLER_DMG_IGNORE_CI=1 tells Tauri to NOT add
-          # --skip-jenkins, so the AppleScript runs and our positions
-          # actually show up in the generated .DS_Store.
-          TAURI_BUNDLER_DMG_IGNORE_CI: '1'
+          # Setting TAURI_BUNDLER_DMG_IGNORE_CI="true" tells Tauri to NOT
+          # add --skip-jenkins, so the AppleScript runs and our positions
+          # actually show up in the generated .DS_Store. Must be the
+          # exact string "true" — Tauri's check is
+          #   env::var_os("TAURI_BUNDLER_DMG_IGNORE_CI") != "true"
+          # (see tauri-bundler/src/bundle/macos/dmg/mod.rs).
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
 
       # NOTE: Info.plist extras (ATS loopback exception, TCC usage
       # descriptions, LSApplicationCategoryType, NSHumanReadableCopyright)
