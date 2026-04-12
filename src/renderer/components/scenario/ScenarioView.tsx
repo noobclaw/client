@@ -56,6 +56,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fatalError, setFatalError] = useState<string | null>(null);
 
   // Wizard state
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
@@ -65,13 +66,16 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setLoading(true);
     try {
       const [s, t, d] = await Promise.all([
-        scenarioService.listScenarios(),
-        scenarioService.listTasks(),
-        scenarioService.listDrafts(),
+        scenarioService.listScenarios().catch(() => []),
+        scenarioService.listTasks().catch(() => []),
+        scenarioService.listDrafts().catch(() => []),
       ]);
       setScenarios(s);
       setTasks(t);
       setDrafts(d);
+    } catch (err) {
+      console.error('[ScenarioView] refreshAll failed:', err);
+      setFatalError(String(err instanceof Error ? err.message : err));
     } finally {
       setLoading(false);
     }
@@ -281,7 +285,24 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       </div>
 
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto">{platformTabContent}</div>
+      {/* Main content — guarded with a fallback so a render crash doesn't black-screen the app */}
+      <div className="flex-1 overflow-y-auto">
+        {fatalError ? (
+          <div className="p-8 text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <div className="text-sm text-red-500 mb-4">{fatalError}</div>
+            <button
+              type="button"
+              onClick={() => { setFatalError(null); void refreshAll(); }}
+              className="px-4 py-2 text-sm rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900"
+            >
+              重试
+            </button>
+          </div>
+        ) : (
+          platformTabContent
+        )}
+      </div>
 
       {/* Config wizard modal */}
       {wizardScenario && (
