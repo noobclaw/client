@@ -111,10 +111,7 @@ const TokenUsagePanel: React.FC = () => {
 
   return (
     <div className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text">
-          {i18nService.t('walletUsageTitle') || 'Token 消耗'}
-        </h3>
+      <div className="flex items-center justify-end mb-3">
         <button
           type="button"
           onClick={() => void load()}
