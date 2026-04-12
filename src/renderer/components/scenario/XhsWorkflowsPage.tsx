@@ -68,43 +68,58 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
   const [checkingLogin, setCheckingLogin] = useState(false);
 
-  // Find the default viral-production scenario to wire the quick-start button
+  // Find the default viral-production scenario. If the backend scenario list
+  // hasn't loaded yet, use a hardcoded fallback so the "立即开始" button
+  // ALWAYS opens the config wizard — never navigates to an empty sub-page.
+  const FALLBACK_SCENARIO: Scenario = {
+    id: 'xhs_viral_production_career',
+    version: '1.0.0',
+    platform: 'xhs',
+    workflow_type: 'viral_production',
+    category: 'knowledge',
+    name_zh: '副业干货',
+    name_en: 'Side Hustle Notes',
+    description_zh: '自动发现小红书副业图文爆款，本地 AI 拆解后用你的 persona 生成仿写。',
+    description_en: 'Discover viral side-hustle image notes on Xiaohongshu.',
+    icon: '💼',
+    default_config: {
+      keywords: ['副业', '下班赚钱', '兼职', '月入'],
+      persona: '一个想在下班后搞点副业的普通打工人，真诚不装',
+      daily_count: 3,
+      variants_per_post: 3,
+      schedule_window: '08:00-09:00',
+    },
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 20,
+      min_scroll_delay_ms: 1800, max_scroll_delay_ms: 4200,
+      read_dwell_min_ms: 2500, read_dwell_max_ms: 5500,
+      max_run_duration_ms: 720000, min_interval_hours: 8,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.xiaohongshu.com',
+    entry_urls: {},
+    skills: {},
+  };
+
   const primaryScenario = scenarios.find(
     s => s.platform === 'xhs' && s.workflow_type === 'viral_production'
-  );
-  const primaryTask = primaryScenario
-    ? tasks.find(t => t.scenario_id === primaryScenario.id)
-    : undefined;
+  ) || FALLBACK_SCENARIO;
 
-  const handleQuickStart = async () => {
-    if (!primaryScenario) return;
-    setCheckingLogin(true);
-    try {
-      const status = await scenarioService.checkXhsLogin();
-      if (!status.loggedIn) {
-        setLoginModalReason(status.reason || 'not_logged_in');
-        return;
-      }
-      if (primaryTask) {
-        onOpenTask(primaryTask.id);
-      } else {
-        onConfigure(primaryScenario);
-      }
-    } finally {
-      setCheckingLogin(false);
+  const primaryTask = tasks.find(t => t.scenario_id === primaryScenario.id);
+
+  const handleQuickStart = () => {
+    if (primaryTask) {
+      onOpenTask(primaryTask.id);
+    } else {
+      onConfigure(primaryScenario);
     }
   };
 
   const handleLoginRetry = (status: XhsLoginStatus) => {
     if (status.loggedIn) {
       setLoginModalReason(null);
-      // Re-run quick start action now that we're logged in
-      if (!primaryScenario) return;
-      if (primaryTask) {
-        onOpenTask(primaryTask.id);
-      } else {
-        onConfigure(primaryScenario);
-      }
+      handleQuickStart();
     } else {
       setLoginModalReason(status.reason || 'not_logged_in');
     }
@@ -131,24 +146,12 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </div>
             <button
               type="button"
-              onClick={() => {
-                if (primaryTask) {
-                  onOpenTask(primaryTask.id);
-                } else if (primaryScenario) {
-                  void handleQuickStart();
-                } else {
-                  // Scenario list hasn't loaded yet — go to workflow detail page
-                  onOpenWorkflow('viral_production');
-                }
-              }}
-              disabled={checkingLogin}
-              className="shrink-0 px-8 py-4 text-base font-bold rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/25 transition-all disabled:opacity-50 active:scale-95"
+              onClick={handleQuickStart}
+              className="shrink-0 px-8 py-4 text-base font-bold rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/25 transition-all active:scale-95"
             >
-              {checkingLogin
-                ? i18nService.t('scenarioLoginChecking')
-                : primaryTask
-                  ? '📋 ' + i18nService.t('scenarioQuickStartContinueBtn') + ' →'
-                  : '🚀 ' + i18nService.t('scenarioQuickStartBtn') + ' →'}
+              {primaryTask
+                ? '📋 ' + i18nService.t('scenarioQuickStartContinueBtn') + ' →'
+                : '🚀 ' + i18nService.t('scenarioQuickStartBtn') + ' →'}
             </button>
           </div>
         </div>
