@@ -6,7 +6,6 @@ import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
-import TokenUsagePanel from './TokenUsagePanel';
 
 interface WalletViewProps {
   onOpenSettings?: () => void;
@@ -1029,9 +1028,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             </div>
           )}
         </div>
-
-        {/* Token usage card (B2d) — today / week / month + 14-day histogram */}
-        <TokenUsagePanel />
 
         {/* Buy Tokens */}
         <div>
