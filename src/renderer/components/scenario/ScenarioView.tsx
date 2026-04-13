@@ -151,12 +151,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const tasksForPlatform = useMemo(() => {
+    if (!Array.isArray(tasks) || !Array.isArray(scenarios)) return [];
     const byId = new Map(scenarios.map(s => [s.id, s]));
     return tasks.filter(t => byId.get(t.scenario_id)?.platform === currentPlatform);
   }, [tasks, scenarios, currentPlatform]);
 
   const draftsByTask = useMemo(() => {
     const map = new Map<string, Draft[]>();
+    if (!Array.isArray(drafts)) return map;
     for (const d of drafts) {
       const arr = map.get(d.task_id) || [];
       arr.push(d);

@@ -35,8 +35,10 @@ function sleep(ms: number): Promise<void> {
 // This works regardless of DOM structure or HttpOnly cookie flags.
 // If logged in, the API returns user data (200). If not, it 401s or
 // returns an error code in the JSON body.
+// IMPORTANT: must start with `return` because Chrome extension's executeJavascript
+// wraps code via `new Function(code)` — without return, the IIFE result is lost.
 const LOGIN_PROBE_CODE = `
-(async function() {
+return (async function() {
   try {
     // Quick check: are we even on xiaohongshu.com?
     if (!/xiaohongshu\\.com/i.test(location.hostname)) {
@@ -222,7 +224,7 @@ function keywordMatch(text: string, keywords: string[]): boolean {
 // ── Anomaly detection via page eval ──
 
 const ANOMALY_DETECTOR_CODE = `
-(function() {
+return (function() {
   var body = document.body ? (document.body.innerText || '') : '';
   var url = location.href || '';
   if (document.querySelector('.captcha-slider, .nc_iconfont, iframe[src*="captcha"]')) return 'captcha';
@@ -251,7 +253,7 @@ async function checkAnomaly(): Promise<
 // ── Feed card reader (single round-trip DOM eval) ──
 
 const FEED_CARDS_CODE = `
-(function() {
+return (function() {
   function q(selectors) {
     for (var i = 0; i < selectors.length; i++) {
       var el = document.querySelector(selectors[i]);
@@ -310,7 +312,7 @@ async function readFeedCards(): Promise<FeedCard[]> {
 // ── Detail page reader ──
 
 const DETAIL_PAGE_CODE = `
-(function() {
+return (function() {
   function text(sels) {
     for (var i = 0; i < sels.length; i++) {
       var el = document.querySelector(sels[i]);
