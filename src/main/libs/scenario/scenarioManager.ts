@@ -149,7 +149,12 @@ export function getRunningTaskId(): string | null {
 
 // ── Main entry ──
 
-export async function runTask(task: ScenarioTask): Promise<RunOutcome> {
+/**
+ * @param manual — true when user clicks "直接运行". Manual runs bypass
+ *   daily cap and interval checks (only mutex is enforced). Scheduled
+ *   auto-runs pass false/undefined and are subject to all risk guards.
+ */
+export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
   if (runningTaskId) {
     return { status: 'skipped', reason: 'another_task_running' };
   }
@@ -157,7 +162,7 @@ export async function runTask(task: ScenarioTask): Promise<RunOutcome> {
   initProgress(task.id);
 
   try {
-    return await _runTaskInner(task);
+    return await _runTaskInner(task, manual);
   } finally {
     runningTaskId = null;
     // Keep progress around for 30s so UI can show final state
@@ -167,18 +172,22 @@ export async function runTask(task: ScenarioTask): Promise<RunOutcome> {
   }
 }
 
-async function _runTaskInner(task: ScenarioTask): Promise<RunOutcome> {
+async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
   const pack = await loadPack(task.scenario_id);
   if (!pack) {
     finishProgress('error', 'scenario_pack_not_found');
     return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
 
-  const gate = riskGuard.canRunNow(task, pack.manifest.risk_caps);
-  if (!gate.allowed) {
-    riskGuard.markRunSkipped(task.id, gate.reason || 'gate');
-    finishProgress('error', gate.reason);
-    return { status: 'skipped', reason: gate.reason };
+  // Manual runs ("直接运行") bypass daily cap / interval / weekly rest.
+  // Only scheduled auto-runs are subject to all risk guards.
+  if (!manual) {
+    const gate = riskGuard.canRunNow(task, pack.manifest.risk_caps);
+    if (!gate.allowed) {
+      riskGuard.markRunSkipped(task.id, gate.reason || 'gate');
+      finishProgress('error', gate.reason);
+      return { status: 'skipped', reason: gate.reason };
+    }
   }
 
   riskGuard.markRunStart(task.id);

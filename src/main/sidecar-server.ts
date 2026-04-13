@@ -1462,7 +1462,8 @@ const server = http.createServer(async (req, res) => {
                 scenarioRiskGuard._loaded = true;
               }
               const scenarioManager = require('./libs/scenario/scenarioManager');
-              const result = await scenarioManager.runTask(task);
+              // manual=true: user clicked "直接运行", bypass daily cap
+              const result = await scenarioManager.runTask(task, true);
               // Ensure reason is always a non-empty string on failure
               if (result && result.status !== 'ok' && !result.reason) {
                 result.reason = 'no_reason_provided';
