@@ -214,7 +214,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="累计采集" value={stats?.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) ?? 0} />
+        <StatCard label="累计采集" value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
         <StatCard label="生成草稿" value={stats?.draft_count ?? 0} />
         <StatCard label="已推送" value={stats?.pushed_draft_count ?? 0} />
         <StatCard label="上次运行" value={formatRelative(stats?.last_run_at || null)} small />

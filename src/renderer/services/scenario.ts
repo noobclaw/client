@@ -173,11 +173,13 @@ class ScenarioService {
     last_run_status: ScenarioTaskRun['status'] | null;
     cooldown_ends_at: number;
   }> {
-    const [{ runs, cooldown_ends_at }, drafts] = await Promise.all([
-      this.runStatus(taskId),
+    const [runStatusResult, drafts] = await Promise.all([
+      this.runStatus(taskId).catch(() => ({ runs: [], cooldown_ends_at: 0 })),
       this.listDrafts(taskId),
     ]);
-    const last = runs[runs.length - 1];
+    const runs = Array.isArray(runStatusResult?.runs) ? runStatusResult.runs : [];
+    const cooldown_ends_at = runStatusResult?.cooldown_ends_at || 0;
+    const last = runs.length > 0 ? runs[runs.length - 1] : null;
     return {
       runs,
       draft_count: drafts.length,
