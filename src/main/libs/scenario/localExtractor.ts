@@ -74,10 +74,10 @@ function parseJsonSafe(raw: string): any | null {
 // ── Extract ──
 
 export async function extract(pack: ScenarioPack, note: DiscoveredNote): Promise<ExtractionResult | null> {
-  const skill = pack.skills.extractor;
-  if (!skill) throw new Error('Scenario pack missing extractor skill');
+  const promptText = pack.prompts?.extractor;
+  if (!promptText) throw new Error('Scenario pack missing extractor prompt');
 
-  const systemPrompt = extractSystemPrompt(skill);
+  const systemPrompt = promptText.trim();
   const userPayload = {
     title: note.title,
     body: note.body,
@@ -130,10 +130,10 @@ export async function compose(
   extraction: ExtractionResult,
   originalBody: string
 ): Promise<ComposedVariant[]> {
-  const skill = pack.skills.composer;
-  if (!skill) throw new Error('Scenario pack missing composer skill');
+  const promptText = pack.prompts?.composer;
+  if (!promptText) throw new Error('Scenario pack missing composer prompt');
 
-  const systemPrompt = extractSystemPrompt(skill);
+  const systemPrompt = promptText.trim();
   const userPayload = {
     extraction,
     persona: task.persona,

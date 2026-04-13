@@ -35,7 +35,7 @@ export interface ScenarioManifest {
   required_login_url: string;
   entry_urls: Record<string, string>;
   creator_urls?: Record<string, string>;
-  skills: Record<string, string>;   // key → filename
+  skills: Record<string, any>;      // key → filename or nested object
 }
 
 export interface ScenarioDefaultConfig {
@@ -61,15 +61,53 @@ export interface RiskCaps {
   cooldown_account_flag_hours: number;
 }
 
+/** Config for discovery behavior (from config.json on server) */
+export interface DiscoveryConfig {
+  strategy: 'search_first' | 'explore_first';
+  search_filters: {
+    tab: string;
+    sort: string;
+    time: string;
+    open_filter_panel: boolean;
+  };
+  qualify: {
+    min_likes: number;
+    exclude_types: string[];
+    require_keyword_on_search: boolean;
+    require_keyword_on_explore: boolean;
+  };
+  behavior: {
+    first_screen_pause: [number, number];
+    scroll_pause: [number, number];
+    detail_page_pause: [number, number];
+    filter_click_pause: [number, number];
+    max_scrolls_no_new: number;
+  };
+}
+
+/**
+ * ScenarioPack — downloaded from server on each run.
+ * Contains everything needed to execute a scenario:
+ *   - scripts: browser-injected JS code (hot-updatable)
+ *   - prompts: AI system prompts (hot-updatable)
+ *   - config: discovery strategy/thresholds (hot-updatable)
+ *   - manifest: metadata + risk caps
+ */
 export interface ScenarioPack {
   manifest: ScenarioManifest;
-  skills: {
-    discovery?: string;
-    extractor?: string;
-    composer?: string;
-    draft_uploader?: string;
-    [k: string]: string | undefined;
+  scripts: {
+    click_by_text: string;
+    read_feed_cards: string;
+    read_detail_page: string;
+    check_anomaly: string;
+    apply_filters: string;
   };
+  prompts: {
+    extractor: string;
+    composer: string;
+  };
+  config: DiscoveryConfig;
+  draft_uploader?: any;
 }
 
 // ── Task (a user's configured instance of a scenario) ──
