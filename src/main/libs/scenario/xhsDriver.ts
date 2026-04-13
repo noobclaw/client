@@ -11,6 +11,7 @@
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, getBrowserBridgeStatus } from '../browserBridge';
 import * as riskGuard from './riskGuard';
+import { isAbortRequested } from './scenarioManager';
 import type {
   DiscoveredNote,
   ScenarioManifest,
@@ -320,6 +321,8 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
     }
 
     for (let scroll = 0; scroll < caps.max_scroll_per_run; scroll++) {
+      // ── Abort check inside scroll loop ──
+      if (isAbortRequested()) throw new Error('user_stopped');
       if (Date.now() - startedAt > caps.max_run_duration_ms) {
         throw new Error('run_duration_exceeded');
       }
@@ -336,8 +339,6 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
         if (candidates.length >= target) return;
       }
       if (fresh === 0 && scroll > 2) {
-        // DOM unchanged after consecutive scrolls — maybe reached end or
-        // XHS re-shipped. Check anomaly once more then break out.
         const recheck = await checkAnomaly();
         if (recheck !== 'ok') {
           riskGuard.recordAnomaly(task.id, recheck as any, caps);
@@ -345,6 +346,8 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
         }
       }
       await sendBrowserCommand('scroll', { direction: 'down', amount: randInt(2, 4) }, 3000);
+      // ── Abort check after scroll ──
+      if (isAbortRequested()) throw new Error('user_stopped');
       await humanPause(caps);
     }
   }
@@ -356,12 +359,13 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
     // 2. Fall through to search pages per keyword until target met
     for (const kw of task.keywords) {
       if (candidates.length >= target) break;
+      if (isAbortRequested()) throw new Error('user_stopped');
       const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
       await visitFeedAndCollect(searchUrl);
     }
   } catch (err) {
-    // Visit loop threw — propagate but keep whatever we already have
     const msg = String(err);
+    if (msg === 'user_stopped') throw err; // propagate abort
     if (!msg.startsWith('anomaly:') && msg !== 'run_duration_exceeded') {
       coworkLog('WARN', 'xhsDriver', 'feed visit threw', { err: msg });
     } else {
@@ -371,6 +375,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
 
   // 3. For each candidate, open detail, read body + images, then go_back
   for (const card of candidates.slice(0, target)) {
+    if (isAbortRequested()) throw new Error('user_stopped');
     if (Date.now() - startedAt > caps.max_run_duration_ms) break;
 
     try {

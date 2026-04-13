@@ -139,6 +139,11 @@ export function requestAbort(): void {
   abortRequested = true;
 }
 
+/** Called by xhsDriver inside its scroll loop to check if user hit stop. */
+export function isAbortRequested(): boolean {
+  return abortRequested;
+}
+
 // ── Global mutex ──
 
 let runningTaskId: string | null = null;
@@ -299,7 +304,8 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
       drafts,
     };
   } catch (err) {
-    const msg = String(err);
+    let msg = String(err instanceof Error ? err.message : err);
+    if (msg.includes('user_stopped')) msg = 'user_stopped';
     riskGuard.markRunFailure(task.id, msg);
     finishProgress('error', msg);
     return { status: 'failed', reason: msg };
