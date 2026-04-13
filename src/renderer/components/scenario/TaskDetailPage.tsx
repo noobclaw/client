@@ -172,10 +172,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           ← {i18nService.t('scenarioTaskBack')}
         </button>
         <div className="flex items-center gap-2">
-          {/* Active toggle — most important action */}
+          {/* Active toggle */}
           {task.active ? (
             <span className="px-3 py-2 text-xs font-semibold rounded-lg bg-green-500/10 text-green-500 border border-green-500/30">
-              ● {i18nService.t('scenarioTaskActiveLabel')}
+              ● 定时运行
             </span>
           ) : (
             <button
@@ -186,7 +186,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               }}
               className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
             >
-              🎯 {i18nService.t('scenarioTaskSetActive')}
+              🎯 设为定时运行
             </button>
           )}
           <button
@@ -214,28 +214,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         </div>
       </div>
 
-      {/* Title + active status */}
-      <div className="mb-6">
-        <div className="flex items-center gap-3">
-          <div className="text-3xl">{scenario?.icon || '🔥'}</div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold dark:text-white">{scenario?.name_zh || task.scenario_id}</h1>
-              {task.active && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/30">
-                  {i18nService.t('scenarioTaskActiveLabel')}
-                </span>
-              )}
-              {!task.active && (
-                <span className="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-800 text-gray-500">
-                  {i18nService.t('scenarioTaskStandbyLabel')}
-                </span>
-              )}
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-              {task.keywords.join(' · ')}
-            </div>
-          </div>
+      {/* Config summary (matches the task card display on the list page) */}
+      <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
+        <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
+          <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{task.track || scenario?.name_zh || task.scenario_id}</span></div>
+          <div><span className="text-gray-400">关键词:</span> <span className="dark:text-gray-200">{task.keywords.join(' · ')}</span></div>
+          <div className="truncate"><span className="text-gray-400">Persona:</span> <span className="dark:text-gray-200">{task.persona}</span></div>
+          <div><span className="text-gray-400">频次:</span> <span className="dark:text-gray-200">⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</span></div>
         </div>
       </div>
 
@@ -252,11 +237,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           ⏳ {i18nService.t('scenarioTaskCooldownActive').replace('{hours}', String(cooldownHoursLeft))}
         </div>
       )}
-
-      {/* Mutex hint — always visible so user understands the rule */}
-      <div className="mb-6 rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs text-blue-600 dark:text-blue-400">
-        {i18nService.t('scenarioTaskMutexHint')}
-      </div>
 
       {/* Toast */}
       {toast && (
@@ -276,7 +256,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       {/* Drafts */}
       <section>
         <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
-          ✍️ {i18nService.t('scenarioSectionScenarios')}
+          ✍️ 爆款改写结果
           {pendingDrafts.length > 0 && (
             <span className="ml-2 text-xs font-normal text-amber-500">
               {i18nService.t('scenarioCardTaskDraftCount').replace('{n}', String(pendingDrafts.length))}
