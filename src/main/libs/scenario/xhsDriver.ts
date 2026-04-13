@@ -180,35 +180,42 @@ async function checkAnomaly(): Promise<
 
 // ── Feed card reader (single round-trip DOM eval) ──
 
+// Generic card reader — works on BOTH explore page AND search results page.
+// Finds all links containing a 24-char hex note ID (the universal XHS note ID format).
 const FEED_CARDS_CODE = `
 return (function() {
-  function q(selectors) {
-    for (var i = 0; i < selectors.length; i++) {
-      var el = document.querySelector(selectors[i]);
-      if (el) return el;
-    }
-    return null;
-  }
-  var cards = document.querySelectorAll('section.note-item, a[href^="/explore/"], div[data-v-noteitem]');
   var out = [];
-  for (var i = 0; i < cards.length; i++) {
-    var c = cards[i];
-    if (!c || !c.getBoundingClientRect) continue;
-    var rect = c.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) continue;
-    var isVideo = !!c.querySelector('.play-icon, [class*="video-icon"]');
-    var titleEl = c.querySelector('a.title span, .title, [class*="title"]');
-    var likesEl = c.querySelector('.like-wrapper .count, .count, [class*="like"]');
-    var linkEl = c.matches('a[href^="/explore/"]') ? c : c.querySelector('a[href^="/explore/"]');
-    if (!linkEl) continue;
-    var href = linkEl.getAttribute('href');
-    if (!href) continue;
-    var idMatch = href.match(/\\/explore\\/([a-f0-9]+)/i);
+  var seen = {};
+  // Find ALL anchor tags that link to a note (explore, search, discovery — any page)
+  var allLinks = document.querySelectorAll('a[href]');
+  for (var i = 0; i < allLinks.length; i++) {
+    var a = allLinks[i];
+    var href = a.getAttribute('href') || '';
+    // XHS note IDs are 24-char hex strings in the URL path
+    var idMatch = href.match(/\\/([a-f0-9]{24})(?:\\?|$)/i);
     if (!idMatch) continue;
+    var noteId = idMatch[1];
+    if (seen[noteId]) continue;
+    // Must be a visible card-like element (not a tiny link in the footer)
+    var card = a.closest('section, [class*="note"], [class*="card"], [class*="feed"]') || a;
+    var rect = card.getBoundingClientRect();
+    if (rect.width < 100 || rect.height < 80) continue;
+    seen[noteId] = true;
+    // Extract info from the card
+    var isVideo = !!card.querySelector('.play-icon, [class*="video-icon"], [class*="play"]');
+    var titleEl = card.querySelector('.title, [class*="title"], .note-text, a span');
+    var likesEl = card.querySelector('.like-wrapper .count, .count, [class*="like"] span, [class*="like-count"]');
+    var title = '';
+    if (titleEl) {
+      title = (titleEl.textContent || '').trim().slice(0, 200);
+    } else {
+      // Fallback: use the link text itself
+      title = (a.textContent || '').trim().slice(0, 200);
+    }
     out.push({
-      post_id: idMatch[1],
+      post_id: noteId,
       url: href.startsWith('http') ? href : 'https://www.xiaohongshu.com' + href,
-      title: titleEl ? (titleEl.textContent || '').trim().slice(0, 200) : '',
+      title: title,
       likes_text: likesEl ? (likesEl.textContent || '').trim() : '0',
       is_video: isVideo,
     });
@@ -312,12 +319,64 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
   const candidates: FeedCard[] = [];
 
   /**
+   * On search pages, click the filter buttons to get: 图文 + 最多点赞 + 一周内.
+   * These are DOM clicks, not URL params (more reliable across XHS versions).
+   */
+  async function applySearchFilters(): Promise<void> {
+    try {
+      // Click "图文" tab (filter to image posts only)
+      await sendBrowserCommand('find', { query: '图文' }, 5000).then(async (res: any) => {
+        const els = res?.elements || [];
+        if (els.length > 0) {
+          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+          await sleep(randInt(1500, 3000));
+        }
+      }).catch(() => {});
+
+      // Click "筛选" button to open filter panel
+      await sendBrowserCommand('find', { query: '筛选' }, 5000).then(async (res: any) => {
+        const els = res?.elements || [];
+        if (els.length > 0) {
+          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+          await sleep(randInt(1000, 2000));
+        }
+      }).catch(() => {});
+
+      // Click "最多点赞" sort option
+      await sendBrowserCommand('find', { query: '最多点赞' }, 5000).then(async (res: any) => {
+        const els = res?.elements || [];
+        if (els.length > 0) {
+          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+          await sleep(randInt(1500, 3000));
+        }
+      }).catch(() => {});
+
+      // Click "一周内" time filter
+      await sendBrowserCommand('find', { query: '一周内' }, 5000).then(async (res: any) => {
+        const els = res?.elements || [];
+        if (els.length > 0) {
+          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+          await sleep(randInt(2000, 4000));
+        }
+      }).catch(() => {});
+    } catch (err) {
+      coworkLog('WARN', 'xhsDriver', 'applySearchFilters failed (non-fatal)', { err: String(err) });
+    }
+  }
+
+  /**
    * @param requireKeywordMatch — false for search pages (results are
    *   already keyword-relevant), true for explore/discover pages.
+   * @param isSearchPage — if true, apply filters after page load.
    */
-  async function visitFeedAndCollect(url: string, requireKeywordMatch: boolean): Promise<void> {
+  async function visitFeedAndCollect(url: string, requireKeywordMatch: boolean, isSearchPage = false): Promise<void> {
     await sendBrowserCommand('navigate', { url }, 30000);
     await sleep(randInt(4000, 8000));
+
+    // Apply search filters on first visit to a search page
+    if (isSearchPage) {
+      await applySearchFilters();
+    }
 
     const anomaly = await checkAnomaly();
     if (anomaly !== 'ok') {
@@ -365,7 +424,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
       if (candidates.length >= target) break;
       if (isAbortRequested()) throw new Error('user_stopped');
       const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
-      await visitFeedAndCollect(searchUrl, false); // no keyword match needed — search is precise
+      await visitFeedAndCollect(searchUrl, false, true); // search page: apply filters
     }
 
     // 2. If still not enough, try the explore/discover page as fallback
