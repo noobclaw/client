@@ -367,25 +367,39 @@ function keywordMatch(text: string, keywords: string[]): boolean {
   return keywords.some(k => lowered.includes(k.toLowerCase()));
 }
 
-// ── Anomaly detection via page eval ──
+// ── Anomaly detection via page eval (config-driven selectors) ──
 
-const ANOMALY_DETECTOR_CODE = `
+function buildAnomalyCode(cfg: DiscoveryConfig): string {
+  const a = cfg.anomaly_selectors;
+  const captchaSels = a.captcha.join(', ');
+  const loginSels = a.login_wall.selectors.join(', ');
+  const loginUrlPattern = a.login_wall.url_pattern;
+  const rateLimitTexts = a.rate_limit.text_match;
+  const accountFlagTexts = a.account_flag.text_match;
+  return `
 return (function() {
   var body = document.body ? (document.body.innerText || '') : '';
   var url = location.href || '';
-  if (document.querySelector('.captcha-slider, .nc_iconfont, iframe[src*="captcha"]')) return 'captcha';
-  if (/\\/login|\\bsignin\\b/i.test(url) || document.querySelector('.login-container')) return 'login_wall';
-  if (body.indexOf('操作过于频繁') >= 0 || body.indexOf('访问频率') >= 0) return 'rate_limited';
-  if (body.indexOf('账号异常') >= 0 || body.indexOf('暂时限流') >= 0) return 'account_flag';
+  if (document.querySelector(${JSON.stringify(captchaSels)})) return 'captcha';
+  if (new RegExp(${JSON.stringify(loginUrlPattern)}, 'i').test(url) || document.querySelector(${JSON.stringify(loginSels)})) return 'login_wall';
+  var rateTexts = ${JSON.stringify(rateLimitTexts)};
+  for (var i = 0; i < rateTexts.length; i++) { if (body.indexOf(rateTexts[i]) >= 0) return 'rate_limited'; }
+  var flagTexts = ${JSON.stringify(accountFlagTexts)};
+  for (var i = 0; i < flagTexts.length; i++) { if (body.indexOf(flagTexts[i]) >= 0) return 'account_flag'; }
   return 'ok';
 })()
 `;
+}
+
+// Module-level ref so checkAnomaly can access the current config
+let _currentAnomalyConfig: DiscoveryConfig = DEFAULT_CONFIG;
 
 async function checkAnomaly(): Promise<
   'ok' | 'captcha' | 'login_wall' | 'rate_limited' | 'account_flag'
 > {
   try {
-    const res = await sendBrowserCommand('javascript', { code: ANOMALY_DETECTOR_CODE }, 5000);
+    const code = buildAnomalyCode(_currentAnomalyConfig);
+    const res = await sendBrowserCommand('javascript', { code }, 5000);
     const raw = res?.result || 'ok';
     if (raw === 'captcha' || raw === 'login_wall' || raw === 'rate_limited' || raw === 'account_flag') {
       return raw;
@@ -400,34 +414,50 @@ async function checkAnomaly(): Promise<
 
 // Generic card reader — works on BOTH explore page AND search results page.
 // Finds all links containing a 24-char hex note ID (the universal XHS note ID format).
-const FEED_CARDS_CODE = `
+// Now config-driven: selectors come from discovery.md → DiscoveryConfig.
+
+interface FeedCard {
+  post_id: string;
+  url: string;
+  title: string;
+  likes_text: string;
+  is_video: boolean;
+}
+
+function buildFeedCardsCode(cfg: DiscoveryConfig): string {
+  const cs = cfg.card_selectors;
+  const videoSel = cs.video_indicator;
+  const titleSels = cs.title_selectors.join(', ');
+  const likesSels = cs.likes_selectors.join(', ');
+  const minW = cs.min_card_width;
+  const minH = cs.min_card_height;
+  // note_id_pattern from config (default: 24-char hex)
+  const idPattern = cs.note_id_pattern.replace(/\\/g, '\\\\');
+
+  return `
 return (function() {
   var out = [];
   var seen = {};
-  // Find ALL anchor tags that link to a note (explore, search, discovery — any page)
+  var idRe = new RegExp(${JSON.stringify(cs.note_id_pattern)}, 'i');
   var allLinks = document.querySelectorAll('a[href]');
   for (var i = 0; i < allLinks.length; i++) {
     var a = allLinks[i];
     var href = a.getAttribute('href') || '';
-    // XHS note IDs are 24-char hex strings in the URL path
-    var idMatch = href.match(/\\/([a-f0-9]{24})(?:\\?|$)/i);
-    if (!idMatch) continue;
+    var idMatch = href.match(idRe);
+    if (!idMatch || !idMatch[1]) continue;
     var noteId = idMatch[1];
     if (seen[noteId]) continue;
-    // Must be a visible card-like element (not a tiny link in the footer)
     var card = a.closest('section, [class*="note"], [class*="card"], [class*="feed"]') || a;
     var rect = card.getBoundingClientRect();
-    if (rect.width < 100 || rect.height < 80) continue;
+    if (rect.width < ${minW} || rect.height < ${minH}) continue;
     seen[noteId] = true;
-    // Extract info from the card
-    var isVideo = !!card.querySelector('.play-icon, [class*="video-icon"], [class*="play"]');
-    var titleEl = card.querySelector('.title, [class*="title"], .note-text, a span');
-    var likesEl = card.querySelector('.like-wrapper .count, .count, [class*="like"] span, [class*="like-count"]');
+    var isVideo = !!card.querySelector(${JSON.stringify(videoSel)});
+    var titleEl = card.querySelector(${JSON.stringify(titleSels)});
+    var likesEl = card.querySelector(${JSON.stringify(likesSels)});
     var title = '';
     if (titleEl) {
       title = (titleEl.textContent || '').trim().slice(0, 200);
     } else {
-      // Fallback: use the link text itself
       title = (a.textContent || '').trim().slice(0, 200);
     }
     out.push({
@@ -441,18 +471,12 @@ return (function() {
   return JSON.stringify(out);
 })()
 `;
-
-interface FeedCard {
-  post_id: string;
-  url: string;
-  title: string;
-  likes_text: string;
-  is_video: boolean;
 }
 
-async function readFeedCards(): Promise<FeedCard[]> {
+async function readFeedCards(cfg: DiscoveryConfig): Promise<FeedCard[]> {
   try {
-    const res = await sendBrowserCommand('javascript', { code: FEED_CARDS_CODE }, 8000);
+    const code = buildFeedCardsCode(cfg);
+    const res = await sendBrowserCommand('javascript', { code }, 8000);
     const raw = res?.result;
     if (typeof raw !== 'string') return [];
     return JSON.parse(raw) as FeedCard[];
@@ -464,7 +488,19 @@ async function readFeedCards(): Promise<FeedCard[]> {
 
 // ── Detail page reader ──
 
-const DETAIL_PAGE_CODE = `
+interface DetailPagePayload {
+  title: string;
+  body: string;
+  images: string[];
+  publish_time: string;
+  hashtags: string[];
+  author_name: string;
+  author_followers_text: string;
+}
+
+function buildDetailPageCode(cfg: DiscoveryConfig): string {
+  const ds = cfg.detail_selectors;
+  return `
 return (function() {
   function text(sels) {
     for (var i = 0; i < sels.length; i++) {
@@ -483,31 +519,23 @@ return (function() {
     return arr;
   }
   var out = {
-    title: text(['#detail-title', 'h1.title', '[class*="title"]']),
-    body: text(['#detail-desc', '.content', '[class*="desc"]']),
-    images: many('.carousel .slide img, [class*="swiper-slide"] img', 'src'),
-    publish_time: text(['.publish-date', '.date', 'time']),
-    hashtags: many('.hash-tag, a[href*="page/topics/"]', null),
-    author_name: text(['.author .name', '.user .name']),
-    author_followers_text: text(['.follower-count']),
+    title: text(${JSON.stringify(ds.title)}),
+    body: text(${JSON.stringify(ds.body)}),
+    images: many(${JSON.stringify(ds.images.selector)}, ${JSON.stringify(ds.images.attr)}),
+    publish_time: text(${JSON.stringify(ds.publish_time)}),
+    hashtags: many(${JSON.stringify(ds.hashtags.join(', '))}, null),
+    author_name: text(${JSON.stringify(ds.author_name)}),
+    author_followers_text: text(${JSON.stringify(ds.author_followers)}),
   };
   return JSON.stringify(out);
 })()
 `;
-
-interface DetailPagePayload {
-  title: string;
-  body: string;
-  images: string[];
-  publish_time: string;
-  hashtags: string[];
-  author_name: string;
-  author_followers_text: string;
 }
 
-async function readDetailPage(): Promise<DetailPagePayload | null> {
+async function readDetailPage(cfg: DiscoveryConfig): Promise<DetailPagePayload | null> {
   try {
-    const res = await sendBrowserCommand('javascript', { code: DETAIL_PAGE_CODE }, 8000);
+    const code = buildDetailPageCode(cfg);
+    const res = await sendBrowserCommand('javascript', { code }, 8000);
     const raw = res?.result;
     if (typeof raw !== 'string') return null;
     return JSON.parse(raw) as DetailPagePayload;
@@ -528,6 +556,7 @@ export interface DiscoveryOptions {
 
 export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<DiscoveredNote[]> {
   const { task, manifest, seenPostIds, config } = opts;
+  _currentAnomalyConfig = config;
   const caps = manifest.risk_caps;
   const beh = config.behavior;
   const MIN_LIKES = config.qualify.min_likes;
@@ -567,14 +596,52 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
   }
 
   async function clickByText(text: string, pauseRange: [number, number]): Promise<void> {
+    // Use javascript command to find-and-click by visible text.
+    // The extension doesn't have a 'find' primitive, so we do it via DOM eval.
+    const code = `
+      return (function() {
+        var target = ${JSON.stringify(text)};
+        // 1. Try exact text match on common clickable elements
+        var candidates = document.querySelectorAll(
+          'button, a, span, div[role="tab"], li, [class*="tab"], [class*="filter"], [class*="option"], [class*="sort"], [class*="item"]'
+        );
+        for (var i = 0; i < candidates.length; i++) {
+          var el = candidates[i];
+          var t = (el.textContent || '').trim();
+          // Exact match or starts-with (for cases like "图文(123)")
+          if (t === target || t.startsWith(target)) {
+            var rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              el.click();
+              return 'clicked';
+            }
+          }
+        }
+        // 2. Try partial match (target is contained in element text, but element text is short)
+        for (var i = 0; i < candidates.length; i++) {
+          var el = candidates[i];
+          var t = (el.textContent || '').trim();
+          if (t.length < 20 && t.indexOf(target) >= 0) {
+            var rect = el.getBoundingClientRect();
+            if (rect.width > 0 && rect.height > 0) {
+              el.click();
+              return 'clicked_partial';
+            }
+          }
+        }
+        return 'not_found';
+      })()
+    `;
     try {
-      const res: any = await sendBrowserCommand('find', { query: text }, 5000);
-      const els = res?.elements || [];
-      if (els.length > 0) {
-        await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+      const res = await sendBrowserCommand('javascript', { code }, 5000);
+      const result = res?.result || 'not_found';
+      coworkLog('DEBUG', 'xhsDriver', `clickByText("${text}") → ${result}`);
+      if (result !== 'not_found') {
         await sleep(randInt(pauseRange[0], pauseRange[1]));
       }
-    } catch {}
+    } catch (err) {
+      coworkLog('WARN', 'xhsDriver', `clickByText("${text}") failed`, { err: String(err) });
+    }
   }
 
   /**
@@ -601,7 +668,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
       if (isAbortRequested()) throw new Error('user_stopped');
       if (Date.now() - startedAt > caps.max_run_duration_ms) throw new Error('run_duration_exceeded');
 
-      const cards = await readFeedCards();
+      const cards = await readFeedCards(config);
       let fresh = 0;
       for (const card of cards) {
         if (seenPostIds.has(card.post_id)) continue;
@@ -677,7 +744,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
         throw new Error(`anomaly:${anomaly}`);
       }
 
-      const detail = await readDetailPage();
+      const detail = await readDetailPage(config);
       if (!detail || !detail.body) {
         coworkLog('WARN', 'xhsDriver', 'detail empty, skipping', { post_id: card.post_id });
         continue;
