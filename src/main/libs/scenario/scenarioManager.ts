@@ -15,7 +15,7 @@ import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
 import * as localExtractor from './localExtractor';
-import { discoverXhsNotes } from './xhsDriver';
+import { discoverXhsNotes, parseDiscoveryConfig } from './xhsDriver';
 import { writeTaskArtifacts } from './artifactWriter';
 import type {
   DiscoveredNote,
@@ -29,7 +29,10 @@ import type {
 const packCache = new Map<string, ScenarioPack>();
 
 async function loadPack(scenario_id: string): Promise<ScenarioPack | null> {
-  if (packCache.has(scenario_id)) return packCache.get(scenario_id)!;
+  // Always fetch fresh from backend — discovery.md / extractor.md / composer.md
+  // can be hot-updated on the server without client rebuild.
+  // The fetch is fast (<10ms for a few KB of text).
+  viralPoolClient.clearScenarioPackCache();
   const raw = await viralPoolClient.fetchScenarioPack(scenario_id);
   if (!raw || !raw.manifest) return null;
   const pack: ScenarioPack = {
@@ -208,7 +211,8 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
     let notes: DiscoveredNote[] = [];
 
     if (pack.manifest.platform === 'xhs') {
-      notes = await discoverXhsNotes({ task, manifest: pack.manifest, seenPostIds: seen });
+      const discoveryConfig = parseDiscoveryConfig(pack.skills.discovery);
+      notes = await discoverXhsNotes({ config: discoveryConfig, task, manifest: pack.manifest, seenPostIds: seen });
     } else {
       stepError(1, '平台暂未支持');
       finishProgress('error', 'platform_not_implemented');

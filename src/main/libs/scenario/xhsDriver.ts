@@ -20,6 +20,224 @@ import type {
   ComposedVariant,
 } from './types';
 
+// ── Discovery config (parsed from discovery.md YAML block) ──
+
+export interface DiscoveryConfig {
+  strategy: 'search_first' | 'explore_first';
+  search_filters: {
+    tab: string;
+    sort: string;
+    time: string;
+    open_filter_panel: boolean;
+  };
+  qualify: {
+    min_likes: number;
+    exclude_types: string[];
+    require_keyword_on_search: boolean;
+    require_keyword_on_explore: boolean;
+  };
+  card_selectors: {
+    note_id_pattern: string;
+    min_card_width: number;
+    min_card_height: number;
+    video_indicator: string;
+    title_selectors: string[];
+    likes_selectors: string[];
+  };
+  detail_selectors: {
+    title: string[];
+    body: string[];
+    images: { selector: string; attr: string };
+    publish_time: string[];
+    hashtags: string[];
+    author_name: string[];
+    author_followers: string[];
+  };
+  anomaly_selectors: {
+    captcha: string[];
+    login_wall: { url_pattern: string; selectors: string[] };
+    rate_limit: { text_match: string[] };
+    account_flag: { text_match: string[] };
+  };
+  behavior: {
+    first_screen_pause: [number, number];
+    scroll_pause: [number, number];
+    detail_page_pause: [number, number];
+    filter_click_pause: [number, number];
+    max_scrolls_no_new: number;
+  };
+}
+
+// Default config — used if discovery.md can't be parsed
+const DEFAULT_CONFIG: DiscoveryConfig = {
+  strategy: 'search_first',
+  search_filters: { tab: '图文', sort: '最多点赞', time: '一周内', open_filter_panel: true },
+  qualify: { min_likes: 100, exclude_types: ['video'], require_keyword_on_search: false, require_keyword_on_explore: true },
+  card_selectors: {
+    note_id_pattern: '/([a-f0-9]{24})(?:\\\\?|$)',
+    min_card_width: 100, min_card_height: 80,
+    video_indicator: '.play-icon, [class*="video-icon"], [class*="play"]',
+    title_selectors: ['.title', '[class*="title"]', '.note-text', 'a span'],
+    likes_selectors: ['.like-wrapper .count', '.count', '[class*="like"] span', '[class*="like-count"]'],
+  },
+  detail_selectors: {
+    title: ['#detail-title', 'h1.title', '[class*="title"]'],
+    body: ['#detail-desc', '.content', '[class*="desc"]'],
+    images: { selector: '.carousel .slide img, [class*="swiper-slide"] img', attr: 'src' },
+    publish_time: ['.publish-date', '.date', 'time'],
+    hashtags: ['.hash-tag', 'a[href*="page/topics/"]'],
+    author_name: ['.author .name', '.user .name'],
+    author_followers: ['.follower-count'],
+  },
+  anomaly_selectors: {
+    captcha: ['.captcha-slider', '.nc_iconfont', 'iframe[src*="captcha"]'],
+    login_wall: { url_pattern: '/login|/signin', selectors: ['.login-container', '[class*="login-panel"]'] },
+    rate_limit: { text_match: ['操作过于频繁', '访问频率'] },
+    account_flag: { text_match: ['账号异常', '暂时限流'] },
+  },
+  behavior: {
+    first_screen_pause: [4000, 8000],
+    scroll_pause: [3000, 7000],
+    detail_page_pause: [3500, 7000],
+    filter_click_pause: [1500, 3000],
+    max_scrolls_no_new: 3,
+  },
+};
+
+/**
+ * Parse discovery.md YAML config. The file has a ```yaml code block
+ * containing the structured config. We extract and parse it.
+ */
+export function parseDiscoveryConfig(rawMd: string | undefined): DiscoveryConfig {
+  if (!rawMd) return DEFAULT_CONFIG;
+  try {
+    // Extract YAML from ```yaml ... ``` code fence
+    const yamlMatch = rawMd.match(/```yaml\s*\n([\s\S]*?)\n```/);
+    if (!yamlMatch) return DEFAULT_CONFIG;
+    const yamlText = yamlMatch[1];
+    // Simple YAML parser — handles our flat/nested structure
+    // For production we'd use js-yaml, but keeping deps minimal.
+    // Strategy: parse key-value pairs with indentation awareness.
+    const result = simpleYamlParse(yamlText);
+    return deepMerge(DEFAULT_CONFIG, result) as DiscoveryConfig;
+  } catch (err) {
+    coworkLog('WARN', 'xhsDriver', 'Failed to parse discovery.md config, using defaults', { err: String(err) });
+    return DEFAULT_CONFIG;
+  }
+}
+
+function simpleYamlParse(text: string): any {
+  // Simple recursive YAML-like parser (handles our specific format)
+  const result: any = {};
+  const lines = text.split('\n');
+  let i = 0;
+
+  function parseLevel(indent: number): any {
+    const obj: any = {};
+    while (i < lines.length) {
+      const line = lines[i];
+      const stripped = line.replace(/#.*$/, ''); // remove comments
+      if (stripped.trim() === '') { i++; continue; }
+      const lineIndent = line.search(/\S/);
+      if (lineIndent < indent) break; // back to parent
+      if (lineIndent > indent) { i++; continue; } // skip over-indented
+
+      const kvMatch = stripped.match(/^(\s*)([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)/);
+      if (!kvMatch) { i++; continue; }
+      const key = kvMatch[2];
+      let value = kvMatch[3].trim();
+      i++;
+
+      if (value === '' || value === '|') {
+        // Nested object or block
+        obj[key] = parseLevel(indent + 2);
+      } else if (value.startsWith('[') && value.endsWith(']')) {
+        // Inline array: [a, b, c]
+        obj[key] = value.slice(1, -1).split(',').map((s: string) => {
+          const t = s.trim().replace(/^['"]|['"]$/g, '');
+          const n = Number(t);
+          return isNaN(n) ? t : n;
+        });
+      } else if (value.startsWith('- ')) {
+        // YAML list starting on same line — shouldn't happen in our format
+        obj[key] = [value.slice(2).trim()];
+      } else if (value === 'true') {
+        obj[key] = true;
+      } else if (value === 'false') {
+        obj[key] = false;
+      } else {
+        const num = Number(value);
+        obj[key] = isNaN(num) ? value.replace(/^['"]|['"]$/g, '') : num;
+      }
+    }
+    // Check if next lines are list items (- value)
+    while (i < lines.length) {
+      const line = lines[i];
+      const stripped = line.replace(/#.*$/, '').trim();
+      if (stripped === '') { i++; continue; }
+      if (!stripped.startsWith('- ')) break;
+      // This is a list continuation — but we need to know which key it belongs to
+      break;
+    }
+    return obj;
+  }
+
+  i = 0;
+  // Top-level parse
+  while (i < lines.length) {
+    const line = lines[i];
+    const stripped = line.replace(/#.*$/, '');
+    if (stripped.trim() === '') { i++; continue; }
+
+    const kvMatch = stripped.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*:\s*(.*)/);
+    if (!kvMatch) {
+      // Could be a list item under previous key
+      if (stripped.trim().startsWith('- ')) {
+        i++;
+        continue;
+      }
+      i++;
+      continue;
+    }
+    const key = kvMatch[1];
+    let value = kvMatch[2].trim();
+    i++;
+
+    if (value === '' || value === '|') {
+      result[key] = parseLevel(2);
+    } else if (value.startsWith('[') && value.endsWith(']')) {
+      result[key] = value.slice(1, -1).split(',').map((s: string) => {
+        const t = s.trim().replace(/^['"]|['"]$/g, '');
+        const n = Number(t);
+        return isNaN(n) ? t : n;
+      });
+    } else if (value === 'true') {
+      result[key] = true;
+    } else if (value === 'false') {
+      result[key] = false;
+    } else {
+      const num = Number(value);
+      result[key] = isNaN(num) ? value.replace(/^['"]|['"]$/g, '') : num;
+    }
+  }
+  return result;
+}
+
+function deepMerge(defaults: any, overrides: any): any {
+  if (!overrides || typeof overrides !== 'object') return defaults;
+  const result = { ...defaults };
+  for (const key of Object.keys(overrides)) {
+    if (overrides[key] !== undefined && overrides[key] !== null) {
+      if (typeof defaults[key] === 'object' && !Array.isArray(defaults[key]) && typeof overrides[key] === 'object' && !Array.isArray(overrides[key])) {
+        result[key] = deepMerge(defaults[key], overrides[key]);
+      } else {
+        result[key] = overrides[key];
+      }
+    }
+  }
+  return result;
+}
+
 // ── Utilities ──
 
 function randInt(min: number, max: number): number {
@@ -302,16 +520,17 @@ async function readDetailPage(): Promise<DetailPagePayload | null> {
 // ── Discovery ──
 
 export interface DiscoveryOptions {
+  config: DiscoveryConfig;
   task: ScenarioTask;
   manifest: ScenarioManifest;
   seenPostIds: Set<string>;
 }
 
 export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<DiscoveredNote[]> {
-  const { task, manifest, seenPostIds } = opts;
+  const { task, manifest, seenPostIds, config } = opts;
   const caps = manifest.risk_caps;
-  // Lowered min_likes from 500 to 100 — mid-tier posts are valuable too
-  const MIN_LIKES = 100;
+  const beh = config.behavior;
+  const MIN_LIKES = config.qualify.min_likes;
   const target = Math.max(1, Math.min(5, task.daily_count));
   const startedAt = Date.now();
 
@@ -323,45 +542,39 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
    * These are DOM clicks, not URL params (more reliable across XHS versions).
    */
   async function applySearchFilters(): Promise<void> {
+    const f = config.search_filters;
+    const pause = beh.filter_click_pause;
     try {
-      // Click "图文" tab (filter to image posts only)
-      await sendBrowserCommand('find', { query: '图文' }, 5000).then(async (res: any) => {
-        const els = res?.elements || [];
-        if (els.length > 0) {
-          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
-          await sleep(randInt(1500, 3000));
-        }
-      }).catch(() => {});
-
-      // Click "筛选" button to open filter panel
-      await sendBrowserCommand('find', { query: '筛选' }, 5000).then(async (res: any) => {
-        const els = res?.elements || [];
-        if (els.length > 0) {
-          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
-          await sleep(randInt(1000, 2000));
-        }
-      }).catch(() => {});
-
-      // Click "最多点赞" sort option
-      await sendBrowserCommand('find', { query: '最多点赞' }, 5000).then(async (res: any) => {
-        const els = res?.elements || [];
-        if (els.length > 0) {
-          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
-          await sleep(randInt(1500, 3000));
-        }
-      }).catch(() => {});
-
-      // Click "一周内" time filter
-      await sendBrowserCommand('find', { query: '一周内' }, 5000).then(async (res: any) => {
-        const els = res?.elements || [];
-        if (els.length > 0) {
-          await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
-          await sleep(randInt(2000, 4000));
-        }
-      }).catch(() => {});
+      // Click tab (e.g. "图文")
+      if (f.tab) {
+        await clickByText(f.tab, pause);
+      }
+      // Open filter panel
+      if (f.open_filter_panel) {
+        await clickByText('筛选', pause);
+      }
+      // Sort (e.g. "最多点赞")
+      if (f.sort) {
+        await clickByText(f.sort, pause);
+      }
+      // Time filter (e.g. "一周内")
+      if (f.time) {
+        await clickByText(f.time, [2000, 4000]);
+      }
     } catch (err) {
       coworkLog('WARN', 'xhsDriver', 'applySearchFilters failed (non-fatal)', { err: String(err) });
     }
+  }
+
+  async function clickByText(text: string, pauseRange: [number, number]): Promise<void> {
+    try {
+      const res: any = await sendBrowserCommand('find', { query: text }, 5000);
+      const els = res?.elements || [];
+      if (els.length > 0) {
+        await sendBrowserCommand('click', { selector: els[0].selector }, 3000);
+        await sleep(randInt(pauseRange[0], pauseRange[1]));
+      }
+    } catch {}
   }
 
   /**
@@ -371,7 +584,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
    */
   async function visitFeedAndCollect(url: string, requireKeywordMatch: boolean, isSearchPage = false): Promise<void> {
     await sendBrowserCommand('navigate', { url }, 30000);
-    await sleep(randInt(4000, 8000));
+    await sleep(randInt(beh.first_screen_pause[0], beh.first_screen_pause[1]));
 
     // Apply search filters on first visit to a search page
     if (isSearchPage) {
@@ -417,19 +630,27 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
   }
 
   try {
-    // ── STRATEGY: search pages FIRST (precise), explore page LAST (serendipity) ──
+    // ── STRATEGY: driven by config.strategy ──
+    const doSearch = async () => {
+      for (const kw of task.keywords) {
+        if (candidates.length >= target) break;
+        if (isAbortRequested()) throw new Error('user_stopped');
+        const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
+        await visitFeedAndCollect(searchUrl, config.qualify.require_keyword_on_search, true);
+      }
+    };
+    const doExplore = async () => {
+      if (candidates.length < target) {
+        await visitFeedAndCollect(manifest.entry_urls.explore, config.qualify.require_keyword_on_explore);
+      }
+    };
 
-    // 1. Search each keyword directly (highest hit rate)
-    for (const kw of task.keywords) {
-      if (candidates.length >= target) break;
-      if (isAbortRequested()) throw new Error('user_stopped');
-      const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
-      await visitFeedAndCollect(searchUrl, false, true); // search page: apply filters
-    }
-
-    // 2. If still not enough, try the explore/discover page as fallback
-    if (candidates.length < target) {
-      await visitFeedAndCollect(manifest.entry_urls.explore, true); // needs keyword match
+    if (config.strategy === 'search_first') {
+      await doSearch();
+      await doExplore();
+    } else {
+      await doExplore();
+      await doSearch();
     }
   } catch (err) {
     const msg = String(err);
