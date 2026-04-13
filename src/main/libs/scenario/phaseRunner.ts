@@ -146,7 +146,7 @@ function buildContext(
 
     // Atomic click at coordinates — used by orchestrator's clickByText()
     click: async (x: number, y: number) => {
-      await sendBrowserCommand('click', { x, y }, 3000);
+      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000);
     },
 
     // Debug log (visible in sidecar console, not in UI)
