@@ -1462,20 +1462,23 @@ const server = http.createServer(async (req, res) => {
                 scenarioRiskGuard._loaded = true;
               }
               const scenarioManager = require('./libs/scenario/scenarioManager');
-              // manual=true: user clicked "直接运行", bypass daily cap
-              const result = await scenarioManager.runTask(task, true);
-              // Ensure reason is always a non-empty string on failure
-              if (result && result.status !== 'ok' && !result.reason) {
-                result.reason = 'no_reason_provided';
-              }
-              coworkLog('INFO', 'sidecar-server', `scenario:runTaskNow result`, {
-                taskId: args[0],
-                status: result?.status,
-                reason: result?.reason,
-                collected: result?.collected_count,
-                drafts: result?.draft_count,
+              // Fire-and-forget: start the task in the background and return immediately.
+              // The task runs for minutes (scroll + extract + compose). If we await here,
+              // the HTTP request times out and the renderer gets ipc_error.
+              // The renderer already polls getRunProgress() every 2s for live status.
+              scenarioManager.runTask(task, true).then((result: any) => {
+                coworkLog('INFO', 'sidecar-server', `scenario:runTaskNow completed`, {
+                  taskId: args[0],
+                  status: result?.status,
+                  reason: result?.reason,
+                  collected: result?.collected_count,
+                  drafts: result?.draft_count,
+                });
+              }).catch((e: any) => {
+                coworkLog('ERROR', 'sidecar-server', `scenario:runTaskNow threw`, { taskId: args[0], error: e.message || String(e) });
               });
-              return writeJSON(res, 200, result);
+              // Return immediately — UI tracks progress via getRunProgress polling
+              return writeJSON(res, 200, { status: 'started' });
             } catch (e: any) {
               const reason = e.message || e.stack || String(e) || 'unknown_error';
               coworkLog('ERROR', 'sidecar-server', `scenario:runTaskNow threw`, { taskId: args[0], error: reason });

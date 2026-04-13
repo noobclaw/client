@@ -109,9 +109,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         if (mountedRef.current && prog && prog.taskId === task.id) {
           setProgress(prog);
           // If progress says "done" or "error", task has finished
-          if (prog.status === 'done' || prog.status === 'error') {
+          if (prog.status === 'done') {
             setRunning(false);
+            // Count results from step logs
+            const step3Logs = prog.steps[2]?.logs || [];
+            const draftLog = step3Logs.find((l: any) => l.message?.includes('已保存'));
+            showToast('ok', draftLog?.message || '运行完成');
             void refreshData();
+            void onChanged();
+          } else if (prog.status === 'error') {
+            setRunning(false);
+            const err = prog.error || '';
+            if (err !== 'user_stopped') {
+              showToast('err', `运行失败: ${
+                err.includes('scenario_pack') ? '场景包未找到' :
+                err.includes('anomaly:captcha') ? '遇到验证码，请手动处理后重试' :
+                err.includes('anomaly:rate_limited') ? '操作过于频繁，请稍后再试' :
+                err.includes('anomaly:login_wall') ? '需要重新登录小红书' :
+                err.includes('anomaly:account_flag') ? '账号异常，请检查小红书账号状态' :
+                err || '未知错误'
+              }`);
+            }
+            void refreshData();
+            void onChanged();
           }
         }
       } catch {}
@@ -148,25 +168,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
     setRunning(true);
     setProgress(null);
 
-    // 5. Fire IPC (blocks until pipeline finishes)
+    // 5. Fire IPC — returns immediately with { status: 'started' }.
+    //    The actual task runs in the sidecar background; we track it via
+    //    getRunProgress polling (already running every 2s while running=true).
+    //    When progress.status becomes 'done' or 'error', we stop running.
     scenarioService.runTaskNow(task.id).then(async (outcome) => {
       if (!mountedRef.current) return;
-      if (outcome.status === 'ok') {
-        showToast('ok', `运行完成：采集 ${outcome.collected_count ?? 0} 条，生成 ${outcome.draft_count ?? 0} 份草稿`);
+      if (outcome.status === 'started' || outcome.status === 'ok') {
+        // Task launched (or finished instantly) — progress polling handles the rest
+        return;
       } else if (outcome.status === 'skipped') {
         showToast('warn', `已跳过: ${outcome.reason}`);
+        setRunning(false);
       } else {
         const r = outcome.reason || '';
         showToast('err', `运行失败: ${
           r.includes('scenario_pack') ? '场景包未找到' :
+          r.includes('task_not_found') ? '任务未找到' :
           r.includes('BROWSER') ? '浏览器插件未连接' :
           r.includes('API_KEY') ? 'AI 密钥未设置' :
           r || '未知错误'
         }`);
+        setRunning(false);
       }
-      setRunning(false);
-      void refreshData();
-      void onChanged();
     }).catch(() => {
       if (mountedRef.current) { showToast('err', '运行异常'); setRunning(false); }
     });

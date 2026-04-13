@@ -149,7 +149,7 @@ export interface ScenarioTaskRun {
 }
 
 export interface ScenarioRunOutcome {
-  status: 'ok' | 'skipped' | 'failed';
+  status: 'ok' | 'skipped' | 'failed' | 'started';
   reason?: string;
   collected_count?: number;
   draft_count?: number;
