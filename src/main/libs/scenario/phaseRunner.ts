@@ -98,7 +98,13 @@ function buildContext(
     finish: (status: string, error?: string) => progress.finishProgress(status as any, error),
     aborted: () => progress.isAbortRequested(),
 
-    // ── Browser commands ──
+    // ── Browser commands — ALL Chrome extension primitives ──
+    // Generic passthrough: orchestrator can call any extension command
+    browser: async (command: string, params?: any, timeout?: number) => {
+      return sendBrowserCommand(command, params || {}, timeout || 10000);
+    },
+
+    // Convenience shortcuts for common operations
     navigate: async (url: string) => {
       await sendBrowserCommand('navigate', { url }, 30000);
     },
