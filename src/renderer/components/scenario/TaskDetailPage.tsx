@@ -11,6 +11,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
+import { noobClawAuth } from '../../services/noobclawAuth';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import type { ScenarioRunProgress } from '../../types/scenario';
 
@@ -134,6 +135,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
   const handleRunNow = () => {
     if (running) return;
+    // Gate: must be logged in with wallet
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.openWebsiteLogin();
+      return;
+    }
     setLoginModalOpen(true);
   };
 

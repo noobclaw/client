@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { noobClawAuth } from '../../services/noobclawAuth';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
 const TRACK_PRESETS: Array<{ id: string; icon: string; name_zh: string }> = [
@@ -124,6 +125,11 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const primaryTask = tasks.find(t => t.scenario_id === primaryScenario.id);
 
   const handleQuickStart = () => {
+    // Gate: must be logged in with wallet
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.openWebsiteLogin();
+      return;
+    }
     if (primaryTask) {
       onOpenTask(primaryTask.id);
     } else {
