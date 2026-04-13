@@ -84,18 +84,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
   useEffect(() => {
     void refresh();
     const timer = setInterval(async () => {
-      const [rid, prog] = await Promise.all([
-        scenarioService.getRunningTaskId(),
-        scenarioService.getRunProgress(),
-      ]);
-      const isRunning = rid === task.id;
-      setRunning(isRunning);
-      if (prog && prog.taskId === task.id) {
-        setProgress(prog);
-      }
-      if (!isRunning && running) {
-        // Just finished
-        void refresh();
+      try {
+        const [rid, prog] = await Promise.all([
+          scenarioService.getRunningTaskId().catch(() => null),
+          scenarioService.getRunProgress().catch(() => null),
+        ]);
+        const isRunning = rid === task.id;
+        setRunning(isRunning);
+        if (prog && prog.taskId === task.id) {
+          setProgress(prog);
+        }
+        // If we WERE running but now we're not, refresh to get new drafts
+        if (!isRunning && running) {
+          void refresh();
+        }
+      } catch {
+        // poll failure is non-fatal — just skip this tick
       }
     }, 2000);
     return () => clearInterval(timer);
@@ -108,14 +112,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
   const executeRun = async () => {
     if (running) return;
-    setRunning(true);
+    setRunning(true);  // Immediately show running state
     setProgress(null);
-    try {
-      const outcome = await scenarioService.runTaskNow(task.id);
+    // Fire-and-forget: the IPC blocks until the entire pipeline finishes.
+    // During that time the poll (every 2s) will update progress.
+    // When the IPC returns, we show a toast and refresh.
+    scenarioService.runTaskNow(task.id).then(async (outcome) => {
       if (outcome.status === 'ok') {
         showToast('ok', `运行完成：采集 ${outcome.collected_count ?? 0} 条，生成 ${outcome.draft_count ?? 0} 份草稿`);
       } else if (outcome.status === 'skipped') {
         showToast('warn', outcome.reason === 'another_task_running' ? '有另一个任务正在运行，请等它完成后再试' : `已跳过: ${outcome.reason}`);
+        setRunning(false); // Skipped = not actually running
       } else {
         const reason = outcome.reason || '';
         const friendlyReason = reason === 'scenario_pack_not_found' ? '场景包未找到，请检查网络连接'
@@ -126,11 +133,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           : reason || '未知错误，请查看控制台日志';
         showToast('err', `运行失败: ${friendlyReason}`);
       }
+      // Don't setRunning(false) here — poll handles it via getRunningTaskId.
+      // This avoids the race where finally fires before poll updates.
       await refresh();
       await onChanged();
-    } finally {
+    }).catch(() => {
+      showToast('err', '运行异常');
       setRunning(false);
-    }
+    });
   };
 
   const handleRunNow = () => {
