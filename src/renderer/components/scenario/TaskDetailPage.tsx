@@ -164,6 +164,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
   };
 
   const handleDelete = async () => {
+    // Only block deletion if THIS task is the one currently running
+    const rid = await scenarioService.getRunningTaskId().catch(() => null);
+    if (rid === task.id) {
+      showToast('warn', '该任务正在运行中，请先停止再删除');
+      return;
+    }
     if (!confirmingDelete) {
       setConfirmingDelete(true);
       setTimeout(() => setConfirmingDelete(false), 3000);
