@@ -95,26 +95,9 @@ export async function checkXhsLogin(): Promise<XhsLoginStatus> {
     return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
   }
 
-  // 2. Make it the active tab so content-script primitives target it
-  try {
-    await sendBrowserCommand('tab_switch', { tabId: xhsTab.id }, 5000);
-    await sleep(randInt(300, 800));
-  } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'tab_switch failed', { err: String(err) });
-    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
-  }
-
-  // 3. Run the DOM probe
-  try {
-    const result = await sendBrowserCommand('javascript', { code: LOGIN_PROBE_CODE }, 10000);
-    const raw = result?.result;
-    if (typeof raw !== 'string') return { loggedIn: false, reason: 'no_response' };
-    const parsed = JSON.parse(raw);
-    return { loggedIn: Boolean(parsed?.loggedIn), reason: parsed?.reason };
-  } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'login probe failed', { err: String(err) });
-    return { loggedIn: false, reason: 'probe_error' };
-  }
+  // Step 2 passed — XHS tab exists. We no longer auto-detect login;
+  // the user confirms manually via the modal's "我已登录" button.
+  return { loggedIn: true };
 }
 
 /**
@@ -328,7 +311,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
 
   async function visitFeedAndCollect(url: string): Promise<void> {
     await sendBrowserCommand('navigate', { url }, 30000);
-    await sleep(randInt(2500, 5500));
+    await sleep(randInt(4000, 8000)); // simulate reading the first screen
 
     const anomaly = await checkAnomaly();
     if (anomaly !== 'ok') {
@@ -392,7 +375,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
 
     try {
       await sendBrowserCommand('navigate', { url: card.url }, 30000);
-      await sleep(randInt(2000, 4000));
+      await sleep(randInt(3500, 7000));
 
       const anomaly = await checkAnomaly();
       if (anomaly !== 'ok') {

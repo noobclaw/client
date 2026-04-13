@@ -1468,6 +1468,10 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { status: 'failed', reason: e.message || String(e) });
             }
           }
+          case 'scenario:getRunningTaskId': {
+            const scenarioManager = require('./libs/scenario/scenarioManager');
+            return writeJSON(res, 200, { runningTaskId: scenarioManager.getRunningTaskId() });
+          }
           case 'scenario:runStatus': {
             const scenarioRiskGuard = require('./libs/scenario/riskGuard');
             if (!scenarioRiskGuard._loaded) {

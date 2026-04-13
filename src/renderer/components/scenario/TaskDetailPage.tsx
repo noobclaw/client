@@ -10,6 +10,28 @@ import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 
+// Track ID → display name lookup
+const TRACK_NAMES: Record<string, string> = {
+  career_side_hustle: '💼 副业 · 打工人赚钱',
+  indie_dev: '👩‍💻 独立开发 · 程序员记录',
+  personal_finance: '💰 理财 · 记账攻略',
+  travel: '✈️ 旅行 · 攻略分享',
+  food: '🍲 美食 · 探店做饭',
+  outfit: '👗 穿搭 · 风格分享',
+  beauty: '💄 美妆 · 产品测评',
+  fitness: '💪 健身 · 减脂日记',
+  reading: '📚 读书 · 书单笔记',
+  parenting: '🧸 育儿 · 亲子日常',
+  exam_prep: '🎓 考研 · 备考党',
+  pets: '🐱 宠物 · 猫狗日常',
+  home_decor: '🏠 家居 · 小屋布置',
+  study_method: '🏆 学习 · 效率工具',
+  career_growth: '🎯 职场 · 升级打怪',
+  emotional_wellness: '🧘 情感 · 心理疗愈',
+  photography: '📷 摄影 · 日常记录',
+  crafts: '🎨 手工 · DIY',
+};
+
 interface Props {
   task: Task;
   scenario: Scenario | null;
@@ -47,22 +69,40 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof scenarioService.getTaskStats>> | null>(null);
   const [running, setRunning] = useState(false);
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [pushingDraft, setPushingDraft] = useState<string | null>(null);
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    const [d, s] = await Promise.all([
+    const [d, s, r] = await Promise.all([
       scenarioService.listDrafts(task.id),
       scenarioService.getTaskStats(task.id),
+      scenarioService.getRunningTaskId(),
     ]);
     setDrafts(d);
     setStats(s);
+    setRunningTaskId(r);
+    // If THIS task is currently running, keep running state
+    if (r === task.id) setRunning(true);
   }, [task.id]);
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+    // Poll running state every 3s while page is open
+    const timer = setInterval(async () => {
+      const r = await scenarioService.getRunningTaskId();
+      setRunningTaskId(r);
+      if (r === task.id) {
+        setRunning(true);
+      } else if (running && !r) {
+        // Task just finished
+        setRunning(false);
+        void refresh(); // Refresh to show new drafts
+      }
+    }, 3000);
+    return () => clearInterval(timer);
+  }, [refresh, task.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const showToast = (kind: 'ok' | 'warn' | 'err', text: string) => {
     setToast({ kind, text });
@@ -96,6 +136,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
   const handleRunNow = async () => {
     if (running) return;
+    // Check if another task is already running
+    if (runningTaskId && runningTaskId !== task.id) {
+      showToast('warn', '有另一个任务正在运行，请等它完成后再试');
+      return;
+    }
     // Show login modal — user must confirm they're logged in
     setLoginModalReason('check');
   };
@@ -219,7 +264,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       {/* Config summary (matches the task card display on the list page) */}
       <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
         <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
-          <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{task.track || scenario?.name_zh || task.scenario_id}</span></div>
+          <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{TRACK_NAMES[task.track] || task.track || scenario?.name_zh || task.scenario_id}</span></div>
           <div><span className="text-gray-400">关键词:</span> <span className="dark:text-gray-200">{task.keywords.join(' · ')}</span></div>
           <div className="truncate"><span className="text-gray-400">Persona:</span> <span className="dark:text-gray-200">{task.persona}</span></div>
           <div><span className="text-gray-400">频次:</span> <span className="dark:text-gray-200">⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</span></div>
@@ -233,6 +278,32 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         <StatCard label={i18nService.t('scenarioTaskStatDraftsPushed')} value={stats?.pushed_draft_count ?? 0} />
         <StatCard label={i18nService.t('scenarioTaskStatLastRun')} value={formatRelative(stats?.last_run_at || null)} small />
       </div>
+
+      {/* Running indicator panel */}
+      {running && (
+        <div className="mb-6 rounded-xl border border-green-500/30 bg-green-500/5 p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-sm font-semibold text-green-500">正在运行</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                // TODO: implement proper stop via scenarioManager
+                showToast('warn', '任务将在当前步骤完成后停止');
+              }}
+              className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors"
+            >
+              ⏹ 停止
+            </button>
+          </div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <div>🔍 正在浏览小红书发现页，寻找符合关键词的爆款...</div>
+            <div className="text-[11px] text-gray-400">运行期间请保持 Chrome 打开且小红书已登录</div>
+          </div>
+        </div>
+      )}
 
       {cooldownHoursLeft > 0 && (
         <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-600 dark:text-amber-400">

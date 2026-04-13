@@ -72,6 +72,7 @@ contextBridge.exposeInMainWorld('electron', {
     // XHS login gate
     setActiveTask: (id: string) => ipcRenderer.invoke('scenario:setActiveTask', id),
     getActiveTask: () => ipcRenderer.invoke('scenario:getActiveTask'),
+    getRunningTaskId: () => ipcRenderer.invoke('scenario:getRunningTaskId'),
     checkXhsLogin: () => ipcRenderer.invoke('scenario:checkXhsLogin'),
     openXhsLogin: () => ipcRenderer.invoke('scenario:openXhsLogin'),
   },

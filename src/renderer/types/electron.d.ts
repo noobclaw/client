@@ -272,6 +272,7 @@ interface IElectronAPI {
     markDraftIgnored: (draftId: string) => Promise<ScenarioDraftIPC | null>;
     setActiveTask: (id: string) => Promise<ScenarioTaskIPC | null>;
     getActiveTask: () => Promise<ScenarioTaskIPC | null>;
+    getRunningTaskId: () => Promise<{ runningTaskId: string | null }>;
     checkXhsLogin: () => Promise<XhsLoginStatus>;
     openXhsLogin: () => Promise<{ ok: boolean; reason?: string }>;
   };

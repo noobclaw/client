@@ -117,6 +117,17 @@ class ScenarioService {
     return window.electron.scenario.getActiveTask();
   }
 
+  // ── Running state ──
+
+  async getRunningTaskId(): Promise<string | null> {
+    try {
+      const r = await window.electron.scenario.getRunningTaskId();
+      return r?.runningTaskId || null;
+    } catch {
+      return null;
+    }
+  }
+
   // ── XHS login gate ──
 
   async checkXhsLogin(): Promise<XhsLoginStatus> {
