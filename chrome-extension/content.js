@@ -80,6 +80,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'triple_click':
           result = tripleClickElement(params);
           break;
+        // ── Scenario automation commands (no eval, CSP-safe) ──
+        case 'click_by_text':
+          result = clickByText(params);
+          break;
+        case 'read_feed_cards':
+          result = readFeedCards();
+          break;
+        case 'read_detail_page':
+          result = readDetailPage();
+          break;
+        case 'check_anomaly':
+          result = checkPageAnomaly();
+          break;
         default:
           result = { error: `Unknown command: ${command}` };
       }
@@ -589,4 +602,149 @@ function tripleClickElement(params) {
   fireMouseSequence(el, { detail: 3 });
   return { message: `Triple-clicked ${el.tagName.toLowerCase()}` };
 }
+// ═══════════════════════════════════════════════════════════
+// Scenario automation commands — CSP-safe (no eval/new Function)
+// These run directly in the content script's isolated world
+// and access page DOM via standard DOM APIs.
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * click_by_text — find element by visible text, return coordinates.
+ * params: { target: "图文" }
+ * Returns: { found: true, x, y, tag, cls } or { found: false }
+ */
+function clickByText(params) {
+  const target = params.target || params.text || '';
+  if (!target) return { found: false, error: 'no target text' };
+
+  let best = null;
+  let bestArea = Infinity;
+  const all = document.querySelectorAll('*');
+  for (let i = 0; i < all.length; i++) {
+    const el = all[i];
+    const t = (el.textContent || '').trim();
+    if (t !== target) continue;
+    const rect = el.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) continue;
+    if (rect.top > 500) continue;
+    const area = rect.width * rect.height;
+    if (area < bestArea) {
+      best = el;
+      bestArea = area;
+    }
+  }
+
+  if (best) {
+    const r = best.getBoundingClientRect();
+    return {
+      found: true,
+      x: Math.round(r.left + r.width / 2),
+      y: Math.round(r.top + r.height / 2),
+      tag: best.tagName,
+      cls: (best.className || '').toString().split(' ')[0],
+    };
+  }
+  return { found: false };
+}
+
+/**
+ * read_feed_cards — extract note cards from XHS feed/search pages.
+ * Returns: { cards: FeedCard[] }
+ */
+function readFeedCards() {
+  const out = [];
+  const seen = {};
+  const idRe = /\/([a-f0-9]{24})(?:\?|$)/i;
+  const allLinks = document.querySelectorAll('a[href]');
+
+  for (let i = 0; i < allLinks.length; i++) {
+    const a = allLinks[i];
+    const href = a.getAttribute('href') || '';
+    const idMatch = href.match(idRe);
+    if (!idMatch || !idMatch[1]) continue;
+    const noteId = idMatch[1];
+    if (seen[noteId]) continue;
+
+    const card = a.closest('section, [class*="note"], [class*="card"], [class*="feed"]') || a;
+    const rect = card.getBoundingClientRect();
+    if (rect.width < 100 || rect.height < 80) continue;
+    seen[noteId] = true;
+
+    const isVideo = !!card.querySelector('.play-icon, [class*="video-icon"], [class*="play"]');
+    const titleEl = card.querySelector('.title, [class*="title"], .note-text, a span');
+    const likesEl = card.querySelector('.like-wrapper .count, .count, [class*="like"] span, [class*="like-count"]');
+
+    let title = '';
+    if (titleEl) {
+      title = (titleEl.textContent || '').trim().slice(0, 200);
+    } else {
+      title = (a.textContent || '').trim().slice(0, 200);
+    }
+
+    out.push({
+      post_id: noteId,
+      url: href.startsWith('http') ? href : 'https://www.xiaohongshu.com' + href,
+      title: title,
+      likes_text: likesEl ? (likesEl.textContent || '').trim() : '0',
+      is_video: isVideo,
+    });
+  }
+  return { cards: out };
+}
+
+/**
+ * read_detail_page — extract full post details from XHS note detail page.
+ * Returns: { title, body, images, publish_time, hashtags, author_name, author_followers_text }
+ */
+function readDetailPage() {
+  function text(sels) {
+    for (const sel of sels) {
+      const el = document.querySelector(sel);
+      if (el) return (el.textContent || '').trim();
+    }
+    return '';
+  }
+  function many(sel, attr) {
+    const arr = [];
+    const els = document.querySelectorAll(sel);
+    for (const el of els) {
+      const v = attr ? el.getAttribute(attr) : (el.textContent || '').trim();
+      if (v) arr.push(v);
+    }
+    return arr;
+  }
+  return {
+    title: text(['#detail-title', 'h1.title', '[class*="title"]']),
+    body: text(['#detail-desc', '.content', '[class*="desc"]']),
+    images: many('.carousel .slide img, [class*="swiper-slide"] img', 'src'),
+    publish_time: text(['.publish-date', '.date', 'time']),
+    hashtags: many('.hash-tag, a[href*="page/topics/"]', null),
+    author_name: text(['.author .name', '.user .name']),
+    author_followers_text: text(['.follower-count']),
+  };
+}
+
+/**
+ * check_anomaly — detect captcha, login wall, rate limiting.
+ * Returns: { status: 'ok' | 'captcha' | 'login_wall' | 'rate_limited' | 'account_flag' }
+ */
+function checkPageAnomaly() {
+  const body = document.body ? (document.body.innerText || '') : '';
+  const url = location.href || '';
+
+  if (document.querySelector('.captcha-slider, .nc_iconfont, iframe[src*="captcha"]')) {
+    return { status: 'captcha' };
+  }
+  if (/\/login|\/signin/i.test(url) || document.querySelector('.login-container, [class*="login-panel"]')) {
+    return { status: 'login_wall' };
+  }
+  if (body.includes('操作过于频繁') || body.includes('访问频率')) {
+    return { status: 'rate_limited' };
+  }
+  if (body.includes('账号异常') || body.includes('暂时限流')) {
+    return { status: 'account_flag' };
+  }
+  return { status: 'ok' };
+}
+
 } // end __noobclaw_injected guard

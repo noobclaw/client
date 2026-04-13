@@ -155,19 +155,40 @@ function buildContext(
     },
 
     checkAnomaly: async () => {
-      const script = scripts.check_anomaly;
-      if (!script) return;
       try {
-        const res = await sendBrowserCommand('javascript', { code: script }, 5000);
-        const raw = res?.result || 'ok';
-        if (raw === 'captcha' || raw === 'login_wall' || raw === 'rate_limited' || raw === 'account_flag') {
-          riskGuard.recordAnomaly(task.id, raw as any, manifest.risk_caps);
-          ctx.report('检测到异常: ' + raw);
-          throw new Error('anomaly:' + raw);
+        const res = await sendBrowserCommand('check_anomaly', {}, 5000);
+        const data = res?.data || res || {};
+        const status = data.status || 'ok';
+        if (status === 'captcha' || status === 'login_wall' || status === 'rate_limited' || status === 'account_flag') {
+          riskGuard.recordAnomaly(task.id, status as any, manifest.risk_caps);
+          ctx.report('检测到异常: ' + status);
+          throw new Error('anomaly:' + status);
         }
       } catch (err) {
         if (String(err).startsWith('Error: anomaly:')) throw err;
-        // Non-anomaly errors are ignored
+      }
+    },
+
+    // Read feed cards via extension's built-in command (CSP-safe)
+    readCards: async () => {
+      try {
+        const res = await sendBrowserCommand('read_feed_cards', {}, 8000);
+        const data = res?.data || res || {};
+        return data.cards || [];
+      } catch (err) {
+        coworkLog('WARN', 'phaseRunner', 'readCards failed', { err: String(err) });
+        return [];
+      }
+    },
+
+    // Read detail page via extension's built-in command (CSP-safe)
+    readDetail: async () => {
+      try {
+        const res = await sendBrowserCommand('read_detail_page', {}, 8000);
+        return res?.data || res || null;
+      } catch (err) {
+        coworkLog('WARN', 'phaseRunner', 'readDetail failed', { err: String(err) });
+        return null;
       }
     },
 
