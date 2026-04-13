@@ -10,7 +10,6 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import type { ScenarioRunProgress } from '../../types/scenario';
@@ -62,7 +61,7 @@ const STEP_NAMES = [
   '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份',
 ];
 
-export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged }) => {
+export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChanged }) => {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof scenarioService.getTaskStats>> | null>(null);
   const [running, setRunning] = useState(false);
