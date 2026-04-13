@@ -83,6 +83,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
   useEffect(() => {
     void refreshAll();
+    // Sidecar might not be ready on first mount — retry after 2s and 5s
+    const t1 = setTimeout(() => void refreshAll(), 2000);
+    const t2 = setTimeout(() => void refreshAll(), 5000);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [refreshAll]);
 
   const currentPlatform: PlatformId =

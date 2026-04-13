@@ -1,21 +1,19 @@
 /**
- * TaskDetailPage — two-mode layout based on running state.
+ * TaskDetailPage — two-mode layout (idle vs running).
  *
- * IDLE mode:  config summary + stats + "直接运行/编辑/删除" buttons
- *             + 3-step "运行明细" all showing "等待"
- *
- * RUNNING mode: config summary + "停止" button only
- *               + 3-step "运行明细" with live progress logs
- *               + active step has blinking "..." on the running line
+ * State management is simple:
+ * - On mount: ask sidecar "is anything running?" → set running state
+ * - User clicks "直接运行": ask sidecar → if nothing running, start + set running=true
+ * - Poll every 2s: fetch progress logs (for display only, NOT for running state)
+ * - When IPC returns (task done): set running=false + show toast
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
-import { noobClawAuth } from '../../services/noobclawAuth';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { scenarioService, type Task, type Draft, type Scenario } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { noobClawAuth } from '../../services/noobclawAuth';
 import type { ScenarioRunProgress } from '../../types/scenario';
 
-// Track ID → display name
 const TRACK_NAMES: Record<string, string> = {
   career_side_hustle: '💼 副业 · 打工人赚钱',
   indie_dev: '👩‍💻 独立开发 · 程序员记录',
@@ -48,6 +46,12 @@ function formatRelative(ts: number | null | undefined): string {
   return `${Math.round(hrs / 24)} 天前`;
 }
 
+const STEP_NAMES = [
+  '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
+  '分析爆款，拆解逻辑',
+  '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份',
+];
+
 interface Props {
   task: Task;
   scenario: Scenario | null;
@@ -56,123 +60,134 @@ interface Props {
   onChanged: () => void | Promise<void>;
 }
 
-const STEP_NAMES = [
-  '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
-  '分析爆款，拆解逻辑',
-  '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份',
-];
-
 export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChanged }) => {
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [stats, setStats] = useState<Awaited<ReturnType<typeof scenarioService.getTaskStats>> | null>(null);
+  // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const mountedRef = useRef(true);
 
-  const refresh = useCallback(async () => {
-    const [d, s] = await Promise.all([
-      scenarioService.listDrafts(task.id),
-      scenarioService.getTaskStats(task.id),
-    ]);
-    setDrafts(d);
-    setStats(s);
-  }, [task.id]);
-
-  // Poll progress every 2s
-  useEffect(() => {
-    void refresh();
-    const timer = setInterval(async () => {
-      try {
-        const [rid, prog] = await Promise.all([
-          scenarioService.getRunningTaskId().catch(() => null),
-          scenarioService.getRunProgress().catch(() => null),
-        ]);
-        const isRunning = rid === task.id;
-        setRunning(isRunning);
-        if (prog && prog.taskId === task.id) {
-          setProgress(prog);
-        }
-        // If we WERE running but now we're not, refresh to get new drafts
-        if (!isRunning && running) {
-          void refresh();
-        }
-      } catch {
-        // poll failure is non-fatal — just skip this tick
-      }
-    }, 2000);
-    return () => clearInterval(timer);
-  }, [refresh, task.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   const showToast = (kind: 'ok' | 'warn' | 'err', text: string) => {
+    if (!mountedRef.current) return;
     setToast({ kind, text });
-    setTimeout(() => setToast(null), 5000);
+    setTimeout(() => { if (mountedRef.current) setToast(null); }, 5000);
   };
 
-  const executeRun = async () => {
-    if (running) return;
-    setRunning(true);  // Immediately show running state
-    setProgress(null);
-    // Fire-and-forget: the IPC blocks until the entire pipeline finishes.
-    // During that time the poll (every 2s) will update progress.
-    // When the IPC returns, we show a toast and refresh.
-    scenarioService.runTaskNow(task.id).then(async (outcome) => {
-      if (outcome.status === 'ok') {
-        showToast('ok', `运行完成：采集 ${outcome.collected_count ?? 0} 条，生成 ${outcome.draft_count ?? 0} 份草稿`);
-      } else if (outcome.status === 'skipped') {
-        showToast('warn', outcome.reason === 'another_task_running' ? '有另一个任务正在运行，请等它完成后再试' : `已跳过: ${outcome.reason}`);
-        setRunning(false); // Skipped = not actually running
-      } else {
-        const reason = outcome.reason || '';
-        const friendlyReason = reason === 'scenario_pack_not_found' ? '场景包未找到，请检查网络连接'
-          : reason === 'another_task_running' ? '有另一个任务正在运行'
-          : reason === 'user_stopped' ? '已手动停止'
-          : reason.includes('BROWSER_NOT_CONNECTED') ? '浏览器插件未连接'
-          : reason.includes('ANTHROPIC_API_KEY_MISSING') ? 'AI 密钥未设置，请在设置中配置'
-          : reason || '未知错误，请查看控制台日志';
-        showToast('err', `运行失败: ${friendlyReason}`);
-      }
-      // Don't setRunning(false) here — poll handles it via getRunningTaskId.
-      // This avoids the race where finally fires before poll updates.
-      await refresh();
-      await onChanged();
-    }).catch(() => {
-      showToast('err', '运行异常');
-      setRunning(false);
-    });
-  };
+  // ── Load data on mount ──
+  const refreshData = useCallback(async () => {
+    try {
+      const [d, s] = await Promise.all([
+        scenarioService.listDrafts(task.id).catch(() => []),
+        scenarioService.getTaskStats(task.id).catch(() => null),
+      ]);
+      if (mountedRef.current) { setDrafts(Array.isArray(d) ? d : []); setStats(s); }
+    } catch {}
+  }, [task.id]);
 
-  const handleRunNow = () => {
+  // ── Check running state on mount (ONE TIME) ──
+  useEffect(() => {
+    void refreshData();
+    // Check if this task or any task is already running
+    scenarioService.getRunningTaskId().then(rid => {
+      if (mountedRef.current && rid === task.id) setRunning(true);
+    }).catch(() => {});
+  }, [refreshData, task.id]);
+
+  // ── Poll progress logs every 2s (display only, NOT for running state) ──
+  useEffect(() => {
+    if (!running) return;
+    const timer = setInterval(async () => {
+      try {
+        const prog = await scenarioService.getRunProgress().catch(() => null);
+        if (mountedRef.current && prog && prog.taskId === task.id) {
+          setProgress(prog);
+          // If progress says "done" or "error", task has finished
+          if (prog.status === 'done' || prog.status === 'error') {
+            setRunning(false);
+            void refreshData();
+          }
+        }
+      } catch {}
+    }, 2000);
+    return () => clearInterval(timer);
+  }, [running, task.id, refreshData]);
+
+  // ── Actions ──
+  const handleRunNow = async () => {
     if (running) return;
-    // Gate: must be logged in with wallet
+
+    // 1. Wallet check
     if (!noobClawAuth.getState().isAuthenticated) {
       noobClawAuth.openWebsiteLogin();
       return;
     }
+
+    // 2. Check if ANOTHER task is already running
+    try {
+      const rid = await scenarioService.getRunningTaskId().catch(() => null);
+      if (rid && rid !== task.id) {
+        showToast('warn', '有另一个任务正在运行，请先停掉再运行这个');
+        return;
+      }
+    } catch {}
+
+    // 3. Show login check modal
     setLoginModalOpen(true);
   };
 
   const handleLoginConfirmed = () => {
     setLoginModalOpen(false);
-    void executeRun();
+    // 4. Start! Set running IMMEDIATELY — don't wait for IPC
+    setRunning(true);
+    setProgress(null);
+
+    // 5. Fire IPC (blocks until pipeline finishes)
+    scenarioService.runTaskNow(task.id).then(async (outcome) => {
+      if (!mountedRef.current) return;
+      if (outcome.status === 'ok') {
+        showToast('ok', `运行完成：采集 ${outcome.collected_count ?? 0} 条，生成 ${outcome.draft_count ?? 0} 份草稿`);
+      } else if (outcome.status === 'skipped') {
+        showToast('warn', `已跳过: ${outcome.reason}`);
+      } else {
+        const r = outcome.reason || '';
+        showToast('err', `运行失败: ${
+          r.includes('scenario_pack') ? '场景包未找到' :
+          r.includes('BROWSER') ? '浏览器插件未连接' :
+          r.includes('API_KEY') ? 'AI 密钥未设置' :
+          r || '未知错误'
+        }`);
+      }
+      setRunning(false);
+      void refreshData();
+      void onChanged();
+    }).catch(() => {
+      if (mountedRef.current) { showToast('err', '运行异常'); setRunning(false); }
+    });
   };
 
   const handleStop = async () => {
     await scenarioService.requestAbort();
-    showToast('warn', '已请求停止，当前步骤完成后将终止');
+    showToast('warn', '已请求停止，当前步骤完成后终止');
   };
 
   const handleDelete = async () => {
-    // Only block deletion if THIS task is the one currently running
-    const rid = await scenarioService.getRunningTaskId().catch(() => null);
-    if (rid === task.id) {
-      showToast('warn', '该任务正在运行中，请先停止再删除');
-      return;
-    }
+    // Check if THIS task is running
+    try {
+      const rid = await scenarioService.getRunningTaskId().catch(() => null);
+      if (rid === task.id) {
+        showToast('warn', '该任务正在运行中，请先停止再删除');
+        return;
+      }
+    } catch {}
     if (!confirmingDelete) {
       setConfirmingDelete(true);
-      setTimeout(() => setConfirmingDelete(false), 3000);
+      setTimeout(() => { if (mountedRef.current) setConfirmingDelete(false); }, 3000);
       return;
     }
     setConfirmingDelete(false);
@@ -183,15 +198,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
   const trackName = TRACK_NAMES[task.track] || task.track || task.scenario_id;
 
+  // ── Render ──
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* Back */}
       <button type="button" onClick={onBack}
         className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
         ← 返回
       </button>
 
-      {/* Config summary + action buttons */}
+      {/* Config + actions */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
@@ -203,7 +218,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           <div className="shrink-0 flex items-center gap-2">
             {running ? (
               <>
-                <span className="text-sm font-semibold text-green-500">运行中</span>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  运行中
+                </span>
                 <button type="button" onClick={handleStop}
                   className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors">
                   停止
@@ -248,34 +266,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           toast.kind === 'ok' ? 'bg-green-500/10 border border-green-500/30 text-green-500'
             : toast.kind === 'warn' ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500'
             : 'bg-red-500/10 border border-red-500/30 text-red-500'
-        }`}>
-          {toast.text}
-        </div>
+        }`}>{toast.text}</div>
       )}
 
-      {/* 运行明细 — 3-step panel */}
+      {/* 运行明细 */}
       <h2 className="text-base font-bold dark:text-white mb-4">运行明细</h2>
-
       <div className="space-y-4">
         {STEP_NAMES.map((name, idx) => {
           const stepNum = idx + 1;
-          const stepProgress = progress?.steps?.[idx];
-          const stepStatus = stepProgress?.status || 'waiting';
-          const logs = stepProgress?.logs || [];
-          const isActive = stepStatus === 'running';
-          const isDone = stepStatus === 'done';
-          const isError = stepStatus === 'error';
+          const sp = progress?.steps?.[idx];
+          const status = sp?.status || 'waiting';
+          const logs = sp?.logs || [];
+          const isActive = status === 'running';
+          const isDone = status === 'done';
+          const isError = status === 'error';
 
           return (
             <div key={idx}>
-              {/* Step header */}
               <div className={`text-sm font-medium mb-2 ${
                 isActive ? 'text-green-500' : isDone ? 'text-green-600 dark:text-green-400' : isError ? 'text-red-500' : 'dark:text-gray-300'
               }`}>
                 {stepNum}.{name}
               </div>
-
-              {/* Step body */}
               <div className={`rounded-xl border p-4 min-h-[60px] ${
                 isActive ? 'border-green-500/30 bg-green-500/5'
                   : isDone ? 'border-green-500/20 bg-green-500/5'
@@ -293,9 +305,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                         </span>
                         <span className="dark:text-gray-300 flex-1">
                           {log.message}
-                          {log.status === 'running' && (
-                            <span className="inline-block ml-2 animate-pulse text-green-500">......</span>
-                          )}
+                          {log.status === 'running' && <span className="inline-block ml-2 animate-pulse text-green-500">......</span>}
                         </span>
                         <span className="text-gray-500 shrink-0 tabular-nums">{log.time}</span>
                       </div>
@@ -303,10 +313,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                   </div>
                 ) : (
                   <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
-                    {stepNum === 1 && !running
-                      ? `等待每日 ${task.daily_time || '08:00'} 定时运行`
-                      : '等待前一步'
-                    }
+                    {stepNum === 1 && !running ? `等待每日 ${task.daily_time || '08:00'} 定时运行` : '等待前一步'}
                   </div>
                 )}
               </div>
@@ -315,7 +322,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         })}
       </div>
 
-      {/* Drafts section (below the 3 steps) */}
+      {/* Drafts */}
       {drafts.length > 0 && (
         <section className="mt-8">
           <h2 className="text-base font-bold dark:text-white mb-4">
@@ -324,13 +331,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               {drafts.filter(d => d.status === 'pending').length} 条待审
             </span>
           </h2>
-          <div className="text-xs text-gray-400">
-            （草稿审核和推送功能开发中）
-          </div>
+          <div className="text-xs text-gray-400">（草稿审核和推送功能开发中）</div>
         </section>
       )}
 
-      {/* Login modal */}
       {loginModalOpen && (
         <LoginRequiredModal
           onCancel={() => setLoginModalOpen(false)}
@@ -340,8 +344,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
     </div>
   );
 };
-
-// ── Sub-components ──
 
 const StatCard: React.FC<{ label: string; value: string | number; small?: boolean }> = ({ label, value, small }) => (
   <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
