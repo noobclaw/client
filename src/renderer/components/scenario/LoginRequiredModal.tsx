@@ -1,96 +1,58 @@
 /**
- * LoginRequiredModal — 3-step guided checker shown before any scenario action.
+ * LoginRequiredModal — 3-step guided checker.
  *
- * Steps:
- *   ① 浏览器插件是否连接
- *   ② Chrome 是否打开了小红书
- *   ③ 小红书是否已登录
- *
- * Each step shows a ✅ or ❌ with a specific action button for the first
- * failing step. The user can click "重新检查" at any time to re-run all
- * three checks. When all three pass, the modal auto-closes and triggers
- * the pending action.
+ *   ① 浏览器插件是否连接 (auto-check)
+ *   ② Chrome 是否打开了小红书 (auto-check)
+ *   ③ 用户手动确认已登录 (button click, no auto-detection)
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService } from '../../services/scenario';
-import type { XhsLoginStatus } from '../../types/scenario';
 
 interface Props {
-  reason?: string;
   onCancel: () => void;
-  onRetry: (status: XhsLoginStatus) => void;
+  /** Called when user confirms all 3 steps are done. */
+  onConfirmed: () => void;
 }
 
-type StepStatus = 'pass' | 'fail' | 'checking';
+type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 
 interface CheckResult {
   extension: StepStatus;
   xhsTab: StepStatus;
-  loggedIn: StepStatus;
-  raw?: XhsLoginStatus;
+  userConfirmed: StepStatus;
 }
 
-function deriveSteps(reason?: string): CheckResult {
-  if (!reason) return { extension: 'checking', xhsTab: 'checking', loggedIn: 'checking' };
-
-  switch (reason) {
-    case 'browser_not_connected':
-      return { extension: 'fail', xhsTab: 'checking', loggedIn: 'checking' };
-    case 'xhs_tab_not_reachable':
-      return { extension: 'pass', xhsTab: 'fail', loggedIn: 'checking' };
-    case 'login_page':
-    case 'login_modal':
-    case 'sign_in_button':
-    case 'no_response':
-    case 'probe_error':
-      return { extension: 'pass', xhsTab: 'pass', loggedIn: 'fail' };
-    default:
-      return { extension: 'fail', xhsTab: 'checking', loggedIn: 'checking' };
-  }
-}
-
-const STEP_ICON: Record<StepStatus, string> = {
-  pass: '✅',
-  fail: '❌',
-  checking: '⏳',
-};
-
-export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry }) => {
-  const [steps, setSteps] = useState<CheckResult>(() => deriveSteps(reason));
+export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) => {
+  const [steps, setSteps] = useState<CheckResult>({
+    extension: 'checking',
+    xhsTab: 'checking',
+    userConfirmed: 'waiting',
+  });
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
-
-  // Determine which step is the first failure
-  const firstFail: 'extension' | 'xhsTab' | 'loggedIn' | null =
-    steps.extension === 'fail' ? 'extension' :
-    steps.xhsTab === 'fail' ? 'xhsTab' :
-    steps.loggedIn === 'fail' ? 'loggedIn' :
-    null;
 
   const runCheck = useCallback(async () => {
     setChecking(true);
     try {
       const status = await scenarioService.checkXhsLogin();
-      const derived = deriveSteps(status.loggedIn ? undefined : status.reason);
-      if (status.loggedIn) {
-        derived.extension = 'pass';
-        derived.xhsTab = 'pass';
-        derived.loggedIn = 'pass';
+      // We only care about extension + tab status, NOT login detection
+      if (status.reason === 'browser_not_connected') {
+        setSteps({ extension: 'fail', xhsTab: 'checking', userConfirmed: 'waiting' });
+      } else if (status.reason === 'xhs_tab_not_reachable') {
+        setSteps({ extension: 'pass', xhsTab: 'fail', userConfirmed: 'waiting' });
+      } else {
+        // Extension connected + XHS tab found (login status doesn't matter)
+        setSteps(prev => ({ extension: 'pass', xhsTab: 'pass', userConfirmed: prev.userConfirmed }));
       }
-      setSteps({ ...derived, raw: status });
-
-      if (status.loggedIn) {
-        // All good — auto-close after a brief green flash
-        setTimeout(() => onRetry(status), 400);
-      }
+    } catch {
+      setSteps({ extension: 'fail', xhsTab: 'checking', userConfirmed: 'waiting' });
     } finally {
       setChecking(false);
     }
-  }, [onRetry]);
+  }, []);
 
-  // Auto-check on mount
   useEffect(() => {
     void runCheck();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -100,17 +62,28 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
     try {
       const res = await scenarioService.openXhsLogin();
       if (!res.ok) {
-        // Extension tab_create failed — fall back to opening in system browser
-        try {
-          window.open('https://www.xiaohongshu.com', '_blank');
-        } catch {
-          // Last resort: copy URL
-          try { navigator.clipboard.writeText('https://www.xiaohongshu.com'); } catch {}
-        }
+        try { window.open('https://www.xiaohongshu.com', '_blank'); } catch {}
       }
+      // Re-check after opening
+      setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
     }
+  };
+
+  const handleUserConfirm = () => {
+    setSteps(prev => ({ ...prev, userConfirmed: 'pass' }));
+    // Brief green flash then proceed
+    setTimeout(() => onConfirmed(), 300);
+  };
+
+  const extensionAndTabReady = steps.extension === 'pass' && steps.xhsTab === 'pass';
+
+  const ICON: Record<StepStatus, string> = {
+    pass: '✅',
+    fail: '❌',
+    checking: '⏳',
+    waiting: '⏳',
   };
 
   return (
@@ -123,17 +96,14 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
           </h3>
         </div>
 
-        {/* 3-step checklist */}
         <div className="px-6 py-3 space-y-3">
           {/* Step 1: Extension */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-            steps.extension === 'fail'
-              ? 'border-red-500/30 bg-red-500/5'
-              : steps.extension === 'pass'
-                ? 'border-green-500/30 bg-green-500/5'
-                : 'border-gray-200 dark:border-gray-700'
+            steps.extension === 'fail' ? 'border-red-500/30 bg-red-500/5'
+              : steps.extension === 'pass' ? 'border-green-500/30 bg-green-500/5'
+              : 'border-gray-200 dark:border-gray-700'
           }`}>
-            <div className="text-xl shrink-0 mt-0.5">{STEP_ICON[steps.extension]}</div>
+            <div className="text-xl shrink-0 mt-0.5">{ICON[steps.extension]}</div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium dark:text-white">① 安装并连接浏览器插件</div>
               {steps.extension === 'fail' && (
@@ -149,13 +119,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
 
           {/* Step 2: XHS tab */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-            steps.xhsTab === 'fail'
-              ? 'border-red-500/30 bg-red-500/5'
-              : steps.xhsTab === 'pass'
-                ? 'border-green-500/30 bg-green-500/5'
-                : 'border-gray-200 dark:border-gray-700'
+            steps.xhsTab === 'fail' ? 'border-red-500/30 bg-red-500/5'
+              : steps.xhsTab === 'pass' ? 'border-green-500/30 bg-green-500/5'
+              : 'border-gray-200 dark:border-gray-700'
           }`}>
-            <div className="text-xl shrink-0 mt-0.5">{STEP_ICON[steps.xhsTab]}</div>
+            <div className="text-xl shrink-0 mt-0.5">{ICON[steps.xhsTab]}</div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium dark:text-white">② 在 Chrome 中打开小红书</div>
               {steps.xhsTab === 'fail' && (
@@ -163,12 +131,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
                   <div className="text-xs text-red-500 mt-1">
                     {i18nService.t('scenarioLoginNoXhsTab')}
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleOpenXhs}
-                    disabled={opening}
-                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50"
-                  >
+                  <button type="button" onClick={handleOpenXhs} disabled={opening}
+                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
                     {opening ? '...' : '🌐 ' + i18nService.t('scenarioLoginOpenBrowser')}
                   </button>
                 </>
@@ -179,48 +143,47 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
             </div>
           </div>
 
-          {/* Step 3: Logged in */}
+          {/* Step 3: User manual confirm */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-            steps.loggedIn === 'fail'
-              ? 'border-red-500/30 bg-red-500/5'
-              : steps.loggedIn === 'pass'
-                ? 'border-green-500/30 bg-green-500/5'
-                : 'border-gray-200 dark:border-gray-700'
+            steps.userConfirmed === 'pass' ? 'border-green-500/30 bg-green-500/5'
+              : extensionAndTabReady ? 'border-amber-500/30 bg-amber-500/5'
+              : 'border-gray-200 dark:border-gray-700'
           }`}>
-            <div className="text-xl shrink-0 mt-0.5">{STEP_ICON[steps.loggedIn]}</div>
+            <div className="text-xl shrink-0 mt-0.5">{ICON[steps.userConfirmed]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">③ 登录小红书账号</div>
-              {steps.loggedIn === 'fail' && (
-                <div className="text-xs text-red-500 mt-1">
-                  {i18nService.t('scenarioLoginNotLoggedIn')}
+              <div className="text-sm font-medium dark:text-white">③ 确认已登录小红书</div>
+              {steps.userConfirmed === 'pass' ? (
+                <div className="text-xs text-green-500 mt-1">已确认</div>
+              ) : extensionAndTabReady ? (
+                <>
+                  <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                    请确保你已在 Chrome 的小红书页面完成登录
+                  </div>
+                  <button type="button" onClick={handleUserConfirm}
+                    className="mt-2 w-full text-sm font-semibold px-4 py-2.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
+                    ✅ 我已登录，开始
+                  </button>
+                </>
+              ) : (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  请先完成上面两步
                 </div>
-              )}
-              {steps.loggedIn === 'pass' && (
-                <div className="text-xs text-green-500 mt-1">已登录</div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Action buttons */}
+        {/* Footer */}
         <div className="px-6 py-4 flex flex-col gap-2">
-          {firstFail && (
-            <button
-              type="button"
-              onClick={runCheck}
-              disabled={checking}
-              className="w-full px-4 py-3 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50"
-            >
+          {(steps.extension === 'fail' || steps.xhsTab === 'fail') && (
+            <button type="button" onClick={runCheck} disabled={checking}
+              className="w-full px-4 py-3 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50">
               {checking ? '⏳ 检查中...' : '🔄 重新检查'}
             </button>
           )}
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={checking}
-            className="w-full px-4 py-2 text-sm rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            {i18nService.t('scenarioWizardCancel')}
+          <button type="button" onClick={onCancel} disabled={checking}
+            className="w-full px-4 py-2 text-sm rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            取消
           </button>
         </div>
       </div>

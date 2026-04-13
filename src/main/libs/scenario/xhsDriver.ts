@@ -35,65 +35,9 @@ function sleep(ms: number): Promise<void> {
 // This works regardless of DOM structure or HttpOnly cookie flags.
 // If logged in, the API returns user data (200). If not, it 401s or
 // returns an error code in the JSON body.
-// IMPORTANT: must start with `return` because Chrome extension's executeJavascript
-// wraps code via `new Function(code)` — without return, the IIFE result is lost.
-const LOGIN_PROBE_CODE = `
-return (async function() {
-  try {
-    // Quick check: are we even on xiaohongshu.com?
-    if (!/xiaohongshu\\.com/i.test(location.hostname)) {
-      return JSON.stringify({ loggedIn: false, reason: 'not_xhs_page' });
-    }
-
-    // Call a lightweight XHS API that requires login.
-    // /api/sns/web/v1/user/selfinfo returns user profile when logged in.
-    var resp = await fetch('/api/sns/web/v1/user/selfinfo', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { 'accept': 'application/json' }
-    });
-
-    if (!resp.ok) {
-      // 401/403 = not logged in
-      return JSON.stringify({ loggedIn: false, reason: 'api_unauthorized' });
-    }
-
-    var data = await resp.json();
-    // XHS API returns { success: true, data: { ... } } when logged in,
-    // or { success: false, code: -100 } when session expired.
-    if (data && data.success === true) {
-      return JSON.stringify({ loggedIn: true });
-    }
-    if (data && (data.code === -100 || data.code === -101 || data.success === false)) {
-      return JSON.stringify({ loggedIn: false, reason: 'session_expired' });
-    }
-
-    // Got a response but can't parse — assume logged in
-    return JSON.stringify({ loggedIn: true });
-  } catch (err) {
-    // Network error or CORS — fall back to DOM check
-    try {
-      // Sidebar "我" link = logged in
-      var meLink = document.querySelector('a[href*="/user/profile"], a[href*="/user/self"]');
-      if (meLink) return JSON.stringify({ loggedIn: true });
-
-      // Visible "登录" button = not logged in
-      var btns = document.querySelectorAll('button, a');
-      for (var i = 0; i < btns.length; i++) {
-        if ((btns[i].textContent || '').trim() === '登录') {
-          var r = btns[i].getBoundingClientRect();
-          if (r.width > 30 && r.height > 20) {
-            return JSON.stringify({ loggedIn: false, reason: 'sign_in_button' });
-          }
-        }
-      }
-      return JSON.stringify({ loggedIn: true });
-    } catch (e2) {
-      return JSON.stringify({ loggedIn: false, reason: 'probe_error' });
-    }
-  }
-})()
-`;
+// Login check is now handled by background.js's 'check_xhs_login' command
+// which calls the XHS API directly (cookies auto-attached, including HttpOnly).
+// No DOM probe needed.
 
 export interface XhsLoginStatus {
   loggedIn: boolean;

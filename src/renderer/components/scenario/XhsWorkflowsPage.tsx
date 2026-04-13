@@ -19,7 +19,6 @@ import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
-import type { XhsLoginStatus } from '../../types/scenario';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
 const TRACK_PRESETS: Array<{ id: string; icon: string; name_zh: string }> = [
@@ -132,13 +131,9 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     }
   };
 
-  const handleLoginRetry = (status: XhsLoginStatus) => {
-    if (status.loggedIn) {
-      setLoginModalReason(null);
-      handleQuickStart();
-    } else {
-      setLoginModalReason(status.reason || 'not_logged_in');
-    }
+  const handleLoginConfirmed = () => {
+    setLoginModalReason(null);
+    handleQuickStart();
   };
 
   return (
@@ -252,9 +247,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
       {loginModalReason && (
         <LoginRequiredModal
-          reason={loginModalReason}
           onCancel={() => setLoginModalReason(null)}
-          onRetry={handleLoginRetry}
+          onConfirmed={handleLoginConfirmed}
         />
       )}
     </div>

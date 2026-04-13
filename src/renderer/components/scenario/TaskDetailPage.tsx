@@ -9,7 +9,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
-import type { XhsLoginStatus } from '../../types/scenario';
 
 interface Props {
   task: Task;
@@ -97,26 +96,25 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
   const handleRunNow = async () => {
     if (running) return;
-    // Gate on XHS login first
-    const status = await scenarioService.checkXhsLogin();
-    if (!status.loggedIn) {
-      setLoginModalReason(status.reason || 'not_logged_in');
-      return;
-    }
+    // Show login modal — user must confirm they're logged in
+    setLoginModalReason('check');
+  };
+
+  const handleLoginConfirmed = async () => {
+    setLoginModalReason(null);
     await executeRun();
   };
 
-  const handleLoginRetry = async (status: XhsLoginStatus) => {
-    if (status.loggedIn) {
-      setLoginModalReason(null);
-      await executeRun();
-    } else {
-      setLoginModalReason(status.reason || 'not_logged_in');
-    }
-  };
-
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const handleDelete = async () => {
-    if (!confirm(i18nService.t('scenarioTaskRunConfirmDelete'))) return;
+    if (!confirmingDelete) {
+      // First click — show "确定？" state, auto-reset after 3s
+      setConfirmingDelete(true);
+      setTimeout(() => setConfirmingDelete(false), 3000);
+      return;
+    }
+    // Second click within 3s — actually delete
+    setConfirmingDelete(false);
     await scenarioService.deleteTask(task.id);
     onBack();
     await onChanged();
@@ -207,9 +205,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <button
             type="button"
             onClick={handleDelete}
-            className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors"
+            className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+              confirmingDelete
+                ? 'border-red-500 bg-red-500 text-white'
+                : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
+            }`}
           >
-            {i18nService.t('scenarioTaskDelete')}
+            {confirmingDelete ? '确定删除？' : i18nService.t('scenarioTaskDelete')}
           </button>
         </div>
       </div>
@@ -286,9 +288,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
       {loginModalReason && (
         <LoginRequiredModal
-          reason={loginModalReason}
           onCancel={() => setLoginModalReason(null)}
-          onRetry={handleLoginRetry}
+          onConfirmed={handleLoginConfirmed}
         />
       )}
     </div>
