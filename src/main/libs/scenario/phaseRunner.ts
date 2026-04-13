@@ -112,11 +112,18 @@ function buildContext(
     },
 
     // ── Script injection ──
-    runScript: async (name: string) => {
-      const script = scripts[name];
+    // Runs a server-hosted script, optionally replacing __PLACEHOLDERS__
+    runScript: async (name: string, params?: Record<string, string>) => {
+      let script = scripts[name];
       if (!script) {
         coworkLog('WARN', 'phaseRunner', `script "${name}" not found in pack`);
         return null;
+      }
+      // Replace __KEY__ placeholders with param values
+      if (params) {
+        for (const [key, val] of Object.entries(params)) {
+          script = script.replace(new RegExp(`__${key.toUpperCase()}__`, 'g'), String(val).replace(/'/g, "\\'"));
+        }
       }
       try {
         const res = await sendBrowserCommand('javascript', { code: script }, 8000);
@@ -131,31 +138,14 @@ function buildContext(
       }
     },
 
-    clickByText: async (text: string, pauseRange?: [number, number]) => {
-      const script = scripts.click_by_text;
-      if (!script) return 'no_script';
-      const code = script.replace(/__TARGET__/g, text.replace(/'/g, "\\'"));
-      try {
-        // Step 1: Find element coordinates via injected JS
-        const res = await sendBrowserCommand('javascript', { code }, 5000);
-        const raw = res?.result;
-        if (!raw) return 'not_found';
-        const info = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (!info.found) {
-          coworkLog('DEBUG', 'phaseRunner', `clickByText("${text}") → not_found`);
-          return 'not_found';
-        }
-        // Step 2: Real mouse click at coordinates via Chrome extension
-        await sendBrowserCommand('click', { x: info.x, y: info.y }, 3000);
-        coworkLog('DEBUG', 'phaseRunner', `clickByText("${text}") → clicked ${info.tag}.${info.cls} at (${info.x},${info.y})`);
-        if (pauseRange) {
-          await sleep(pauseRange[0], pauseRange[1]);
-        }
-        return 'clicked';
-      } catch (err) {
-        coworkLog('WARN', 'phaseRunner', `clickByText("${text}") failed`, { err: String(err) });
-        return 'error';
-      }
+    // Atomic click at coordinates — used by orchestrator's clickByText()
+    click: async (x: number, y: number) => {
+      await sendBrowserCommand('click', { x, y }, 3000);
+    },
+
+    // Debug log (visible in sidecar console, not in UI)
+    log: (msg: string) => {
+      coworkLog('DEBUG', 'orchestrator', msg);
     },
 
     checkAnomaly: async () => {
