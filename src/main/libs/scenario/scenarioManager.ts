@@ -9,18 +9,12 @@
  * Each step emits progress logs that the renderer polls via getRunProgress().
  */
 
-import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
-import * as localExtractor from './localExtractor';
-import { discoverXhsNotes } from './xhsDriver';
-import { writeTaskArtifacts } from './artifactWriter';
+import { runOrchestrator } from './phaseRunner';
 import type {
-  DiscoveredNote,
-  Draft,
-  ExtractionResult,
   ScenarioManifest,
   ScenarioPack,
   ScenarioTask,
@@ -39,6 +33,7 @@ async function loadPack(scenario_id: string): Promise<ScenarioPack | null> {
     scripts: raw.scripts || {},
     prompts: raw.prompts || {},
     config: raw.config || {},
+    orchestrator: raw.orchestrator || '',
     draft_uploader: raw.draft_uploader || null,
   };
   packCache.set(scenario_id, pack);
@@ -201,116 +196,26 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
   riskGuard.markRunStart(task.id);
 
   try {
-    // ── STEP 1: Discovery ──
-    stepStart(1);
-    stepLog(1, 'running', `通过关键词"${task.keywords[0] || ''}"查找文章`);
-
-    if (abortRequested) { finishProgress('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped' }; }
-
+    // All orchestration logic now lives on the server (orchestrator.js).
+    // We just provide the ctx tools and let it run.
     const seen = taskStore.getSeenPostIds(task.id);
-    let notes: DiscoveredNote[] = [];
 
-    if (pack.manifest.platform === 'xhs') {
-      notes = await discoverXhsNotes({
-        pack,
-        task,
-        seenPostIds: seen,
-        onProgress: (msg) => stepLog(1, 'running', msg),
-      });
+    const result = await runOrchestrator(pack, task, seen, {
+      stepStart,
+      stepLog,
+      stepDone,
+      stepError,
+      finishProgress,
+      isAbortRequested: () => abortRequested,
+    });
+
+    if (result.status === 'ok') {
+      riskGuard.markRunSuccess(task.id, result.collected_count || 0, result.draft_count || 0);
     } else {
-      stepError(1, '平台暂未支持');
-      finishProgress('error', 'platform_not_implemented');
-      return { status: 'failed', reason: 'platform_not_implemented' };
+      riskGuard.markRunFailure(task.id, result.reason || 'unknown');
     }
 
-    taskStore.recordSeen(task.id, notes.map(n => n.external_post_id));
-    stepLog(1, 'done', `发现 ${notes.length} 条符合条件的爆款`);
-    stepDone(1);
-
-    if (notes.length === 0) {
-      finishProgress('done');
-      riskGuard.markRunSuccess(task.id, 0, 0);
-      return { status: 'ok', collected_count: 0, draft_count: 0, drafts: [] };
-    }
-
-    if (abortRequested) { finishProgress('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped' }; }
-
-    // ── STEP 2: Extraction ──
-    stepStart(2);
-    const drafts: Draft[] = [];
-    const extractions: Array<{ note: DiscoveredNote; extraction: ExtractionResult }> = [];
-
-    for (let i = 0; i < notes.length; i++) {
-      const note = notes[i];
-      if (abortRequested) { finishProgress('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped' }; }
-
-      stepLog(2, 'running', `拆解第 ${i + 1}/${notes.length} 篇: "${(note.title || '').slice(0, 30)}"`);
-
-      try {
-        const extraction = await extractWithCache(pack, note);
-        if (extraction) {
-          extractions.push({ note, extraction });
-          stepLog(2, 'done', `已拆解: "${(note.title || '').slice(0, 30)}"`);
-        }
-      } catch (err) {
-        coworkLog('WARN', 'scenarioManager', 'extraction failed', { post_id: note.external_post_id, err: String(err) });
-        stepLog(2, 'error', `拆解失败: "${(note.title || '').slice(0, 20)}" — ${String(err).slice(0, 50)}`);
-      }
-    }
-    stepDone(2);
-
-    if (abortRequested) { finishProgress('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped' }; }
-
-    // ── STEP 3: Composition + Save ──
-    stepStart(3);
-
-    for (let i = 0; i < extractions.length; i++) {
-      const { note, extraction } = extractions[i];
-      if (abortRequested) { finishProgress('error', 'user_stopped'); return { status: 'failed', reason: 'user_stopped' }; }
-
-      stepLog(3, 'running', `改写第 ${i + 1}/${extractions.length} 篇: "${(note.title || '').slice(0, 30)}"`);
-
-      try {
-        const variants = await localExtractor.compose(pack, task, extraction, note.body);
-        for (const variant of variants) {
-          drafts.push({
-            id: crypto.randomUUID(),
-            task_id: task.id,
-            source_post: note,
-            extraction,
-            variant,
-            status: 'pending',
-            created_at: Date.now(),
-          });
-        }
-        stepLog(3, 'done', `已生成 ${variants.length} 份仿写: "${(note.title || '').slice(0, 25)}"`);
-      } catch (err) {
-        coworkLog('WARN', 'scenarioManager', 'compose failed', { post_id: note.external_post_id, err: String(err) });
-        stepLog(3, 'error', `改写失败: ${String(err).slice(0, 50)}`);
-      }
-    }
-
-    if (drafts.length > 0) {
-      taskStore.addDrafts(drafts);
-      stepLog(3, 'running', '保存结果到本地...');
-      try {
-        await writeTaskArtifacts(task, drafts);
-        stepLog(3, 'done', `已保存 ${drafts.length} 份草稿到本地`);
-      } catch (err) {
-        coworkLog('WARN', 'scenarioManager', 'artifact save failed', { err: String(err) });
-      }
-    }
-
-    stepDone(3);
-    finishProgress('done');
-    riskGuard.markRunSuccess(task.id, notes.length, drafts.length);
-
-    return {
-      status: 'ok',
-      collected_count: notes.length,
-      draft_count: drafts.length,
-      drafts,
-    };
+    return result;
   } catch (err) {
     let msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('user_stopped')) msg = 'user_stopped';
@@ -318,24 +223,4 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
     finishProgress('error', msg);
     return { status: 'failed', reason: msg };
   }
-}
-
-// ── Helpers ──
-
-async function extractWithCache(pack: ScenarioPack, note: DiscoveredNote): Promise<ExtractionResult | null> {
-  const cached = await viralPoolClient.lookup(
-    pack.manifest.platform,
-    note.external_post_id,
-    pack.manifest.version
-  );
-  if (cached?.extraction?.result) return cached.extraction.result;
-
-  const extraction = await localExtractor.extract(pack, note);
-  if (!extraction) return null;
-
-  viralPoolClient
-    .submit({ manifest: pack.manifest, note, extraction, ai_model: localExtractor.getCurrentModelName() })
-    .catch(err => coworkLog('WARN', 'scenarioManager', 'pool submit failed', { err: String(err) }));
-
-  return extraction;
 }

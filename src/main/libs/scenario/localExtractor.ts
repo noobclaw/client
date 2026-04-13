@@ -204,3 +204,47 @@ export function similarity(a: string, b: string): number {
 export function getCurrentModelName(): string {
   return getCurrentModel();
 }
+
+// ── Generic AI call (used by phaseRunner) ──
+
+export function getApiConfig() {
+  return getConfig();
+}
+
+/**
+ * Generic AI call — sends a system prompt + user message, returns parsed JSON.
+ * Used by phaseRunner's ctx.aiCall().
+ */
+export async function callAI(systemPrompt: string, userMessage: string): Promise<any | null> {
+  const config = getConfig();
+  if (!config.apiKey) throw new Error('ANTHROPIC_API_KEY_MISSING');
+
+  const client = getAnthropicClient(config);
+
+  const response = await createMessage({
+    client,
+    model: config.model || DEFAULT_EXTRACTOR_MODEL,
+    systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+    tools: [],
+    maxTokens: 2000,
+  });
+  const raw = extractTextFromResponse(response);
+  const parsed = parseJsonSafe(raw);
+
+  if (!parsed) {
+    // Retry once
+    coworkLog('WARN', 'localExtractor', 'callAI JSON parse failed, retrying once');
+    const response2 = await createMessage({
+      client,
+      model: config.model || DEFAULT_EXTRACTOR_MODEL,
+      systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      tools: [],
+      maxTokens: 2000,
+    });
+    return parseJsonSafe(extractTextFromResponse(response2));
+  }
+
+  return parsed;
+}

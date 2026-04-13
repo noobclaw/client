@@ -95,18 +95,10 @@ export interface DiscoveryConfig {
  */
 export interface ScenarioPack {
   manifest: ScenarioManifest;
-  scripts: {
-    click_by_text: string;
-    read_feed_cards: string;
-    read_detail_page: string;
-    check_anomaly: string;
-    apply_filters: string;
-  };
-  prompts: {
-    extractor: string;
-    composer: string;
-  };
+  scripts: Record<string, string>;
+  prompts: Record<string, string>;
   config: DiscoveryConfig;
+  orchestrator: string;           // JS code downloaded from server
   draft_uploader?: any;
 }
 
