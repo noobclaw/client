@@ -136,13 +136,22 @@ function buildContext(
       if (!script) return 'no_script';
       const code = script.replace(/__TARGET__/g, text.replace(/'/g, "\\'"));
       try {
+        // Step 1: Find element coordinates via injected JS
         const res = await sendBrowserCommand('javascript', { code }, 5000);
-        const result = res?.result || 'not_found';
-        coworkLog('DEBUG', 'phaseRunner', `clickByText("${text}") → ${result}`);
-        if (!String(result).startsWith('not_found') && pauseRange) {
+        const raw = res?.result;
+        if (!raw) return 'not_found';
+        const info = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (!info.found) {
+          coworkLog('DEBUG', 'phaseRunner', `clickByText("${text}") → not_found`);
+          return 'not_found';
+        }
+        // Step 2: Real mouse click at coordinates via Chrome extension
+        await sendBrowserCommand('click', { x: info.x, y: info.y }, 3000);
+        coworkLog('DEBUG', 'phaseRunner', `clickByText("${text}") → clicked ${info.tag}.${info.cls} at (${info.x},${info.y})`);
+        if (pauseRange) {
           await sleep(pauseRange[0], pauseRange[1]);
         }
-        return result;
+        return 'clicked';
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', `clickByText("${text}") failed`, { err: String(err) });
         return 'error';
