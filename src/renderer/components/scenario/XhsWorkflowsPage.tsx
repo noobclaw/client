@@ -67,7 +67,7 @@ interface Props {
   tasks: Task[];
   draftsByTask: Map<string, Draft[]>;
   loading: boolean;
-  onOpenWorkflow: (workflow_type: string) => void;
+  // onOpenWorkflow removed — no intermediate workflow detail page
   onOpenTask: (task_id: string) => void;
   onConfigure: (scenario: Scenario) => void;
 }
@@ -130,11 +130,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    if (primaryTask) {
-      onOpenTask(primaryTask.id);
-    } else {
-      onConfigure(primaryScenario);
-    }
+    // Always open wizard to create a new task (not jump to existing)
+    onConfigure(primaryScenario);
   };
 
   const handleLoginConfirmed = () => {
@@ -184,11 +181,16 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* My tasks */}
+      {/* Platform tasks */}
       <section className="mb-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
-          📌 {i18nService.t('scenarioSectionMyTasks')}
-        </h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            📌 小红书任务
+          </h2>
+          <span className="text-[11px] text-gray-500 dark:text-gray-400">
+            同一平台最多同时运行一个任务
+          </span>
+        </div>
         {loading && tasks.length === 0 ? (
           <div className="text-sm text-gray-400 py-6">{i18nService.t('common.loading') || '加载中...'}</div>
         ) : tasks.length === 0 ? (
@@ -209,12 +211,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   onClick={() => onOpenTask(task.id)}
                   className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900 p-4 transition-colors"
                 >
-                  {/* Top row: track + status badge */}
+                  {/* Top row: track + ID + status badge */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <span className="text-lg">{trackPreset?.icon || scenario?.icon || '🔥'}</span>
                       <span className="font-medium dark:text-white">
                         {trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id}
+                      </span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+                        #{task.id.slice(0, 8)}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">

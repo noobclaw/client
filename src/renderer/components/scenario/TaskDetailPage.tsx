@@ -46,6 +46,7 @@ function formatRelative(ts: number | null | undefined): string {
   return `${Math.round(hrs / 24)} 天前`;
 }
 
+const STEP_LABELS = ['步骤一', '步骤二', '步骤三'];
 const STEP_NAMES = [
   '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
   '分析爆款，拆解逻辑',
@@ -210,7 +211,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{trackName}</span></div>
+            <div className="flex items-center gap-3">
+              <span className="text-gray-400">赛道:</span>
+              <span className="dark:text-white font-medium">{trackName}</span>
+              <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+            </div>
             <div>关键词: {task.keywords.join(' · ')}</div>
             <div className="truncate">Persona: {task.persona}</div>
             <div>频次: ⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</div>
@@ -286,7 +291,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               <div className={`text-sm font-medium mb-2 ${
                 isActive ? 'text-green-500' : isDone ? 'text-green-600 dark:text-green-400' : isError ? 'text-red-500' : 'dark:text-gray-300'
               }`}>
-                {stepNum}.{name}
+                {STEP_LABELS[idx]}. {name}
               </div>
               <div className={`rounded-xl border p-4 min-h-[60px] ${
                 isActive ? 'border-green-500/30 bg-green-500/5'

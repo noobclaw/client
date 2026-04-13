@@ -16,7 +16,6 @@ import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { XhsWorkflowsPage } from './XhsWorkflowsPage';
-import { WorkflowDetailPage } from './WorkflowDetailPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { PlatformPlaceholder } from './PlatformPlaceholder';
 import { ConfigWizard } from './ConfigWizard';
@@ -25,7 +24,6 @@ type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
 
 type ViewState =
   | { kind: 'workflows'; platform: PlatformId }
-  | { kind: 'workflow_detail'; platform: PlatformId; workflow_type: string }
   | { kind: 'task_detail'; task_id: string };
 
 interface ScenarioViewProps {
@@ -90,35 +88,19 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   }, [refreshAll]);
 
   const currentPlatform: PlatformId =
-    view.kind === 'workflows' || view.kind === 'workflow_detail' ? view.platform : 'xhs';
+    view.kind === 'workflows' ? view.platform : 'xhs';
 
   const setPlatform = (platform: PlatformId) => {
     setView({ kind: 'workflows', platform });
-  };
-
-  const openWorkflow = (platform: PlatformId, workflow_type: string) => {
-    setView({ kind: 'workflow_detail', platform, workflow_type });
   };
 
   const openTask = (task_id: string) => {
     setView({ kind: 'task_detail', task_id });
   };
 
+  // Always go back to the main page (no intermediate workflow detail page)
   const goBack = () => {
-    if (view.kind === 'task_detail') {
-      const task = tasks.find(t => t.id === view.task_id);
-      const scenario = task ? scenarios.find(s => s.id === task.scenario_id) : null;
-      if (scenario) {
-        setView({ kind: 'workflow_detail', platform: scenario.platform, workflow_type: scenario.workflow_type });
-      } else {
-        setView({ kind: 'workflows', platform: 'xhs' });
-      }
-      return;
-    }
-    if (view.kind === 'workflow_detail') {
-      setView({ kind: 'workflows', platform: view.platform });
-      return;
-    }
+    setView({ kind: 'workflows', platform: currentPlatform });
   };
 
   const openWizardFor = (scenario: Scenario) => {
@@ -195,25 +177,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
-    if (view.kind === 'workflow_detail' && view.platform === 'xhs') {
-      const platformScenarios = scenarios.filter(
-        s => s.platform === view.platform && s.workflow_type === view.workflow_type
-      );
-      return (
-        <WorkflowDetailPage
-          workflow_type={view.workflow_type}
-          scenarios={platformScenarios}
-          tasks={tasksForPlatform.filter(
-            t => scenarios.find(s => s.id === t.scenario_id)?.workflow_type === view.workflow_type
-          )}
-          draftsByTask={draftsByTask}
-          onBack={goBack}
-          onConfigure={openWizardFor}
-          onOpenTask={openTask}
-        />
-      );
-    }
-
     if (currentPlatform === 'xhs') {
       return (
         <XhsWorkflowsPage
@@ -221,7 +184,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           tasks={tasksForPlatform}
           draftsByTask={draftsByTask}
           loading={loading}
-          onOpenWorkflow={wt => openWorkflow('xhs', wt)}
           onOpenTask={openTask}
           onConfigure={openWizardFor}
         />
