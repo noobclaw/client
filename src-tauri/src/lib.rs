@@ -670,10 +670,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            None,
-        ))
+        // Autostart disabled — user doesn't want the app to launch on boot.
+        // .plugin(tauri_plugin_autostart::init(
+        //     tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+        //     None,
+        // ))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(move |app, shortcut, event| {
@@ -799,62 +800,8 @@ pub fn run() {
                 });
             }
 
-            // ── Menubar tray icon ────────────────────────────────────
-            // One menu: Show / Quit. Left-clicking the tray icon itself
-            // toggles the main window visibility (same semantics as the
-            // global hotkey). We use the default app icon for the tray
-            // image on macOS the OS will automatically template it.
-            {
-                let show_item = MenuItem::with_id(
-                    app,
-                    "tray_show",
-                    "Show NoobClaw",
-                    true,
-                    None::<&str>,
-                )?;
-                let quit_item = MenuItem::with_id(
-                    app,
-                    "tray_quit",
-                    "Quit NoobClaw",
-                    true,
-                    None::<&str>,
-                )?;
-                let tray_menu = Menu::with_items(app, &[&show_item, &quit_item])?;
-
-                let _tray = TrayIconBuilder::with_id("main-tray")
-                    .icon(app.default_window_icon().cloned().unwrap_or_else(|| {
-                        // Fallback: empty 1x1 image if the default icon is
-                        // somehow missing. Tray won't be visible but we
-                        // avoid crashing.
-                        tauri::image::Image::new_owned(vec![0, 0, 0, 0], 1, 1)
-                    }))
-                    .menu(&tray_menu)
-                    .menu_on_left_click(false)
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "tray_show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.unminimize();
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                        "tray_quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    })
-                    .on_tray_icon_event(|tray, event| {
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } = event
-                        {
-                            toggle_main_window(tray.app_handle());
-                        }
-                    })
-                    .build(app)?;
-            }
+            // Tray icon disabled — close = quit, no hiding to tray.
+            // (Was: menubar tray with Show/Quit menu items)
 
             // ── macOS TCC registration ───────────────────────────────
             // Call CGRequestScreenCaptureAccess() at startup so the app
