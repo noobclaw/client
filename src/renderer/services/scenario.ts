@@ -15,6 +15,7 @@ import type {
   ScenarioPlatform,
   ScenarioWorkflowType,
   ScenarioTaskRun,
+  ScenarioRunProgress,
   XhsLoginStatus,
 } from '../types/scenario';
 
@@ -126,6 +127,20 @@ class ScenarioService {
     } catch {
       return null;
     }
+  }
+
+  async getRunProgress(): Promise<ScenarioRunProgress | null> {
+    try {
+      return await window.electron.scenario.getRunProgress() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async requestAbort(): Promise<void> {
+    try {
+      await window.electron.scenario.requestAbort();
+    } catch {}
   }
 
   // ── XHS login gate ──

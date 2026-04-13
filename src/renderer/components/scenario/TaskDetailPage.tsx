@@ -1,16 +1,21 @@
 /**
- * TaskDetailPage — layer 3 inside a specific configured task.
+ * TaskDetailPage — two-mode layout based on running state.
  *
- * Shows run stats, run-now button, pause/resume/delete, and the
- * pending-drafts review queue with push-to-draft-box action.
+ * IDLE mode:  config summary + stats + "直接运行/编辑/删除" buttons
+ *             + 3-step "运行明细" all showing "等待"
+ *
+ * RUNNING mode: config summary + "停止" button only
+ *               + 3-step "运行明细" with live progress logs
+ *               + active step has blinking "..." on the running line
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import type { ScenarioRunProgress } from '../../types/scenario';
 
-// Track ID → display name lookup
+// Track ID → display name
 const TRACK_NAMES: Record<string, string> = {
   career_side_hustle: '💼 副业 · 打工人赚钱',
   indie_dev: '👩‍💻 独立开发 · 程序员记录',
@@ -32,6 +37,17 @@ const TRACK_NAMES: Record<string, string> = {
   crafts: '🎨 手工 · DIY',
 };
 
+function formatRelative(ts: number | null | undefined): string {
+  if (!ts) return '尚未运行';
+  const diff = Date.now() - ts;
+  const mins = Math.round(Math.abs(diff) / 60_000);
+  if (mins < 1) return '刚刚';
+  if (mins < 60) return `${mins} 分钟前`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} 小时前`;
+  return `${Math.round(hrs / 24)} 天前`;
+}
+
 interface Props {
   task: Task;
   scenario: Scenario | null;
@@ -40,67 +56,48 @@ interface Props {
   onChanged: () => void | Promise<void>;
 }
 
-function formatRelative(ts: number | null | undefined): string {
-  if (!ts) return i18nService.t('scenarioTaskStatNeverRun');
-  const diff = Date.now() - ts;
-  const abs = Math.abs(diff);
-  const mins = Math.round(abs / 60_000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
-  const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} 小时前`;
-  const days = Math.round(hrs / 24);
-  return `${days} 天前`;
-}
-
-function reasonText(key: string): string {
-  const map: Record<string, string> = {
-    disabled: 'scenarioTaskReasonDisabled',
-    daily_cap_reached: 'scenarioTaskReasonDailyCap',
-    interval_not_met: 'scenarioTaskReasonInterval',
-    weekly_rest_enforced: 'scenarioTaskReasonWeeklyRest',
-    cooldown_active: 'scenarioTaskReasonCooldown',
-    another_task_running: 'scenarioTaskReasonAnotherRunning',
-  };
-  return i18nService.t(map[key] || 'scenarioTaskRunFailed').replace('{reason}', key);
-}
+const STEP_NAMES = [
+  '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
+  '分析爆款，拆解逻辑',
+  '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份',
+];
 
 export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged }) => {
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<Awaited<ReturnType<typeof scenarioService.getTaskStats>> | null>(null);
   const [running, setRunning] = useState(false);
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
-  const [pushingDraft, setPushingDraft] = useState<string | null>(null);
-  const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
+  const [loginModalOpen, setLoginModalOpen] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const refresh = useCallback(async () => {
-    const [d, s, r] = await Promise.all([
+    const [d, s] = await Promise.all([
       scenarioService.listDrafts(task.id),
       scenarioService.getTaskStats(task.id),
-      scenarioService.getRunningTaskId(),
     ]);
     setDrafts(d);
     setStats(s);
-    setRunningTaskId(r);
-    // If THIS task is currently running, keep running state
-    if (r === task.id) setRunning(true);
   }, [task.id]);
 
+  // Poll progress every 2s
   useEffect(() => {
     void refresh();
-    // Poll running state every 3s while page is open
     const timer = setInterval(async () => {
-      const r = await scenarioService.getRunningTaskId();
-      setRunningTaskId(r);
-      if (r === task.id) {
-        setRunning(true);
-      } else if (running && !r) {
-        // Task just finished
-        setRunning(false);
-        void refresh(); // Refresh to show new drafts
+      const [rid, prog] = await Promise.all([
+        scenarioService.getRunningTaskId(),
+        scenarioService.getRunProgress(),
+      ]);
+      const isRunning = rid === task.id;
+      setRunning(isRunning);
+      if (prog && prog.taskId === task.id) {
+        setProgress(prog);
       }
-    }, 3000);
+      if (!isRunning && running) {
+        // Just finished
+        void refresh();
+      }
+    }, 2000);
     return () => clearInterval(timer);
   }, [refresh, task.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -112,20 +109,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const executeRun = async () => {
     if (running) return;
     setRunning(true);
+    setProgress(null);
     try {
       const outcome = await scenarioService.runTaskNow(task.id);
       if (outcome.status === 'ok') {
-        showToast(
-          'ok',
-          i18nService
-            .t('scenarioTaskRunSuccess')
-            .replace('{c}', String(outcome.collected_count ?? 0))
-            .replace('{d}', String(outcome.draft_count ?? 0))
-        );
+        showToast('ok', `运行完成：采集 ${outcome.collected_count ?? 0} 条，生成 ${outcome.draft_count ?? 0} 份草稿`);
       } else if (outcome.status === 'skipped') {
-        showToast('warn', i18nService.t('scenarioTaskRunSkipped').replace('{reason}', reasonText(outcome.reason || '')));
+        showToast('warn', outcome.reason === 'another_task_running' ? '有另一个任务正在运行，请等它完成后再试' : `已跳过: ${outcome.reason}`);
       } else {
-        showToast('err', i18nService.t('scenarioTaskRunFailed').replace('{reason}', outcome.reason || 'unknown'));
+        showToast('err', `运行失败: ${outcome.reason || 'unknown'}`);
       }
       await refresh();
       await onChanged();
@@ -134,232 +126,186 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     }
   };
 
-  const handleRunNow = async () => {
+  const handleRunNow = () => {
     if (running) return;
-    // Check if another task is already running
-    if (runningTaskId && runningTaskId !== task.id) {
-      showToast('warn', '有另一个任务正在运行，请等它完成后再试');
-      return;
-    }
-    // Show login modal — user must confirm they're logged in
-    setLoginModalReason('check');
+    setLoginModalOpen(true);
   };
 
-  const handleLoginConfirmed = async () => {
-    setLoginModalReason(null);
-    await executeRun();
+  const handleLoginConfirmed = () => {
+    setLoginModalOpen(false);
+    void executeRun();
   };
 
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const handleStop = async () => {
+    await scenarioService.requestAbort();
+    showToast('warn', '已请求停止，当前步骤完成后将终止');
+  };
+
   const handleDelete = async () => {
     if (!confirmingDelete) {
-      // First click — show "确定？" state, auto-reset after 3s
       setConfirmingDelete(true);
       setTimeout(() => setConfirmingDelete(false), 3000);
       return;
     }
-    // Second click within 3s — actually delete
     setConfirmingDelete(false);
     await scenarioService.deleteTask(task.id);
     onBack();
     await onChanged();
   };
 
-  const handlePushDraft = async (draftId: string) => {
-    if (pushingDraft) return;
-    setPushingDraft(draftId);
-    try {
-      const res = await scenarioService.pushDraft(draftId);
-      if (res.status === 'ready_for_user') {
-        showToast('ok', i18nService.t('scenarioDraftReadyForUser'));
-      } else {
-        const reason = res.error || '';
-        if (reason === 'not_logged_in') {
-          showToast('warn', i18nService.t('scenarioDraftNotLoggedIn'));
-        } else {
-          showToast('err', i18nService.t('scenarioDraftPushFailed').replace('{reason}', reason));
-        }
-      }
-      await refresh();
-    } finally {
-      setPushingDraft(null);
-    }
-  };
-
-  const handleIgnoreDraft = async (draftId: string) => {
-    await scenarioService.markDraftIgnored(draftId);
-    await refresh();
-  };
-
-  const handleDeleteDraft = async (draftId: string) => {
-    await scenarioService.deleteDraft(draftId);
-    await refresh();
-  };
-
-  const pendingDrafts = drafts.filter(d => d.status === 'pending');
-
-  const cooldownHoursLeft =
-    stats && stats.cooldown_ends_at > Date.now()
-      ? Math.ceil((stats.cooldown_ends_at - Date.now()) / 3_600_000)
-      : 0;
+  const trackName = TRACK_NAMES[task.track] || task.track || task.scenario_id;
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
-      {/* Header bar */}
-      <div className="flex items-center justify-between mb-6">
-        <button
-          type="button"
-          onClick={onBack}
-          className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-        >
-          ← {i18nService.t('scenarioTaskBack')}
-        </button>
-        <div className="flex items-center gap-2">
-          {/* Active toggle */}
-          {task.active ? (
-            <span className="px-3 py-2 text-xs font-semibold rounded-lg bg-green-500/10 text-green-500 border border-green-500/30">
-              ● 定时运行
-            </span>
-          ) : (
-            <button
-              type="button"
-              onClick={async () => {
-                await scenarioService.setActiveTask(task.id);
-                await onChanged();
-              }}
-              className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors"
-            >
-              🎯 设为定时运行
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleRunNow}
-            disabled={running}
-            className="px-4 py-2 text-sm font-semibold rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50"
-          >
-            {running ? i18nService.t('scenarioTaskRunningNow') : '▶ ' + i18nService.t('scenarioTaskRunNow')}
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            {i18nService.t('scenarioTaskEdit')}
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
-              confirmingDelete
-                ? 'border-red-500 bg-red-500 text-white'
-                : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
-            }`}
-          >
-            {confirmingDelete ? '确定删除？' : i18nService.t('scenarioTaskDelete')}
-          </button>
+      {/* Back */}
+      <button type="button" onClick={onBack}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
+        ← 返回
+      </button>
+
+      {/* Config summary + action buttons */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{trackName}</span></div>
+            <div>关键词: {task.keywords.join(' · ')}</div>
+            <div className="truncate">Persona: {task.persona}</div>
+            <div>频次: ⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</div>
+          </div>
+          <div className="shrink-0 flex items-center gap-2">
+            {running ? (
+              <>
+                <span className="text-sm font-semibold text-green-500">运行中</span>
+                <button type="button" onClick={handleStop}
+                  className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors">
+                  停止
+                </button>
+              </>
+            ) : (
+              <>
+                <span className="text-xs text-gray-400">
+                  {task.active ? `每日 ${task.daily_time || '08:00'} 定时运行` : '待命'}
+                </span>
+                <button type="button" onClick={handleRunNow}
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
+                  直接运行
+                </button>
+                <button type="button" onClick={onEdit}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                  编辑
+                </button>
+                <button type="button" onClick={handleDelete}
+                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    confirmingDelete ? 'border-red-500 bg-red-500 text-white' : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
+                  }`}>
+                  {confirmingDelete ? '确定删除？' : '删除'}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Config summary (matches the task card display on the list page) */}
-      <div className="mb-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4">
-        <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1.5">
-          <div><span className="text-gray-400">赛道:</span> <span className="dark:text-white font-medium">{TRACK_NAMES[task.track] || task.track || scenario?.name_zh || task.scenario_id}</span></div>
-          <div><span className="text-gray-400">关键词:</span> <span className="dark:text-gray-200">{task.keywords.join(' · ')}</span></div>
-          <div className="truncate"><span className="text-gray-400">Persona:</span> <span className="dark:text-gray-200">{task.persona}</span></div>
-          <div><span className="text-gray-400">频次:</span> <span className="dark:text-gray-200">⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</span></div>
-        </div>
-      </div>
-
-      {/* Stats grid */}
+      {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label={i18nService.t('scenarioTaskStatCollected')} value={stats?.runs.reduce((sum, r) => sum + (r.collected_count || 0), 0) ?? 0} />
-        <StatCard label={i18nService.t('scenarioTaskStatDraftsGenerated')} value={stats?.draft_count ?? 0} />
-        <StatCard label={i18nService.t('scenarioTaskStatDraftsPushed')} value={stats?.pushed_draft_count ?? 0} />
-        <StatCard label={i18nService.t('scenarioTaskStatLastRun')} value={formatRelative(stats?.last_run_at || null)} small />
+        <StatCard label="累计采集" value={stats?.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) ?? 0} />
+        <StatCard label="生成草稿" value={stats?.draft_count ?? 0} />
+        <StatCard label="已推送" value={stats?.pushed_draft_count ?? 0} />
+        <StatCard label="上次运行" value={formatRelative(stats?.last_run_at || null)} small />
       </div>
-
-      {/* Running indicator panel */}
-      {running && (
-        <div className="mb-6 rounded-xl border border-green-500/30 bg-green-500/5 p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              <span className="text-sm font-semibold text-green-500">正在运行</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                // TODO: implement proper stop via scenarioManager
-                showToast('warn', '任务将在当前步骤完成后停止');
-              }}
-              className="text-xs px-3 py-1.5 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 transition-colors"
-            >
-              ⏹ 停止
-            </button>
-          </div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <div>🔍 正在浏览小红书发现页，寻找符合关键词的爆款...</div>
-            <div className="text-[11px] text-gray-400">运行期间请保持 Chrome 打开且小红书已登录</div>
-          </div>
-        </div>
-      )}
-
-      {cooldownHoursLeft > 0 && (
-        <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-600 dark:text-amber-400">
-          ⏳ {i18nService.t('scenarioTaskCooldownActive').replace('{hours}', String(cooldownHoursLeft))}
-        </div>
-      )}
 
       {/* Toast */}
       {toast && (
-        <div
-          className={`mb-6 rounded-xl px-4 py-3 text-sm ${
-            toast.kind === 'ok'
-              ? 'bg-green-500/10 border border-green-500/30 text-green-500'
-              : toast.kind === 'warn'
-                ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500'
-                : 'bg-red-500/10 border border-red-500/30 text-red-500'
-          }`}
-        >
+        <div className={`mb-4 rounded-xl px-4 py-3 text-sm ${
+          toast.kind === 'ok' ? 'bg-green-500/10 border border-green-500/30 text-green-500'
+            : toast.kind === 'warn' ? 'bg-amber-500/10 border border-amber-500/30 text-amber-500'
+            : 'bg-red-500/10 border border-red-500/30 text-red-500'
+        }`}>
           {toast.text}
         </div>
       )}
 
-      {/* Drafts */}
-      <section>
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
-          ✍️ 爆款改写结果
-          {pendingDrafts.length > 0 && (
+      {/* 运行明细 — 3-step panel */}
+      <h2 className="text-base font-bold dark:text-white mb-4">运行明细</h2>
+
+      <div className="space-y-4">
+        {STEP_NAMES.map((name, idx) => {
+          const stepNum = idx + 1;
+          const stepProgress = progress?.steps?.[idx];
+          const stepStatus = stepProgress?.status || 'waiting';
+          const logs = stepProgress?.logs || [];
+          const isActive = stepStatus === 'running';
+          const isDone = stepStatus === 'done';
+          const isError = stepStatus === 'error';
+
+          return (
+            <div key={idx}>
+              {/* Step header */}
+              <div className={`text-sm font-medium mb-2 ${
+                isActive ? 'text-green-500' : isDone ? 'text-green-600 dark:text-green-400' : isError ? 'text-red-500' : 'dark:text-gray-300'
+              }`}>
+                {stepNum}.{name}
+              </div>
+
+              {/* Step body */}
+              <div className={`rounded-xl border p-4 min-h-[60px] ${
+                isActive ? 'border-green-500/30 bg-green-500/5'
+                  : isDone ? 'border-green-500/20 bg-green-500/5'
+                  : isError ? 'border-red-500/20 bg-red-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                {logs.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {logs.map((log, li) => (
+                      <div key={li} className="text-xs flex items-start gap-2">
+                        <span className={`shrink-0 ${
+                          log.status === 'done' ? 'text-green-500' : log.status === 'error' ? 'text-red-500' : 'text-amber-500'
+                        }`}>
+                          {log.status === 'done' ? '已完成:' : log.status === 'error' ? '错误:' : '进行中:'}
+                        </span>
+                        <span className="dark:text-gray-300 flex-1">
+                          {log.message}
+                          {log.status === 'running' && (
+                            <span className="inline-block ml-2 animate-pulse text-green-500">......</span>
+                          )}
+                        </span>
+                        <span className="text-gray-500 shrink-0 tabular-nums">{log.time}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                    {stepNum === 1 && !running
+                      ? `等待每日 ${task.daily_time || '08:00'} 定时运行`
+                      : '等待前一步'
+                    }
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Drafts section (below the 3 steps) */}
+      {drafts.length > 0 && (
+        <section className="mt-8">
+          <h2 className="text-base font-bold dark:text-white mb-4">
+            ✍️ 爆款改写结果
             <span className="ml-2 text-xs font-normal text-amber-500">
-              {i18nService.t('scenarioCardTaskDraftCount').replace('{n}', String(pendingDrafts.length))}
+              {drafts.filter(d => d.status === 'pending').length} 条待审
             </span>
-          )}
-        </h2>
-
-        {drafts.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            {i18nService.t('scenarioDraftsEmpty')}
+          </h2>
+          <div className="text-xs text-gray-400">
+            （草稿审核和推送功能开发中）
           </div>
-        ) : (
-          <div className="space-y-4">
-            {drafts.map(draft => (
-              <DraftCard
-                key={draft.id}
-                draft={draft}
-                pushing={pushingDraft === draft.id}
-                onPush={() => handlePushDraft(draft.id)}
-                onIgnore={() => handleIgnoreDraft(draft.id)}
-                onDelete={() => handleDeleteDraft(draft.id)}
-              />
-            ))}
-          </div>
-        )}
-      </section>
+        </section>
+      )}
 
-      {loginModalReason && (
+      {/* Login modal */}
+      {loginModalOpen && (
         <LoginRequiredModal
-          onCancel={() => setLoginModalReason(null)}
+          onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}
         />
       )}
@@ -375,94 +321,5 @@ const StatCard: React.FC<{ label: string; value: string | number; small?: boolea
     <div className={`font-bold dark:text-white ${small ? 'text-sm' : 'text-2xl'}`}>{value}</div>
   </div>
 );
-
-interface DraftCardProps {
-  draft: Draft;
-  pushing: boolean;
-  onPush: () => void;
-  onIgnore: () => void;
-  onDelete: () => void;
-}
-
-const DraftCard: React.FC<DraftCardProps> = ({ draft, pushing, onPush, onIgnore, onDelete }) => {
-  const { variant, source_post, status } = draft;
-  return (
-    <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-5">
-      <div className="flex items-start justify-between gap-4 mb-3">
-        <div className="flex-1 min-w-0">
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-            {i18nService.t('scenarioDraftSourceFrom')}: {source_post.title?.slice(0, 50) || '(untitled)'} · 👍{' '}
-            {source_post.metrics?.likes ?? 0}
-          </div>
-          <div className="font-semibold dark:text-white line-clamp-1">{variant.title}</div>
-        </div>
-        {status === 'pushed' && (
-          <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 shrink-0">
-            {i18nService.t('scenarioDraftPushed')}
-          </span>
-        )}
-        {status === 'ignored' && (
-          <span className="text-xs px-2 py-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 shrink-0">
-            {i18nService.t('scenarioDraftIgnored')}
-          </span>
-        )}
-      </div>
-
-      <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed mb-3 line-clamp-5">
-        {variant.body}
-      </div>
-
-      {variant.hashtags && variant.hashtags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {variant.hashtags.map((tag, i) => (
-            <span
-              key={i}
-              className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 mb-3">
-        <span>
-          {i18nService.t('scenarioDraftVariantRoute')}: <span className="text-green-500 font-medium">{variant.route}</span>
-        </span>
-        <span className="line-clamp-1 ml-4 text-right">{variant.notes_for_user}</span>
-      </div>
-
-      {status === 'pending' && (
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onPush}
-            disabled={pushing}
-            className="flex-1 px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50"
-          >
-            🚀 {pushing ? i18nService.t('scenarioDraftPushingBtn') : i18nService.t('scenarioDraftPushBtn')}
-          </button>
-          <button
-            type="button"
-            onClick={onIgnore}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          >
-            {i18nService.t('scenarioDraftIgnoreBtn')}
-          </button>
-        </div>
-      )}
-
-      {status !== 'pending' && (
-        <button
-          type="button"
-          onClick={onDelete}
-          className="text-xs text-red-500 hover:underline"
-        >
-          {i18nService.t('scenarioDraftDeleteBtn')}
-        </button>
-      )}
-    </div>
-  );
-};
 
 export default TaskDetailPage;

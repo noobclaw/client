@@ -1472,6 +1472,15 @@ const server = http.createServer(async (req, res) => {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             return writeJSON(res, 200, { runningTaskId: scenarioManager.getRunningTaskId() });
           }
+          case 'scenario:getRunProgress': {
+            const scenarioManager = require('./libs/scenario/scenarioManager');
+            return writeJSON(res, 200, scenarioManager.getRunProgress());
+          }
+          case 'scenario:requestAbort': {
+            const scenarioManager = require('./libs/scenario/scenarioManager');
+            scenarioManager.requestAbort();
+            return writeJSON(res, 200, { ok: true });
+          }
           case 'scenario:runStatus': {
             const scenarioRiskGuard = require('./libs/scenario/riskGuard');
             if (!scenarioRiskGuard._loaded) {

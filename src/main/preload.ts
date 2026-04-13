@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('electron', {
     setActiveTask: (id: string) => ipcRenderer.invoke('scenario:setActiveTask', id),
     getActiveTask: () => ipcRenderer.invoke('scenario:getActiveTask'),
     getRunningTaskId: () => ipcRenderer.invoke('scenario:getRunningTaskId'),
+    getRunProgress: () => ipcRenderer.invoke('scenario:getRunProgress'),
+    requestAbort: () => ipcRenderer.invoke('scenario:requestAbort'),
     checkXhsLogin: () => ipcRenderer.invoke('scenario:checkXhsLogin'),
     openXhsLogin: () => ipcRenderer.invoke('scenario:openXhsLogin'),
   },

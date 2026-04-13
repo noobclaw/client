@@ -174,6 +174,7 @@ import type {
   ScenarioDraftIPC,
   ScenarioRunOutcome,
   ScenarioTaskRun,
+  ScenarioRunProgress,
   XhsLoginStatus,
 } from './scenario';
 
@@ -273,6 +274,8 @@ interface IElectronAPI {
     setActiveTask: (id: string) => Promise<ScenarioTaskIPC | null>;
     getActiveTask: () => Promise<ScenarioTaskIPC | null>;
     getRunningTaskId: () => Promise<{ runningTaskId: string | null }>;
+    getRunProgress: () => Promise<ScenarioRunProgress | null>;
+    requestAbort: () => Promise<{ ok: boolean }>;
     checkXhsLogin: () => Promise<XhsLoginStatus>;
     openXhsLogin: () => Promise<{ ok: boolean; reason?: string }>;
   };

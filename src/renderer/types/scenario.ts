@@ -156,6 +156,28 @@ export interface ScenarioRunOutcome {
   drafts?: ScenarioDraftIPC[];
 }
 
+// ── Run progress (polled from scenarioManager) ──
+
+export interface ScenarioProgressLog {
+  time: string;
+  status: 'done' | 'running' | 'error';
+  message: string;
+}
+
+export interface ScenarioStepProgress {
+  name: string;
+  status: 'waiting' | 'running' | 'done' | 'error';
+  logs: ScenarioProgressLog[];
+}
+
+export interface ScenarioRunProgress {
+  taskId: string;
+  status: 'idle' | 'running' | 'done' | 'error';
+  currentStep: number;
+  steps: ScenarioStepProgress[];
+  error?: string;
+}
+
 export interface XhsLoginStatus {
   loggedIn: boolean;
   /**
