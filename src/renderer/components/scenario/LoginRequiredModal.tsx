@@ -98,7 +98,16 @@ export const LoginRequiredModal: React.FC<Props> = ({ reason, onCancel, onRetry 
   const handleOpenXhs = async () => {
     setOpening(true);
     try {
-      await scenarioService.openXhsLogin();
+      const res = await scenarioService.openXhsLogin();
+      if (!res.ok) {
+        // Extension tab_create failed — fall back to opening in system browser
+        try {
+          window.open('https://www.xiaohongshu.com', '_blank');
+        } catch {
+          // Last resort: copy URL
+          try { navigator.clipboard.writeText('https://www.xiaohongshu.com'); } catch {}
+        }
+      }
     } finally {
       setOpening(false);
     }

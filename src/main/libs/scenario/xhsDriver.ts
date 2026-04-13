@@ -176,16 +176,20 @@ export async function checkXhsLogin(): Promise<XhsLoginStatus> {
  * the LoginRequiredModal when the user clicks "open login page".
  */
 export async function openXhsLogin(): Promise<{ ok: boolean; reason?: string }> {
+  const url = 'https://www.xiaohongshu.com';
+  // Try tab_create first, fall back to navigate (opens in active tab)
   try {
-    await sendBrowserCommand(
-      'tab_create',
-      { url: 'https://www.xiaohongshu.com' },
-      10000
-    );
+    await sendBrowserCommand('tab_create', { url }, 8000);
     return { ok: true };
-  } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'openXhsLogin failed', { err: String(err) });
-    return { ok: false, reason: String(err) };
+  } catch (err1) {
+    coworkLog('WARN', 'xhsDriver', 'tab_create failed, trying navigate', { err: String(err1) });
+    try {
+      await sendBrowserCommand('navigate', { url }, 8000);
+      return { ok: true };
+    } catch (err2) {
+      coworkLog('WARN', 'xhsDriver', 'navigate also failed', { err: String(err2) });
+      return { ok: false, reason: String(err2) };
+    }
   }
 }
 
