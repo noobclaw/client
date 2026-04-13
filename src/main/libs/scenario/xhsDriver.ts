@@ -199,20 +199,26 @@ async function checkAnomaly(script: string): Promise<
 
 // ── Discovery ──
 
+/** Progress callback — xhsDriver calls this at every key moment. */
+export type ProgressCallback = (message: string) => void;
+
 export interface DiscoveryOptions {
   pack: ScenarioPack;
   task: ScenarioTask;
   seenPostIds: Set<string>;
+  onProgress?: ProgressCallback;
 }
 
 export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<DiscoveredNote[]> {
-  const { pack, task, seenPostIds } = opts;
+  const { pack, task, seenPostIds, onProgress } = opts;
   const { manifest, scripts, config } = pack;
   const caps = manifest.risk_caps;
   const beh = config.behavior;
   const MIN_LIKES = config.qualify.min_likes;
-  const target = Math.max(1, Math.min(5, task.daily_count));
+  const target = Math.max(1, Math.min(20, task.daily_count));
   const startedAt = Date.now();
+
+  const report = (msg: string) => { if (onProgress) onProgress(msg); };
 
   const collected: DiscoveredNote[] = [];
   const candidates: FeedCard[] = [];
@@ -240,6 +246,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
       if (f.time) {
         await clickByText(scripts.click_by_text, f.time, [2000, 4000]);
       }
+      report(`已设置筛选: ${[f.tab, f.sort, f.time].filter(Boolean).join(' · ')}`);
       coworkLog('INFO', 'xhsDriver', 'applySearchFilters done', {
         tab: f.tab, sort: f.sort, time: f.time
       });
@@ -252,15 +259,18 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
    * Visit a feed/search page, scroll and collect qualifying cards.
    */
   async function visitFeedAndCollect(url: string, requireKeywordMatch: boolean, isSearchPage = false): Promise<void> {
+    report(isSearchPage ? `打开搜索页 ......` : `浏览发现页 ......`);
     await sendBrowserCommand('navigate', { url }, 30000);
     await sleep(randInt(beh.first_screen_pause[0], beh.first_screen_pause[1]));
 
     if (isSearchPage) {
+      report('设置筛选条件 ......');
       await applySearchFilters();
     }
 
     const anomaly = await checkAnomaly(scripts.check_anomaly);
     if (anomaly !== 'ok') {
+      report(`检测到异常: ${anomaly}`);
       riskGuard.recordAnomaly(task.id, anomaly as any, caps);
       throw new Error(`anomaly:${anomaly}`);
     }
@@ -268,6 +278,8 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
     for (let scroll = 0; scroll < caps.max_scroll_per_run; scroll++) {
       if (isAbortRequested()) throw new Error('user_stopped');
       if (Date.now() - startedAt > caps.max_run_duration_ms) throw new Error('run_duration_exceeded');
+
+      report(`第 ${scroll + 1} 次滚动，已找到 ${candidates.length}/${target} 条`);
 
       const cards = await readFeedCards(scripts.read_feed_cards);
       let fresh = 0;
@@ -279,10 +291,12 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
         if (requireKeywordMatch && !keywordMatch(card.title, task.keywords)) continue;
         candidates.push(card);
         fresh++;
+        report(`发现符合条件文章: "${card.title.slice(0, 20)}..." (${card.likes_text} 赞)`);
         if (candidates.length >= target) return;
       }
 
       if (fresh === 0 && scroll > beh.max_scrolls_no_new - 1) {
+        report(`连续 ${beh.max_scrolls_no_new} 次滚动无新内容，换下一个关键词`);
         const recheck = await checkAnomaly(scripts.check_anomaly);
         if (recheck !== 'ok') {
           riskGuard.recordAnomaly(task.id, recheck as any, caps);
@@ -299,15 +313,18 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
 
   try {
     const doSearch = async () => {
-      for (const kw of task.keywords) {
+      for (let ki = 0; ki < task.keywords.length; ki++) {
+        const kw = task.keywords[ki];
         if (candidates.length >= target) break;
         if (isAbortRequested()) throw new Error('user_stopped');
+        report(`关键词 ${ki + 1}/${task.keywords.length}: "${kw}"`);
         const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
         await visitFeedAndCollect(searchUrl, config.qualify.require_keyword_on_search, true);
       }
     };
     const doExplore = async () => {
       if (candidates.length < target) {
+        report('搜索结果不足，浏览发现页补充');
         await visitFeedAndCollect(manifest.entry_urls.explore, config.qualify.require_keyword_on_explore);
       }
     };
@@ -327,22 +344,28 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
   }
 
   // For each candidate, open detail page, read body + images
-  for (const card of candidates.slice(0, target)) {
+  report(`共找到 ${candidates.length} 条候选，开始逐条读取详情`);
+  const detailSlice = candidates.slice(0, target);
+  for (let di = 0; di < detailSlice.length; di++) {
+    const card = detailSlice[di];
     if (isAbortRequested()) throw new Error('user_stopped');
     if (Date.now() - startedAt > caps.max_run_duration_ms) break;
 
     try {
+      report(`读取详情 ${di + 1}/${detailSlice.length}: "${card.title.slice(0, 20)}..."`);
       await sendBrowserCommand('navigate', { url: card.url }, 30000);
       await sleep(randInt(beh.detail_page_pause[0], beh.detail_page_pause[1]));
 
       const anomaly = await checkAnomaly(scripts.check_anomaly);
       if (anomaly !== 'ok') {
+        report(`检测到异常: ${anomaly}`);
         riskGuard.recordAnomaly(task.id, anomaly as any, caps);
         throw new Error(`anomaly:${anomaly}`);
       }
 
       const detail = await readDetailPage(scripts.read_detail_page);
       if (!detail || !detail.body) {
+        report(`详情为空，跳过`);
         coworkLog('WARN', 'xhsDriver', 'detail empty, skipping', { post_id: card.post_id });
         continue;
       }

@@ -110,13 +110,11 @@ function stepStart(step: number): void {
 
 function stepLog(step: number, status: 'done' | 'running' | 'error', message: string): void {
   if (!currentProgress) return;
-  // Replace the last "running" entry if this is an update
   const logs = currentProgress.steps[step - 1].logs;
-  if (logs.length > 0 && logs[logs.length - 1].status === 'running') {
-    logs[logs.length - 1] = { time: now(), status, message };
-  } else {
-    logs.push({ time: now(), status, message });
-  }
+  // Always append — UI shows a live timeline of what's happening.
+  // Keep max 30 entries to avoid memory bloat on long runs.
+  if (logs.length >= 30) logs.shift();
+  logs.push({ time: now(), status, message });
 }
 
 function stepDone(step: number): void {
@@ -213,7 +211,12 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
     let notes: DiscoveredNote[] = [];
 
     if (pack.manifest.platform === 'xhs') {
-      notes = await discoverXhsNotes({ pack, task, seenPostIds: seen });
+      notes = await discoverXhsNotes({
+        pack,
+        task,
+        seenPostIds: seen,
+        onProgress: (msg) => stepLog(1, 'running', msg),
+      });
     } else {
       stepError(1, '平台暂未支持');
       finishProgress('error', 'platform_not_implemented');
