@@ -303,16 +303,21 @@ export interface DiscoveryOptions {
 export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<DiscoveredNote[]> {
   const { task, manifest, seenPostIds } = opts;
   const caps = manifest.risk_caps;
-  const qualify = manifest.qualify || { min_likes: 500, max_age_hours: 48, exclude_types: ['video'] };
+  // Lowered min_likes from 500 to 100 — mid-tier posts are valuable too
+  const MIN_LIKES = 100;
   const target = Math.max(1, Math.min(5, task.daily_count));
   const startedAt = Date.now();
 
   const collected: DiscoveredNote[] = [];
   const candidates: FeedCard[] = [];
 
-  async function visitFeedAndCollect(url: string): Promise<void> {
+  /**
+   * @param requireKeywordMatch — false for search pages (results are
+   *   already keyword-relevant), true for explore/discover pages.
+   */
+  async function visitFeedAndCollect(url: string, requireKeywordMatch: boolean): Promise<void> {
     await sendBrowserCommand('navigate', { url }, 30000);
-    await sleep(randInt(4000, 8000)); // simulate reading the first screen
+    await sleep(randInt(4000, 8000));
 
     const anomaly = await checkAnomaly();
     if (anomaly !== 'ok') {
@@ -321,51 +326,55 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
     }
 
     for (let scroll = 0; scroll < caps.max_scroll_per_run; scroll++) {
-      // ── Abort check inside scroll loop ──
       if (isAbortRequested()) throw new Error('user_stopped');
-      if (Date.now() - startedAt > caps.max_run_duration_ms) {
-        throw new Error('run_duration_exceeded');
-      }
+      if (Date.now() - startedAt > caps.max_run_duration_ms) throw new Error('run_duration_exceeded');
+
       const cards = await readFeedCards();
       let fresh = 0;
       for (const card of cards) {
         if (seenPostIds.has(card.post_id)) continue;
         if (candidates.some(c => c.post_id === card.post_id)) continue;
-        if (card.is_video && qualify.exclude_types?.includes('video')) continue;
-        if (parseLikes(card.likes_text) < (qualify.min_likes || 0)) continue;
-        if (!keywordMatch(card.title, task.keywords)) continue;
+        if (card.is_video) continue;
+        if (parseLikes(card.likes_text) < MIN_LIKES) continue;
+        // Search results don't need keyword match (they're already relevant)
+        if (requireKeywordMatch && !keywordMatch(card.title, task.keywords)) continue;
         candidates.push(card);
         fresh++;
         if (candidates.length >= target) return;
       }
+      // If no new cards found for 3+ scrolls, stop scrolling this page
       if (fresh === 0 && scroll > 2) {
         const recheck = await checkAnomaly();
         if (recheck !== 'ok') {
           riskGuard.recordAnomaly(task.id, recheck as any, caps);
           throw new Error(`anomaly:${recheck}`);
         }
+        break; // Move on to next keyword / explore page
       }
       await sendBrowserCommand('scroll', { direction: 'down', amount: randInt(2, 4) }, 3000);
-      // ── Abort check after scroll ──
       if (isAbortRequested()) throw new Error('user_stopped');
       await humanPause(caps);
     }
   }
 
   try {
-    // 1. Try the explore page first
-    await visitFeedAndCollect(manifest.entry_urls.explore);
+    // ── STRATEGY: search pages FIRST (precise), explore page LAST (serendipity) ──
 
-    // 2. Fall through to search pages per keyword until target met
+    // 1. Search each keyword directly (highest hit rate)
     for (const kw of task.keywords) {
       if (candidates.length >= target) break;
       if (isAbortRequested()) throw new Error('user_stopped');
       const searchUrl = manifest.entry_urls.search.replace('{keyword}', encodeURIComponent(kw));
-      await visitFeedAndCollect(searchUrl);
+      await visitFeedAndCollect(searchUrl, false); // no keyword match needed — search is precise
+    }
+
+    // 2. If still not enough, try the explore/discover page as fallback
+    if (candidates.length < target) {
+      await visitFeedAndCollect(manifest.entry_urls.explore, true); // needs keyword match
     }
   } catch (err) {
     const msg = String(err);
-    if (msg === 'user_stopped') throw err; // propagate abort
+    if (msg === 'user_stopped') throw err;
     if (!msg.startsWith('anomaly:') && msg !== 'run_duration_exceeded') {
       coworkLog('WARN', 'xhsDriver', 'feed visit threw', { err: msg });
     } else {
