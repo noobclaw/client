@@ -1463,9 +1463,22 @@ const server = http.createServer(async (req, res) => {
               }
               const scenarioManager = require('./libs/scenario/scenarioManager');
               const result = await scenarioManager.runTask(task);
+              // Ensure reason is always a non-empty string on failure
+              if (result && result.status !== 'ok' && !result.reason) {
+                result.reason = 'no_reason_provided';
+              }
+              coworkLog('INFO', 'sidecar-server', `scenario:runTaskNow result`, {
+                taskId: args[0],
+                status: result?.status,
+                reason: result?.reason,
+                collected: result?.collected_count,
+                drafts: result?.draft_count,
+              });
               return writeJSON(res, 200, result);
             } catch (e: any) {
-              return writeJSON(res, 200, { status: 'failed', reason: e.message || String(e) });
+              const reason = e.message || e.stack || String(e) || 'unknown_error';
+              coworkLog('ERROR', 'sidecar-server', `scenario:runTaskNow threw`, { taskId: args[0], error: reason });
+              return writeJSON(res, 200, { status: 'failed', reason });
             }
           }
           case 'scenario:getRunningTaskId': {

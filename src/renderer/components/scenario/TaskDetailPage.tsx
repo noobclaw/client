@@ -116,7 +116,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       } else if (outcome.status === 'skipped') {
         showToast('warn', outcome.reason === 'another_task_running' ? '有另一个任务正在运行，请等它完成后再试' : `已跳过: ${outcome.reason}`);
       } else {
-        showToast('err', `运行失败: ${outcome.reason || 'unknown'}`);
+        const reason = outcome.reason || '';
+        const friendlyReason = reason === 'scenario_pack_not_found' ? '场景包未找到，请检查网络连接'
+          : reason === 'another_task_running' ? '有另一个任务正在运行'
+          : reason === 'user_stopped' ? '已手动停止'
+          : reason.includes('BROWSER_NOT_CONNECTED') ? '浏览器插件未连接'
+          : reason.includes('ANTHROPIC_API_KEY_MISSING') ? 'AI 密钥未设置，请在设置中配置'
+          : reason || '未知错误，请查看控制台日志';
+        showToast('err', `运行失败: ${friendlyReason}`);
       }
       await refresh();
       await onChanged();
