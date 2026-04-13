@@ -574,22 +574,29 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
     const f = config.search_filters;
     const pause = beh.filter_click_pause;
     try {
-      // Click tab (e.g. "图文")
+      // 1. Click tab (e.g. "图文") — this may reload the page
       if (f.tab) {
         await clickByText(f.tab, pause);
+        // Wait for page to settle after tab switch
+        await sleep(randInt(2000, 3500));
       }
-      // Open filter panel
+      // 2. Open filter panel (click "筛选" dropdown)
       if (f.open_filter_panel) {
         await clickByText('筛选', pause);
+        // Wait for panel animation
+        await sleep(randInt(800, 1500));
       }
-      // Sort (e.g. "最多点赞")
+      // 3. Sort option (e.g. "最多点赞") — inside the filter panel
       if (f.sort) {
         await clickByText(f.sort, pause);
       }
-      // Time filter (e.g. "一周内")
+      // 4. Time filter (e.g. "一周内") — inside the filter panel
       if (f.time) {
         await clickByText(f.time, [2000, 4000]);
       }
+      coworkLog('INFO', 'xhsDriver', 'applySearchFilters done', {
+        tab: f.tab, sort: f.sort, time: f.time
+      });
     } catch (err) {
       coworkLog('WARN', 'xhsDriver', 'applySearchFilters failed (non-fatal)', { err: String(err) });
     }
@@ -597,37 +604,36 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
 
   async function clickByText(text: string, pauseRange: [number, number]): Promise<void> {
     // Use javascript command to find-and-click by visible text.
-    // The extension doesn't have a 'find' primitive, so we do it via DOM eval.
+    // XHS uses plain <div> with class names like "channel", "filter" — not
+    // standard <button>/<a>. So we scan ALL elements with short text content
+    // and pick the smallest (most specific) match to avoid clicking a parent
+    // container that contains the text somewhere deep inside.
     const code = `
       return (function() {
         var target = ${JSON.stringify(text)};
-        // 1. Try exact text match on common clickable elements
-        var candidates = document.querySelectorAll(
-          'button, a, span, div[role="tab"], li, [class*="tab"], [class*="filter"], [class*="option"], [class*="sort"], [class*="item"]'
-        );
-        for (var i = 0; i < candidates.length; i++) {
-          var el = candidates[i];
+        var best = null;
+        var bestArea = Infinity;
+        // Scan all elements — XHS uses plain divs, not buttons/links
+        var all = document.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
           var t = (el.textContent || '').trim();
-          // Exact match or starts-with (for cases like "图文(123)")
-          if (t === target || t.startsWith(target)) {
-            var rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              el.click();
-              return 'clicked';
-            }
+          // Exact match only, skip if text is too long (container with lots of text)
+          if (t !== target) continue;
+          var rect = el.getBoundingClientRect();
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          // Prefer the element visible in the upper part of the page (filter area)
+          if (rect.top > 500) continue;
+          var area = rect.width * rect.height;
+          // Pick smallest element (most specific) to avoid clicking a wrapper div
+          if (area < bestArea) {
+            best = el;
+            bestArea = area;
           }
         }
-        // 2. Try partial match (target is contained in element text, but element text is short)
-        for (var i = 0; i < candidates.length; i++) {
-          var el = candidates[i];
-          var t = (el.textContent || '').trim();
-          if (t.length < 20 && t.indexOf(target) >= 0) {
-            var rect = el.getBoundingClientRect();
-            if (rect.width > 0 && rect.height > 0) {
-              el.click();
-              return 'clicked_partial';
-            }
-          }
+        if (best) {
+          best.click();
+          return 'clicked:' + best.tagName + '.' + (best.className || '').toString().split(' ')[0];
         }
         return 'not_found';
       })()
@@ -636,7 +642,7 @@ export async function discoverXhsNotes(opts: DiscoveryOptions): Promise<Discover
       const res = await sendBrowserCommand('javascript', { code }, 5000);
       const result = res?.result || 'not_found';
       coworkLog('DEBUG', 'xhsDriver', `clickByText("${text}") → ${result}`);
-      if (result !== 'not_found') {
+      if (!result.startsWith('not_found')) {
         await sleep(randInt(pauseRange[0], pauseRange[1]));
       }
     } catch (err) {
