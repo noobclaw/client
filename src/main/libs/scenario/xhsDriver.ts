@@ -31,26 +31,64 @@ function sleep(ms: number): Promise<void> {
 
 // ── Login state check (used before runs, before draft pushes, and from UI) ──
 
+// Login probe: fetch XHS user API (same-origin, cookies auto-attached).
+// This works regardless of DOM structure or HttpOnly cookie flags.
+// If logged in, the API returns user data (200). If not, it 401s or
+// returns an error code in the JSON body.
 const LOGIN_PROBE_CODE = `
-(function() {
+(async function() {
   try {
-    var url = location.href || '';
-    if (/\\/login|\\/signin/i.test(url)) {
-      return JSON.stringify({ loggedIn: false, reason: 'login_page' });
+    // Quick check: are we even on xiaohongshu.com?
+    if (!/xiaohongshu\\.com/i.test(location.hostname)) {
+      return JSON.stringify({ loggedIn: false, reason: 'not_xhs_page' });
     }
-    if (document.querySelector('.login-container, [class*="login-panel"], iframe[src*="login"]')) {
-      return JSON.stringify({ loggedIn: false, reason: 'login_modal' });
+
+    // Call a lightweight XHS API that requires login.
+    // /api/sns/web/v1/user/selfinfo returns user profile when logged in.
+    var resp = await fetch('/api/sns/web/v1/user/selfinfo', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { 'accept': 'application/json' }
+    });
+
+    if (!resp.ok) {
+      // 401/403 = not logged in
+      return JSON.stringify({ loggedIn: false, reason: 'api_unauthorized' });
     }
-    var signIn = document.querySelector('[class*="sign-in"], [class*="login-btn"], [class*="SignInBtn"]');
-    if (signIn && signIn.offsetParent !== null && (signIn.textContent || '').match(/登录|sign/i)) {
-      return JSON.stringify({ loggedIn: false, reason: 'sign_in_button' });
+
+    var data = await resp.json();
+    // XHS API returns { success: true, data: { ... } } when logged in,
+    // or { success: false, code: -100 } when session expired.
+    if (data && data.success === true) {
+      return JSON.stringify({ loggedIn: true });
     }
-    // Positive signal: user avatar / greeting / side menu
-    var user = document.querySelector('.user-avatar, [class*="user-info"], [class*="Avatar"], [data-testid*="avatar"]');
-    if (user) return JSON.stringify({ loggedIn: true });
+    if (data && (data.code === -100 || data.code === -101 || data.success === false)) {
+      return JSON.stringify({ loggedIn: false, reason: 'session_expired' });
+    }
+
+    // Got a response but can't parse — assume logged in
     return JSON.stringify({ loggedIn: true });
   } catch (err) {
-    return JSON.stringify({ loggedIn: false, reason: 'probe_error:' + String(err) });
+    // Network error or CORS — fall back to DOM check
+    try {
+      // Sidebar "我" link = logged in
+      var meLink = document.querySelector('a[href*="/user/profile"], a[href*="/user/self"]');
+      if (meLink) return JSON.stringify({ loggedIn: true });
+
+      // Visible "登录" button = not logged in
+      var btns = document.querySelectorAll('button, a');
+      for (var i = 0; i < btns.length; i++) {
+        if ((btns[i].textContent || '').trim() === '登录') {
+          var r = btns[i].getBoundingClientRect();
+          if (r.width > 30 && r.height > 20) {
+            return JSON.stringify({ loggedIn: false, reason: 'sign_in_button' });
+          }
+        }
+      }
+      return JSON.stringify({ loggedIn: true });
+    } catch (e2) {
+      return JSON.stringify({ loggedIn: false, reason: 'probe_error' });
+    }
   }
 })()
 `;
@@ -122,7 +160,7 @@ export async function checkXhsLogin(): Promise<XhsLoginStatus> {
 
   // 3. Run the DOM probe
   try {
-    const result = await sendBrowserCommand('javascript', { code: LOGIN_PROBE_CODE }, 5000);
+    const result = await sendBrowserCommand('javascript', { code: LOGIN_PROBE_CODE }, 10000);
     const raw = result?.result;
     if (typeof raw !== 'string') return { loggedIn: false, reason: 'no_response' };
     const parsed = JSON.parse(raw);
