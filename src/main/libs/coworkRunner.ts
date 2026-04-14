@@ -3131,7 +3131,7 @@ export class CoworkRunner extends EventEmitter {
     // are non-fatal; we never want a broken hook to block chat.
     try {
       const { runShellHooks } = await import('./shellHooks');
-      await runShellHooks('SessionStart', { sessionId, cwd: session.workingDirectory });
+      await runShellHooks('SessionStart', { sessionId, cwd: session.cwd });
     } catch (e) {
       coworkLog('WARN', 'coworkRunner', `SessionStart shell hook error: ${e}`);
     }
@@ -4842,7 +4842,7 @@ export class CoworkRunner extends EventEmitter {
         import('./shellHooks').then(({ runShellHooks }) =>
           runShellHooks('Stop', {
             sessionId,
-            cwd: this.store.getSession(sessionId)?.workingDirectory,
+            cwd: this.store.getSession(sessionId)?.cwd,
           }).catch((e) => coworkLog('WARN', 'runClaudeCodeLocal', `Stop shell hook error: ${e}`))
         ).catch(() => {});
       }

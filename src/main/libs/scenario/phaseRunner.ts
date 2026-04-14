@@ -176,7 +176,7 @@ function buildContext(
 
     // Debug log (visible in sidecar console, not in UI)
     log: (msg: string) => {
-      coworkLog('DEBUG', 'orchestrator', msg);
+      coworkLog('INFO', 'orchestrator', msg);
     },
 
     checkAnomaly: async () => {
