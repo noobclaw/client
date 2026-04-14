@@ -317,31 +317,40 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               }`}>
                 {STEP_LABELS[idx]}. {name}
               </div>
-              <div className={`rounded-xl border p-4 min-h-[60px] ${
+              <div className={`rounded-xl border min-h-[60px] ${
                 isActive ? 'border-green-500/30 bg-green-500/5'
                   : isDone ? 'border-green-500/20 bg-green-500/5'
                   : isError ? 'border-red-500/20 bg-red-500/5'
                   : 'border-gray-200 dark:border-gray-700'
               }`}>
                 {logs.length > 0 ? (
-                  <div className="space-y-1.5">
-                    {logs.map((log, li) => (
-                      <div key={li} className="text-xs flex items-start gap-2">
-                        <span className={`shrink-0 ${
-                          log.status === 'done' ? 'text-green-500' : log.status === 'error' ? 'text-red-500' : 'text-amber-500'
-                        }`}>
-                          {log.status === 'done' ? '已完成:' : log.status === 'error' ? '错误:' : '进行中:'}
-                        </span>
-                        <span className="dark:text-gray-300 flex-1">
-                          {log.message}
-                          {log.status === 'running' && <span className="inline-block ml-2 animate-pulse text-green-500">......</span>}
-                        </span>
-                        <span className="text-gray-500 shrink-0 tabular-nums">{log.time}</span>
-                      </div>
-                    ))}
+                  <div
+                    className="overflow-y-auto p-3 space-y-1"
+                    style={{ maxHeight: '160px' }}
+                    ref={(el) => { if (el && isActive) el.scrollTop = el.scrollHeight; }}
+                  >
+                    {logs.map((log, li) => {
+                      const isLast = li === logs.length - 1 && isActive;
+                      return (
+                        <div key={li} className="text-xs flex items-start gap-2">
+                          <span className={`shrink-0 font-medium ${
+                            log.status === 'done' ? 'text-green-500' : log.status === 'error' ? 'text-red-500' : 'text-amber-500'
+                          }`}>
+                            {log.status === 'done' ? '✓' : log.status === 'error' ? '✗' : '›'}
+                          </span>
+                          <span className={`flex-1 ${log.status === 'done' ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-300'}`}>
+                            {log.message}
+                            {isLast && log.status === 'running' && (
+                              <span className="inline-block ml-1 text-green-500 animate-pulse">...</span>
+                            )}
+                          </span>
+                          <span className="text-gray-500 dark:text-gray-600 shrink-0 tabular-nums text-[10px]">{log.time}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-2">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
                     {stepNum === 1 && !running ? `等待每日 ${task.daily_time || '08:00'} 定时运行` : '等待前一步'}
                   </div>
                 )}
