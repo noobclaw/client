@@ -273,11 +273,14 @@ class NoobClawApiService {
   }
   // ── Daily check-in ─────────────────────────────────────────────────
 
-  /** Get today's check-in status: already checked in? pool remaining? */
+  /** Get today's check-in status: already checked in? pools remaining? */
   async getCheckinStatus(): Promise<{
     checked_in: boolean;
-    remaining_pool: number;
-    pool_cap: number;
+    noob_remaining: number;
+    noob_cap: number;
+    points_remaining: number;
+    points_cap: number;
+    pool_exhausted: boolean;
     last_reward: { noob: number; points: number } | null;
   }> {
     try {
@@ -285,10 +288,10 @@ class NoobClawApiService {
       const res = await fetch(`${this.backendUrl}/api/user/checkin/status`, {
         headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId },
       });
-      if (!res.ok) return { checked_in: false, remaining_pool: 0, pool_cap: 0, last_reward: null };
+      if (!res.ok) return { checked_in: false, noob_remaining: 0, noob_cap: 0, points_remaining: 0, points_cap: 0, pool_exhausted: false, last_reward: null };
       return res.json();
     } catch {
-      return { checked_in: false, remaining_pool: 0, pool_cap: 0, last_reward: null };
+      return { checked_in: false, noob_remaining: 0, noob_cap: 0, points_remaining: 0, points_cap: 0, pool_exhausted: false, last_reward: null };
     }
   }
 

@@ -286,6 +286,24 @@ function buildContext(
       taskStore.recordSeen(task.id, postIds);
     },
 
+    // Call backend API (e.g. image generation)
+    apiCall: async (endpoint: string, body: any) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+      const baseUrl = pack.manifest?.required_login_url
+        ? 'https://api.noobclaw.com'
+        : 'https://api.noobclaw.com';
+      const resp = await fetch(baseUrl + endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error('API ' + resp.status + ': ' + errText.slice(0, 200));
+      }
+      return resp.json();
+    },
+
     saveDrafts: async (rawDrafts: any[]) => {
       const drafts: Draft[] = rawDrafts.map(d => ({
         id: crypto.randomUUID(),

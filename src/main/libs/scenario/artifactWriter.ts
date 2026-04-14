@@ -231,6 +231,26 @@ export async function writeTaskArtifacts(
       } catch (err) {
         coworkLog('WARN', 'artifactWriter', 'write rewrite failed', { err: String(err) });
       }
+
+      // Save generated images (base64 → file)
+      const images = (d as any).images;
+      if (Array.isArray(images) && images.length > 0) {
+        const imgDir = path.join(rewritesDir, `${articleIdx}-配图`);
+        try { fs.mkdirSync(imgDir, { recursive: true }); } catch {}
+        for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
+          const img = images[imgIdx];
+          if (!img.base64) continue;
+          const ext = (img.mimeType || 'image/png').includes('jpeg') ? 'jpg' : 'png';
+          const imgFilename = `${img.type || 'image'}_${imgIdx + 1}.${ext}`;
+          try {
+            const imgPath = path.join(imgDir, imgFilename);
+            fs.writeFileSync(imgPath, Buffer.from(img.base64, 'base64'));
+            files.push(imgPath);
+          } catch (err) {
+            coworkLog('WARN', 'artifactWriter', 'write image failed', { err: String(err) });
+          }
+        }
+      }
     }
   }
 
