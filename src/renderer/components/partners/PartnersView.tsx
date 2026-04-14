@@ -192,7 +192,7 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
           <span className="h-5 w-5 rounded-full border-2 border-claude-accent border-t-transparent animate-spin" />
         </div>
       ) : justCheckedIn && reward ? (
-        /* Success state — show whichever rewards were given */
+        /* Success state */
         <div className="text-center py-4">
           <div className="text-4xl mb-2">🎊</div>
           <div className="text-lg font-bold dark:text-claude-darkText text-claude-text mb-1">
@@ -201,8 +201,6 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
           <div className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-1">
             {reward.noob > 0 && <div>💰 +{reward.noob} $NoobCoin</div>}
             {reward.points > 0 && <div>⭐ +{formatNum(reward.points)} {isZh ? '积分' : 'credits'}</div>}
-            {reward.noob === 0 && <div className="text-xs text-amber-500">{isZh ? '今日代币已发完' : 'Token pool empty today'}</div>}
-            {reward.points === 0 && <div className="text-xs text-amber-500">{isZh ? '今日积分已发完' : 'Credits pool empty today'}</div>}
           </div>
         </div>
       ) : checkedIn ? (
