@@ -21,24 +21,24 @@ type TrackPreset = {
 };
 
 const TRACK_PRESETS: TrackPreset[] = [
-  { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱', keywords: ['副业', '下班变现', '兼职', '月入'], persona_hint: '一个想在下班后搞点副业的普通打工人，真诚不装' },
-  { id: 'indie_dev', icon: '👩‍💻', name_zh: '独立开发 · 程序员记录', keywords: ['独立开发', '程序员副业', 'indie hacker', '个人开发者'], persona_hint: '独立开发者，前后端都写，真诚记录产品和收入' },
-  { id: 'personal_finance', icon: '💰', name_zh: '理财 · 记账攻略', keywords: ['理财', '攒钱', '记账', '定投'], persona_hint: '月薪 1 万的普通白领，认真记账、稳健理财' },
-  { id: 'travel', icon: '✈️', name_zh: '旅行 · 攻略分享', keywords: ['旅行攻略', '穷游', '周末游', '小众目的地'], persona_hint: '爱说走就走的旅行爱好者，分享性价比攻略' },
-  { id: 'food', icon: '🍲', name_zh: '美食 · 探店做饭', keywords: ['探店', '做饭', '日常晚餐', '健康餐'], persona_hint: '喜欢折腾吃喝的上班族，每天做饭给自己' },
-  { id: 'outfit', icon: '👗', name_zh: '穿搭 · 风格分享', keywords: ['穿搭', 'OOTD', '通勤穿搭', '小个子穿搭'], persona_hint: '小个子职场穿搭爱好者' },
-  { id: 'beauty', icon: '💄', name_zh: '美妆 · 产品测评', keywords: ['美妆', '护肤', '平价彩妆', '粉底液测评'], persona_hint: '敏感肌护肤爱好者，只买成分党认证的' },
-  { id: 'fitness', icon: '💪', name_zh: '健身 · 减脂日记', keywords: ['健身', '减脂', '塑形', '居家健身'], persona_hint: '上班族，边工作边坚持居家健身一年' },
-  { id: 'reading', icon: '📚', name_zh: '读书 · 书单笔记', keywords: ['读书', '书单', '读书笔记', '年度书单'], persona_hint: '一年读 50 本书的普通读者' },
-  { id: 'parenting', icon: '🧸', name_zh: '育儿 · 亲子日常', keywords: ['育儿', '亲子', '早教', '母婴好物'], persona_hint: '3 岁娃妈妈，理性育儿不焦虑' },
-  { id: 'exam_prep', icon: '🎓', name_zh: '考研 · 备考党', keywords: ['考研', '考研经验', '英语学习', '备考'], persona_hint: '二战考研人，记录每日学习节奏' },
-  { id: 'pets', icon: '🐱', name_zh: '宠物 · 猫狗日常', keywords: ['猫咪', '狗狗', '宠物日常', '宠物用品'], persona_hint: '一只中华田园猫的主人，真实养宠记录' },
-  { id: 'home_decor', icon: '🏠', name_zh: '家居 · 小屋布置', keywords: ['家居', '小户型', '租房改造', '收纳'], persona_hint: '租房党，用 2000 预算把小公寓改舒服' },
-  { id: 'study_method', icon: '🏆', name_zh: '学习 · 效率工具', keywords: ['效率', '时间管理', '学习方法', 'Notion'], persona_hint: '热爱效率工具的产品经理' },
-  { id: 'career_growth', icon: '🎯', name_zh: '职场 · 升级打怪', keywords: ['职场', '升职', '面试', '跳槽'], persona_hint: '互联网行业工作 5 年的打工人' },
-  { id: 'emotional_wellness', icon: '🧘', name_zh: '情感 · 心理疗愈', keywords: ['情感', '心理', 'MBTI', '自我成长'], persona_hint: '正在做自我探索的 30 岁女性' },
-  { id: 'photography', icon: '📷', name_zh: '摄影 · 日常记录', keywords: ['摄影', '手机摄影', '胶片', '构图'], persona_hint: '业余摄影爱好者，周末扫街' },
-  { id: 'crafts', icon: '🎨', name_zh: '手工 · DIY', keywords: ['手工', 'DIY', '手账', '手工教程'], persona_hint: '热爱动手做点小东西的文艺青年' },
+  { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱', keywords: ['副业', '下班变现', '兼职', '月入过万', '副业推荐', '副业赚钱', '打工人副业', '上班族副业', '零基础副业', '副业入门', '线上副业', '副业日记', '宝妈副业', '学生党副业', '副业项目'], persona_hint: '一个想在下班后搞点副业的普通打工人，真诚不装' },
+  { id: 'indie_dev', icon: '👩‍💻', name_zh: '独立开发 · 程序员记录', keywords: ['独立开发', '程序员副业', 'indie hacker', '个人开发者', '独立开发者', 'SaaS', '开源项目', '独立产品', '程序员日常', '技术博客', '前端', '后端', '全栈', '副业编程', '出海产品'], persona_hint: '独立开发者，前后端都写，真诚记录产品和收入' },
+  { id: 'personal_finance', icon: '💰', name_zh: '理财 · 记账攻略', keywords: ['理财', '攒钱', '记账', '定投', '基金', '工资理财', '理财入门', '存钱方法', '资产配置', '零钱理财', '家庭理财', '理财日记', '攒钱日记', '记账 app', '理财规划'], persona_hint: '月薪 1 万的普通白领，认真记账、稳健理财' },
+  { id: 'travel', icon: '✈️', name_zh: '旅行 · 攻略分享', keywords: ['旅行攻略', '穷游', '周末游', '小众目的地', '国内游', '出境游', '自驾游', '一个人旅行', '亲子旅行', '海岛游', '城市漫游', '旅行 vlog', '民宿推荐', '旅行摄影', '旅行日记'], persona_hint: '爱说走就走的旅行爱好者，分享性价比攻略' },
+  { id: 'food', icon: '🍲', name_zh: '美食 · 探店做饭', keywords: ['探店', '做饭', '日常晚餐', '健康餐', '家常菜', '烘焙', '早餐', '便当', '减脂餐', '懒人菜', '周末美食', '本地美食', '小吃', '美食教程', '一人食'], persona_hint: '喜欢折腾吃喝的上班族，每天做饭给自己' },
+  { id: 'outfit', icon: '👗', name_zh: '穿搭 · 风格分享', keywords: ['穿搭', 'OOTD', '通勤穿搭', '小个子穿搭', '梨形身材', '秋冬穿搭', '春夏穿搭', '气质穿搭', '韩系穿搭', '法式穿搭', '平价穿搭', '大码穿搭', '学生穿搭', '约会穿搭', '穿搭模板'], persona_hint: '小个子职场穿搭爱好者' },
+  { id: 'beauty', icon: '💄', name_zh: '美妆 · 产品测评', keywords: ['美妆', '护肤', '平价彩妆', '粉底液测评', '成分党', '敏感肌', '彩妆教程', '眼影教程', '口红试色', '化妆新手', '护肤步骤', '抗老', '美白', '防晒', '空瓶记'], persona_hint: '敏感肌护肤爱好者，只买成分党认证的' },
+  { id: 'fitness', icon: '💪', name_zh: '健身 · 减脂日记', keywords: ['健身', '减脂', '塑形', '居家健身', '瑜伽', '普拉提', '增肌', '跑步', 'HIIT', '健身餐', '减脂餐', '马甲线', '小红书健身', '健身打卡', '体态矫正'], persona_hint: '上班族，边工作边坚持居家健身一年' },
+  { id: 'reading', icon: '📚', name_zh: '读书 · 书单笔记', keywords: ['读书', '书单', '读书笔记', '年度书单', '好书推荐', '人物传记', '小说推荐', '非虚构', '读书打卡', '读书博主', 'kindle', '实体书', '读书方法', '个人成长书', '心理学书'], persona_hint: '一年读 50 本书的普通读者' },
+  { id: 'parenting', icon: '🧸', name_zh: '育儿 · 亲子日常', keywords: ['育儿', '亲子', '早教', '母婴好物', '辅食', '绘本推荐', '幼儿园', '亲子游', '带娃日常', '孕期', '产后恢复', '新手妈妈', '科学育儿', '亲子互动', '玩具推荐'], persona_hint: '3 岁娃妈妈，理性育儿不焦虑' },
+  { id: 'exam_prep', icon: '🎓', name_zh: '考研 · 备考党', keywords: ['考研', '考研经验', '英语学习', '备考', '考研英语', '考研政治', '考研数学', '考研日记', '备考计划', '真题', '单词打卡', '四六级', '保研', '考公', '教资'], persona_hint: '二战考研人，记录每日学习节奏' },
+  { id: 'pets', icon: '🐱', name_zh: '宠物 · 猫狗日常', keywords: ['猫咪', '狗狗', '宠物日常', '宠物用品', '养猫', '养狗', '猫粮', '狗粮', '宠物医院', '训狗', '橘猫', '金毛', '柴犬', '宠物穿搭', '养宠新手'], persona_hint: '一只中华田园猫的主人，真实养宠记录' },
+  { id: 'home_decor', icon: '🏠', name_zh: '家居 · 小屋布置', keywords: ['家居', '小户型', '租房改造', '收纳', '装修', '宜家', '家居好物', '一人居', '客厅', '卧室', '厨房', '卫生间', '家居软装', '北欧风', '日式家居'], persona_hint: '租房党，用 2000 预算把小公寓改舒服' },
+  { id: 'study_method', icon: '🏆', name_zh: '学习 · 效率工具', keywords: ['效率', '时间管理', '学习方法', 'Notion', 'flomo', '番茄钟', '自律', '早起', '习惯养成', '晨间日记', 'todolist', '笔记方法', '康奈尔笔记', '思维导图', '目标管理'], persona_hint: '热爱效率工具的产品经理' },
+  { id: 'career_growth', icon: '🎯', name_zh: '职场 · 升级打怪', keywords: ['职场', '升职', '面试', '跳槽', '简历', '大厂面试', '求职', '应届生', '职业规划', '领导力', '沟通技巧', 'OKR', '职场穿搭', '副业', '自由职业'], persona_hint: '互联网行业工作 5 年的打工人' },
+  { id: 'emotional_wellness', icon: '🧘', name_zh: '情感 · 心理疗愈', keywords: ['情感', '心理', 'MBTI', '自我成长', '心理学', '原生家庭', '冥想', '正念', '疗愈', '情绪管理', '亲密关系', '分手', '恋爱', '孤独', '自我接纳'], persona_hint: '正在做自我探索的 30 岁女性' },
+  { id: 'photography', icon: '📷', name_zh: '摄影 · 日常记录', keywords: ['摄影', '手机摄影', '胶片', '构图', '人像', '风光', '扫街', '街头摄影', '修图', 'lightroom', '富士相机', '索尼相机', '摄影师', '照片调色', '摄影入门'], persona_hint: '业余摄影爱好者，周末扫街' },
+  { id: 'crafts', icon: '🎨', name_zh: '手工 · DIY', keywords: ['手工', 'DIY', '手账', '手工教程', '粘土', '编织', '刺绣', '胶带手账', '手绘', '贴纸', '水彩', '超轻粘土', 'bujo', '手工课', '手作生活'], persona_hint: '热爱动手做点小东西的文艺青年' },
 ];
 
 interface Props {
@@ -169,7 +169,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Keywords */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">{isZh ? '（每次运行随机选 3 个搜索，建议 15-25 个）' : '(3 random keywords per run, 15-25 recommended)'}</span>
+                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">{isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)'}</span>
                 </label>
                 <textarea
                   value={customKeywordsText}
