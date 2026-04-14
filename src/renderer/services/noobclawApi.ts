@@ -271,6 +271,61 @@ class NoobClawApiService {
       return { tokenSymbol: 'Noob', totalSupply: '1000000000', contractAddress: '', taxRate: '2' };
     }
   }
+  // ── Daily check-in ─────────────────────────────────────────────────
+
+  /** Get today's check-in status: already checked in? pool remaining? */
+  async getCheckinStatus(): Promise<{
+    checked_in: boolean;
+    remaining_pool: number;
+    pool_cap: number;
+    last_reward: { noob: number; points: number } | null;
+  }> {
+    try {
+      const deviceId = this.getDeviceId();
+      const res = await fetch(`${this.backendUrl}/api/user/checkin/status`, {
+        headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId },
+      });
+      if (!res.ok) return { checked_in: false, remaining_pool: 0, pool_cap: 0, last_reward: null };
+      return res.json();
+    } catch {
+      return { checked_in: false, remaining_pool: 0, pool_cap: 0, last_reward: null };
+    }
+  }
+
+  /** Perform today's daily check-in. Returns reward or rejection reason. */
+  async checkin(): Promise<{
+    success: boolean;
+    noob_reward?: number;
+    points_reward?: number;
+    already_checked_in?: boolean;
+    pool_exhausted?: boolean;
+    error?: string;
+  }> {
+    try {
+      const deviceId = this.getDeviceId();
+      const res = await fetch(`${this.backendUrl}/api/user/checkin`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+      return res.json();
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
+  /** Stable per-browser device ID for anti-abuse. Not cryptographically
+   *  strong — just raises the cost of scripted farming. */
+  private getDeviceId(): string {
+    const KEY = 'noobclaw_device_id';
+    let id = localStorage.getItem(KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(KEY, id);
+    }
+    return id;
+  }
 }
 
 export const noobClawApi = new NoobClawApiService();
