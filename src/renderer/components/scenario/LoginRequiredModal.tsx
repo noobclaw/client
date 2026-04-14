@@ -80,7 +80,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
             <div className="text-xl shrink-0 mt-0.5">{ICON[xhsTabStatus]}</div>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium dark:text-white">① 在浏览器中打开小红书并登录</div>
-              {xhsTabStatus === 'fail' && (
+              {extensionStatus === 'fail' && (
+                <div className="text-xs text-gray-400 mt-1">请先安装浏览器插件（步骤②）</div>
+              )}
+              {extensionStatus === 'pass' && xhsTabStatus === 'fail' && (
                 <div className="mt-1">
                   <div className="text-xs text-red-500">未检测到小红书页面</div>
                   <button type="button" onClick={handleOpenXhs} disabled={opening}
@@ -116,7 +119,14 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                       className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
                       🌐 安装 Chrome 浏览器插件
                     </button>
-                    <button type="button" onClick={() => {}}
+                    <button type="button" onClick={() => {
+                      try {
+                        // Open the extension folder bundled with the app
+                        window.electron?.shell?.openPath?.('');
+                      } catch {}
+                      // Also open Chrome extensions page
+                      try { window.open('chrome://extensions', '_blank'); } catch {}
+                    }}
                       className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
                       📁 本地安装
                     </button>
