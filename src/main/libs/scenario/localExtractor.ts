@@ -272,22 +272,36 @@ export async function callAIWithConfigStreaming(
     model: apiCfg.model,
   });
 
-  try {
+  async function callStreamOnce(): Promise<string> {
     const stream = client.messages.stream({
       model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
       max_tokens: 2000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
-
     let fullText = '';
     stream.on('text', (text: string) => {
       fullText += text;
       onChunk(fullText);
     });
-
     await stream.finalMessage();
-    return parseJsonSafe(fullText);
+    return fullText;
+  }
+
+  try {
+    let raw = await callStreamOnce();
+    let parsed = parseJsonSafe(raw);
+    if (!parsed) {
+      coworkLog('WARN', 'localExtractor', 'streaming JSON parse failed, retrying', { rawLen: raw.length, rawHead: raw.slice(0, 300) });
+      raw = await callStreamOnce();
+      parsed = parseJsonSafe(raw);
+      if (!parsed) {
+        coworkLog('WARN', 'localExtractor', 'streaming retry also failed — returning raw for caller', { rawLen: raw.length, rawHead: raw.slice(0, 500) });
+        // Throw so orchestrator sees the actual content, not silent null
+        throw new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
+      }
+    }
+    return parsed;
   } catch (err: any) {
     const msg = String(err?.message || err);
     if (msg.includes('402') || msg.includes('insufficient') || msg.includes('余额')) {
