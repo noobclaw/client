@@ -19,6 +19,8 @@ interface PartnersViewProps {
   onNewChat: () => void;
   updateBadge?: React.ReactNode;
   onShowInvite?: () => void;
+  onShowXhs?: () => void;
+  onShowPersonality?: () => void;
 }
 
 type Tab = 'activities' | 'partners';
@@ -29,6 +31,8 @@ const PartnersView: React.FC<PartnersViewProps> = ({
   onNewChat: _onNewChat,
   updateBadge: _updateBadge,
   onShowInvite,
+  onShowXhs,
+  onShowPersonality,
 }) => {
   const [tab, setTab] = useState<Tab>('activities');
   const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
@@ -47,7 +51,7 @@ const PartnersView: React.FC<PartnersViewProps> = ({
       {/* Tab content */}
       <div className="flex-1 overflow-y-auto">
         {tab === 'activities' ? (
-          <ActivitiesTab isZh={isZh} onShowInvite={onShowInvite} />
+          <ActivitiesTab isZh={isZh} onShowInvite={onShowInvite} onShowXhs={onShowXhs} onShowPersonality={onShowPersonality} />
         ) : (
           <PartnersTab isZh={isZh} />
         )}
@@ -78,16 +82,125 @@ const TabButton: React.FC<{ active: boolean; onClick: () => void; children: Reac
 
 // ── Activities tab ────────────────────────────────────────────────────
 
-const ActivitiesTab: React.FC<{ isZh: boolean; onShowInvite?: () => void }> = ({ isZh, onShowInvite }) => {
+const ActivitiesTab: React.FC<{
+  isZh: boolean;
+  onShowInvite?: () => void;
+  onShowXhs?: () => void;
+  onShowPersonality?: () => void;
+}> = ({ isZh, onShowInvite, onShowXhs, onShowPersonality }) => {
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   useEffect(() => noobClawAuth.subscribe(setAuthState), []);
+
+  const [status, setStatus] = useState<{
+    activities: Array<{ type: string; claimed: boolean; enabled?: boolean; last_reward: { noob: number; points: number } | null }>;
+    pool: { noob_remaining: number; noob_cap: number; points_remaining: number; points_cap: number; exhausted: boolean };
+  } | null>(null);
+  const [popup, setPopup] = useState<{ activity: string; reward: { noob: number; points: number } } | null>(null);
+
+  const reload = useCallback(async () => {
+    if (!authState.isAuthenticated) return;
+    const s = await noobClawApi.getActivityStatus();
+    setStatus(s);
+  }, [authState.isAuthenticated]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  const isClaimed = (type: string) => status?.activities.find(a => a.type === type)?.claimed || false;
+  const isEnabled = (type: string) => status?.activities.find(a => a.type === type)?.enabled !== false;
+  const lastReward = (type: string) => status?.activities.find(a => a.type === type)?.last_reward || null;
+  const exhausted = status?.pool.exhausted || false;
+
+  const claim = async (type: string, afterClaim?: () => void) => {
+    if (!authState.isAuthenticated) { noobClawAuth.openWebsiteLogin(); return; }
+    const r = await noobClawApi.claimActivity(type);
+    if (r.success) {
+      setPopup({ activity: type, reward: { noob: r.noob_reward || 0, points: r.points_reward || 0 } });
+      reload();
+      afterClaim?.();
+    } else if (r.already_claimed) {
+      reload();
+    } else if (r.pool_exhausted) {
+      reload();
+    }
+  };
 
   return (
     <div className="p-6 max-w-3xl mx-auto space-y-6">
       {/* Card A: Daily Check-in */}
-      <CheckinCard isZh={isZh} isAuthenticated={authState.isAuthenticated} />
+      <ActivityCard
+        isZh={isZh}
+        icon="📅"
+        titleZh="每日签到"
+        titleEn="Daily Check-in"
+        descZh="每天签到领 $NoobCoin 和积分奖励"
+        descEn="Check in daily for $NoobCoin + credit rewards"
+        ctaZh="📅 立即签到"
+        ctaEn="📅 Check in now"
+        claimed={isClaimed('checkin')}
+        enabled={isEnabled('checkin')}
+        lastReward={lastReward('checkin')}
+        exhausted={exhausted}
+        isAuthenticated={authState.isAuthenticated}
+        onClaim={() => claim('checkin')}
+      />
 
-      {/* Card B: Invite Friends */}
+      {/* Card B: XHS Auto-Rewrite */}
+      <ActivityCard
+        isZh={isZh}
+        icon="📝"
+        titleZh="小红书自动仿写爆款"
+        titleEn="XHS Auto-Rewrite Viral Post"
+        descZh="一键跳转小红书自动化栏目，完成一次仿写即可领奖励"
+        descEn="Jump to XHS automation — complete one rewrite to claim rewards"
+        ctaZh="🚀 去仿写 + 领奖"
+        ctaEn="🚀 Go rewrite & claim"
+        claimed={isClaimed('xhs_rewrite')}
+        enabled={isEnabled('xhs_rewrite')}
+        lastReward={lastReward('xhs_rewrite')}
+        exhausted={exhausted}
+        isAuthenticated={authState.isAuthenticated}
+        onClaim={() => claim('xhs_rewrite', () => onShowXhs?.())}
+      />
+
+      {/* Card C: OG Brawl Game */}
+      <ActivityCard
+        isZh={isZh}
+        icon="⚔️"
+        titleZh="玩一次 OG 对战"
+        titleEn="Play OG Brawl Once"
+        descZh="打开浏览器进入 OG 对战游戏，玩一局就能领奖励"
+        descEn="Opens browser to the OG Brawl game — one match earns rewards"
+        ctaZh="⚔️ 去对战 + 领奖"
+        ctaEn="⚔️ Go battle & claim"
+        claimed={isClaimed('og_brawl')}
+        enabled={isEnabled('og_brawl')}
+        lastReward={lastReward('og_brawl')}
+        exhausted={exhausted}
+        isAuthenticated={authState.isAuthenticated}
+        onClaim={() => claim('og_brawl', () => {
+          try { (window as any).api?.openExternal?.('https://noobclaw.com/brawl'); } catch {}
+        })}
+      />
+
+      {/* Card D: Personality Test */}
+      <ActivityCard
+        isZh={isZh}
+        icon="🧠"
+        titleZh="完成一次人格测试"
+        titleEn="Complete a Personality Test"
+        descZh="做一次 MBTI / 人格测试，提交即可领奖励"
+        descEn="Take a personality/MBTI test once to earn rewards"
+        ctaZh="🧠 去测试 + 领奖"
+        ctaEn="🧠 Take test & claim"
+        claimed={isClaimed('personality_test')}
+        enabled={isEnabled('personality_test')}
+        lastReward={lastReward('personality_test')}
+        exhausted={exhausted}
+        isAuthenticated={authState.isAuthenticated}
+        onClaim={() => claim('personality_test', () => onShowPersonality?.())}
+      />
+
+      {/* Card E: Invite Friends */}
       <div className="rounded-2xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface p-6">
         <div className="flex items-center gap-3 mb-3">
           <span className="text-3xl">🎁</span>
@@ -110,165 +223,192 @@ const ActivitiesTab: React.FC<{ isZh: boolean; onShowInvite?: () => void }> = ({
           {isZh ? '🎁 去邀请 →' : '🎁 Invite Friends →'}
         </button>
       </div>
+
+      {popup && (
+        <RewardPopup
+          isZh={isZh}
+          activity={popup.activity}
+          reward={popup.reward}
+          onClose={() => setPopup(null)}
+        />
+      )}
     </div>
   );
 };
 
-// ── Check-in card ─────────────────────────────────────────────────────
+// ── Generic Activity Card ─────────────────────────────────────────────
 
-const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ isZh, isAuthenticated }) => {
-  const [loading, setLoading] = useState(true);
-  const [checkedIn, setCheckedIn] = useState(false);
-  const [poolExhausted, setPoolExhausted] = useState(false);
-  const [lastReward, setLastReward] = useState<{ noob: number; points: number } | null>(null);
+interface ActivityCardProps {
+  isZh: boolean;
+  icon: string;
+  titleZh: string;
+  titleEn: string;
+  descZh: string;
+  descEn: string;
+  ctaZh: string;
+  ctaEn: string;
+  claimed: boolean;
+  enabled?: boolean;
+  lastReward: { noob: number; points: number } | null;
+  exhausted: boolean;
+  isAuthenticated: boolean;
+  onClaim: () => void | Promise<void>;
+}
+
+const formatNum = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n.toLocaleString();
+
+const ActivityCard: React.FC<ActivityCardProps> = ({
+  isZh, icon, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
+  claimed, enabled = true, lastReward, exhausted, isAuthenticated, onClaim,
+}) => {
   const [submitting, setSubmitting] = useState(false);
-  const [justCheckedIn, setJustCheckedIn] = useState(false);
-  const [reward, setReward] = useState<{ noob: number; points: number } | null>(null);
-  const [noobRemaining, setNoobRemaining] = useState(0);
-  const [noobCap, setNoobCap] = useState(0);
-  const [pointsRemaining, setPointsRemaining] = useState(0);
-  const [pointsCap, setPointsCap] = useState(0);
-
-  const fetchStatus = useCallback(async () => {
-    if (!isAuthenticated) { setLoading(false); return; }
-    try {
-      const s = await noobClawApi.getCheckinStatus();
-      setCheckedIn(s.checked_in);
-      setLastReward(s.last_reward);
-      setNoobRemaining(s.noob_remaining);
-      setNoobCap(s.noob_cap);
-      setPointsRemaining(s.points_remaining);
-      setPointsCap(s.points_cap);
-      setPoolExhausted(s.pool_exhausted);
-    } finally {
-      setLoading(false);
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => { fetchStatus(); }, [fetchStatus]);
-
-  const handleCheckin = async () => {
-    if (!isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
-      return;
-    }
+  const handleClick = async () => {
+    if (submitting) return;
     setSubmitting(true);
-    try {
-      const r = await noobClawApi.checkin();
-      if (r.success) {
-        setCheckedIn(true);
-        setJustCheckedIn(true);
-        setReward({ noob: r.noob_reward!, points: r.points_reward! });
-      } else if (r.already_checked_in) {
-        setCheckedIn(true);
-      } else if (r.pool_exhausted) {
-        setPoolExhausted(true);
-      }
-    } finally {
-      setSubmitting(false);
-    }
+    try { await onClaim(); } finally { setSubmitting(false); }
   };
 
-  const formatNum = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n.toLocaleString();
-
   return (
-    <div className="rounded-2xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface p-6">
+    <div className={`rounded-2xl border dark:border-claude-darkBorder border-claude-border dark:bg-claude-darkSurface bg-claude-surface p-6 ${!enabled ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-3 mb-4">
-        <span className="text-3xl">📅</span>
+        <span className="text-3xl">{icon}</span>
         <div>
           <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">
-            {isZh ? '每日签到' : 'Daily Check-in'}
+            {isZh ? titleZh : titleEn}
           </h3>
           <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-            {isZh
-              ? '每天签到领 $NoobCoin 和积分奖励'
-              : 'Check in daily for $NoobCoin + credit rewards'}
+            {isZh ? descZh : descEn}
           </p>
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex items-center justify-center py-6">
-          <span className="h-5 w-5 rounded-full border-2 border-claude-accent border-t-transparent animate-spin" />
-        </div>
-      ) : justCheckedIn && reward ? (
-        /* Success state */
-        <div className="text-center py-4">
-          <div className="text-4xl mb-2">🎊</div>
-          <div className="text-lg font-bold dark:text-claude-darkText text-claude-text mb-1">
-            {isZh ? '签到成功！' : 'Checked in!'}
-          </div>
-          <div className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-1">
-            {reward.noob > 0 && <div>💰 +{reward.noob} $NoobCoin</div>}
-            {reward.points > 0 && <div>⭐ +{formatNum(reward.points)} {isZh ? '积分' : 'credits'}</div>}
-          </div>
-        </div>
-      ) : checkedIn ? (
-        /* Already checked in */
-        <div className="text-center py-4">
+      {!enabled ? (
+        <div className="text-center py-3">
           <button disabled className="w-full py-3 rounded-xl text-sm font-semibold bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
-            ✓ {isZh ? '今日已签到' : 'Already checked in today'}
+            🚧 {isZh ? '活动已暂停，敬请期待' : 'Activity paused — stay tuned'}
+          </button>
+        </div>
+      ) : claimed ? (
+        <div className="text-center py-3">
+          <button disabled className="w-full py-3 rounded-xl text-sm font-semibold bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
+            ✓ {isZh ? '今日已完成' : 'Completed today'}
           </button>
           {lastReward && (
             <div className="mt-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-              {isZh ? '今日奖励' : "Today's reward"}:
+              {isZh ? '奖励' : 'Reward'}:
               {lastReward.noob > 0 && ` +${lastReward.noob} $NoobCoin`}
               {lastReward.noob > 0 && lastReward.points > 0 && ' ·'}
               {lastReward.points > 0 && ` +${formatNum(lastReward.points)} ${isZh ? '积分' : 'credits'}`}
             </div>
           )}
         </div>
-      ) : poolExhausted ? (
-        /* Pool empty */
-        <div className="text-center py-4">
-          <div className="text-2xl mb-2">😢</div>
-          <div className="text-sm font-medium dark:text-amber-400 text-amber-600 mb-1">
-            {isZh ? '今日积分已发完，您来晚了' : "Today's pool is empty — you're a bit late"}
-          </div>
-          <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-            {isZh ? '明天早点来签到吧！' : 'Come back earlier tomorrow!'}
+      ) : exhausted ? (
+        <div className="text-center py-3">
+          <div className="text-2xl mb-1">😢</div>
+          <div className="text-sm font-medium dark:text-amber-400 text-amber-600">
+            {isZh ? '今日奖池已发完，您来晚了' : "Today's pool is empty — come back tomorrow"}
           </div>
         </div>
       ) : (
-        /* Ready to check in */
-        <div>
-          <button
-            type="button"
-            onClick={handleCheckin}
-            disabled={submitting || !isAuthenticated}
-            className="w-full py-3 rounded-xl text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {submitting ? (
-              <span className="flex items-center justify-center gap-2">
-                <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                {isZh ? '签到中...' : 'Checking in...'}
-              </span>
-            ) : !isAuthenticated ? (
-              isZh ? '请先登录' : 'Please log in first'
-            ) : (
-              isZh ? '📅 立即签到' : '📅 Check in now'
-            )}
-          </button>
-          <div className="mt-3 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary text-center space-y-0.5">
-            {noobCap > 0 && (
-              <div>💰 {isZh ? '代币池' : 'Token pool'}: {formatNum(noobRemaining)} / {formatNum(noobCap)}</div>
-            )}
-            {pointsCap > 0 && (
-              <div>⭐ {isZh ? '积分池' : 'Credits pool'}: {formatNum(pointsRemaining)} / {formatNum(pointsCap)}</div>
-            )}
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={handleClick}
+          disabled={submitting || !isAuthenticated}
+          className="w-full py-3 rounded-xl text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {submitting ? (
+            <span className="flex items-center justify-center gap-2">
+              <span className="h-4 w-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
+              {isZh ? '处理中...' : 'Processing...'}
+            </span>
+          ) : !isAuthenticated ? (
+            isZh ? '请先登录' : 'Please log in first'
+          ) : (
+            isZh ? ctaZh : ctaEn
+          )}
+        </button>
       )}
-
-      {/* Rules */}
-      <div className="mt-4 pt-3 border-t dark:border-claude-darkBorder border-claude-border text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-1">
-        <div>{isZh ? '• 每次签到随机获得 50~100 $NoobCoin + 4000~10000 积分' : '• Each check-in rewards 50~100 $NoobCoin + 4,000~10,000 credits'}</div>
-        <div>{isZh ? '• 每个钱包地址每天限签一次' : '• One check-in per wallet per day'}</div>
-        <div>{isZh ? `• 每日代币池 ${formatNum(noobCap)}，积分池 ${formatNum(pointsCap)}，有啥发啥，都没了才算"来晚了"` : `• Daily caps: ${formatNum(noobCap)} tokens + ${formatNum(pointsCap)} credits. Partial rewards given when one pool is empty.`}</div>
-      </div>
     </div>
   );
 };
+
+// ── Cool Reward Popup ─────────────────────────────────────────────────
+
+const ACTIVITY_LABELS_ZH: Record<string, { title: string; emoji: string }> = {
+  checkin: { title: '签到成功', emoji: '📅' },
+  xhs_rewrite: { title: '小红书任务完成', emoji: '📝' },
+  og_brawl: { title: 'OG 对战开始', emoji: '⚔️' },
+  personality_test: { title: '人格测试启动', emoji: '🧠' },
+};
+const ACTIVITY_LABELS_EN: Record<string, { title: string; emoji: string }> = {
+  checkin: { title: 'Checked In', emoji: '📅' },
+  xhs_rewrite: { title: 'XHS Task Claimed', emoji: '📝' },
+  og_brawl: { title: 'Brawl Unlocked', emoji: '⚔️' },
+  personality_test: { title: 'Test Started', emoji: '🧠' },
+};
+
+const RewardPopup: React.FC<{
+  isZh: boolean;
+  activity: string;
+  reward: { noob: number; points: number };
+  onClose: () => void;
+}> = ({ isZh, activity, reward, onClose }) => {
+  const labels = isZh ? ACTIVITY_LABELS_ZH : ACTIVITY_LABELS_EN;
+  const info = labels[activity] || { title: activity, emoji: '🎉' };
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="relative max-w-sm w-[92vw] rounded-3xl p-8 text-center shadow-2xl animate-[popIn_0.35s_cubic-bezier(.2,1.4,.4,1)] bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600"
+        onClick={e => e.stopPropagation()}
+      >
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors flex items-center justify-center text-lg"
+        >
+          ×
+        </button>
+        <div className="text-7xl mb-2 drop-shadow-[0_4px_12px_rgba(0,0,0,0.3)]">{info.emoji}</div>
+        <div className="text-2xl font-bold text-white mb-1 drop-shadow">{info.title}</div>
+        <div className="text-sm text-white/80 mb-5">{isZh ? '恭喜获得今日奖励 🎊' : 'Enjoy your daily rewards 🎊'}</div>
+        <div className="space-y-2 mb-6">
+          {reward.noob > 0 && (
+            <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-left flex items-center justify-between">
+              <span className="text-sm">💰 $NoobCoin</span>
+              <span className="text-xl font-bold">+{reward.noob}</span>
+            </div>
+          )}
+          {reward.points > 0 && (
+            <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-left flex items-center justify-between">
+              <span className="text-sm">⭐ {isZh ? '积分' : 'Credits'}</span>
+              <span className="text-xl font-bold">+{formatNum(reward.points)}</span>
+            </div>
+          )}
+          {reward.noob === 0 && reward.points === 0 && (
+            <div className="rounded-xl bg-white/20 backdrop-blur px-4 py-3 text-white text-sm">
+              {isZh ? '奖池余额不足，下次再来！' : 'Pool is empty — try again tomorrow!'}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 rounded-xl text-sm font-semibold bg-white text-gray-900 hover:bg-white/90 transition-colors"
+        >
+          {isZh ? '太棒了 🎉' : 'Awesome 🎉'}
+        </button>
+      </div>
+      <style>{`
+        @keyframes popIn {
+          0% { transform: scale(0.6); opacity: 0; }
+          60% { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+    </div>
+  );
+};
+
 
 // ── Partners tab ──────────────────────────────────────────────────────
 

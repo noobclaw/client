@@ -857,6 +857,8 @@ const App: React.FC = () => {
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
                 onShowInvite={handleShowInvite}
+                onShowXhs={handleShowQuickUse}
+                onShowPersonality={handleShowPersonality}
               />
             ) : mainView === 'personality' ? (
               <PersonalityView

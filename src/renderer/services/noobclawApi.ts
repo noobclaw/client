@@ -318,6 +318,51 @@ class NoobClawApiService {
     }
   }
 
+  /** Get status of all 4 daily activities + shared pool remaining. */
+  async getActivityStatus(): Promise<{
+    activities: Array<{ type: string; claimed: boolean; enabled?: boolean; last_reward: { noob: number; points: number } | null }>;
+    pool: { noob_remaining: number; noob_cap: number; points_remaining: number; points_cap: number; exhausted: boolean };
+  }> {
+    const empty = {
+      activities: [] as any[],
+      pool: { noob_remaining: 0, noob_cap: 0, points_remaining: 0, points_cap: 0, exhausted: false },
+    };
+    try {
+      const deviceId = this.getDeviceId();
+      const res = await fetch(`${this.backendUrl}/api/user/activity/status`, {
+        headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId },
+      });
+      if (!res.ok) return empty;
+      return res.json();
+    } catch {
+      return empty;
+    }
+  }
+
+  /** Claim reward for one of: checkin / xhs_rewrite / og_brawl / personality_test */
+  async claimActivity(activityType: string): Promise<{
+    success: boolean;
+    activity_type?: string;
+    noob_reward?: number;
+    points_reward?: number;
+    already_claimed?: boolean;
+    pool_exhausted?: boolean;
+    error?: string;
+  }> {
+    try {
+      const deviceId = this.getDeviceId();
+      const res = await fetch(`${this.backendUrl}/api/user/activity/claim`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ activity_type: activityType }),
+      });
+      if (!res.ok) return { success: false, error: `HTTP ${res.status}` };
+      return res.json();
+    } catch (e) {
+      return { success: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  }
+
   /** Stable per-browser device ID for anti-abuse. Not cryptographically
    *  strong — just raises the cost of scripted farming. */
   private getDeviceId(): string {
