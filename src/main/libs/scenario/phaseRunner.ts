@@ -247,8 +247,13 @@ function buildContext(
         userMessage = typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput);
       }
 
-      const apiCfg = getCurrentApiConfig();
-      if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
+      const baseCfg = getCurrentApiConfig();
+      if (!baseCfg || !baseCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
+
+      // Force chat model for scenario rewrites — reasoner burns too many
+      // tokens on thinking and truncates the JSON output. Chat is faster
+      // and more reliable for structured-output tasks like rewrite.
+      const apiCfg = { ...baseCfg, model: 'noobclawai-chat' };
 
       // Use streaming — show partial AI output in progress, abortable
       try {
