@@ -60,28 +60,31 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const refreshAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, t, d] = await Promise.all([
-        scenarioService.listScenarios().catch(() => []),
+      // Load tasks and drafts first (local, fast)
+      const [t, d] = await Promise.all([
         scenarioService.listTasks().catch(() => []),
         scenarioService.listDrafts().catch(() => []),
       ]);
-      setScenarios(Array.isArray(s) ? s : []);
       setTasks(Array.isArray(t) ? t : []);
       setDrafts(Array.isArray(d) ? d : []);
+      setLoading(false);
+
+      // Load scenarios in background (network, slow) — don't block UI
+      scenarioService.listScenarios().then(s => {
+        setScenarios(Array.isArray(s) ? s : []);
+      }).catch(() => {});
     } catch (err) {
       console.error('[ScenarioView] refreshAll failed:', err);
       setFatalError(String(err instanceof Error ? err.message : err));
-    } finally {
       setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void refreshAll();
-    // Sidecar might not be ready on first mount — retry after 2s and 5s
+    // Sidecar might not be ready on first mount — retry once after 2s
     const t1 = setTimeout(() => void refreshAll(), 2000);
-    const t2 = setTimeout(() => void refreshAll(), 5000);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    return () => { clearTimeout(t1); };
   }, [refreshAll]);
 
   const currentPlatform: PlatformId =
