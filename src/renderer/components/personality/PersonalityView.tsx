@@ -11,7 +11,7 @@ interface PersonalityViewProps {
   updateBadge?: React.ReactNode;
 }
 
-type TabKey = 'home' | 'sbti' | 'web3bti';
+type TabKey = 'home' | 'sbti' | 'web3bti' | 'brawl';
 
 const BASE_URL = 'https://noobclaw.com';
 
@@ -55,7 +55,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
       if (!data || typeof data !== 'object') return;
       if (data.type !== 'noobclaw-embed-page') return;
       const page = data.page;
-      if (page === 'home' || page === 'sbti' || page === 'web3bti') {
+      if (page === 'home' || page === 'sbti' || page === 'web3bti' || page === 'brawl') {
         setTab(page);
       }
     };
@@ -87,7 +87,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   // gets a sane default before the postMessage arrives.
   const src = useMemo(() => {
     const path =
-      tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : '/personality/';
+      tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : tab === 'brawl' ? '/brawl' : '/personality/';
     return `${BASE_URL}${path}?embed=1&lang=${lang}&v=${reloadKey}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, reloadKey]);
@@ -187,6 +187,9 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
             <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
               WEB3BTI
             </button>
+            <button type="button" onClick={() => setTab('brawl')} className={tabButtonClass(tab === 'brawl')}>
+              OG BRAWL
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -222,6 +225,9 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
         </button>
         <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
           WEB3BTI
+        </button>
+        <button type="button" onClick={() => setTab('brawl')} className={tabButtonClass(tab === 'brawl')}>
+          OG BRAWL
         </button>
       </div>
 
