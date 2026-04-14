@@ -132,7 +132,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden flex flex-col">
+      <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-visible flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
@@ -225,7 +225,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <select
                       value={dailyTime.split(':')[0] || '08'}
                       onChange={e => setDailyTime(e.target.value.padStart(2, '0') + ':' + (dailyTime.split(':')[1] || '00'))}
-                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                      style={{ appearance: 'auto', WebkitAppearance: 'menulist', minWidth: 70 }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
                     >
                       {Array.from({ length: 24 }, (_, i) => (
                         <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>
@@ -235,7 +236,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <select
                       value={dailyTime.split(':')[1] || '00'}
                       onChange={e => setDailyTime((dailyTime.split(':')[0] || '08') + ':' + e.target.value.padStart(2, '0'))}
-                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                      style={{ appearance: 'auto', WebkitAppearance: 'menulist', minWidth: 70 }}
+                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
                     >
                       {[0, 15, 30, 45].map(m => (
                         <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>
