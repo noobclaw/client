@@ -90,7 +90,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   });
 
   // Confirm
-  const [termsAccepted, setTermsAccepted] = useState([false, false, false]);
+  const [termsAccepted, setTermsAccepted] = useState([false, false]);
 
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
@@ -279,8 +279,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
                   <li>· 每次运行会在你已登录的小红书上模拟人类浏览</li>
-                  <li>· 为保护账号，上限锁定为每天 ≤ 3 条</li>
-                  <li>· 每周自动强制休息 1 天</li>
+                  <li>· 运行期间请不要切换浏览器标签页</li>
                   <li>· 推送草稿后，发布由你手动完成</li>
                 </ul>
               </div>
@@ -335,7 +334,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
                 {[
                   i18nService.t('scenarioWizardConfirmTerm1'),
-                  i18nService.t('scenarioWizardConfirmTerm2'),
                   i18nService.t('scenarioWizardConfirmTerm3'),
                 ].map((term, i) => (
                   <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
