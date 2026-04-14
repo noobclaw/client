@@ -47,6 +47,32 @@ function formatRelative(ts: number | null | undefined): string {
 }
 
 const STEP_LABELS = ['步骤一', '步骤二', '步骤三'];
+
+// Render log message — make file paths clickable
+function renderLogMessage(message: string) {
+  // Match paths like /Users/.../NoobClaw/... or C:\Users\...\NoobClaw\...
+  const pathMatch = message.match(/(→\s*)([/\\].*NoobClaw[/\\][^\s]*|[A-Z]:[/\\].*NoobClaw[/\\][^\s]*)/);
+  if (pathMatch) {
+    const before = message.slice(0, message.indexOf(pathMatch[0]));
+    const arrow = pathMatch[1];
+    const filePath = pathMatch[2];
+    return (
+      <>
+        {before}{arrow}
+        <button
+          type="button"
+          className="text-blue-500 hover:underline cursor-pointer"
+          onClick={() => {
+            try { window.electron?.shell?.openPath?.(filePath); } catch {}
+          }}
+        >
+          📂 {filePath.split(/[/\\]/).slice(-3).join('/')}
+        </button>
+      </>
+    );
+  }
+  return message;
+}
 const STEP_NAMES = [
   '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
   '分析爆款，拆解逻辑',
@@ -361,7 +387,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                             {log.status === 'done' ? '✓' : log.status === 'error' ? '✗' : '›'}
                           </span>
                           <span className={`flex-1 ${log.status === 'done' ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-300'}`}>
-                            {log.message}
+                            {renderLogMessage(log.message)}
                             {isLast && log.status === 'running' && (
                               <span className="inline-block ml-1 text-green-500 animate-pulse">...</span>
                             )}

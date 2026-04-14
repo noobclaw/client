@@ -239,9 +239,11 @@ function buildContext(
       taskStore.addDrafts(drafts);
       allDrafts.push(...drafts);
       try {
-        await writeTaskArtifacts(task, drafts);
+        const result = await writeTaskArtifacts(task, drafts);
+        return { dir: result.dir, files: result.files };
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', 'artifact save failed', { err: String(err) });
+        return { dir: '', files: [] };
       }
     },
 
