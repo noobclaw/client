@@ -101,15 +101,18 @@ function buildContext(
     // ── Browser commands — ALL Chrome extension primitives ──
     // Generic passthrough: orchestrator can call any extension command
     browser: async (command: string, params?: any, timeout?: number) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       return sendBrowserCommand(command, params || {}, timeout || 10000);
     },
 
     // Convenience shortcuts for common operations
     navigate: async (url: string) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       await sendBrowserCommand('navigate', { url }, 30000);
     },
 
     scroll: async (amount?: number) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000);
     },
 
@@ -161,6 +164,7 @@ function buildContext(
     },
 
     checkAnomaly: async () => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
         const res = await sendBrowserCommand('check_anomaly', {}, 5000);
         const data = res?.data || res || {};
@@ -177,6 +181,7 @@ function buildContext(
 
     // Read feed cards via extension's built-in command (CSP-safe)
     readCards: async () => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
         const res = await sendBrowserCommand('read_feed_cards', {}, 8000);
         const data = res?.data || res || {};
@@ -189,6 +194,7 @@ function buildContext(
 
     // Read detail page via extension's built-in command (CSP-safe)
     readDetail: async () => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
         const res = await sendBrowserCommand('read_detail_page', {}, 8000);
         return res?.data || res || null;
