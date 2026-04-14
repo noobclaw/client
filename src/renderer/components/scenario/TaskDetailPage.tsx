@@ -46,7 +46,7 @@ function formatRelative(ts: number | null | undefined): string {
   return `${Math.round(hrs / 24)} 天前`;
 }
 
-const STEP_LABELS = ['步骤一', '步骤二'];
+const STEP_LABELS = ['步骤一', '步骤二', '步骤三'];
 
 // CSS for typing blink animation
 const typingStyle = document.createElement('style');
@@ -97,6 +97,7 @@ function renderLogMessage(message: string) {
 const STEP_NAMES = [
   '采集爆款文章。请勿切换浏览器标签页。',
   'AI 改写标题和内容，保存到本地',
+  '上传到小红书草稿箱',
 ];
 
 interface Props {
