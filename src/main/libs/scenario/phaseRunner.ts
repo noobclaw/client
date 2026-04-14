@@ -133,12 +133,12 @@ function buildContext(
     },
 
     sleep: async (min: number, max?: number) => {
-      // Interruptible sleep — checks abort every 500ms
+      // Interruptible sleep — checks abort every 200ms (was 500ms)
       const total = max ? randInt(min, max) : min;
       const start = Date.now();
       while (Date.now() - start < total) {
         if (progress.isAbortRequested()) throw new Error('user_stopped');
-        await sleep(Math.min(500, total - (Date.now() - start)));
+        await sleep(Math.min(200, total - (Date.now() - start)));
       }
     },
 
@@ -291,7 +291,8 @@ function buildContext(
       taskStore.recordSeen(task.id, postIds);
     },
 
-    // Call backend API (e.g. image generation) — includes auth token
+    // Call backend API (e.g. image generation) — includes auth token,
+    // abortable via progress.isAbortRequested() every 300ms.
     apiCall: async (endpoint: string, body: any) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const baseUrl = 'https://api.noobclaw.com';
@@ -300,19 +301,41 @@ function buildContext(
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
-      const resp = await fetch(baseUrl + endpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        if (resp.status === 402) {
-          throw new Error('TOKEN_INSUFFICIENT — 积分不足，请充值后重试');
+
+      // AbortController so we can cancel the fetch mid-flight when the user
+      // hits stop — without this, the client blocks for up to a minute on
+      // long-running image generation.
+      const controller = new AbortController();
+      const abortPoll = setInterval(() => {
+        if (progress.isAbortRequested()) {
+          controller.abort();
+          clearInterval(abortPoll);
         }
-        const errText = await resp.text().catch(() => '');
-        throw new Error('API ' + resp.status + ': ' + errText.slice(0, 200));
+      }, 300);
+
+      try {
+        const resp = await fetch(baseUrl + endpoint, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        if (!resp.ok) {
+          if (resp.status === 402) {
+            throw new Error('TOKEN_INSUFFICIENT — 积分不足，请充值后重试');
+          }
+          const errText = await resp.text().catch(() => '');
+          throw new Error('API ' + resp.status + ': ' + errText.slice(0, 200));
+        }
+        return await resp.json();
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || progress.isAbortRequested()) {
+          throw new Error('user_stopped');
+        }
+        throw err;
+      } finally {
+        clearInterval(abortPoll);
       }
-      return resp.json();
     },
 
     saveDrafts: async (rawDrafts: any[]) => {
