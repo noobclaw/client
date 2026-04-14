@@ -24,7 +24,18 @@ interface CheckResult {
   userConfirmed: StepStatus;
 }
 
+const BROWSER_STORE_KEY = 'noobclaw_preferred_browser';
+
+function getStoredBrowser(): string | null {
+  try { return localStorage.getItem(BROWSER_STORE_KEY); } catch { return null; }
+}
+
+function setStoredBrowser(b: string) {
+  try { localStorage.setItem(BROWSER_STORE_KEY, b); } catch {}
+}
+
 export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) => {
+  const [selectedBrowser, setSelectedBrowser] = useState<string | null>(getStoredBrowser());
   const [steps, setSteps] = useState<CheckResult>({
     extension: 'checking',
     xhsTab: 'checking',
@@ -97,6 +108,32 @@ export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) =
         </div>
 
         <div className="px-6 py-3 space-y-3">
+          {/* Step 0: Browser selection */}
+          {!selectedBrowser && (
+            <div className="rounded-xl p-4 border border-blue-500/30 bg-blue-500/5">
+              <div className="text-sm font-medium dark:text-white mb-3">选择你使用的浏览器</div>
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedBrowser('chrome'); setStoredBrowser('chrome'); }}
+                  className="flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-300 dark:border-gray-700 hover:border-green-500 transition-colors"
+                >
+                  <span className="text-3xl">🌐</span>
+                  <span className="text-sm font-medium dark:text-white">Chrome</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setSelectedBrowser('edge'); setStoredBrowser('edge'); }}
+                  className="flex-1 flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-300 dark:border-gray-700 hover:border-blue-500 transition-colors"
+                >
+                  <span className="text-3xl">🔷</span>
+                  <span className="text-sm font-medium dark:text-white">Edge</span>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {selectedBrowser && <>
           {/* Step 1: Extension */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${
             steps.extension === 'fail' ? 'border-red-500/30 bg-red-500/5'
@@ -105,10 +142,22 @@ export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) =
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[steps.extension]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">① 安装并连接浏览器插件</div>
+              <div className="text-sm font-medium dark:text-white">① 安装并连接 {selectedBrowser === 'edge' ? 'Edge' : 'Chrome'} 插件</div>
               {steps.extension === 'fail' && (
                 <div className="text-xs text-red-500 mt-1">
-                  {i18nService.t('scenarioLoginBrowserNotConnected')}
+                  插件未连接。请在 {selectedBrowser === 'edge' ? 'Edge 外接程序商店' : 'Chrome 应用商店'} 安装 NoobClaw Browser Assistant 插件。
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = selectedBrowser === 'edge'
+                        ? 'https://microsoftedge.microsoft.com/addons/search/noobclaw'
+                        : 'https://chromewebstore.google.com/search/noobclaw';
+                      try { window.open(url, '_blank'); } catch {}
+                    }}
+                    className="ml-2 text-blue-500 hover:underline"
+                  >
+                    去安装 →
+                  </button>
                 </div>
               )}
               {steps.extension === 'pass' && (
@@ -125,7 +174,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) =
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[steps.xhsTab]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">② 在 Chrome 中打开小红书</div>
+              <div className="text-sm font-medium dark:text-white">② 在 {selectedBrowser === 'edge' ? 'Edge' : 'Chrome'} 中打开小红书</div>
               {steps.xhsTab === 'fail' && (
                 <>
                   <div className="text-xs text-red-500 mt-1">
@@ -157,7 +206,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) =
               ) : extensionAndTabReady ? (
                 <>
                   <div className="text-xs text-amber-600 dark:text-amber-400 mt-1">
-                    请确保你已在 Chrome 的小红书页面完成登录
+                    请确保你已在 {selectedBrowser === 'edge' ? 'Edge' : 'Chrome'} 的小红书页面完成登录
                   </div>
                   <button type="button" onClick={handleUserConfirm}
                     className="mt-2 w-full text-sm font-semibold px-4 py-2.5 rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
@@ -171,6 +220,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ onCancel, onConfirmed }) =
               )}
             </div>
           </div>
+          </>}
         </div>
 
         {/* Footer */}
