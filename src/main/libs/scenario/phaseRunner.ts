@@ -213,30 +213,31 @@ function buildContext(
       return text;
     },
 
-    // AI call — supports named prompts or raw prompt string (__raw__)
+    // AI call — sends prompt as-is, no extra system prompt added, saves tokens
+    // promptNameOrRaw: prompt name from pack.prompts, or '__raw__' for direct prompt string
+    // When __raw__: promptOrInput = the complete prompt, rawInput = user message
     aiCall: async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
 
-      let systemPrompt: string;
+      let prompt: string;
       let userMessage: string;
 
       if (promptNameOrRaw === '__raw__') {
-        // Raw mode: promptOrInput is the full system prompt, rawInput is user message
-        systemPrompt = String(promptOrInput);
+        prompt = String(promptOrInput);
         userMessage = String(rawInput || '');
       } else {
-        // Named mode: look up prompt by name
         const promptText = pack.prompts?.[promptNameOrRaw];
         if (!promptText) throw new Error('Missing prompt: ' + promptNameOrRaw);
-        systemPrompt = promptText.trim();
+        prompt = promptText.trim();
         userMessage = typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput);
       }
 
       const apiCfg = getCurrentApiConfig();
       if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
 
+      // Send prompt directly as system prompt — no extra wrapping, no additional tokens
       const response = await localExtractor.callAIWithConfig(
-        apiCfg, systemPrompt, userMessage
+        apiCfg, prompt, userMessage
       );
       return response;
     },

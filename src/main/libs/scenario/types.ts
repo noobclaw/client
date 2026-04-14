@@ -114,11 +114,11 @@ export interface ScenarioTask {
   persona: string;
   daily_count: number;
   variants_per_post: number;
-  /** Preferred daily run time in HH:MM (24h local). Wizard sets this
-   *  instead of the legacy schedule_window. */
+  /** Preferred run time in HH:MM (24h local). Used when interval is 'daily'. */
   daily_time: string;
-  /** Legacy field: original "HH:MM-HH:MM" window. Kept so older tasks
-   *  still parse. */
+  /** Run interval: '30min' | '1h' | '6h' | 'daily' */
+  run_interval: '30min' | '1h' | '6h' | 'daily';
+  /** Legacy field */
   schedule_window?: string;
   enabled: boolean;
   /** Only the 'active' task is eligible for scheduled auto-runs.
