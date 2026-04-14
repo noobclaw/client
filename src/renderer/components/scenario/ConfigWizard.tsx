@@ -83,6 +83,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Schedule
   const [dailyCount, setDailyCount] = useState(initialTask?.daily_count ?? defaults.daily_count);
   const [variants, setVariants] = useState(initialTask?.variants_per_post ?? defaults.variants_per_post);
+  const [runInterval, setRunInterval] = useState<string>((initialTask as any)?.run_interval || 'daily');
   const [dailyTime, setDailyTime] = useState<string>(() => {
     if (initialTask?.daily_time) return initialTask.daily_time;
     return '08:00';
@@ -118,7 +119,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         daily_count: Math.min(dailyCount, dailyHardCap),
         variants_per_post: variants,
         daily_time: dailyTime,
-      });
+        run_interval: runInterval,
+      } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
       setSaveError(String(err instanceof Error ? err.message : err) || '保存失败，请重试');
@@ -201,18 +203,47 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
             <div className="space-y-5">
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  ⏰ 每日运行时间
+                  ⏰ 运行间隔
                 </label>
-                <input
-                  type="time"
-                  value={dailyTime}
-                  onChange={e => setDailyTime(e.target.value)}
-                  className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                />
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                  到点后自动在你的 Chrome 里运行，前后 ±15 分钟随机偏移模拟人类节奏
-                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {[
+                    { value: '30min', label: '每 30 分钟' },
+                    { value: '1h', label: '每小时' },
+                    { value: '6h', label: '每 6 小时' },
+                    { value: 'daily', label: '每天' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      type="button"
+                      onClick={() => setRunInterval(opt.value)}
+                      className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                        runInterval === opt.value
+                          ? 'border-green-500 bg-green-500/10 text-green-500 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-green-500/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {runInterval === 'daily' && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    触发时间
+                  </label>
+                  <input
+                    type="time"
+                    value={dailyTime}
+                    onChange={e => setDailyTime(e.target.value)}
+                    className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                    前后 ±15 分钟随机偏移模拟人类节奏
+                  </p>
+                </div>
+              )}
 
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
@@ -279,7 +310,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">频次:</span>
                   <div className="dark:text-white">
-                    ⏰ {dailyTime} · {dailyCount} 条/天 · {variants} 份仿写
+                    ⏰ {{ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime }[runInterval] || runInterval} · {dailyCount} 条/次 · {variants} 份改写
                   </div>
                 </div>
               </div>
