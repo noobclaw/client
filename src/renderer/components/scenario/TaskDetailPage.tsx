@@ -111,6 +111,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           // If progress says "done" or "error", task has finished
           if (prog.status === 'done') {
             setRunning(false);
+            setStopping(false);
             // Count results from step logs
             const step3Logs = prog.steps[2]?.logs || [];
             const draftLog = step3Logs.find((l: any) => l.message?.includes('已保存'));
@@ -119,8 +120,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             void onChanged();
           } else if (prog.status === 'error') {
             setRunning(false);
+            setStopping(false);
             const err = prog.error || '';
-            if (err !== 'user_stopped') {
+            if (err === 'user_stopped') {
+              // User explicitly hit stop — confirm it worked.
+              showToast('ok', '已停止运行');
+            } else {
               showToast('err', `运行失败: ${
                 err.includes('scenario_pack') ? '场景包未找到' :
                 err.includes('anomaly:captcha') ? '遇到验证码，请手动处理后重试' :
@@ -196,9 +201,16 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
     });
   };
 
+  const [stopping, setStopping] = useState(false);
   const handleStop = async () => {
-    await scenarioService.requestAbort();
-    showToast('warn', '已请求停止，当前步骤完成后终止');
+    setStopping(true);
+    try {
+      await scenarioService.requestAbort();
+      showToast('warn', '正在停止，请稍候...');
+    } catch {
+      showToast('err', '停止请求失败');
+      setStopping(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -249,11 +261,21 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               <>
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  运行中
+                  {stopping ? '正在停止...' : '运行中'}
                 </span>
                 <button type="button" onClick={handleStop}
-                  className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors">
-                  停止
+                  disabled={stopping}
+                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    stopping
+                      ? 'border-gray-300 dark:border-gray-700 text-gray-400 cursor-not-allowed'
+                      : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
+                  }`}>
+                  {stopping ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="h-3 w-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
+                      停止中
+                    </span>
+                  ) : '停止'}
                 </button>
               </>
             ) : (

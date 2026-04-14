@@ -15,9 +15,9 @@
  *   - If a task already exists, jumps straight to its task detail page
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { type Scenario, type Task, type Draft } from '../../services/scenario';
+import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
@@ -83,6 +83,18 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 }) => {
   const scenarioById = new Map(scenarios.map(s => [s.id, s]));
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
+  // Track which task is actually running right now (not just scheduled).
+  // We poll once on mount and every 5s so the badge shows "运行中" when
+  // a job is in progress, vs "定时运行" when it's just armed.
+  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  useEffect(() => {
+    const poll = () => {
+      scenarioService.getRunningTaskId().then(id => setRunningTaskId(id || null)).catch(() => {});
+    };
+    poll();
+    const t = setInterval(poll, 5000);
+    return () => clearInterval(t);
+  }, []);
 
   // Find the default viral-production scenario. If the backend scenario list
   // hasn't loaded yet, use a hardcoded fallback so the "立即开始" button
@@ -192,7 +204,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </span>
         </div>
         {loading && tasks.length === 0 ? (
-          <div className="text-sm text-gray-400 py-6">{i18nService.t('common.loading') || '加载中...'}</div>
+          <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
+            <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
+            加载中...
+          </div>
         ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
             {i18nService.t('scenarioSectionNoTasks')}
@@ -223,9 +238,14 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {task.active ? (
-                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30">
-                          ● 定时运行
+                      {runningTaskId === task.id ? (
+                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          运行中
+                        </span>
+                      ) : task.active ? (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
+                          ⏰ 定时运行
                         </span>
                       ) : (
                         <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
