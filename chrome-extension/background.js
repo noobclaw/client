@@ -7,6 +7,7 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
+
 // Resize image to reduce token usage
 async function resizeImage(dataUrl, maxWidth) {
   try {
@@ -245,6 +246,38 @@ async function executeCommand(msg) {
     } else if (command === 'get_tab_info') {
       const tab = await getActiveTab();
       data = { id: tab.id, title: tab.title, url: tab.url, status: tab.status };
+    } else if (command === 'main_world_click') {
+      // Click in MAIN world — works on React apps where isolated world click fails
+      const tab = await getActiveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return { error: 'not found: ' + sel };
+          // Only scroll if element is outside viewport
+          const r = el.getBoundingClientRect();
+          if (r.top < 0 || r.bottom > window.innerHeight) {
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+          }
+          // Full mouse event sequence (same as content.js fireMouseSequence)
+          const rect = el.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+          el.dispatchEvent(new MouseEvent('mouseover', init));
+          el.dispatchEvent(new MouseEvent('mouseenter', Object.assign({}, init, { bubbles: false })));
+          el.dispatchEvent(new MouseEvent('mousemove', init));
+          el.dispatchEvent(new MouseEvent('mousedown', init));
+          if (el.focus) el.focus({ preventScroll: true });
+          el.dispatchEvent(new MouseEvent('mouseup', init));
+          el.dispatchEvent(new MouseEvent('click', init));
+          el.click();
+          return { message: 'Clicked ' + el.tagName.toLowerCase(), tag: el.tagName, w: Math.round(rect.width), h: Math.round(rect.height) };
+        },
+        args: [params.selector],
+      });
+      data = results[0]?.result || { error: 'executeScript failed' };
     } else {
       // Forward to content script
       const tab = await getActiveTab();
