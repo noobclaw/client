@@ -184,11 +184,17 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </div>
             {/* Advantage pills inside the banner */}
             <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-green-500/10">
-              <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">🛡️ 不封号</span>
-              <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">🤖 全自动生成</span>
-              <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">🚀 自动上传</span>
-              <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">💰 Token省10倍</span>
-              <span className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">🌊 爆款池</span>
+              {[
+                { icon: '🛡️', zh: '不封号', en: 'Safe' },
+                { icon: '🤖', zh: '全自动', en: 'Auto' },
+                { icon: '🚀', zh: '自动上传', en: 'Auto Upload' },
+                { icon: '💰', zh: '省Token', en: 'Save Tokens' },
+                { icon: '🌊', zh: '爆款池', en: 'Viral Pool' },
+              ].map((p, i) => (
+                <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">
+                  {p.icon} {i18nService.currentLanguage === 'zh' ? p.zh : p.en}
+                </span>
+              ))}
             </div>
           </div>
         </div>
@@ -198,16 +204,16 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            📌 仿写任务
+            📌 {i18nService.currentLanguage === 'zh' ? '仿写任务' : 'Rewrite Tasks'}
           </h2>
           <span className="text-[11px] text-gray-500 dark:text-gray-400">
-            同一平台最多同时运行一个任务
+            {i18nService.currentLanguage === 'zh' ? '同一平台最多同时运行一个任务' : 'One task per platform at a time'}
           </span>
         </div>
         {loading && tasks.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
             <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-            加载中...
+            {i18nService.currentLanguage === 'zh' ? '加载中...' : 'Loading...'}
           </div>
         ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
@@ -242,28 +248,28 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                       {runningTaskId === task.id ? (
                         <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          运行中
+                          {i18nService.currentLanguage === 'zh' ? '运行中' : 'Running'}
                         </span>
                       ) : task.active ? (
                         <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
-                          ⏰ 定时运行
+                          ⏰ {i18nService.currentLanguage === 'zh' ? '定时运行' : 'Scheduled'}
                         </span>
                       ) : (
                         <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
-                          待命
+                          {i18nService.currentLanguage === 'zh' ? '待命' : 'Standby'}
                         </span>
                       )}
                       {pendingCount > 0 && (
                         <span className="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30">
-                          {pendingCount} 条待审
+                          {pendingCount} {i18nService.currentLanguage === 'zh' ? '条待审' : 'pending'}
                         </span>
                       )}
                     </div>
                   </div>
                   {/* Config details */}
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    <div>关键词: {task.keywords.join(' · ')}</div>
-                    <div>⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次 · {task.variants_per_post} 份改写</div>
+                    <div>{i18nService.currentLanguage === 'zh' ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                    <div>⏰ {({ '30min': i18nService.currentLanguage === 'zh' ? '每30分钟' : 'Every 30min', '1h': i18nService.currentLanguage === 'zh' ? '每小时' : 'Hourly', '6h': i18nService.currentLanguage === 'zh' ? '每6小时' : 'Every 6h', 'daily': (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</div>
                   </div>
                 </button>
               );
