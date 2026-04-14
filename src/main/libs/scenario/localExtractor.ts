@@ -212,6 +212,43 @@ export function getApiConfig() {
 }
 
 /**
+ * Call AI with explicit config (supports NoobClaw AI, Anthropic, OpenAI-compat).
+ * Used by phaseRunner when the user's configured provider may not be Anthropic.
+ */
+export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string; model: string; apiType?: string }, systemPrompt: string, userMessage: string): Promise<any | null> {
+  const client = getAnthropicClient({
+    apiKey: apiCfg.apiKey,
+    baseUrl: apiCfg.baseURL,
+    model: apiCfg.model,
+  });
+
+  const response = await createMessage({
+    client,
+    model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
+    systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+    tools: [],
+    maxTokens: 2000,
+  });
+  const raw = extractTextFromResponse(response);
+  const parsed = parseJsonSafe(raw);
+
+  if (!parsed) {
+    coworkLog('WARN', 'localExtractor', 'callAIWithConfig JSON parse failed, retrying');
+    const response2 = await createMessage({
+      client,
+      model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
+      systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      tools: [],
+      maxTokens: 2000,
+    });
+    return parseJsonSafe(extractTextFromResponse(response2));
+  }
+  return parsed;
+}
+
+/**
  * Generic AI call — sends a system prompt + user message, returns parsed JSON.
  * Used by phaseRunner's ctx.aiCall().
  */

@@ -16,6 +16,7 @@ import { sendBrowserCommand } from '../browserBridge';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
+import { getCurrentApiConfig } from '../claudeSettings';
 import { writeTaskArtifacts } from './artifactWriter';
 import type {
   Draft,
@@ -206,13 +207,17 @@ function buildContext(
 
     // ── AI calls ──
     aiCall: async (promptName: string, input: any) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
       const promptText = pack.prompts?.[promptName];
       if (!promptText) throw new Error('Missing prompt: ' + promptName);
 
-      const apiConfig = localExtractor.getApiConfig();
-      if (!apiConfig.apiKey) throw new Error('ANTHROPIC_API_KEY_MISSING');
+      // Use the user's configured AI service (NoobClaw AI / own Anthropic key / etc.)
+      const apiCfg = getCurrentApiConfig();
+      if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
 
-      const response = await localExtractor.callAI(promptText.trim(), JSON.stringify(input));
+      const response = await localExtractor.callAIWithConfig(
+        apiCfg, promptText.trim(), JSON.stringify(input)
+      );
       return response;
     },
 
