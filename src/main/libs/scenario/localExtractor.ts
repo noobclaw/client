@@ -216,40 +216,15 @@ export function getApiConfig() {
  * Used by phaseRunner when the user's configured provider may not be Anthropic.
  */
 export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string; model: string; apiType?: string; isOpenAICompat?: boolean }, systemPrompt: string, userMessage: string): Promise<any | null> {
-  const isOpenAI = apiCfg.apiType === 'openai' || (apiCfg as any).isOpenAICompat;
-
   async function callOnce(): Promise<string> {
-    if (isOpenAI) {
-      // OpenAI-compatible API (NoobClaw AI, OpenAI, etc.)
-      const resp = await fetch(apiCfg.baseURL.replace(/\/$/, '') + '/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + apiCfg.apiKey,
-        },
-        body: JSON.stringify({
-          model: apiCfg.model,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage },
-          ],
-          max_tokens: 2000,
-          temperature: 0.7,
-        }),
-      });
-      if (!resp.ok) {
-        const errText = await resp.text().catch(() => '');
-        throw new Error('AI API error ' + resp.status + ': ' + errText.slice(0, 200));
-      }
-      const json = await resp.json();
-      return json.choices?.[0]?.message?.content || '';
-    } else {
-      // Anthropic API
-      const client = getAnthropicClient({
-        apiKey: apiCfg.apiKey,
-        baseUrl: apiCfg.baseURL,
-        model: apiCfg.model,
-      });
+    // Always use Anthropic SDK — NoobClaw AI proxy accepts Anthropic format
+    // regardless of apiType setting. The proxy handles conversion internally.
+    const client = getAnthropicClient({
+      apiKey: apiCfg.apiKey,
+      baseUrl: apiCfg.baseURL,
+      model: apiCfg.model,
+    });
+    try {
       const response = await createMessage({
         client,
         model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
@@ -259,6 +234,12 @@ export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string
         maxTokens: 2000,
       });
       return extractTextFromResponse(response);
+    } catch (err: any) {
+      const msg = String(err?.message || err);
+      if (msg.includes('402') || msg.includes('insufficient') || msg.includes('余额')) {
+        throw new Error('CREDITS_INSUFFICIENT — 积分余额不足，请前往钱包充值');
+      }
+      throw err;
     }
   }
 
