@@ -1,21 +1,21 @@
 /**
- * Artifact writer — persists each scenario run's scraped originals and
- * AI-generated rewrites as markdown files under the user's Documents folder.
+ * Artifact writer — persists scenario outputs to the user's Documents folder.
  *
- * Layout:
+ * Layout (one folder per article):
  *   <Documents>/NoobClaw/xhs/<YYYY-MM-DD>/<track>/
- *     <post_id>-original.md     — scraped post (title, body, url, metrics, extraction JSON)
- *     <post_id>-rewrite-1.md
- *     <post_id>-rewrite-2.md
- *     ...
- *
- * The user can find the daily output in a stable place without having to
- * dig into the client's userData directory. Everything is plain markdown,
- * so it's readable by Obsidian / VS Code / any editor.
+ *     <post_id>/
+ *       original.md           — scraped post (title, body, metrics, hashtags)
+ *       images/
+ *         1.jpg, 2.jpg ...    — downloaded images
+ *       analysis.json         — AI extraction/analysis report
+ *       rewrite-1.md          — AI rewrite variant 1
+ *       rewrite-2.md          — AI rewrite variant 2
  */
 
 import fs from 'fs';
 import path from 'path';
+import https from 'https';
+import http from 'http';
 import { coworkLog } from '../coworkLogger';
 import { isElectronMode } from '../platformAdapter';
 import type { ScenarioTask, Draft, DiscoveredNote, ExtractionResult, ComposedVariant } from './types';
@@ -36,10 +36,7 @@ function getArtifactsRoot(): string {
 
 function todayStr(): string {
   const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function sanitize(name: string): string {
@@ -55,74 +52,129 @@ function mdEscape(s: string | undefined): string {
   return s.replace(/\r\n/g, '\n');
 }
 
-function renderOriginalMd(post: DiscoveredNote, extraction: ExtractionResult | null): string {
+// ── Image downloader ──
+
+function downloadFile(url: string, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      return reject(new Error('invalid url'));
+    }
+    const mod = url.startsWith('https') ? https : http;
+    const file = fs.createWriteStream(dest);
+    mod.get(url, { timeout: 15000 }, (res) => {
+      if (res.statusCode === 301 || res.statusCode === 302) {
+        // Follow redirect
+        const loc = res.headers.location;
+        if (loc) {
+          file.close();
+          fs.unlinkSync(dest);
+          downloadFile(loc, dest).then(resolve).catch(reject);
+          return;
+        }
+      }
+      if (res.statusCode !== 200) {
+        file.close();
+        fs.unlinkSync(dest);
+        return reject(new Error('HTTP ' + res.statusCode));
+      }
+      res.pipe(file);
+      file.on('finish', () => { file.close(); resolve(); });
+    }).on('error', (err) => {
+      file.close();
+      try { fs.unlinkSync(dest); } catch {}
+      reject(err);
+    });
+  });
+}
+
+function getImageExt(url: string): string {
+  const m = url.match(/\.(jpg|jpeg|png|gif|webp|avif)/i);
+  return m ? m[1].toLowerCase() : 'jpg';
+}
+
+async function downloadImages(urls: string[], dir: string): Promise<string[]> {
+  const imgDir = path.join(dir, 'images');
+  fs.mkdirSync(imgDir, { recursive: true });
+  const saved: string[] = [];
+  for (let i = 0; i < urls.length; i++) {
+    const ext = getImageExt(urls[i]);
+    const filename = `${i + 1}.${ext}`;
+    const dest = path.join(imgDir, filename);
+    try {
+      await downloadFile(urls[i], dest);
+      saved.push(dest);
+    } catch (err) {
+      coworkLog('WARN', 'artifactWriter', 'image download failed', { url: urls[i].slice(0, 80), err: String(err) });
+    }
+  }
+  return saved;
+}
+
+// ── Markdown renderers ──
+
+function renderOriginalMd(post: DiscoveredNote, imageFiles: string[]): string {
   const collected = new Date(post.metrics?.collected_at || Date.now()).toISOString();
   const lines: string[] = [];
   lines.push(`# ${post.title || '(untitled)'}`);
   lines.push('');
-  lines.push(`- **Platform**: xiaohongshu`);
-  lines.push(`- **Post ID**: ${post.external_post_id}`);
-  lines.push(`- **URL**: ${post.external_url}`);
-  lines.push(`- **Author**: ${post.author_name || 'unknown'}${post.author_followers ? ` (${post.author_followers} followers)` : ''}`);
-  lines.push(`- **Published**: ${post.publish_time || 'unknown'}`);
-  lines.push(`- **Collected**: ${collected}`);
-  lines.push(`- **Likes**: ${post.metrics?.likes ?? 0}`);
-  lines.push(`- **Comments**: ${post.metrics?.comments ?? 0}`);
+  lines.push(`- **平台**: 小红书`);
+  lines.push(`- **文章ID**: ${post.external_post_id}`);
+  lines.push(`- **链接**: ${post.external_url}`);
+  lines.push(`- **作者**: ${post.author_name || '未知'}${post.author_followers ? ` (${post.author_followers} 粉丝)` : ''}`);
+  lines.push(`- **发布时间**: ${post.publish_time || '未知'}`);
+  lines.push(`- **采集时间**: ${collected}`);
+  lines.push(`- **点赞**: ${post.metrics?.likes ?? 0}`);
+  lines.push(`- **评论**: ${post.metrics?.comments ?? 0}`);
   lines.push('');
-  lines.push('## Body');
+  lines.push('## 正文');
   lines.push('');
   lines.push(mdEscape(post.body));
   lines.push('');
   if (post.hashtags && post.hashtags.length > 0) {
-    lines.push('## Hashtags');
+    lines.push('## 标签');
     lines.push('');
-    for (const h of post.hashtags) lines.push(`- ${h}`);
-    lines.push('');
-  }
-  if (post.images && post.images.length > 0) {
-    lines.push('## Images');
-    lines.push('');
-    for (const src of post.images) lines.push(`- ${src}`);
+    lines.push(post.hashtags.map(h => `#${h}`).join(' '));
     lines.push('');
   }
-  if (extraction) {
-    lines.push('## AI Extraction');
+  if (imageFiles.length > 0) {
+    lines.push('## 图片');
     lines.push('');
-    lines.push('```json');
-    lines.push(JSON.stringify(extraction, null, 2));
-    lines.push('```');
+    for (const f of imageFiles) {
+      lines.push(`![](images/${path.basename(f)})`);
+    }
     lines.push('');
   }
   return lines.join('\n');
 }
 
-function renderVariantMd(variant: ComposedVariant, sourceUrl: string, postId: string): string {
+function renderVariantMd(variant: ComposedVariant, sourcePostId: string): string {
   const lines: string[] = [];
   lines.push(`# ${variant.title || '(untitled)'}`);
   lines.push('');
-  lines.push(`- **Route**: ${variant.route || ''}`);
-  lines.push(`- **Angle note**: ${variant.notes_for_user || ''}`);
-  lines.push(`- **Source post**: ${postId}`);
-  lines.push(`- **Source URL**: ${sourceUrl}`);
+  lines.push(`- **路线**: ${variant.route || ''}`);
+  lines.push(`- **角度说明**: ${variant.notes_for_user || ''}`);
+  lines.push(`- **原文ID**: ${sourcePostId}`);
   lines.push('');
-  lines.push('## Body');
+  lines.push('## 正文');
   lines.push('');
   lines.push(mdEscape(variant.body));
   lines.push('');
   if (variant.hashtags && variant.hashtags.length > 0) {
-    lines.push('## Hashtags');
+    lines.push('## 标签');
     lines.push('');
-    for (const h of variant.hashtags) lines.push(`- ${h}`);
+    lines.push(variant.hashtags.map(h => `#${h}`).join(' '));
     lines.push('');
   }
   if (variant.suggested_cover_text) {
-    lines.push('## Suggested cover text');
+    lines.push('## 建议封面文字');
     lines.push('');
     lines.push(variant.suggested_cover_text);
     lines.push('');
   }
   return lines.join('\n');
 }
+
+// ── Public API ──
 
 export interface ArtifactWriteResult {
   dir: string;
@@ -131,26 +183,17 @@ export interface ArtifactWriteResult {
 
 /**
  * Write original + rewrite markdown files for a task run.
- * Returns the root directory and the list of written file paths.
- * Fails gracefully: logs a warning on any filesystem error and returns
- * whatever it managed to write.
+ * Each post gets its own folder with images downloaded.
  */
 export async function writeTaskArtifacts(
   task: ScenarioTask,
   drafts: Draft[]
 ): Promise<ArtifactWriteResult> {
   const track = sanitize(task.track || task.scenario_id || 'unknown');
-  const dir = path.join(getArtifactsRoot(), todayStr(), track);
+  const rootDir = path.join(getArtifactsRoot(), todayStr(), track);
   const files: string[] = [];
 
-  try {
-    fs.mkdirSync(dir, { recursive: true });
-  } catch (err) {
-    coworkLog('WARN', 'artifactWriter', 'mkdir failed', { dir, err: String(err) });
-    return { dir, files };
-  }
-
-  // Group drafts by source post so we write one original + N variants per post
+  // Group drafts by source post
   const byPost = new Map<string, Draft[]>();
   for (const d of drafts) {
     const key = d.source_post.external_post_id;
@@ -164,34 +207,62 @@ export async function writeTaskArtifacts(
     if (!first) continue;
     const post = first.source_post;
     const cleanId = sanitize(postId);
+    const postDir = path.join(rootDir, cleanId);
 
-    // Original
     try {
-      const origPath = path.join(dir, `${cleanId}-original.md`);
-      fs.writeFileSync(origPath, renderOriginalMd(post, first.extraction), 'utf8');
+      fs.mkdirSync(postDir, { recursive: true });
+    } catch (err) {
+      coworkLog('WARN', 'artifactWriter', 'mkdir failed', { postDir, err: String(err) });
+      continue;
+    }
+
+    // Download images
+    let imageFiles: string[] = [];
+    if (post.images && post.images.length > 0) {
+      try {
+        imageFiles = await downloadImages(post.images, postDir);
+      } catch (err) {
+        coworkLog('WARN', 'artifactWriter', 'downloadImages failed', { postId, err: String(err) });
+      }
+    }
+
+    // Write original.md
+    try {
+      const origPath = path.join(postDir, 'original.md');
+      fs.writeFileSync(origPath, renderOriginalMd(post, imageFiles), 'utf8');
       files.push(origPath);
     } catch (err) {
       coworkLog('WARN', 'artifactWriter', 'write original failed', { postId, err: String(err) });
     }
 
-    // Variants
-    postDrafts.forEach((d, idx) => {
+    // Write analysis.json (if extraction exists)
+    if (first.extraction) {
       try {
-        const vPath = path.join(dir, `${cleanId}-rewrite-${idx + 1}.md`);
-        fs.writeFileSync(vPath, renderVariantMd(d.variant, post.external_url, post.external_post_id), 'utf8');
+        const analysisPath = path.join(postDir, 'analysis.json');
+        fs.writeFileSync(analysisPath, JSON.stringify(first.extraction, null, 2), 'utf8');
+        files.push(analysisPath);
+      } catch (err) {
+        coworkLog('WARN', 'artifactWriter', 'write analysis failed', { postId, err: String(err) });
+      }
+    }
+
+    // Write rewrite variants
+    let variantIdx = 0;
+    for (const d of postDrafts) {
+      if (!d.variant) continue;
+      variantIdx++;
+      try {
+        const vPath = path.join(postDir, `rewrite-${variantIdx}.md`);
+        fs.writeFileSync(vPath, renderVariantMd(d.variant, post.external_post_id), 'utf8');
         files.push(vPath);
       } catch (err) {
-        coworkLog('WARN', 'artifactWriter', 'write variant failed', {
-          postId,
-          idx,
-          err: String(err),
-        });
+        coworkLog('WARN', 'artifactWriter', 'write variant failed', { postId, idx: variantIdx, err: String(err) });
       }
-    });
+    }
   }
 
-  coworkLog('INFO', 'artifactWriter', `wrote ${files.length} files`, { dir });
-  return { dir, files };
+  coworkLog('INFO', 'artifactWriter', `wrote ${files.length} files`, { dir: rootDir });
+  return { dir: rootDir, files };
 }
 
 export function getArtifactsRootPath(): string {
