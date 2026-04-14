@@ -1418,6 +1418,7 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:listTasks':
           case 'scenario:getTask':
           case 'scenario:createTask':
+          case 'scenario:getTaskDir':
           case 'scenario:updateTask':
           case 'scenario:deleteTask':
           case 'scenario:setActiveTask':

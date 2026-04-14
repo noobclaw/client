@@ -97,7 +97,7 @@ function renderLogMessage(message: string) {
 const STEP_NAMES = [
   '采集爆款文章。请勿切换浏览器标签页。',
   'AI 改写标题和内容，保存到本地',
-  '上传到小红书草稿箱',
+  '上传到小红书草稿箱。请勿切换浏览器标签页。',
 ];
 
 interface Props {
@@ -112,7 +112,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
-  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -442,18 +442,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         })}
       </div>
 
-      {/* Drafts */}
-      {drafts.length > 0 && (
-        <section className="mt-8">
-          <h2 className="text-base font-bold dark:text-white mb-4">
-            ✍️ 爆款改写结果
-            <span className="ml-2 text-xs font-normal text-amber-500">
-              {drafts.filter(d => d.status === 'pending').length} 条待审
-            </span>
-          </h2>
-          <div className="text-xs text-gray-400">（草稿审核和推送功能开发中）</div>
-        </section>
-      )}
+      {/* Drafts section removed — results shown in progress log */}
 
       {loginModalOpen && (
         <LoginRequiredModal

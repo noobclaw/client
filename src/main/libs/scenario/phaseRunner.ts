@@ -92,8 +92,10 @@ function buildContext(
     seenPostIds,
 
     // ── Progress ──
-    report: (msg: string) => progress.stepLog(1, 'running', msg),
-    stepStart: (step: number) => progress.stepStart(step),
+    // Track current step so ctx.report() logs to the right panel
+    _currentStep: 1,
+    report: (msg: string) => progress.stepLog(ctx._currentStep || 1, 'running', msg),
+    stepStart: (step: number) => { ctx._currentStep = step; progress.stepStart(step); },
     stepLog: (step: number, status: string, msg: string) => progress.stepLog(step, status as any, msg),
     stepDone: (step: number) => progress.stepDone(step),
     finish: (status: string, error?: string) => progress.finishProgress(status as any, error),

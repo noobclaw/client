@@ -303,10 +303,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
                 <ul className="text-xs text-gray-700 dark:text-gray-300 space-y-1.5 leading-relaxed">
                   <li>🤖 所有操作都是<strong>模拟你本人在小红书上的行为</strong></li>
-                  <li>🌐 任务运行期间请<strong>不要关闭 Chrome 中的小红书页面</strong></li>
+                  <li>🌐 任务运行期间请<strong>不要关闭浏览器中的小红书页面</strong></li>
                   <li>🔐 请<strong>不要退出小红书登录</strong>，否则任务会中断</li>
                   <li>🔄 每次执行前会<strong>自动检查登录状态</strong></li>
-                  <li>⏰ 任务运行时你可以正常使用电脑，但请保持 Chrome 打开</li>
+                  <li>⏰ 任务运行时你可以正常使用电脑，但请保持浏览器打开</li>
                 </ul>
               </div>
 
