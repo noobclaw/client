@@ -7,6 +7,10 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
+// Auto-connect on browser startup and extension install — no need to click the icon
+chrome.runtime.onStartup.addListener(() => { connect(); });
+chrome.runtime.onInstalled.addListener(() => { connect(); });
+
 
 // Resize image to reduce token usage
 async function resizeImage(dataUrl, maxWidth) {
