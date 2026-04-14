@@ -16,7 +16,7 @@ import { sendBrowserCommand } from '../browserBridge';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
-import { getCurrentApiConfig } from '../claudeSettings';
+import { getCurrentApiConfig, getNoobClawAuthToken } from '../claudeSettings';
 import { writeTaskArtifacts } from './artifactWriter';
 import type {
   Draft,
@@ -286,18 +286,24 @@ function buildContext(
       taskStore.recordSeen(task.id, postIds);
     },
 
-    // Call backend API (e.g. image generation)
+    // Call backend API (e.g. image generation) — includes auth token
     apiCall: async (endpoint: string, body: any) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      const baseUrl = pack.manifest?.required_login_url
-        ? 'https://api.noobclaw.com'
-        : 'https://api.noobclaw.com';
+      const baseUrl = 'https://api.noobclaw.com';
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const authToken = getNoobClawAuthToken();
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
       const resp = await fetch(baseUrl + endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(body),
       });
       if (!resp.ok) {
+        if (resp.status === 402) {
+          throw new Error('TOKEN_INSUFFICIENT — 积分不足，请充值后重试');
+        }
         const errText = await resp.text().catch(() => '');
         throw new Error('API ' + resp.status + ': ' + errText.slice(0, 200));
       }

@@ -91,7 +91,8 @@ function initProgress(taskId: string): void {
     steps: [
       { name: '采集爆款文章。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
       { name: 'AI 改写标题和内容，保存到本地', status: 'waiting', logs: [] },
-      { name: '上传到小红书草稿箱', status: 'waiting', logs: [] },
+      { name: 'AI 生成配图', status: 'waiting', logs: [] },
+      { name: '上传到小红书草稿箱。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
     ],
   };
   abortRequested = false;
