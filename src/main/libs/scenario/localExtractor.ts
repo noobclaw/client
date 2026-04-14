@@ -215,35 +215,59 @@ export function getApiConfig() {
  * Call AI with explicit config (supports NoobClaw AI, Anthropic, OpenAI-compat).
  * Used by phaseRunner when the user's configured provider may not be Anthropic.
  */
-export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string; model: string; apiType?: string }, systemPrompt: string, userMessage: string): Promise<any | null> {
-  const client = getAnthropicClient({
-    apiKey: apiCfg.apiKey,
-    baseUrl: apiCfg.baseURL,
-    model: apiCfg.model,
-  });
+export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string; model: string; apiType?: string; isOpenAICompat?: boolean }, systemPrompt: string, userMessage: string): Promise<any | null> {
+  const isOpenAI = apiCfg.apiType === 'openai' || (apiCfg as any).isOpenAICompat;
 
-  const response = await createMessage({
-    client,
-    model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
-    systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-    tools: [],
-    maxTokens: 2000,
-  });
-  const raw = extractTextFromResponse(response);
-  const parsed = parseJsonSafe(raw);
+  async function callOnce(): Promise<string> {
+    if (isOpenAI) {
+      // OpenAI-compatible API (NoobClaw AI, OpenAI, etc.)
+      const resp = await fetch(apiCfg.baseURL.replace(/\/$/, '') + '/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiCfg.apiKey,
+        },
+        body: JSON.stringify({
+          model: apiCfg.model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage },
+          ],
+          max_tokens: 2000,
+          temperature: 0.7,
+        }),
+      });
+      if (!resp.ok) {
+        const errText = await resp.text().catch(() => '');
+        throw new Error('AI API error ' + resp.status + ': ' + errText.slice(0, 200));
+      }
+      const json = await resp.json();
+      return json.choices?.[0]?.message?.content || '';
+    } else {
+      // Anthropic API
+      const client = getAnthropicClient({
+        apiKey: apiCfg.apiKey,
+        baseUrl: apiCfg.baseURL,
+        model: apiCfg.model,
+      });
+      const response = await createMessage({
+        client,
+        model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
+        systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+        tools: [],
+        maxTokens: 2000,
+      });
+      return extractTextFromResponse(response);
+    }
+  }
 
+  let raw = await callOnce();
+  let parsed = parseJsonSafe(raw);
   if (!parsed) {
-    coworkLog('WARN', 'localExtractor', 'callAIWithConfig JSON parse failed, retrying');
-    const response2 = await createMessage({
-      client,
-      model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
-      systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-      tools: [],
-      maxTokens: 2000,
-    });
-    return parseJsonSafe(extractTextFromResponse(response2));
+    coworkLog('WARN', 'localExtractor', 'callAIWithConfig JSON parse failed, retrying', { raw: raw.slice(0, 200) });
+    raw = await callOnce();
+    parsed = parseJsonSafe(raw);
   }
   return parsed;
 }
