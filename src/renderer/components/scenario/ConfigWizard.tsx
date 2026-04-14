@@ -220,12 +220,27 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '触发时间' : 'Trigger Time'}
                   </label>
-                  <input
-                    type="time"
-                    value={dailyTime}
-                    onChange={e => setDailyTime(e.target.value)}
-                    className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={dailyTime.split(':')[0] || '08'}
+                      onChange={e => setDailyTime(e.target.value.padStart(2, '0') + ':' + (dailyTime.split(':')[1] || '00'))}
+                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => (
+                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                    <span className="text-lg font-mono dark:text-white">:</span>
+                    <select
+                      value={dailyTime.split(':')[1] || '00'}
+                      onChange={e => setDailyTime((dailyTime.split(':')[0] || '08') + ':' + e.target.value.padStart(2, '0'))}
+                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                    >
+                      {[0, 15, 30, 45].map(m => (
+                        <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>
+                      ))}
+                    </select>
+                  </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for human-like behavior'}
                   </p>
