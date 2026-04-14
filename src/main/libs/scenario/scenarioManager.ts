@@ -15,6 +15,7 @@ import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
 import { runOrchestrator } from './phaseRunner';
 import type {
+  Draft,
   ScenarioManifest,
   ScenarioPack,
   ScenarioTask,
