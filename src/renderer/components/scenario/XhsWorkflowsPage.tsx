@@ -136,7 +136,14 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   const primaryTask = tasks.find(t => t.scenario_id === primaryScenario.id);
 
+  const MAX_TASKS = 5;
+
   const handleQuickStart = () => {
+    // Gate: max 5 tasks
+    if (tasks.length >= MAX_TASKS) {
+      alert(i18nService.currentLanguage === 'zh' ? '最多创建 ' + MAX_TASKS + ' 个任务' : 'Max ' + MAX_TASKS + ' tasks allowed');
+      return;
+    }
     // Gate: must be logged in with wallet
     if (!noobClawAuth.getState().isAuthenticated) {
       noobClawAuth.openWebsiteLogin();

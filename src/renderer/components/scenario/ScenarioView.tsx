@@ -128,7 +128,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     daily_time: string;
   }) => {
     if (wizardEditingTask) {
-      await scenarioService.updateTask(wizardEditingTask.id, input);
+      // Edit → always activate as scheduled task
+      await scenarioService.updateTask(wizardEditingTask.id, { ...input, active: true, enabled: true });
     } else {
       await scenarioService.createTask({ ...input, enabled: true, active: true });
     }

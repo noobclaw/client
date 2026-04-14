@@ -339,7 +339,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             ) : (
               <>
                 <span className="text-xs text-gray-400">
-                  {task.active ? `每日 ${task.daily_time || '08:00'} 定时运行` : '待命'}
+                  {task.active ? (() => {
+                    const interval = (task as any).run_interval || 'daily';
+                    const map: Record<string, string> = { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') };
+                    return (map[interval] || '每天') + ' 定时运行';
+                  })() : '待命'}
                 </span>
                 <button type="button" onClick={handleRunNow}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
@@ -367,6 +371,20 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         <StatCard label="生成草稿" value={stats?.draft_count ?? 0} />
         <StatCard label="已推送" value={stats?.pushed_draft_count ?? 0} />
         <StatCard label="上次运行" value={formatRelative(stats?.last_run_at || null)} small />
+        <StatCard label="下次运行" value={(() => {
+          if (!task.active) return '待命';
+          const interval = (task as any).run_interval || 'daily';
+          const lastRun = stats?.last_run_at;
+          if (!lastRun) return '即将';
+          const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
+          const ms = intervals[interval] || 24*60*60*1000;
+          const next = lastRun + ms;
+          if (next <= Date.now()) return '即将';
+          const diff = next - Date.now();
+          const mins = Math.round(diff / 60000);
+          if (mins < 60) return mins + ' 分钟后';
+          return Math.round(mins / 60) + ' 小时后';
+        })()} small />
       </div>
 
       {/* Toast */}
@@ -432,7 +450,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                   </div>
                 ) : (
                   <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
-                    {stepNum === 1 && !running ? `等待每日 ${task.daily_time || '08:00'} 定时运行` : '等待前一步'}
+                    {stepNum === 1 && !running ? (() => {
+                      const interval = (task as any).run_interval || 'daily';
+                      const map: Record<string, string> = { '30min': '每30分钟自动运行', '1h': '每小时自动运行', '6h': '每6小时自动运行', 'daily': '每天 ' + (task.daily_time || '08:00') + ' 自动运行' };
+                      return '等待' + (map[interval] || '定时运行');
+                    })() : '等待前一步'}
                   </div>
                 )}
               </div>
