@@ -107,7 +107,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     category: 'knowledge',
     name_zh: '副业干货',
     name_en: 'Side Hustle Notes',
-    description_zh: '自动发现小红书副业图文爆款，本地 AI 拆解后用你的 persona 生成仿写。',
+    description_zh: '自动发现小红书图文爆款，AI 改写标题和内容，保存到本地并上传草稿箱。',
     description_en: 'Discover viral side-hustle image notes on Xiaohongshu.',
     icon: '💼',
     default_config: {
@@ -142,13 +142,14 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    // Always open wizard to create a new task (not jump to existing)
-    onConfigure(primaryScenario);
+    // Show check modal first (extension + XHS tab + login)
+    setLoginModalReason('quickstart');
   };
 
   const handleLoginConfirmed = () => {
     setLoginModalReason(null);
-    handleQuickStart();
+    // After checks pass, open wizard
+    onConfigure(primaryScenario);
   };
 
   return (
@@ -262,7 +263,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   {/* Config details */}
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                     <div>关键词: {task.keywords.join(' · ')}</div>
-                    <div className="truncate">Persona: {task.persona}</div>
                     <div>⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次 · {task.variants_per_post} 份改写</div>
                   </div>
                 </button>

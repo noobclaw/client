@@ -300,7 +300,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
             </div>
             <div>关键词: {task.keywords.join(' · ')}</div>
-            <div className="truncate">Persona: {task.persona}</div>
             <div>频次: ⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次</div>
             <div className="flex items-center gap-1">
               <span>输出目录:</span>

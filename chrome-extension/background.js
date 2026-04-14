@@ -7,9 +7,14 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
-// Auto-connect on browser startup and extension install — no need to click the icon
+// Auto-connect on browser startup, install, and periodic keepalive
 chrome.runtime.onStartup.addListener(() => { connect(); });
 chrome.runtime.onInstalled.addListener(() => { connect(); });
+// Keepalive: reconnect every 30s if disconnected (MV3 service worker may sleep)
+chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepalive' && !connected) { connect(); }
+});
 
 
 // Resize image to reduce token usage
