@@ -30,7 +30,12 @@ try {
 }
 
 function getArtifactsRoot(): string {
-  const base = appRef?.getPath?.('documents') || process.env.HOME || process.cwd();
+  let base = appRef?.getPath?.('documents');
+  if (!base) {
+    // Tauri / sidecar mode — construct Documents path manually
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    base = path.join(home, 'Documents');
+  }
   return path.join(base, 'NoobClaw', 'xhs');
 }
 
