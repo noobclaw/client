@@ -23,6 +23,21 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
 }) => {
   const isMac = window.electron.platform === 'darwin';
   const [tab, setTab] = useState<TabKey>('home');
+
+  // OG BRAWL uses Phaser 3 (WebGL + ES modules) which doesn't work
+  // reliably inside Tauri's WebView iframe. Intercept the tab switch
+  // and open in the system browser instead.
+  const handleTabChange = (t: TabKey) => {
+    if (t === 'brawl') {
+      try {
+        window.electron?.shell?.openExternal?.(`${BASE_URL}/brawl/`);
+      } catch {
+        window.open(`${BASE_URL}/brawl/`, '_blank', 'noopener');
+      }
+      return; // don't switch tab — stays on current view
+    }
+    setTab(t);
+  };
   const [reloadKey, setReloadKey] = useState(0);
   // iframe load state — tracks whether the cross-origin embed loaded.
   // On macOS Tauri builds some users reported the iframe rendering blank;
@@ -87,7 +102,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
   // gets a sane default before the postMessage arrives.
   const src = useMemo(() => {
     const path =
-      tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : tab === 'brawl' ? '/brawl' : '/personality/';
+      tab === 'sbti' ? '/sbti/' : tab === 'web3bti' ? '/web3bti/' : '/personality/';
     return `${BASE_URL}${path}?embed=1&lang=${lang}&v=${reloadKey}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, reloadKey]);
@@ -187,7 +202,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
             <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
               WEB3BTI
             </button>
-            <button type="button" onClick={() => setTab('brawl')} className={tabButtonClass(tab === 'brawl')}>
+            <button type="button" onClick={() => handleTabChange('brawl')} className={tabButtonClass(tab === 'brawl')}>
               OG BRAWL
             </button>
           </div>
@@ -226,7 +241,7 @@ const PersonalityView: React.FC<PersonalityViewProps> = ({
         <button type="button" onClick={() => setTab('web3bti')} className={tabButtonClass(tab === 'web3bti')}>
           WEB3BTI
         </button>
-        <button type="button" onClick={() => setTab('brawl')} className={tabButtonClass(tab === 'brawl')}>
+        <button type="button" onClick={() => handleTabChange('brawl')} className={tabButtonClass(tab === 'brawl')}>
           OG BRAWL
         </button>
       </div>
