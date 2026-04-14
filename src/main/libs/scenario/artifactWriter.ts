@@ -1,12 +1,15 @@
 /**
- * Artifact writer — saves scenario outputs to ~/Documents/NoobClaw/xhs/
+ * Artifact writer — saves scenario outputs to ~/Documents/NoobClaw/
  *
- * Layout:
- *   <Documents>/NoobClaw/xhs/<YYYY-MM-DD>/<track>/
- *     <run_number>/                    ← 同一天多次运行: 1, 2, 3...
- *       <post_id>/                     ← 每篇文章一个文件夹
- *         original.md                  ← 原文
- *         1-改写-新标题.md             ← 改写版本
+ * Directory structure:
+ *   <Documents>/NoobClaw/<platform>/
+ *     <taskId>_<taskName>/
+ *       <YYYY-MM-DD>/
+ *         <batch>/                  ← 批次 (1, 2, 3...)
+ *           原文/
+ *             文章1_标题.md
+ *           改写/
+ *             1-改写-新标题.md
  */
 
 import fs from 'fs';
@@ -22,13 +25,13 @@ try {
   }
 } catch {}
 
-function getArtifactsRoot(): string {
+function getDocsRoot(): string {
   let base = appRef?.getPath?.('documents');
   if (!base) {
     const home = process.env.HOME || process.env.USERPROFILE || '';
     base = path.join(home, 'Documents');
   }
-  return path.join(base, 'NoobClaw', 'xhs');
+  return path.join(base, 'NoobClaw');
 }
 
 function todayStr(): string {
@@ -40,12 +43,41 @@ function sanitize(name: string): string {
   return String(name || '')
     .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
     .replace(/^\.+/, '')
-    .slice(0, 80)
+    .slice(0, 60)
     .trim() || 'unnamed';
 }
 
-/** Find next run number for today (1, 2, 3...) */
-function getNextRunNumber(dayDir: string): number {
+const PLATFORM_NAMES: Record<string, string> = {
+  xhs: '小红书',
+  x: '推特',
+  douyin: '抖音',
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+};
+
+const TRACK_NAMES: Record<string, string> = {
+  career_side_hustle: '副业赚钱',
+  indie_dev: '独立开发',
+  personal_finance: '理财攻略',
+  travel: '旅行攻略',
+  food: '美食探店',
+  outfit: '穿搭分享',
+  beauty: '美妆测评',
+  fitness: '健身减脂',
+  reading: '读书笔记',
+  parenting: '育儿亲子',
+  exam_prep: '考试备考',
+  pets: '宠物日常',
+  home_decor: '家居好物',
+  study_method: '学习效率',
+  career_growth: '职场成长',
+  emotional_wellness: '情感心理',
+  photography: '摄影分享',
+  crafts: '手工DIY',
+};
+
+/** Find next batch number for today */
+function getNextBatch(dayDir: string): number {
   try {
     if (!fs.existsSync(dayDir)) return 1;
     const entries = fs.readdirSync(dayDir);
@@ -60,9 +92,29 @@ function getNextRunNumber(dayDir: string): number {
   }
 }
 
+// Cache batch number per day+task to keep consistent within one task run
+const batchCache = new Map<string, number>();
+
+/** Get the output directory for a task run */
+export function getTaskOutputDir(task: ScenarioTask, platform?: string): string {
+  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
+  const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
+  const dayDir = path.join(getDocsRoot(), platformName, taskFolder, todayStr());
+
+  const cacheKey = task.id + '/' + todayStr();
+  let batch = batchCache.get(cacheKey);
+  if (!batch) {
+    batch = getNextBatch(dayDir);
+    batchCache.set(cacheKey, batch);
+  }
+
+  return path.join(dayDir, String(batch));
+}
+
 // ── Markdown renderers ──
 
-function renderOriginalMd(post: DiscoveredNote): string {
+function renderOriginalMd(post: DiscoveredNote, index: number): string {
   const lines: string[] = [];
   lines.push(`# ${post.title || '(untitled)'}`);
   lines.push('');
@@ -117,27 +169,19 @@ export interface ArtifactWriteResult {
   files: string[];
 }
 
-// Cache run number per day+track to keep consistent within one task run
-const runNumberCache = new Map<string, number>();
-
 export async function writeTaskArtifacts(
   task: ScenarioTask,
   drafts: Draft[]
 ): Promise<ArtifactWriteResult> {
-  const track = sanitize(task.track || task.scenario_id || 'unknown');
-  const dayDir = path.join(getArtifactsRoot(), todayStr(), track);
+  const batchDir = getTaskOutputDir(task);
+  const originalsDir = path.join(batchDir, '原文');
+  const rewritesDir = path.join(batchDir, '改写');
   const files: string[] = [];
 
-  // Get or create run number for this day+track
-  const cacheKey = todayStr() + '/' + track;
-  let runNum = runNumberCache.get(cacheKey);
-  if (!runNum) {
-    runNum = getNextRunNumber(dayDir);
-    runNumberCache.set(cacheKey, runNum);
-  }
-  const runDir = path.join(dayDir, String(runNum));
+  try { fs.mkdirSync(originalsDir, { recursive: true }); } catch {}
+  try { fs.mkdirSync(rewritesDir, { recursive: true }); } catch {}
 
-  // Group drafts by source post
+  // Group by source post
   const byPost = new Map<string, Draft[]>();
   for (const d of drafts) {
     const key = d.source_post.external_post_id;
@@ -146,61 +190,54 @@ export async function writeTaskArtifacts(
     byPost.set(key, arr);
   }
 
-  for (const [postId, postDrafts] of byPost) {
+  let articleIdx = 0;
+  for (const [_postId, postDrafts] of byPost) {
     const first = postDrafts[0];
     if (!first) continue;
     const post = first.source_post;
-    const cleanId = sanitize(postId);
-    const postDir = path.join(runDir, cleanId);
+    articleIdx++;
 
+    // Write original: 原文/文章1_标题.md
+    const origTitle = sanitize(post.title || 'untitled');
+    const origFilename = `文章${articleIdx}_${origTitle}.md`;
     try {
-      fs.mkdirSync(postDir, { recursive: true });
-    } catch (err) {
-      coworkLog('WARN', 'artifactWriter', 'mkdir failed', { postDir, err: String(err) });
-      continue;
-    }
-
-    // Write original.md
-    try {
-      const origPath = path.join(postDir, 'original.md');
-      fs.writeFileSync(origPath, renderOriginalMd(post), 'utf8');
+      const origPath = path.join(originalsDir, origFilename);
+      fs.writeFileSync(origPath, renderOriginalMd(post, articleIdx), 'utf8');
       files.push(origPath);
     } catch (err) {
-      coworkLog('WARN', 'artifactWriter', 'write original failed', { postId, err: String(err) });
+      coworkLog('WARN', 'artifactWriter', 'write original failed', { err: String(err) });
     }
 
-    // Write analysis.json (if extraction exists)
+    // Write analysis.json if exists
     if (first.extraction) {
       try {
-        const analysisPath = path.join(postDir, 'analysis.json');
+        const analysisPath = path.join(originalsDir, `文章${articleIdx}_分析.json`);
         fs.writeFileSync(analysisPath, JSON.stringify(first.extraction, null, 2), 'utf8');
         files.push(analysisPath);
-      } catch (err) {
-        coworkLog('WARN', 'artifactWriter', 'write analysis failed', { postId, err: String(err) });
-      }
+      } catch {}
     }
 
-    // Write rewrite variants: "1-改写-新标题.md"
+    // Write rewrites: 改写/1-改写-新标题.md
     let variantIdx = 0;
     for (const d of postDrafts) {
       if (!d.variant) continue;
       variantIdx++;
       const rewriteTitle = sanitize(d.variant.title || 'untitled');
-      const filename = `${variantIdx}-改写-${rewriteTitle}.md`;
+      const rewriteFilename = `${articleIdx}-改写-${rewriteTitle}.md`;
       try {
-        const vPath = path.join(postDir, filename);
+        const vPath = path.join(rewritesDir, rewriteFilename);
         fs.writeFileSync(vPath, renderRewriteMd(d.variant, post.title || ''), 'utf8');
         files.push(vPath);
       } catch (err) {
-        coworkLog('WARN', 'artifactWriter', 'write variant failed', { postId, idx: variantIdx, err: String(err) });
+        coworkLog('WARN', 'artifactWriter', 'write rewrite failed', { err: String(err) });
       }
     }
   }
 
-  coworkLog('INFO', 'artifactWriter', `wrote ${files.length} files`, { dir: runDir });
-  return { dir: runDir, files };
+  coworkLog('INFO', 'artifactWriter', `wrote ${files.length} files`, { dir: batchDir });
+  return { dir: batchDir, files };
 }
 
 export function getArtifactsRootPath(): string {
-  return getArtifactsRoot();
+  return getDocsRoot();
 }

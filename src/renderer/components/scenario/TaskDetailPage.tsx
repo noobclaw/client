@@ -279,7 +279,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             </div>
             <div>关键词: {task.keywords.join(' · ')}</div>
             <div className="truncate">Persona: {task.persona}</div>
-            <div>频次: ⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</div>
+            <div>频次: ⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次</div>
+            <div className="flex items-center gap-1">
+              <span>输出目录:</span>
+              <button type="button" onClick={() => {
+                // Construct expected output path
+                const home = window.electron?.platform === 'darwin' ? '~/Documents' : '%USERPROFILE%\\Documents';
+                const trackNames: Record<string,string> = { career_side_hustle:'副业赚钱', parenting:'育儿亲子', travel:'旅行攻略', food:'美食探店', beauty:'美妆测评', fitness:'健身减脂', reading:'读书笔记' };
+                const taskName = trackNames[task.track] || task.track;
+                const dir = `${home}/NoobClaw/小红书/${task.id.slice(0,8)}_${taskName}`;
+                try { window.electron?.shell?.openPath?.(dir.replace('~', process.env?.HOME || '')); } catch {
+                  try { window.electron?.shell?.openPath?.(''); } catch {}
+                }
+              }} className="text-blue-500 hover:underline text-[11px]">
+                📂 NoobClaw/小红书/{task.id.slice(0,8)}_{TRACK_NAMES[task.track] || task.track}
+              </button>
+            </div>
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {running ? (
