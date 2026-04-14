@@ -368,24 +368,45 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
             </div>
           )}
 
-          {/* Third column: time picker (or empty for daily) — same
-              overlay trick as the date column above. */}
+          {/* Third column: time picker (or empty for daily).
+              Native <input type="time"> does NOT work in Tauri WebView —
+              showPicker() is unsupported and the edit fields are
+              unresponsive. Use hour + minute selects instead. */}
           {scheduleMode === 'daily' ? (
             <div />
           ) : (
-            <div className="relative">
-              <input
-                type="time"
-                value={scheduleTime}
-                onChange={(e) => setScheduleTime(e.target.value)}
-                onClick={(e) => (e.target as HTMLInputElement).showPicker()}
-                className={`${inputClass} ${!scheduleTime ? '[&::-webkit-datetime-edit]:opacity-0' : ''}`}
-              />
-              {!scheduleTime && (
-                <div className="pointer-events-none absolute inset-0 flex items-center px-3 text-sm dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70">
-                  {i18nService.t('scheduledTasksFormSchedulePickTime')}
-                </div>
-              )}
+            <div className="flex items-center gap-2">
+              <select
+                value={(scheduleTime || '').split(':')[0] || ''}
+                onChange={(e) => {
+                  const hh = e.target.value.padStart(2, '0');
+                  const mm = (scheduleTime || '').split(':')[1] || '00';
+                  setScheduleTime(e.target.value ? `${hh}:${mm}` : '');
+                }}
+                style={{ appearance: 'auto', WebkitAppearance: 'menulist' }}
+                className={`${inputClass} cursor-pointer`}
+              >
+                <option value="">时</option>
+                {Array.from({ length: 24 }, (_, i) => (
+                  <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>
+                ))}
+              </select>
+              <span className="dark:text-white font-mono">:</span>
+              <select
+                value={(scheduleTime || '').split(':')[1] || ''}
+                onChange={(e) => {
+                  const hh = (scheduleTime || '').split(':')[0] || '08';
+                  const mm = e.target.value.padStart(2, '0');
+                  setScheduleTime(`${hh}:${mm}`);
+                }}
+                style={{ appearance: 'auto', WebkitAppearance: 'menulist' }}
+                className={`${inputClass} cursor-pointer`}
+              >
+                <option value="">分</option>
+                {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                  <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>
+                ))}
+              </select>
             </div>
           )}
         </div>
