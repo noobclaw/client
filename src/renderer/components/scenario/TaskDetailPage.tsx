@@ -422,6 +422,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
       {loginModalOpen && (
         <LoginRequiredModal
+          mode="run"
           onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}
         />

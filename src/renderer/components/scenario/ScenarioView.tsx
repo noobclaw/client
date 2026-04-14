@@ -36,9 +36,6 @@ interface ScenarioViewProps {
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: false },
-  { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎵', enabled: false },
-  { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '📱', enabled: false },
-  { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: false },
 ];
 
 export const ScenarioView: React.FC<ScenarioViewProps> = ({

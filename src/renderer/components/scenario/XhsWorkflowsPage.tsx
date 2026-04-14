@@ -263,7 +263,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                     <div>关键词: {task.keywords.join(' · ')}</div>
                     <div className="truncate">Persona: {task.persona}</div>
-                    <div>⏰ {task.daily_time || '08:00'} · {task.daily_count} 条/天 · {task.variants_per_post} 份仿写</div>
+                    <div>⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次 · {task.variants_per_post} 份改写</div>
                   </div>
                 </button>
               );
@@ -278,6 +278,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
       {loginModalReason && (
         <LoginRequiredModal
+          mode="create"
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />

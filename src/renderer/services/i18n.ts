@@ -1062,7 +1062,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioQuickStartTitle: '一键开始 · 小红书爆款仿写',
     scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
     scenarioQuickStartBtn: '立即开始',
-    scenarioQuickStartContinueBtn: '继续使用',
+    scenarioQuickStartContinueBtn: '开始仿写',
 
     // Login gate modal
     scenarioLoginRequiredTitle: '请先登录小红书',
