@@ -114,7 +114,13 @@ function buildContext(
     },
 
     sleep: async (min: number, max?: number) => {
-      await sleep(min, max);
+      // Interruptible sleep — checks abort every 500ms
+      const total = max ? randInt(min, max) : min;
+      const start = Date.now();
+      while (Date.now() - start < total) {
+        if (progress.isAbortRequested()) throw new Error('user_stopped');
+        await sleep(Math.min(500, total - (Date.now() - start)));
+      }
     },
 
     // ── Script injection ──
