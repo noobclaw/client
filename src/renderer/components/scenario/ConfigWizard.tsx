@@ -168,32 +168,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Keywords */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  关键词
+                  关键词 <span className="text-xs text-gray-400 font-normal">（每次运行随机选 3 个搜索，建议 15-25 个）</span>
                 </label>
                 <textarea
                   value={customKeywordsText}
                   onChange={e => setCustomKeywordsText(e.target.value)}
-                  placeholder="用空格或逗号分隔"
-                  rows={2}
+                  placeholder="用空格或逗号分隔，越多越好"
+                  rows={6}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                 />
                 <div className="text-[11px] text-gray-400 mt-1">
-                  NoobClaw 会围绕这些词识别小红书发现页上的爆款
+                  关键词越多，每次搜索内容越不重复，降低风控风险
                 </div>
-              </div>
-
-              {/* Persona */}
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  一两句话描述你自己
-                </label>
-                <textarea
-                  value={persona}
-                  onChange={e => setPersona(e.target.value)}
-                  placeholder="AI 会按这个 persona 改写爆款"
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                />
               </div>
             </div>
           )}
@@ -301,10 +287,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">关键词:</span>
                   <div className="dark:text-white">{keywordList.join(' · ')}</div>
-                </div>
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">Persona:</span>
-                  <div className="dark:text-white line-clamp-2">{persona}</div>
                 </div>
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">频次:</span>
