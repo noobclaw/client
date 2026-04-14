@@ -254,6 +254,7 @@ export function startScheduler(): void {
         if (runningTaskId) break;
 
         const interval = (task as any).run_interval || 'daily';
+        if (interval === 'once') continue; // 不重复：仅手动触发
         const ms = INTERVAL_MS[interval] || INTERVAL_MS.daily;
 
         // Check last run time

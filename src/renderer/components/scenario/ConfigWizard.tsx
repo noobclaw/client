@@ -194,6 +194,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </label>
                 <div className="flex gap-2 flex-wrap">
                   {[
+                    { value: 'once', label: isZh ? '不重复' : 'Once' },
                     { value: '30min', label: isZh ? '每 30 分钟' : 'Every 30min' },
                     { value: '1h', label: isZh ? '每小时' : 'Hourly' },
                     { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
@@ -215,7 +216,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               </div>
 
-              {runInterval === 'daily' && (
+              {(runInterval === 'daily' || runInterval === 'once') && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '触发时间' : 'Trigger Time'}
@@ -307,7 +308,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '频次:' : 'Schedule:'}</span>
                   <div className="dark:text-white">
-                    ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>)[runInterval] || runInterval} · {dailyCount} {isZh ? '条/次' : '/run'} · {variants} {isZh ? '份改写' : 'rewrites'}
+                    ⏰ {(isZh ? { 'once': '不重复 ' + dailyTime, '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime } : { 'once': 'Once ' + dailyTime, '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>)[runInterval] || runInterval} · {dailyCount} {isZh ? '条/次' : '/run'} · {variants} {isZh ? '份改写' : 'rewrites'}
                   </div>
                 </div>
               </div>
