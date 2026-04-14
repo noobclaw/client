@@ -347,7 +347,9 @@ function buildContext(
         variant: d.variant,
         status: 'pending' as const,
         created_at: Date.now(),
-      }));
+        // preserve images field so artifactWriter can save them as PNG files
+        ...(d.images ? { images: d.images } : {}),
+      } as Draft & { images?: any[] }));
       taskStore.addDrafts(drafts);
       allDrafts.push(...drafts);
       try {
