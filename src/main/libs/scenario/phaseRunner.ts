@@ -101,9 +101,22 @@ function buildContext(
 
     // ── Browser commands — ALL Chrome extension primitives ──
     // Generic passthrough: orchestrator can call any extension command
+    // Abortable: polls abort flag during wait
     browser: async (command: string, params?: any, timeout?: number) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      return sendBrowserCommand(command, params || {}, timeout || 10000);
+      const t = timeout || 10000;
+      return Promise.race([
+        sendBrowserCommand(command, params || {}, t),
+        new Promise<never>((_, reject) => {
+          const check = setInterval(() => {
+            if (progress.isAbortRequested()) {
+              clearInterval(check);
+              reject(new Error('user_stopped'));
+            }
+          }, 300);
+          setTimeout(() => clearInterval(check), t + 1000);
+        }),
+      ]);
     },
 
     // Convenience shortcuts for common operations
@@ -235,19 +248,33 @@ function buildContext(
       const apiCfg = getCurrentApiConfig();
       if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
 
-      // Use streaming — show partial AI output in progress
+      // Use streaming — show partial AI output in progress, abortable
       try {
-        const response = await localExtractor.callAIWithConfigStreaming(
+        const aiPromise = localExtractor.callAIWithConfigStreaming(
           apiCfg, prompt, userMessage,
           (partialText) => {
             const preview = partialText.replace(/[\n\r]/g, ' ').slice(-60);
             ctx.report('AI 生成中: ' + preview);
           }
         );
+        // Race with abort checker
+        const response = await Promise.race([
+          aiPromise,
+          new Promise<never>((_, reject) => {
+            const check = setInterval(() => {
+              if (progress.isAbortRequested()) {
+                clearInterval(check);
+                reject(new Error('user_stopped'));
+              }
+            }, 500);
+            // Auto-clear after 5 min
+            setTimeout(() => clearInterval(check), 300000);
+          }),
+        ]);
         return response;
-      } catch (streamErr) {
-        // Fallback to non-streaming
-        coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(streamErr) });
+      } catch (err) {
+        if (String(err).includes('user_stopped')) throw err;
+        coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
         return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
       }
     },
