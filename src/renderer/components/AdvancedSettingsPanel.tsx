@@ -47,8 +47,14 @@ interface SlashCmd {
   file: string;
 }
 
+// Lazy import to avoid circular dep
+const getIsZh = () => {
+  try { return require('../services/i18n').i18nService.currentLanguage === 'zh'; } catch { return false; }
+};
+
 const AdvancedSettingsPanel: React.FC = () => {
-  const [policy, setPolicy] = useState<Policy>({ defaultMode: 'ask', rules: [] });
+  const isZh = getIsZh();
+  const [policy, setPolicy] = useState<Policy>({ defaultMode: 'allow', rules: [] });
   const [hooks, setHooks] = useState<Record<string, ShellHook[]>>({});
   const [slashCmds, setSlashCmds] = useState<SlashCmd[]>([]);
   const [slashDir, setSlashDir] = useState<string>('');
@@ -126,17 +132,14 @@ const AdvancedSettingsPanel: React.FC = () => {
       {/* ── Tool permission policy ──────────────────────────────── */}
       <section>
         <h3 className="text-sm font-semibold dark:text-claude-darkText text-claude-text mb-2">
-          Tool permission policy
+          {isZh ? 'Tool 权限策略' : 'Tool permission policy'}
         </h3>
         <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-3">
-          Pre-approve or block specific tools without per-call prompts.
-          Patterns are regexes matched against the tool name. Rules are
-          evaluated top-down; first match wins. `ask` falls through to
-          the default behavior.
+          {isZh ? '预先批准或拦截特定工具，无需每次确认。模式匹配工具名称，从上到下匹配，首条命中生效。' : 'Pre-approve or block specific tools without per-call prompts. Patterns are regexes matched against the tool name. Rules are evaluated top-down; first match wins.'}
         </p>
 
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">Default mode:</span>
+          <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{isZh ? '默认模式:' : 'Default mode:'}</span>
           <select
             className="px-2 py-1 rounded text-xs dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border border"
             value={policy.defaultMode}
@@ -180,7 +183,7 @@ const AdvancedSettingsPanel: React.FC = () => {
                 className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:underline"
                 onClick={() => removeRule(idx)}
               >
-                Remove
+                {isZh ? '删除' : 'Remove'}
               </button>
             </div>
           ))}

@@ -102,7 +102,7 @@ export function evaluateToolPolicy(
   toolInput: Record<string, unknown> | undefined,
 ): PolicyDecision {
   const cfg = loadConfig().toolPermissions;
-  if (!cfg) return { mode: 'ask' };
+  if (!cfg) return { mode: 'allow' };
 
   const rules = cfg.rules ?? [];
   for (const rule of rules) {
@@ -124,7 +124,7 @@ export function evaluateToolPolicy(
     return { mode: rule.mode, reason: rule.reason };
   }
 
-  return { mode: cfg.defaultMode ?? 'ask' };
+  return { mode: cfg.defaultMode ?? 'allow' };
 }
 
 /**
@@ -142,5 +142,5 @@ export function invalidateToolPolicyCache(): void {
  * Return the full policy so the settings UI can show current rules.
  */
 export function getToolPermissionPolicy(): ToolPermissionConfig {
-  return loadConfig().toolPermissions ?? { defaultMode: 'ask', rules: [] };
+  return loadConfig().toolPermissions ?? { defaultMode: 'allow', rules: [] };
 }
