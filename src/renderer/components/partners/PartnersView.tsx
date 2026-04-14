@@ -124,8 +124,10 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
   const [submitting, setSubmitting] = useState(false);
   const [justCheckedIn, setJustCheckedIn] = useState(false);
   const [reward, setReward] = useState<{ noob: number; points: number } | null>(null);
-  const [remainingPool, setRemainingPool] = useState(0);
-  const [poolCap, setPoolCap] = useState(0);
+  const [noobRemaining, setNoobRemaining] = useState(0);
+  const [noobCap, setNoobCap] = useState(0);
+  const [pointsRemaining, setPointsRemaining] = useState(0);
+  const [pointsCap, setPointsCap] = useState(0);
 
   const fetchStatus = useCallback(async () => {
     if (!isAuthenticated) { setLoading(false); return; }
@@ -133,9 +135,11 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
       const s = await noobClawApi.getCheckinStatus();
       setCheckedIn(s.checked_in);
       setLastReward(s.last_reward);
-      setRemainingPool(s.remaining_pool);
-      setPoolCap(s.pool_cap);
-      setPoolExhausted(s.remaining_pool <= 0);
+      setNoobRemaining(s.noob_remaining);
+      setNoobCap(s.noob_cap);
+      setPointsRemaining(s.points_remaining);
+      setPointsCap(s.points_cap);
+      setPoolExhausted(s.pool_exhausted);
     } finally {
       setLoading(false);
     }
@@ -188,15 +192,17 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
           <span className="h-5 w-5 rounded-full border-2 border-claude-accent border-t-transparent animate-spin" />
         </div>
       ) : justCheckedIn && reward ? (
-        /* Success state */
+        /* Success state — show whichever rewards were given */
         <div className="text-center py-4">
           <div className="text-4xl mb-2">🎊</div>
           <div className="text-lg font-bold dark:text-claude-darkText text-claude-text mb-1">
             {isZh ? '签到成功！' : 'Checked in!'}
           </div>
           <div className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-1">
-            <div>💰 +{reward.noob} $NoobCoin</div>
-            <div>⭐ +{formatNum(reward.points)} {isZh ? '积分' : 'credits'}</div>
+            {reward.noob > 0 && <div>💰 +{reward.noob} $NoobCoin</div>}
+            {reward.points > 0 && <div>⭐ +{formatNum(reward.points)} {isZh ? '积分' : 'credits'}</div>}
+            {reward.noob === 0 && <div className="text-xs text-amber-500">{isZh ? '今日代币已发完' : 'Token pool empty today'}</div>}
+            {reward.points === 0 && <div className="text-xs text-amber-500">{isZh ? '今日积分已发完' : 'Credits pool empty today'}</div>}
           </div>
         </div>
       ) : checkedIn ? (
@@ -207,7 +213,10 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
           </button>
           {lastReward && (
             <div className="mt-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-              {isZh ? '今日奖励' : "Today's reward"}: +{lastReward.noob} $NoobCoin · +{formatNum(lastReward.points)} {isZh ? '积分' : 'credits'}
+              {isZh ? '今日奖励' : "Today's reward"}:
+              {lastReward.noob > 0 && ` +${lastReward.noob} $NoobCoin`}
+              {lastReward.noob > 0 && lastReward.points > 0 && ' ·'}
+              {lastReward.points > 0 && ` +${formatNum(lastReward.points)} ${isZh ? '积分' : 'credits'}`}
             </div>
           )}
         </div>
@@ -242,11 +251,14 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
               isZh ? '📅 立即签到' : '📅 Check in now'
             )}
           </button>
-          {poolCap > 0 && (
-            <div className="mt-3 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary text-center">
-              {isZh ? '今日积分池剩余' : 'Pool remaining'}: {formatNum(remainingPool)} / {formatNum(poolCap)}
-            </div>
-          )}
+          <div className="mt-3 text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary text-center space-y-0.5">
+            {noobCap > 0 && (
+              <div>💰 {isZh ? '代币池' : 'Token pool'}: {formatNum(noobRemaining)} / {formatNum(noobCap)}</div>
+            )}
+            {pointsCap > 0 && (
+              <div>⭐ {isZh ? '积分池' : 'Credits pool'}: {formatNum(pointsRemaining)} / {formatNum(pointsCap)}</div>
+            )}
+          </div>
         </div>
       )}
 
@@ -254,7 +266,7 @@ const CheckinCard: React.FC<{ isZh: boolean; isAuthenticated: boolean }> = ({ is
       <div className="mt-4 pt-3 border-t dark:border-claude-darkBorder border-claude-border text-[11px] dark:text-claude-darkTextSecondary text-claude-textSecondary space-y-1">
         <div>{isZh ? '• 每次签到随机获得 50~100 $NoobCoin + 4000~10000 积分' : '• Each check-in rewards 50~100 $NoobCoin + 4,000~10,000 credits'}</div>
         <div>{isZh ? '• 每个钱包地址每天限签一次' : '• One check-in per wallet per day'}</div>
-        <div>{isZh ? `• 每日全站积分总量有限（${formatNum(poolCap)}），先到先得` : `• Daily pool capped at ${formatNum(poolCap)} — first come first served`}</div>
+        <div>{isZh ? `• 每日代币池 ${formatNum(noobCap)}，积分池 ${formatNum(pointsCap)}，有啥发啥，都没了才算"来晚了"` : `• Daily caps: ${formatNum(noobCap)} tokens + ${formatNum(pointsCap)} credits. Partial rewards given when one pool is empty.`}</div>
       </div>
     </div>
   );
