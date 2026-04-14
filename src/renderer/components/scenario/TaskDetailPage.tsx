@@ -46,7 +46,7 @@ function formatRelative(ts: number | null | undefined): string {
   return `${Math.round(hrs / 24)} 天前`;
 }
 
-const STEP_LABELS = ['步骤一', '步骤二', '步骤三'];
+const STEP_LABELS = ['步骤一', '步骤二'];
 
 // Render log message — make file paths clickable
 function renderLogMessage(message: string) {
@@ -74,9 +74,8 @@ function renderLogMessage(message: string) {
   return message;
 }
 const STEP_NAMES = [
-  '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。',
-  '分析爆款，拆解逻辑',
-  '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份',
+  '采集爆款文章。请勿切换浏览器标签页。',
+  'AI 改写标题和内容，保存到本地',
 ];
 
 interface Props {
