@@ -256,12 +256,17 @@ function buildContext(
       const apiCfg = { ...baseCfg, model: 'noobclawai-chat' };
 
       // Use streaming — show partial AI output in progress, abortable
+      // Throttle UI updates to 1/s so logs (max 30 entries) aren't spammed
+      let lastReport = 0;
       try {
         const aiPromise = localExtractor.callAIWithConfigStreaming(
           apiCfg, prompt, userMessage,
           (partialText) => {
-            const preview = partialText.replace(/[\n\r]/g, ' ').slice(-60);
-            ctx.report('AI 生成中: ' + preview);
+            const now = Date.now();
+            if (now - lastReport < 1000) return;
+            lastReport = now;
+            const preview = partialText.replace(/[\n\r]/g, ' ').slice(-80);
+            ctx.report('AI 生成中 (' + partialText.length + ' 字): ' + preview);
           }
         );
         // Race with abort checker
@@ -313,6 +318,13 @@ function buildContext(
         }
       }, 300);
 
+      // Heartbeat: 图片生成要 30-60s，每 8s 汇报一次让用户知道没卡死
+      const started = Date.now();
+      const heartbeat = setInterval(() => {
+        const secs = Math.round((Date.now() - started) / 1000);
+        ctx.report('仍在生成中... (' + secs + 's)');
+      }, 8000);
+
       try {
         const resp = await fetch(baseUrl + endpoint, {
           method: 'POST',
@@ -335,6 +347,7 @@ function buildContext(
         throw err;
       } finally {
         clearInterval(abortPoll);
+        clearInterval(heartbeat);
       }
     },
 

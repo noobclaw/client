@@ -213,8 +213,18 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
 
     if (result.status === 'ok') {
       riskGuard.markRunSuccess(task.id, result.collected_count || 0, result.draft_count || 0);
+      // 保证 UI 最终收到 done 状态（orchestrator 里大多数路径已经调过，
+      // 但 orchestrator 抛异常经 phaseRunner catch 返回时没调，这里兜底）
+      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
+        finishProgress('done');
+      }
     } else {
       riskGuard.markRunFailure(task.id, result.reason || 'unknown');
+      // 关键修复：orchestrator 抛 user_stopped → phaseRunner catch → 这里。
+      // 之前没调 finishProgress，UI 永远看不到 error 状态，一直显示"停止中"。
+      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
+        finishProgress('error', result.reason || 'unknown');
+      }
     }
 
     return result;
