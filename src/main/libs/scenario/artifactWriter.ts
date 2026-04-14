@@ -233,9 +233,11 @@ export async function writeTaskArtifacts(
       }
 
       // Save generated images (base64 → file)
+      // 目录以改写标题命名，避免 3 篇文章被 orchestrator 分 3 次 saveDrafts 调用时
+      // 都用 articleIdx=1 互相覆盖（之前只剩最后一篇的图片）
       const images = (d as any).images;
       if (Array.isArray(images) && images.length > 0) {
-        const imgDir = path.join(rewritesDir, `${articleIdx}-配图`);
+        const imgDir = path.join(rewritesDir, `配图-${rewriteTitle}`.slice(0, 80));
         try { fs.mkdirSync(imgDir, { recursive: true }); } catch {}
         for (let imgIdx = 0; imgIdx < images.length; imgIdx++) {
           const img = images[imgIdx];
