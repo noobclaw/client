@@ -246,11 +246,55 @@ export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string
   let raw = await callOnce();
   let parsed = parseJsonSafe(raw);
   if (!parsed) {
-    coworkLog('WARN', 'localExtractor', 'callAIWithConfig JSON parse failed, retrying', { raw: raw.slice(0, 200) });
+    coworkLog('WARN', 'localExtractor', 'callAIWithConfig JSON parse failed, retrying', { rawLen: raw.length, raw: raw.slice(0, 300) });
     raw = await callOnce();
     parsed = parseJsonSafe(raw);
+    if (!parsed) {
+      coworkLog('WARN', 'localExtractor', 'callAIWithConfig retry also failed', { rawLen: raw.length, raw: raw.slice(0, 300) });
+    }
   }
   return parsed;
+}
+
+/**
+ * Streaming AI call — yields tokens as they arrive via onChunk callback.
+ * Returns the final parsed JSON.
+ */
+export async function callAIWithConfigStreaming(
+  apiCfg: { apiKey: string; baseURL: string; model: string },
+  systemPrompt: string,
+  userMessage: string,
+  onChunk: (text: string) => void,
+): Promise<any | null> {
+  const client = getAnthropicClient({
+    apiKey: apiCfg.apiKey,
+    baseUrl: apiCfg.baseURL,
+    model: apiCfg.model,
+  });
+
+  try {
+    const stream = client.messages.stream({
+      model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
+      max_tokens: 2000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    let fullText = '';
+    stream.on('text', (text: string) => {
+      fullText += text;
+      onChunk(fullText);
+    });
+
+    await stream.finalMessage();
+    return parseJsonSafe(fullText);
+  } catch (err: any) {
+    const msg = String(err?.message || err);
+    if (msg.includes('402') || msg.includes('insufficient') || msg.includes('余额')) {
+      throw new Error('CREDITS_INSUFFICIENT — 积分余额不足，请前往钱包充值');
+    }
+    throw err;
+  }
 }
 
 /**

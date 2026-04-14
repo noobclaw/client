@@ -235,11 +235,21 @@ function buildContext(
       const apiCfg = getCurrentApiConfig();
       if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
 
-      // Send prompt directly as system prompt — no extra wrapping, no additional tokens
-      const response = await localExtractor.callAIWithConfig(
-        apiCfg, prompt, userMessage
-      );
-      return response;
+      // Use streaming — show partial AI output in progress
+      try {
+        const response = await localExtractor.callAIWithConfigStreaming(
+          apiCfg, prompt, userMessage,
+          (partialText) => {
+            const preview = partialText.replace(/[\n\r]/g, ' ').slice(-60);
+            ctx.report('AI 生成中: ' + preview);
+          }
+        );
+        return response;
+      } catch (streamErr) {
+        // Fallback to non-streaming
+        coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(streamErr) });
+        return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
+      }
     },
 
     // ── State management ──
