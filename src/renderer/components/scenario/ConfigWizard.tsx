@@ -77,8 +77,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     return selectedTrack.keywords.join(' ');
   });
 
-  // Persona
-  const [persona, setPersona] = useState(initialTask?.persona ?? selectedTrack.persona_hint);
+  // Persona (auto-set from track, not user-editable)
+  const persona = selectedTrack.persona_hint;
 
   // Schedule
   const [dailyCount, setDailyCount] = useState(initialTask?.daily_count ?? defaults.daily_count);
@@ -103,7 +103,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (!preset) return;
     setTrackId(newTrackId);
     setCustomKeywordsText(preset.keywords.join(' '));
-    setPersona(preset.persona_hint);
+    // persona auto-follows track
   };
 
   const handleFinish = async () => {

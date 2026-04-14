@@ -241,3 +241,21 @@ export async function writeTaskArtifacts(
 export function getArtifactsRootPath(): string {
   return getDocsRoot();
 }
+
+/** Create the task output directory immediately (called when task is created) */
+export function ensureTaskOutputDir(task: ScenarioTask, platform?: string): string {
+  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
+  const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
+  const dir = path.join(getDocsRoot(), platformName, taskFolder);
+  try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+  return dir;
+}
+
+/** Get the task-level output directory path (for UI display) */
+export function getTaskDirPath(task: ScenarioTask, platform?: string): string {
+  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
+  const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
+  return path.join(getDocsRoot(), platformName, taskFolder);
+}

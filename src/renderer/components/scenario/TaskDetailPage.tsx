@@ -48,6 +48,27 @@ function formatRelative(ts: number | null | undefined): string {
 
 const STEP_LABELS = ['步骤一', '步骤二'];
 
+// CSS for typing blink animation
+const typingStyle = document.createElement('style');
+typingStyle.textContent = `
+  .typing-animation {
+    display: inline;
+  }
+  .typing-animation::after {
+    content: '▌';
+    animation: blink 1s step-end infinite;
+    color: #22c55e;
+    margin-left: 2px;
+  }
+  @keyframes blink {
+    50% { opacity: 0; }
+  }
+`;
+if (!document.getElementById('typing-anim-style')) {
+  typingStyle.id = 'typing-anim-style';
+  document.head.appendChild(typingStyle);
+}
+
 // Render log message — make file paths clickable
 function renderLogMessage(message: string) {
   // Match paths like /Users/.../NoobClaw/... or C:\Users\...\NoobClaw\...
@@ -282,17 +303,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             <div>频次: ⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次</div>
             <div className="flex items-center gap-1">
               <span>输出目录:</span>
-              <button type="button" onClick={() => {
-                // Construct expected output path
-                const home = window.electron?.platform === 'darwin' ? '~/Documents' : '%USERPROFILE%\\Documents';
-                const trackNames: Record<string,string> = { career_side_hustle:'副业赚钱', parenting:'育儿亲子', travel:'旅行攻略', food:'美食探店', beauty:'美妆测评', fitness:'健身减脂', reading:'读书笔记' };
-                const taskName = trackNames[task.track] || task.track;
-                const dir = `${home}/NoobClaw/小红书/${task.id.slice(0,8)}_${taskName}`;
-                try { window.electron?.shell?.openPath?.(dir.replace('~', process.env?.HOME || '')); } catch {
-                  try { window.electron?.shell?.openPath?.(''); } catch {}
-                }
+              <button type="button" onClick={async () => {
+                try {
+                  const res = await window.electron?.scenario?.getTaskDir?.(task.id);
+                  const dir = typeof res === 'string' ? res : res?.dir;
+                  if (dir) window.electron?.shell?.openPath?.(dir);
+                } catch {}
               }} className="text-blue-500 hover:underline text-[11px]">
-                📂 NoobClaw/小红书/{task.id.slice(0,8)}_{TRACK_NAMES[task.track] || task.track}
+                📂 打开输出文件夹
               </button>
             </div>
           </div>
@@ -401,9 +419,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                             {log.status === 'done' ? '✓' : log.status === 'error' ? '✗' : '›'}
                           </span>
                           <span className={`flex-1 ${log.status === 'done' ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-300'}`}>
-                            {renderLogMessage(log.message)}
-                            {isLast && log.status === 'running' && (
-                              <span className="inline-block ml-1 text-green-500 animate-pulse">...</span>
+                            {isLast && log.status === 'running' ? (
+                              <span className="typing-animation">{renderLogMessage(log.message)}</span>
+                            ) : (
+                              renderLogMessage(log.message)
                             )}
                           </span>
                           <span className="text-gray-500 dark:text-gray-600 shrink-0 tabular-nums text-[10px]">{log.time}</span>

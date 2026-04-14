@@ -1435,7 +1435,23 @@ const server = http.createServer(async (req, res) => {
             switch (channel) {
               case 'scenario:listTasks': return writeJSON(res, 200, scenarioTaskStore.listTasks());
               case 'scenario:getTask': return writeJSON(res, 200, scenarioTaskStore.getTask(args[0]));
-              case 'scenario:createTask': return writeJSON(res, 200, scenarioTaskStore.createTask(args[0]));
+              case 'scenario:createTask': {
+                const newTask = scenarioTaskStore.createTask(args[0]);
+                // Create output directory immediately
+                try {
+                  const { ensureTaskOutputDir } = require('./libs/scenario/artifactWriter');
+                  ensureTaskOutputDir(newTask);
+                } catch {}
+                return writeJSON(res, 200, newTask);
+              }
+              case 'scenario:getTaskDir': {
+                try {
+                  const { getTaskDirPath } = require('./libs/scenario/artifactWriter');
+                  const task = scenarioTaskStore.getTask(args[0]);
+                  if (!task) return writeJSON(res, 200, { dir: '' });
+                  return writeJSON(res, 200, { dir: getTaskDirPath(task) });
+                } catch { return writeJSON(res, 200, { dir: '' }); }
+              }
               case 'scenario:updateTask': return writeJSON(res, 200, scenarioTaskStore.updateTask(args[0], args[1]));
               case 'scenario:deleteTask': return writeJSON(res, 200, scenarioTaskStore.deleteTask(args[0]));
               case 'scenario:setActiveTask': return writeJSON(res, 200, scenarioTaskStore.setActiveTask(args[0]));
