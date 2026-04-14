@@ -89,9 +89,8 @@ function initProgress(taskId: string): void {
     status: 'running',
     currentStep: 0,
     steps: [
-      { name: '通过关键词浏览阅读。请勿关闭 Chrome 和小红书。', status: 'waiting', logs: [] },
-      { name: '分析爆款，拆解逻辑', status: 'waiting', logs: [] },
-      { name: '改写图文，并输出结果，本地保存一份，上传到您小红书账号一份', status: 'waiting', logs: [] },
+      { name: '采集爆款文章。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
+      { name: 'AI 改写标题和内容，保存到本地', status: 'waiting', logs: [] },
     ],
   };
   abortRequested = false;

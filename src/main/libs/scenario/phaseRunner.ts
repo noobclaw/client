@@ -206,17 +206,37 @@ function buildContext(
     },
 
     // ── AI calls ──
-    aiCall: async (promptName: string, input: any) => {
-      if (progress.isAbortRequested()) throw new Error('user_stopped');
-      const promptText = pack.prompts?.[promptName];
-      if (!promptText) throw new Error('Missing prompt: ' + promptName);
+    // Get a prompt template by name (for orchestrator to fill variables)
+    getPrompt: (name: string) => {
+      const text = pack.prompts?.[name];
+      if (!text) throw new Error('Missing prompt: ' + name);
+      return text;
+    },
 
-      // Use the user's configured AI service (NoobClaw AI / own Anthropic key / etc.)
+    // AI call — supports named prompts or raw prompt string (__raw__)
+    aiCall: async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+
+      let systemPrompt: string;
+      let userMessage: string;
+
+      if (promptNameOrRaw === '__raw__') {
+        // Raw mode: promptOrInput is the full system prompt, rawInput is user message
+        systemPrompt = String(promptOrInput);
+        userMessage = String(rawInput || '');
+      } else {
+        // Named mode: look up prompt by name
+        const promptText = pack.prompts?.[promptNameOrRaw];
+        if (!promptText) throw new Error('Missing prompt: ' + promptNameOrRaw);
+        systemPrompt = promptText.trim();
+        userMessage = typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput);
+      }
+
       const apiCfg = getCurrentApiConfig();
       if (!apiCfg || !apiCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
 
       const response = await localExtractor.callAIWithConfig(
-        apiCfg, promptText.trim(), JSON.stringify(input)
+        apiCfg, systemPrompt, userMessage
       );
       return response;
     },
