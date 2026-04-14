@@ -231,7 +231,8 @@ export async function callAIWithConfig(apiCfg: { apiKey: string; baseURL: string
         systemPrompt,
         messages: [{ role: 'user', content: userMessage }],
         tools: [],
-        maxTokens: 2000,
+        // reasoner 会先输出推理（thinking）再输出 JSON，8000 确保够用
+        maxTokens: 8000,
       });
       return extractTextFromResponse(response);
     } catch (err: any) {
@@ -275,7 +276,8 @@ export async function callAIWithConfigStreaming(
   async function callStreamOnce(): Promise<string> {
     const stream = client.messages.stream({
       model: apiCfg.model || DEFAULT_EXTRACTOR_MODEL,
-      max_tokens: 2000,
+      // reasoner 会先输出推理（thinking）再输出 JSON，8000 确保够用
+      max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
