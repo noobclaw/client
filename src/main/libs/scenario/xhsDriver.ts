@@ -28,22 +28,18 @@ export interface XhsLoginStatus {
 }
 
 export async function checkXhsLogin(): Promise<XhsLoginStatus> {
-  try {
-    const bridgeStatus = getBrowserBridgeStatus();
-    if (!bridgeStatus.connected) {
-      return { loggedIn: false, reason: 'browser_not_connected' };
-    }
-  } catch {
-    return { loggedIn: false, reason: 'browser_not_connected' };
-  }
-
+  // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];
   try {
-    const res = await sendBrowserCommand('tab_list', {}, 8000);
+    // Short timeout: if browser is closed, this will fail fast
+    const res = await sendBrowserCommand('tab_list', {}, 3000);
     tabs = Array.isArray(res?.tabs) ? res.tabs : [];
+    if (!res || (!res.tabs && !Array.isArray(res))) {
+      return { loggedIn: false, reason: 'browser_not_connected' };
+    }
   } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'tab_list failed', { err: String(err) });
-    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
+    coworkLog('WARN', 'xhsDriver', 'tab_list failed — browser likely closed', { err: String(err) });
+    return { loggedIn: false, reason: 'browser_not_connected' };
   }
 
   const xhsTab = tabs.find(
