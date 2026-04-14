@@ -1,9 +1,9 @@
 /**
  * LoginRequiredModal — checklist before running XHS task.
  *
- *   ① 浏览器插件是否连接 (auto-check, 3 install options if not)
- *   ② 小红书是否打开 (auto-check)
- *   ③ 使用须知 (read-only checklist)
+ *   ① 在浏览器中打开小红书并登录
+ *   ② 安装并连接浏览器插件
+ *   ③ 使用须知
  *   → 底部居中按钮
  */
 
@@ -11,7 +11,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { scenarioService } from '../../services/scenario';
 
 interface Props {
-  mode: 'create' | 'run';  // 'create' = creating task, 'run' = immediate run
+  mode: 'create' | 'run';
   onCancel: () => void;
   onConfirmed: () => void;
 }
@@ -71,7 +71,31 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
         </div>
 
         <div className="px-6 py-3 space-y-3">
-          {/* Step 1: Extension */}
+          {/* Step 1: XHS tab — 先检查小红书是否打开 */}
+          <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+            xhsTabStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+              : xhsTabStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+              : 'border-gray-200 dark:border-gray-700'
+          }`}>
+            <div className="text-xl shrink-0 mt-0.5">{ICON[xhsTabStatus]}</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium dark:text-white">① 在浏览器中打开小红书并登录</div>
+              {xhsTabStatus === 'fail' && (
+                <div className="mt-1">
+                  <div className="text-xs text-red-500">未检测到小红书页面</div>
+                  <button type="button" onClick={handleOpenXhs} disabled={opening}
+                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
+                    {opening ? '...' : '🌐 打开小红书'}
+                  </button>
+                </div>
+              )}
+              {xhsTabStatus === 'pass' && (
+                <div className="text-xs text-green-500 mt-1">已打开</div>
+              )}
+            </div>
+          </div>
+
+          {/* Step 2: Extension — 再检查插件 */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${
             extensionStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
               : extensionStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
@@ -79,7 +103,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[extensionStatus]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">① 安装并连接浏览器插件</div>
+              <div className="text-sm font-medium dark:text-white">② 安装并连接浏览器插件</div>
               {extensionStatus === 'fail' && (
                 <div className="mt-2 space-y-2">
                   <div className="text-xs text-red-500">插件未连接，请选择安装方式：</div>
@@ -92,7 +116,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                       className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
                       🌐 安装 Chrome 浏览器插件
                     </button>
-                    <button type="button" onClick={() => {/* TODO: open local install guide */}}
+                    <button type="button" onClick={() => {}}
                       className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
                       📁 本地安装
                     </button>
@@ -105,30 +129,6 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
               )}
               {extensionStatus === 'pass' && (
                 <div className="text-xs text-green-500 mt-1">已连接</div>
-              )}
-            </div>
-          </div>
-
-          {/* Step 2: XHS tab */}
-          <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-            xhsTabStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
-              : xhsTabStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
-              : 'border-gray-200 dark:border-gray-700'
-          }`}>
-            <div className="text-xl shrink-0 mt-0.5">{ICON[xhsTabStatus]}</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">② 在浏览器中打开小红书</div>
-              {xhsTabStatus === 'fail' && (
-                <div className="mt-1">
-                  <div className="text-xs text-red-500">未检测到小红书页面</div>
-                  <button type="button" onClick={handleOpenXhs} disabled={opening}
-                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
-                    {opening ? '...' : '🌐 打开小红书'}
-                  </button>
-                </div>
-              )}
-              {xhsTabStatus === 'pass' && (
-                <div className="text-xs text-green-500 mt-1">已打开</div>
               )}
             </div>
           </div>
@@ -147,7 +147,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
           </div>
         </div>
 
-        {/* Bottom button — centered */}
+        {/* Bottom button */}
         <div className="px-6 pb-6 pt-3 flex flex-col items-center gap-2">
           <button
             type="button"

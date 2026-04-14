@@ -50,7 +50,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
 
   // Wizard state

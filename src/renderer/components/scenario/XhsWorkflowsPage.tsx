@@ -197,7 +197,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            📌 小红书任务
+            📌 仿写任务
           </h2>
           <span className="text-[11px] text-gray-500 dark:text-gray-400">
             同一平台最多同时运行一个任务
