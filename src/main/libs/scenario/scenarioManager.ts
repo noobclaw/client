@@ -224,3 +224,63 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
     return { status: 'failed', reason: msg };
   }
 }
+
+// ── Scheduler: check every 60s if any task should auto-run ──
+
+const INTERVAL_MS: Record<string, number> = {
+  '30min': 30 * 60 * 1000,
+  '1h': 60 * 60 * 1000,
+  '6h': 6 * 60 * 60 * 1000,
+  'daily': 24 * 60 * 60 * 1000,
+};
+
+let schedulerStarted = false;
+
+export function startScheduler(): void {
+  if (schedulerStarted) return;
+  schedulerStarted = true;
+
+  setInterval(async () => {
+    if (runningTaskId) return; // Already running
+
+    try {
+      const allTasks = taskStore.listTasks();
+      if (!Array.isArray(allTasks)) return;
+
+      for (const task of allTasks) {
+        if (!task.active || !task.enabled) continue;
+        if (runningTaskId) break;
+
+        const interval = (task as any).run_interval || 'daily';
+        const ms = INTERVAL_MS[interval] || INTERVAL_MS.daily;
+
+        // Check last run time
+        const runs = riskGuard.getRuns(task.id);
+        const lastRun = runs.length > 0 ? Math.max(...runs.map((r: any) => r.started_at || 0)) : 0;
+        const elapsed = Date.now() - lastRun;
+
+        // For daily: also check if current time is near daily_time
+        if (interval === 'daily') {
+          const [hh, mm] = (task.daily_time || '08:00').split(':').map(Number);
+          const now = new Date();
+          const targetMin = hh * 60 + mm;
+          const currentMin = now.getHours() * 60 + now.getMinutes();
+          // Run if within ±15 min window and hasn't run today
+          if (Math.abs(currentMin - targetMin) > 15) continue;
+          if (elapsed < 20 * 60 * 60 * 1000) continue; // Already ran in last 20h
+        } else {
+          // For interval-based: just check if enough time has passed
+          if (elapsed < ms) continue;
+        }
+
+        coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval})`);
+        runTask(task, false).catch(err => {
+          coworkLog('ERROR', 'scheduler', `Auto-run failed: ${err}`);
+        });
+        break; // Only run one task at a time
+      }
+    } catch (err) {
+      coworkLog('ERROR', 'scheduler', `Scheduler check failed: ${err}`);
+    }
+  }, 60 * 1000); // Check every 60 seconds
+}

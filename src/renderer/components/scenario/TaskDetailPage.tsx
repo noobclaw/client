@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { scenarioService, type Task, type Draft, type Scenario } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
+import { i18nService } from '../../services/i18n';
 import type { ScenarioRunProgress } from '../../types/scenario';
 
 const TRACK_NAMES: Record<string, string> = {
@@ -35,18 +36,19 @@ const TRACK_NAMES: Record<string, string> = {
   crafts: '🎨 手工 · DIY',
 };
 
-function formatRelative(ts: number | null | undefined): string {
-  if (!ts) return '尚未运行';
+function formatRelative(ts: number | null | undefined, isZh: boolean): string {
+  if (!ts) return isZh ? '尚未运行' : 'Not run yet';
   const diff = Date.now() - ts;
   const mins = Math.round(Math.abs(diff) / 60_000);
-  if (mins < 1) return '刚刚';
-  if (mins < 60) return `${mins} 分钟前`;
+  if (mins < 1) return isZh ? '刚刚' : 'Just now';
+  if (mins < 60) return isZh ? `${mins} 分钟前` : `${mins} min ago`;
   const hrs = Math.round(mins / 60);
-  if (hrs < 24) return `${hrs} 小时前`;
-  return `${Math.round(hrs / 24)} 天前`;
+  if (hrs < 24) return isZh ? `${hrs} 小时前` : `${hrs} hr ago`;
+  return isZh ? `${Math.round(hrs / 24)} 天前` : `${Math.round(hrs / 24)} d ago`;
 }
 
-const STEP_LABELS = ['步骤一', '步骤二', '步骤三'];
+const STEP_LABELS_ZH = ['步骤一', '步骤二', '步骤三'];
+const STEP_LABELS_EN = ['Step 1', 'Step 2', 'Step 3'];
 
 // CSS for typing blink animation
 const typingStyle = document.createElement('style');
@@ -94,10 +96,15 @@ function renderLogMessage(message: string) {
   }
   return message;
 }
-const STEP_NAMES = [
+const STEP_NAMES_ZH = [
   '采集爆款文章。请勿切换浏览器标签页。',
   'AI 改写标题和内容，保存到本地',
   '上传到小红书草稿箱。请勿切换浏览器标签页。',
+];
+const STEP_NAMES_EN = [
+  'Scrape trending articles. Do not switch browser tabs.',
+  'AI rewrites titles & content, saved locally',
+  'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
 
 interface Props {
@@ -109,6 +116,9 @@ interface Props {
 }
 
 export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChanged }) => {
+  const isZh = i18nService.currentLanguage === 'zh';
+  const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
+  const STEP_NAMES = isZh ? STEP_NAMES_ZH : STEP_NAMES_EN;
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
@@ -287,7 +297,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
     <div className="p-6 max-w-5xl mx-auto">
       <button type="button" onClick={onBack}
         className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-        ← 返回
+        ← {isZh ? '返回' : 'Back'}
       </button>
 
       {/* Config + actions */}
@@ -295,14 +305,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
             <div className="flex items-center gap-3">
-              <span className="text-gray-400">赛道:</span>
+              <span className="text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
               <span className="dark:text-white font-medium">{trackName}</span>
               <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
             </div>
-            <div>关键词: {task.keywords.join(' · ')}</div>
-            <div>频次: ⏰ {({ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || '每天 ' + (task.daily_time || '08:00')} · {task.daily_count} 条/次</div>
+            <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+            <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
+            <div>{isZh ? '创建时间' : 'Created'}: {new Date(task.created_at).toLocaleString()}</div>
             <div className="flex items-center gap-1">
-              <span>输出目录:</span>
+              <span>{isZh ? '输出目录:' : 'Output:'}</span>
               <button type="button" onClick={async () => {
                 try {
                   const res = await window.electron?.scenario?.getTaskDir?.(task.id);
@@ -310,7 +321,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                   if (dir) window.electron?.shell?.openPath?.(dir);
                 } catch {}
               }} className="text-blue-500 hover:underline text-[11px]">
-                📂 打开输出文件夹
+                {isZh ? '📂 打开输出文件夹' : '📂 Open folder'}
               </button>
             </div>
           </div>
@@ -319,7 +330,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               <>
                 <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  {stopping ? '正在停止...' : '运行中'}
+                  {stopping ? (isZh ? '正在停止...' : 'Stopping...') : (isZh ? '运行中' : 'Running')}
                 </span>
                 <button type="button" onClick={handleStop}
                   disabled={stopping}
@@ -331,9 +342,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                   {stopping ? (
                     <span className="flex items-center gap-1.5">
                       <span className="h-3 w-3 rounded-full border-2 border-gray-400 border-t-transparent animate-spin" />
-                      停止中
+                      {isZh ? '停止中' : 'Stopping'}
                     </span>
-                  ) : '停止'}
+                  ) : (isZh ? '停止' : 'Stop')}
                 </button>
               </>
             ) : (
@@ -341,23 +352,25 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                 <span className="text-xs text-gray-400">
                   {task.active ? (() => {
                     const interval = (task as any).run_interval || 'daily';
-                    const map: Record<string, string> = { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') };
-                    return (map[interval] || '每天') + ' 定时运行';
-                  })() : '待命'}
+                    const map: Record<string, string> = isZh
+                      ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') }
+                      : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') };
+                    return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 定时运行' : ' Scheduled');
+                  })() : (isZh ? '待命' : 'Standby')}
                 </span>
                 <button type="button" onClick={handleRunNow}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
-                  直接运行
+                  {isZh ? '直接运行' : 'Run Now'}
                 </button>
                 <button type="button" onClick={onEdit}
                   className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                  编辑
+                  {isZh ? '编辑' : 'Edit'}
                 </button>
                 <button type="button" onClick={handleDelete}
                   className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
                     confirmingDelete ? 'border-red-500 bg-red-500 text-white' : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
                   }`}>
-                  {confirmingDelete ? '确定删除？' : '删除'}
+                  {confirmingDelete ? (isZh ? '确定删除？' : 'Confirm?') : (isZh ? '删除' : 'Delete')}
                 </button>
               </>
             )}
@@ -367,23 +380,23 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <StatCard label="累计采集" value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
-        <StatCard label="生成草稿" value={stats?.draft_count ?? 0} />
-        <StatCard label="已推送" value={stats?.pushed_draft_count ?? 0} />
-        <StatCard label="上次运行" value={formatRelative(stats?.last_run_at || null)} small />
-        <StatCard label="下次运行" value={(() => {
-          if (!task.active) return '待命';
+        <StatCard label={isZh ? '累计采集' : 'Collected'} value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
+        <StatCard label={isZh ? '生成草稿' : 'Drafts'} value={stats?.draft_count ?? 0} />
+        <StatCard label={isZh ? '已推送' : 'Pushed'} value={stats?.pushed_draft_count ?? 0} />
+        <StatCard label={isZh ? '上次运行' : 'Last Run'} value={formatRelative(stats?.last_run_at || null, isZh)} small />
+        <StatCard label={isZh ? '下次运行' : 'Next Run'} value={(() => {
+          if (!task.active) return isZh ? '待命' : 'Standby';
           const interval = (task as any).run_interval || 'daily';
           const lastRun = stats?.last_run_at;
-          if (!lastRun) return '即将';
+          if (!lastRun) return isZh ? '即将' : 'Soon';
           const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
           const ms = intervals[interval] || 24*60*60*1000;
           const next = lastRun + ms;
-          if (next <= Date.now()) return '即将';
+          if (next <= Date.now()) return isZh ? '即将' : 'Soon';
           const diff = next - Date.now();
           const mins = Math.round(diff / 60000);
-          if (mins < 60) return mins + ' 分钟后';
-          return Math.round(mins / 60) + ' 小时后';
+          if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
+          return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
         })()} small />
       </div>
 
@@ -397,7 +410,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       )}
 
       {/* 运行明细 */}
-      <h2 className="text-base font-bold dark:text-white mb-4">运行明细</h2>
+      <h2 className="text-base font-bold dark:text-white mb-4">{isZh ? '运行明细' : 'Run Details'}</h2>
       <div className="space-y-4">
         {STEP_NAMES.map((name, idx) => {
           const stepNum = idx + 1;
@@ -452,9 +465,27 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                   <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
                     {stepNum === 1 && !running ? (() => {
                       const interval = (task as any).run_interval || 'daily';
-                      const map: Record<string, string> = { '30min': '每30分钟自动运行', '1h': '每小时自动运行', '6h': '每6小时自动运行', 'daily': '每天 ' + (task.daily_time || '08:00') + ' 自动运行' };
-                      return '等待' + (map[interval] || '定时运行');
-                    })() : '等待前一步'}
+                      // Calculate next run time
+                      const lastRun = stats?.last_run_at;
+                      const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
+                      const ms = intervals[interval] || 24*60*60*1000;
+                      let nextRunStr = '';
+                      if (lastRun) {
+                        const next = lastRun + ms;
+                        if (next <= Date.now()) {
+                          nextRunStr = isZh ? '即将运行' : 'Running soon';
+                        } else {
+                          const diff = next - Date.now();
+                          const mins = Math.round(diff / 60000);
+                          nextRunStr = mins < 60
+                            ? (isZh ? mins + ' 分钟后运行' : 'Run in ' + mins + ' min')
+                            : (isZh ? Math.round(mins/60) + ' 小时后运行' : 'Run in ' + Math.round(mins/60) + 'h');
+                        }
+                      } else {
+                        nextRunStr = isZh ? '点击"直接运行"开始' : 'Click "Run Now" to start';
+                      }
+                      return nextRunStr;
+                    })() : (isZh ? '等待前一步' : 'Waiting for previous step')}
                   </div>
                 )}
               </div>

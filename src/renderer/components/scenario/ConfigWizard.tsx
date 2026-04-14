@@ -61,6 +61,7 @@ function parseKeywords(raw: string): string[] {
 }
 
 export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel, onSave }) => {
+  const isZh = i18nService.currentLanguage === 'zh';
   const defaults = scenario.default_config;
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [saving, setSaving] = useState(false);
@@ -123,7 +124,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
-      setSaveError(String(err instanceof Error ? err.message : err) || '保存失败，请重试');
+      setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败，请重试' : 'Save failed, please retry'));
     } finally {
       setSaving(false);
     }
@@ -135,10 +136,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
-            配置赛道
+            {isZh ? '配置赛道' : 'Configure Track'}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
-            第 {step} / 3 步
+            {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
           </div>
         </div>
 
@@ -150,7 +151,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Track dropdown */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  选择赛道
+                  {isZh ? '选择赛道' : 'Select Track'}
                 </label>
                 <select
                   value={trackId}
@@ -168,17 +169,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Keywords */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  关键词 <span className="text-xs text-gray-400 font-normal">（每次运行随机选 3 个搜索，建议 15-25 个）</span>
+                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">{isZh ? '（每次运行随机选 3 个搜索，建议 15-25 个）' : '(3 random keywords per run, 15-25 recommended)'}</span>
                 </label>
                 <textarea
                   value={customKeywordsText}
                   onChange={e => setCustomKeywordsText(e.target.value)}
-                  placeholder="用空格或逗号分隔，越多越好"
+                  placeholder={isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated'}
                   rows={6}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                 />
                 <div className="text-[11px] text-gray-400 mt-1">
-                  关键词越多，每次搜索内容越不重复，降低风控风险
+                  {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
                 </div>
               </div>
             </div>
@@ -189,14 +190,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
             <div className="space-y-5">
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  ⏰ 运行间隔
+                  {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
                 </label>
                 <div className="flex gap-2 flex-wrap">
                   {[
-                    { value: '30min', label: '每 30 分钟' },
-                    { value: '1h', label: '每小时' },
-                    { value: '6h', label: '每 6 小时' },
-                    { value: 'daily', label: '每天' },
+                    { value: '30min', label: isZh ? '每 30 分钟' : 'Every 30min' },
+                    { value: '1h', label: isZh ? '每小时' : 'Hourly' },
+                    { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
+                    { value: 'daily', label: isZh ? '每天' : 'Daily' },
                   ].map(opt => (
                     <button
                       key={opt.value}
@@ -217,7 +218,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {runInterval === 'daily' && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    触发时间
+                    {isZh ? '触发时间' : 'Trigger Time'}
                   </label>
                   <input
                     type="time"
@@ -226,14 +227,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   />
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                    前后 ±15 分钟随机偏移模拟人类节奏
+                    {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for human-like behavior'}
                   </p>
                 </div>
               )}
 
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  每天采集爆款数量
+                  {isZh ? '每天采集爆款数量' : 'Articles per run'}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -247,7 +248,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  每条生成仿写版本数
+                  {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -261,12 +262,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
-                  ⚠️ 安全提示
+                  {isZh ? '⚠️ 安全提示' : '⚠️ Safety Notice'}
                 </div>
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                  <li>· 每次运行会在你已登录的小红书上模拟人类浏览</li>
-                  <li>· 运行期间请不要切换浏览器标签页</li>
-                  <li>· 推送草稿后，发布由你手动完成</li>
+                  <li>{isZh ? '· 每次运行会在你已登录的小红书上模拟人类浏览' : '· Each run simulates human browsing on your logged-in Xiaohongshu'}</li>
+                  <li>{isZh ? '· 运行期间请不要切换浏览器标签页' : '· Do not switch browser tabs during a run'}</li>
+                  <li>{isZh ? '· 推送草稿后，发布由你手动完成' : '· After drafts are pushed, publishing is done manually by you'}</li>
                 </ul>
               </div>
             </div>
@@ -276,22 +277,22 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {step === 3 && (
             <div>
               <h3 className="text-lg font-bold dark:text-white mb-4">
-                确认并启用
+                {isZh ? '确认并启用' : 'Confirm & Enable'}
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
                 <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">赛道:</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
                   <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
                 </div>
                 <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">关键词:</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '关键词:' : 'Keywords:'}</span>
                   <div className="dark:text-white">{keywordList.join(' · ')}</div>
                 </div>
                 <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">频次:</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '频次:' : 'Schedule:'}</span>
                   <div className="dark:text-white">
-                    ⏰ {{ '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime }[runInterval] || runInterval} · {dailyCount} 条/次 · {variants} 份改写
+                    ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>)[runInterval] || runInterval} · {dailyCount} {isZh ? '条/次' : '/run'} · {variants} {isZh ? '份改写' : 'rewrites'}
                   </div>
                 </div>
               </div>
@@ -299,20 +300,20 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Usage warning */}
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
-                  ⚠️ 使用须知（重要）
+                  {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
                 </div>
                 <ul className="text-xs text-gray-700 dark:text-gray-300 space-y-1.5 leading-relaxed">
-                  <li>🤖 所有操作都是<strong>模拟你本人在小红书上的行为</strong></li>
-                  <li>🌐 任务运行期间请<strong>不要关闭浏览器中的小红书页面</strong></li>
-                  <li>🔐 请<strong>不要退出小红书登录</strong>，否则任务会中断</li>
-                  <li>🔄 每次执行前会<strong>自动检查登录状态</strong></li>
-                  <li>⏰ 任务运行时你可以正常使用电脑，但请保持浏览器打开</li>
+                  <li>🤖 {isZh ? <>所有操作都是<strong>模拟你本人在小红书上的行为</strong></> : <>All actions <strong>simulate your own behavior on Xiaohongshu</strong></>}</li>
+                  <li>🌐 {isZh ? <>任务运行期间请<strong>不要关闭浏览器中的小红书页面</strong></> : <><strong>Do not close the Xiaohongshu tab</strong> during a run</>}</li>
+                  <li>🔐 {isZh ? <>请<strong>不要退出小红书登录</strong>，否则任务会中断</> : <><strong>Do not log out of Xiaohongshu</strong>, or the task will be interrupted</>}</li>
+                  <li>🔄 {isZh ? <>每次执行前会<strong>自动检查登录状态</strong></> : <>Login status is <strong>automatically checked</strong> before each run</>}</li>
+                  <li>⏰ {isZh ? '任务运行时你可以正常使用电脑，但请保持浏览器打开' : 'You can use your computer normally, just keep the browser open'}</li>
                 </ul>
               </div>
 
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  📋 使用条款
+                  {isZh ? '📋 使用条款' : '📋 Terms'}
                 </div>
                 {[
                   i18nService.t('scenarioWizardConfirmTerm1'),
@@ -347,13 +348,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-800 shrink-0">
           <button type="button" onClick={onCancel} disabled={saving}
             className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
-            取消
+            {isZh ? '取消' : 'Cancel'}
           </button>
           <div className="flex items-center gap-2">
             {step > 1 && (
               <button type="button" onClick={() => setStep((step - 1) as 1 | 2 | 3)} disabled={saving}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
-                ← 上一步
+                ← {isZh ? '上一步' : 'Back'}
               </button>
             )}
             {step < 3 ? (
@@ -361,12 +362,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 onClick={() => setStep((step + 1) as 1 | 2 | 3)}
                 disabled={step === 1 && (keywordList.length === 0 || !persona.trim())}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50">
-                下一步 →
+                {isZh ? '下一步' : 'Next'} →
               </button>
             ) : (
               <button type="button" onClick={handleFinish} disabled={!canFinish || saving}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                {saving ? '...' : '保存并启用'}
+                {saving ? '...' : (isZh ? '保存并启用' : 'Save & Create Task')}
               </button>
             )}
           </div>

@@ -1675,6 +1675,20 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
   console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
 
+  // Start scenario scheduler (checks every 60s for auto-run tasks)
+  try {
+    const scenarioManager = require('./libs/scenario/scenarioManager');
+    const scenarioTaskStore = require('./libs/scenario/taskStore');
+    const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+    const { getUserDataPath } = require('./libs/platformAdapter');
+    if (!scenarioTaskStore._loaded) { scenarioTaskStore.initTaskStore(getUserDataPath()); scenarioTaskStore._loaded = true; }
+    if (!scenarioRiskGuard._loaded) { scenarioRiskGuard.initRiskGuard(getUserDataPath()); scenarioRiskGuard._loaded = true; }
+    scenarioManager.startScheduler();
+    coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');
+  } catch (err) {
+    coworkLog('WARN', 'sidecar-server', 'Failed to start scenario scheduler', { err: String(err) });
+  }
+
   // Install the crash reporter. Broadcasts system:crash SSE on
   // uncaughtException / unhandledRejection so the renderer can show
   // a toast; writes a ndjson record to {UserDataPath}/crashes/ so
