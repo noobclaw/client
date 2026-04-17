@@ -249,6 +249,33 @@ export function registerNativeMessagingHost(): void {
           } catch {}
         }
 
+        // ③ 自愈校验：读回刚写的文件，确认 allowed_origins 包含所有 EXTENSION_IDS。
+        // 罕见场景：其他进程并发写、杀软拦截、文件系统 race 可能导致写入内容不完整。
+        // 不一致时 WARN 日志 + 再写一遍，还不一致就 ERROR 提示用户手动排查。
+        if (browser !== 'firefox') {
+          try {
+            const written = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            const need = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
+            const got: string[] = Array.isArray(written.allowed_origins) ? written.allowed_origins : [];
+            const missing = need.filter(x => !got.includes(x));
+            if (missing.length > 0) {
+              console.warn(`[BrowserBridge] ${browser} manifest missing ${missing.length} origin(s), rewriting:`, missing);
+              written.allowed_origins = [...got, ...missing];
+              fs.writeFileSync(manifestPath, JSON.stringify(written, null, 2));
+              // Re-verify after retry write
+              const reRead = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+              const stillMissing = need.filter(x => !(reRead.allowed_origins || []).includes(x));
+              if (stillMissing.length > 0) {
+                console.error(`[BrowserBridge] ${browser} manifest STILL missing after rewrite:`, stillMissing);
+              } else {
+                console.log(`[BrowserBridge] ${browser} manifest self-healed: all ${need.length} origins present.`);
+              }
+            }
+          } catch (verifyErr) {
+            console.error(`[BrowserBridge] ${browser} manifest verify failed:`, verifyErr);
+          }
+        }
+
         console.log(`[BrowserBridge] Registered native messaging host for ${browser}: ${manifestPath}`);
       } catch (err) {
         console.error(`[BrowserBridge] Failed to register for ${browser}:`, err);

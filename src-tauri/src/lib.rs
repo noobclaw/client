@@ -804,9 +804,22 @@ pub fn run() {
                     // with the Tokio runtime shutdown.
                     if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
                         let _ = shutdown_handle.emit("sidecar://shutdown", ());
-                        // Give listeners a tick to flip shutting_down flag,
-                        // then exit the whole app (SidecarState::drop kills
-                        // the child).
+                        // Explicitly kill the sidecar child BEFORE app.exit().
+                        // Don't rely only on SidecarState::drop() — on Windows
+                        // the Tokio runtime may tear down before the managed-
+                        // state Drop runs, leaving the Node.js sidecar alive
+                        // in the task manager. Synchronously call child.kill()
+                        // here so the sidecar dies deterministically on close.
+                        if let Some(state) = shutdown_handle.try_state::<SidecarState>() {
+                            if let Ok(mut guard) = state.child.lock() {
+                                if let Some(mut child) = guard.take() {
+                                    println!("Killing sidecar explicitly on window close...");
+                                    let _ = child.kill();
+                                }
+                            }
+                        }
+                        // Then exit the whole app after a brief tick so any
+                        // pending shutdown listeners can react.
                         let exit_handle = shutdown_handle.clone();
                         tauri::async_runtime::spawn(async move {
                             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
