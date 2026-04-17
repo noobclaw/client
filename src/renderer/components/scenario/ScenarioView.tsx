@@ -53,9 +53,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
 
-  // Wizard state
+  // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
   const [wizardEditingTask, setWizardEditingTask] = useState<Task | null>(null);
+  // Link-mode edit modal (separate from the keyword wizard — they capture
+  // completely different inputs and users were confusing them)
+  const [linkEditTask, setLinkEditTask] = useState<Task | null>(null);
 
   const refreshAll = useCallback(async () => {
     setLoading(true);
@@ -109,6 +112,16 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const openWizardEdit = (task: Task, scenario: Scenario) => {
+    // Link-mode tasks have a completely different input shape (URLs vs
+    // keywords) — open the dedicated link editor instead of the keyword
+    // wizard so users aren't asked to pick a track for links they already
+    // supplied.
+    const isLinkMode = task.track === 'link_mode'
+      || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+    if (isLinkMode) {
+      setLinkEditTask(task);
+      return;
+    }
     setWizardScenario(scenario);
     setWizardEditingTask(task);
   };
@@ -117,6 +130,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setWizardScenario(null);
     setWizardEditingTask(null);
   };
+
+  const closeLinkEdit = () => setLinkEditTask(null);
 
   const handleWizardSave = async (input: {
     scenario_id: string;
@@ -283,6 +298,146 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onSave={handleWizardSave}
         />
       )}
+
+      {/* Link-mode edit modal */}
+      {linkEditTask && (
+        <LinkModeEditModal
+          task={linkEditTask}
+          onCancel={closeLinkEdit}
+          onSaved={async () => {
+            closeLinkEdit();
+            await refreshAll();
+          }}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── Link-mode edit modal ────────────────────────────────────────────────
+// Dedicated editor for tasks created via 🔗 指定链接 flow. Takes URL list
+// + auto_upload toggle — deliberately does NOT ask for track / keywords /
+// persona, which would be meaningless for link-mode tasks.
+
+const LinkModeEditModal: React.FC<{
+  task: Task;
+  onCancel: () => void;
+  onSaved: () => void | Promise<void>;
+}> = ({ task, onCancel, onSaved }) => {
+  const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
+  const initialUrls: string[] = (task as any).urls || [];
+  const [linksText, setLinksText] = useState(initialUrls.join('\n'));
+  const [autoUpload, setAutoUpload] = useState<boolean>((task as any).auto_upload !== false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const validate = (text: string): { ok: string[]; err: string | null } => {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
+    if (lines.length > 3) return { ok: [], err: isZh ? '最多 3 个链接' : 'Max 3 URLs' };
+    for (const l of lines) {
+      if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
+        return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+      }
+    }
+    return { ok: lines, err: null };
+  };
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    const { ok, err } = validate(linksText);
+    if (err) { alert(err); return; }
+    setSubmitting(true);
+    try {
+      await scenarioService.updateTask(task.id, {
+        urls: ok,
+        daily_count: ok.length,
+        auto_upload: autoUpload,
+        active: true,
+        enabled: true,
+      } as any);
+      await onSaved();
+    } catch (e) {
+      alert((isZh ? '保存失败：' : 'Save failed: ') + String(e).slice(0, 120));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+      onClick={() => !submitting && onCancel()}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-bold dark:text-white mb-2">
+          🔗 {isZh ? '编辑指定链接任务' : 'Edit link-mode task'}
+        </h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          {isZh ? '粘贴 1~3 个小红书原文链接，每行一个。' : 'Paste 1-3 XHS note URLs, one per line.'}
+        </p>
+        <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+          {isZh ? '原文链接' : 'Source URLs'}
+        </label>
+        <textarea
+          value={linksText}
+          onChange={e => setLinksText(e.target.value)}
+          rows={5}
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+          disabled={submitting}
+        />
+
+        <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
+          {isZh ? '生成后的处理' : 'After generation'}
+        </label>
+        <div className="space-y-2">
+          <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-purple-500 bg-purple-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+            <input type="radio" name="link_edit_auto_upload" checked={autoUpload} onChange={() => setAutoUpload(true)} className="mt-0.5" disabled={submitting} />
+            <div className="flex-1 text-xs leading-relaxed">
+              <div className="font-semibold dark:text-white mb-0.5">
+                {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">
+                {isZh ? '全流程无人值守。⚠️ 单日 >3 篇有封号风险。' : 'Unattended. ⚠️ >3/day risks ban.'}
+              </div>
+            </div>
+          </label>
+          <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-purple-500 bg-purple-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+            <input type="radio" name="link_edit_auto_upload" checked={!autoUpload} onChange={() => setAutoUpload(false)} className="mt-0.5" disabled={submitting} />
+            <div className="flex-1 text-xs leading-relaxed">
+              <div className="font-semibold dark:text-white mb-0.5">
+                {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+              </div>
+              <div className="text-gray-500 dark:text-gray-400">
+                {isZh ? '存盘后手动审核上传，封号风险最低。' : 'Review and upload manually later.'}
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div className="flex gap-2 mt-4">
+          <button
+            type="button"
+            onClick={() => !submitting && onCancel()}
+            disabled={submitting}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+          >
+            {isZh ? '取消' : 'Cancel'}
+          </button>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-purple-500 text-white hover:bg-purple-600 disabled:opacity-50"
+          >
+            {submitting
+              ? (isZh ? '保存中...' : 'Saving...')
+              : (isZh ? '💾 保存' : '💾 Save')}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
