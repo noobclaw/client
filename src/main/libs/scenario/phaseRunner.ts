@@ -257,16 +257,27 @@ function buildContext(
 
       // Use streaming — show partial AI output in progress, abortable
       // Throttle UI updates to 1/s so logs (max 30 entries) aren't spammed
+      const startedAt = Date.now();
       let lastReport = 0;
+      let lastTextLen = 0;
+      // Heartbeat: if the stream stalls (no new text for a while) or just
+      // takes a long time, keep printing "仍在生成中... (Xs)" every 5s so the
+      // user can tell the task is still alive vs genuinely hung.
+      const heartbeat = setInterval(() => {
+        const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
+        ctx.report('AI 仍在生成中... (' + elapsedSec + 's, 已输出 ' + lastTextLen + ' 字)');
+      }, 5000);
       try {
         const aiPromise = localExtractor.callAIWithConfigStreaming(
           apiCfg, prompt, userMessage,
           (partialText) => {
+            lastTextLen = partialText.length;
             const now = Date.now();
             if (now - lastReport < 1000) return;
             lastReport = now;
+            const elapsedSec = Math.floor((now - startedAt) / 1000);
             const preview = partialText.replace(/[\n\r]/g, ' ').slice(-80);
-            ctx.report('AI 生成中 (' + partialText.length + ' 字): ' + preview);
+            ctx.report('AI 生成中 (' + elapsedSec + 's, ' + partialText.length + ' 字): ' + preview);
           }
         );
         // Race with abort checker
@@ -283,8 +294,10 @@ function buildContext(
             setTimeout(() => clearInterval(check), 300000);
           }),
         ]);
+        clearInterval(heartbeat);
         return response;
       } catch (err) {
+        clearInterval(heartbeat);
         if (String(err).includes('user_stopped')) throw err;
         coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
         return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
