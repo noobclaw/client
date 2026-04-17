@@ -10,39 +10,10 @@ let connected = false;
 // Auto-connect on browser startup, install, and periodic keepalive
 chrome.runtime.onStartup.addListener(() => { connect(); });
 chrome.runtime.onInstalled.addListener(() => { connect(); });
-// Keepalive: MV3 service workers sleep after ~30s idle; setTimeout timers
-// don't survive. Chrome alarms DO wake the SW reliably. Every 15 seconds:
-// if disconnected, attempt reconnect.
-chrome.alarms.create('keepalive', { periodInMinutes: 0.25 });
+// Keepalive: reconnect every 30s if disconnected (MV3 service worker may sleep)
+chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepalive' && !connected) { connect(); }
-  if (alarm.name === 'reconnect' && !connected) { connect(); }
-});
-
-// Also reconnect when any tab activates — wakes the SW naturally and
-// handles the "user just opened Chrome" case where onStartup didn't fire
-// (e.g. Chrome was still running in background when last closed).
-chrome.tabs.onActivated.addListener(() => {
-  if (!connected) connect();
-});
-
-// macOS-specific: on macOS, closing the last Chrome window DOES NOT kill the
-// Chrome process (stays in dock). Reopening via dock just re-focuses existing
-// process, so chrome.runtime.onStartup doesn't fire and tabs.onActivated
-// doesn't fire (no tab change, just window focus). Use windows.onFocusChanged
-// to detect "user just brought Chrome to foreground" on any platform.
-if (chrome.windows && chrome.windows.onFocusChanged) {
-  chrome.windows.onFocusChanged.addListener((windowId) => {
-    if (windowId === chrome.windows.WINDOW_ID_NONE) return; // lost focus
-    if (!connected) connect();
-  });
-}
-
-// Also reconnect on tabs.onUpdated — catches "user typed a URL / navigated"
-// which is a strong signal the user is actively using the browser and should
-// have the assistant connected.
-chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
-  if (changeInfo.status === 'complete' && !connected) connect();
 });
 
 
@@ -137,19 +108,12 @@ function disconnect() {
 }
 
 function scheduleReconnect() {
-  // MV3 service worker can sleep mid-timeout. Use chrome.alarms instead —
-  // it wakes the SW reliably. Alarm min delay is 30s in packed extensions
-  // but ~1s in unpacked/dev. Still better than setTimeout which silently dies.
-  const delayMin = Math.max(0.25, reconnectDelay / 60000); // seconds → minutes
-  reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-  try {
-    chrome.alarms.create('reconnect', { delayInMinutes: delayMin });
-  } catch (e) {
-    // Fallback
-    if (!reconnectTimer) {
-      reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, reconnectDelay);
-    }
-  }
+  if (reconnectTimer) return;
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+    connect();
+  }, reconnectDelay);
 }
 
 function updateStatus(status) {
@@ -182,49 +146,36 @@ async function getActiveTab() {
 
 async function injectContentScript(tabId) {
   try {
+    // Check if already injected
     const [result] = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.__noobclaw_injected === true,
     });
-    if (result?.result) return true; // Already injected
+    if (result?.result) return; // Already injected
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js'],
     });
   } catch (e) {
-    console.warn('[NoobClaw] injectContentScript failed:', e?.message);
-    return false;
+    // Already injected or restricted page (chrome://, edge://, etc.)
   }
-  // Content script registers its message listener synchronously on load,
-  // but chrome.scripting.executeScript resolves before that happens on
-  // a just-loaded or navigating page. 500ms is enough in practice.
-  await new Promise(r => setTimeout(r, 500));
-  return true;
+  // Wait a bit for content script to initialize
+  await new Promise(r => setTimeout(r, 100));
 }
 
-async function sendToContentScript(tabId, command, params, retries = 4) {
-  let lastErr;
+async function sendToContentScript(tabId, command, params, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
       return await chrome.tabs.sendMessage(tabId, { command, params });
     } catch (e) {
-      lastErr = e;
-      const msg = e?.message || '';
-      const transient =
-        msg.includes('Receiving end does not exist') ||
-        msg.includes('The message port closed') ||
-        msg.includes('Could not establish connection');
-      if (i < retries && transient) {
-        // Content script not ready — re-inject and retry with exponential backoff.
-        console.warn(`[NoobClaw] cs message retry ${i + 1}/${retries}: ${msg}`);
+      if (i < retries && e.message?.includes('Receiving end does not exist')) {
+        // Content script not ready, re-inject and retry
         await injectContentScript(tabId);
-        await new Promise(r => setTimeout(r, 300 * (i + 1)));
         continue;
       }
       throw e;
     }
   }
-  throw lastErr;
 }
 
 async function executeCommand(msg) {
