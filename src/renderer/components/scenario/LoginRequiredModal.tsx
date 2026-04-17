@@ -196,7 +196,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
               <li>{isZh ? '回到本页面点「重新检测」，检测到绿色 ✓ 即安装成功' : 'Return here and click "Re-check" — ✓ means success'}</li>
             </ol>
             {localInstallMsg && (
-              <div className="text-xs text-green-500 mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+              <div className="text-xs text-green-500 mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg whitespace-pre-line break-all">
                 {localInstallMsg}
               </div>
             )}
@@ -206,13 +206,41 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                 onClick={async () => {
                   try {
                     const r = await window.electron?.browserBridge?.installLocal?.();
-                    if (r?.success) {
+                    if (!r?.success) {
+                      setLocalInstallMsg((isZh ? '❌ 操作失败：' : '❌ Failed: ')
+                        + (r?.error || (isZh ? '未知错误' : 'unknown error')));
+                      return;
+                    }
+                    // Main/sidecar has already opened chrome://extensions
+                    // in the default browser. Renderer must do the actual
+                    // clipboard write — electron.clipboard doesn't exist
+                    // inside Tauri's sidecar process, so the returned path
+                    // is the single source of truth.
+                    let copied = false;
+                    if (r.extensionPath) {
+                      try {
+                        await navigator.clipboard.writeText(r.extensionPath);
+                        copied = true;
+                      } catch {
+                        copied = false;
+                      }
+                    }
+                    if (!r.browserFound) {
+                      setLocalInstallMsg(isZh
+                        ? '⚠️ 未检测到 Chrome/Edge 浏览器，请先安装浏览器。路径：' + (r.extensionPath || '')
+                        : '⚠️ No Chrome/Edge detected. Install a browser first. Path: ' + (r.extensionPath || ''));
+                      return;
+                    }
+                    if (copied) {
                       setLocalInstallMsg(isZh
                         ? '✅ 已打开浏览器扩展页，插件目录已复制到剪贴板。按步骤 2-4 操作。'
                         : '✅ Opened extensions page, path copied. Follow steps 2-4.');
                     } else {
-                      setLocalInstallMsg((isZh ? '❌ 操作失败：' : '❌ Failed: ')
-                        + (r?.error || (isZh ? '未知错误' : 'unknown error')));
+                      // Clipboard write failed — give user the path to copy manually
+                      setLocalInstallMsg((isZh
+                        ? '✅ 已打开扩展页，但剪贴板复制失败。请手动复制下方路径：'
+                        : '✅ Opened extensions page, but clipboard write failed. Copy this path manually:')
+                        + '\n' + (r.extensionPath || ''));
                     }
                   } catch (e) {
                     setLocalInstallMsg((isZh ? '❌ 调用失败：' : '❌ Call failed: ')

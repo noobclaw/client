@@ -483,12 +483,19 @@ export function isExtensionInstalled(): boolean {
   } catch { return false; }
 }
 
-export async function installLocalExtension(): Promise<void> {
+export async function installLocalExtension(): Promise<{ extensionPath: string; browserFound: boolean }> {
   let clipboard: any = null;
   try { clipboard = require('electron').clipboard; } catch {}
   const browsers = detectBrowsers();
   const win = BrowserWindow?.getFocusedWindow?.();
   const t = getPromptTexts();
+
+  // Always compute the extension path so the renderer can copy it to the
+  // clipboard via navigator.clipboard.writeText even when we're running
+  // inside a Tauri sidecar (where require('electron') isn't available and
+  // the old clipboard write silently no-op'd — this was the root of
+  // '已复制' being a lie for Tauri users).
+  const extensionPath = path.join(getResourcesPath(), 'chrome-extension');
 
   if (browsers.length === 0) {
     if (win) {
@@ -505,16 +512,11 @@ export async function installLocalExtension(): Promise<void> {
         shell.openExternal('https://www.google.com/chrome/');
       }
     }
-    return;
+    return { extensionPath, browserFound: false };
   }
 
-  // Get extension path
-  const extensionPath = path.join(
-    getResourcesPath(),
-    'chrome-extension'
-  );
-
-  // Copy path to clipboard
+  // Electron has clipboard; Tauri doesn't — we return the path so the
+  // renderer does the clipboard write itself using navigator.clipboard.
   clipboard?.writeText?.(extensionPath);
 
   // Open chrome://extensions page
@@ -546,6 +548,7 @@ export async function installLocalExtension(): Promise<void> {
       buttons: ['OK'],
     });
   }
+  return { extensionPath, browserFound: true };
 }
 
 // --- TCP Server (for native messaging host connection) ---

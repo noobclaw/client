@@ -1016,8 +1016,8 @@ const server = http.createServer(async (req, res) => {
           case 'browser-bridge:install-local': {
             try {
               const { installLocalExtension } = await import('./libs/browserBridge');
-              await installLocalExtension();
-              return writeJSON(res, 200, { success: true });
+              const r = await installLocalExtension();
+              return writeJSON(res, 200, { success: true, extensionPath: r.extensionPath, browserFound: r.browserFound });
             } catch (err: any) {
               return writeJSON(res, 200, { success: false, error: String(err?.message || err) });
             }

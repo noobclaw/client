@@ -483,7 +483,7 @@ interface IElectronAPI {
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
   };
   browserBridge: {
-    installLocal: () => Promise<{ success: boolean; error?: string }>;
+    installLocal: () => Promise<{ success: boolean; extensionPath?: string; browserFound?: boolean; error?: string }>;
   };
   autoLaunch: {
     get: () => Promise<{ enabled: boolean }>;

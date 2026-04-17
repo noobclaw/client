@@ -1434,8 +1434,8 @@ if (!gotTheLock) {
   // the native instructions dialog).
   ipcMain.handle('browser-bridge:install-local', async () => {
     try {
-      await installLocalExtension();
-      return { success: true };
+      const r = await installLocalExtension();
+      return { success: true, extensionPath: r.extensionPath, browserFound: r.browserFound };
     } catch (err: any) {
       return { success: false, error: String(err?.message || err) };
     }

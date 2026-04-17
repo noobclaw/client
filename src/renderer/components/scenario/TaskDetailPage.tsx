@@ -398,13 +398,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             ) : (
               <>
                 <span className="text-xs text-gray-400">
-                  {task.active ? (() => {
-                    const interval = (task as any).run_interval || 'daily';
-                    const map: Record<string, string> = isZh
-                      ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') }
-                      : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') };
-                    return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 定时运行' : ' Scheduled');
-                  })() : (isZh ? '待命' : 'Standby')}
+                  {isLinkModeForStats
+                    ? (isZh ? '✋ 一次性手动' : '✋ Manual one-shot')
+                    : task.active ? (() => {
+                        const interval = (task as any).run_interval || 'daily';
+                        const map: Record<string, string> = isZh
+                          ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') }
+                          : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') };
+                        return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 定时运行' : ' Scheduled');
+                      })() : (isZh ? '待命' : 'Standby')}
                 </span>
                 <button type="button" onClick={handleRunNow}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
