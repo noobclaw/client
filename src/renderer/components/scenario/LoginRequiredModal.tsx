@@ -186,14 +186,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
       {localInstallOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
-            <h3 className="text-lg font-bold dark:text-white mb-2">
+            <h3 className="text-lg font-bold dark:text-white mb-4">
               📁 {isZh ? '本地安装浏览器插件' : 'Install Local Extension'}
             </h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-              {isZh
-                ? '国内用户推荐用这种方式，无需翻墙。下面这一步会自动复制插件目录到剪贴板并打开浏览器扩展页。'
-                : 'Recommended for users in mainland China (no VPN needed). The button below auto-copies the extension path to the clipboard and opens the browser extensions page.'}
-            </p>
             <ol className="text-xs text-gray-700 dark:text-gray-300 space-y-2 mb-4 list-decimal list-inside leading-relaxed">
               <li>{isZh ? '点下方 📂 按钮，会自动打开 chrome://extensions/ 并把插件目录复制到剪贴板' : 'Click 📂 below — opens chrome://extensions/ and copies the extension folder path to clipboard'}</li>
               <li>{isZh ? '在扩展页右上角打开「开发者模式」' : 'Enable "Developer mode" in the top-right'}</li>
