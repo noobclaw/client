@@ -49,7 +49,7 @@ function extractTextFromResponse(response: any): string {
   return '';
 }
 
-function parseJsonSafe(raw: string): any | null {
+export function parseJsonSafe(raw: string): any | null {
   const trimmed = raw.trim();
   // Strip ```json fences if the model added them despite instructions
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/);

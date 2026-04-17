@@ -16,6 +16,7 @@ import { sendBrowserCommand } from '../browserBridge';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
+import { parseJsonSafe } from './localExtractor';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import { writeTaskArtifacts } from './artifactWriter';
 import type {
@@ -260,74 +261,73 @@ function buildContext(
       //   - Support is simpler when every scenario run uses the same
       //     upstream.
       //
-      // So we construct the NoobClaw config inline, independent of the
-      // user's settings. The auth is the NoobClaw JWT (wallet login),
-      // not the user's personal API key.
+      // So we build our own HTTP request to /api/ai/chat/completions,
+      // independent of the user's settings. The Anthropic SDK is NOT
+      // reusable here because it authenticates with x-api-key, while our
+      // backend authMiddleware requires Authorization: Bearer <JWT>.
+      // Simpler to just do a direct fetch in OpenAI-compat format.
       const nbAuthToken = getNoobClawAuthToken();
       if (!nbAuthToken) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
-      const apiCfg = {
-        apiKey: nbAuthToken,
-        baseURL: 'https://api.noobclaw.com/api/ai/chat/completions',
-        model: 'noobclawai-chat',
-        apiType: 'openai',
-        isOpenAICompat: true,
-      } as any;
 
-      // Use streaming — show partial AI output in progress, abortable
-      // Throttle UI updates to 1/s so logs (max 30 entries) aren't spammed
       const startedAt = Date.now();
-      let lastReport = 0;
-      let lastTextLen = 0;
-      // Heartbeat covers BOTH streaming and non-streaming fallback paths.
-      // Previously it was cleared in the catch before the fallback ran, so a
-      // 60s non-streaming call showed zero progress after the first 10s tick.
-      // Keeping one interval over the whole call means the user sees
-      // "仍在生成中 (20s / 30s / 40s...)" even if we silently switched to the
-      // non-stream fallback.
       const heartbeat = setInterval(() => {
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-        // 非流式兜底时 lastTextLen 永远是 0，写出来反而误导用户以为卡死。
-        // 只保留计时就够了。
         ctx.report('AI 仍在生成中... (' + elapsedSec + 's)');
       }, 10000);
-      try {
-        try {
-          const aiPromise = localExtractor.callAIWithConfigStreaming(
-            apiCfg, prompt, userMessage,
-            (partialText) => {
-              lastTextLen = partialText.length;
-              const now = Date.now();
-              if (now - lastReport < 1000) return;
-              lastReport = now;
-              const elapsedSec = Math.floor((now - startedAt) / 1000);
-              const preview = partialText.replace(/[\n\r]/g, ' ').slice(-80);
-              ctx.report('AI 生成中 (' + elapsedSec + 's, ' + partialText.length + ' 字): ' + preview);
-            }
-          );
-          // Race with abort checker
-          const response = await Promise.race([
-            aiPromise,
-            new Promise<never>((_, reject) => {
-              const check = setInterval(() => {
-                if (progress.isAbortRequested()) {
-                  clearInterval(check);
-                  reject(new Error('user_stopped'));
-                }
-              }, 500);
-              // Auto-clear after 5 min
-              setTimeout(() => clearInterval(check), 300000);
-            }),
-          ]);
-          return response;
-        } catch (err) {
-          if (String(err).includes('user_stopped')) throw err;
-          // Log to dev console for debugging, but don't surface to the user —
-          // the fallback is transparent and the extra line just adds noise.
-          coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
-          return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
+
+      const controller = new AbortController();
+      const abortPoll = setInterval(() => {
+        if (progress.isAbortRequested()) {
+          controller.abort();
         }
+      }, 500);
+
+      try {
+        const resp = await fetch('https://api.noobclaw.com/api/ai/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${nbAuthToken}`,
+          },
+          body: JSON.stringify({
+            model: 'noobclawai-chat',
+            messages: [
+              { role: 'system', content: prompt },
+              { role: 'user', content: userMessage },
+            ],
+            stream: false,
+            max_tokens: 8000,
+          }),
+          signal: controller.signal,
+        });
+        if (!resp.ok) {
+          if (resp.status === 401) throw new Error('AI_AUTH_FAILED — NoobClaw 登录态失效，请重新登录');
+          if (resp.status === 402) throw new Error('CREDITS_INSUFFICIENT — 积分余额不足，请前往钱包充值');
+          const errText = await resp.text().catch(() => '');
+          throw new Error(`AI API ${resp.status}: ${errText.slice(0, 200)}`);
+        }
+        const json = await resp.json() as any;
+        const raw = json?.choices?.[0]?.message?.content || '';
+        if (!raw) {
+          coworkLog('WARN', 'phaseRunner', 'AI returned empty content', { json });
+          throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
+        }
+        // Parse the JSON rewrite payload. Retry parse once if it fails —
+        // cheap and catches the occasional 'almost-JSON' response.
+        const parsed = parseJsonSafe(raw);
+        if (!parsed) {
+          coworkLog('WARN', 'phaseRunner', 'AI response not JSON', { rawHead: raw.slice(0, 300) });
+          throw new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
+        }
+        return parsed;
+      } catch (err: any) {
+        if (err?.name === 'AbortError' || progress.isAbortRequested()) {
+          throw new Error('user_stopped');
+        }
+        throw err;
       } finally {
         clearInterval(heartbeat);
+        clearInterval(abortPoll);
       }
     },
 
