@@ -26,6 +26,25 @@ chrome.tabs.onActivated.addListener(() => {
   if (!connected) connect();
 });
 
+// macOS-specific: on macOS, closing the last Chrome window DOES NOT kill the
+// Chrome process (stays in dock). Reopening via dock just re-focuses existing
+// process, so chrome.runtime.onStartup doesn't fire and tabs.onActivated
+// doesn't fire (no tab change, just window focus). Use windows.onFocusChanged
+// to detect "user just brought Chrome to foreground" on any platform.
+if (chrome.windows && chrome.windows.onFocusChanged) {
+  chrome.windows.onFocusChanged.addListener((windowId) => {
+    if (windowId === chrome.windows.WINDOW_ID_NONE) return; // lost focus
+    if (!connected) connect();
+  });
+}
+
+// Also reconnect on tabs.onUpdated — catches "user typed a URL / navigated"
+// which is a strong signal the user is actively using the browser and should
+// have the assistant connected.
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  if (changeInfo.status === 'complete' && !connected) connect();
+});
+
 
 // Resize image to reduce token usage
 async function resizeImage(dataUrl, maxWidth) {
