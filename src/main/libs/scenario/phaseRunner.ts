@@ -320,7 +320,11 @@ function buildContext(
 
     // Call backend API (e.g. image generation) — includes auth token,
     // abortable via progress.isAbortRequested() every 300ms.
-    apiCall: async (endpoint: string, body: any) => {
+    //
+    // Pass `body` for POST (default). Omit body (or pass undefined) to
+    // issue a GET — used by the async image-job polling flow which hits
+    // /api/image/status/:job_id.
+    apiCall: async (endpoint: string, body?: any) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const baseUrl = 'https://api.noobclaw.com';
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -328,6 +332,8 @@ function buildContext(
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
+
+      const method = body === undefined ? 'GET' : 'POST';
 
       // AbortController so we can cancel the fetch mid-flight when the user
       // hits stop — without this, the client blocks for up to a minute on
@@ -340,18 +346,22 @@ function buildContext(
         }
       }, 300);
 
-      // Heartbeat: 图片生成要 30-60s，每 8s 汇报一次让用户知道没卡死
+      // Heartbeat only for long-running POSTs (not short GET polls).
+      // /status/:id polls come back in <100ms each, a heartbeat would
+      // flood the log.
       const started = Date.now();
-      const heartbeat = setInterval(() => {
-        const secs = Math.round((Date.now() - started) / 1000);
-        ctx.report('仍在生成中... (' + secs + 's)');
-      }, 8000);
+      const heartbeat = method === 'POST'
+        ? setInterval(() => {
+            const secs = Math.round((Date.now() - started) / 1000);
+            if (secs >= 8) ctx.report('仍在生成中... (' + secs + 's)');
+          }, 8000)
+        : null;
 
       try {
         const resp = await fetch(baseUrl + endpoint, {
-          method: 'POST',
+          method,
           headers,
-          body: JSON.stringify(body),
+          body: method === 'POST' ? JSON.stringify(body) : undefined,
           signal: controller.signal,
         });
         if (!resp.ok) {
@@ -369,7 +379,7 @@ function buildContext(
         throw err;
       } finally {
         clearInterval(abortPoll);
-        clearInterval(heartbeat);
+        if (heartbeat) clearInterval(heartbeat);
       }
     },
 
