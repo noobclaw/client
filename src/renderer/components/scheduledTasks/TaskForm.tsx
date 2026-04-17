@@ -403,7 +403,7 @@ const TaskForm: React.FC<TaskFormProps> = ({ mode, task, onCancel, onSaved }) =>
                 className={`${inputClass} cursor-pointer`}
               >
                 <option value="">分</option>
-                {[0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(m => (
+                {Array.from({ length: 60 }, (_, i) => i).map(m => (
                   <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>
                 ))}
               </select>

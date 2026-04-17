@@ -1059,10 +1059,19 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: '对比',
 
     // Quick-start banner (XhsWorkflowsPage)
-    scenarioQuickStartTitle: '一键开始 · 小红书爆款仿写',
-    scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
+    scenarioQuickStartTitle: '一键开始 · 小红书爆款批量仿写',
+    scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里通过关键词自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
     scenarioQuickStartBtn: '立即开始',
     scenarioQuickStartContinueBtn: '开始仿写',
+
+    // Link-based rewrite
+    scenarioLinkModeTitle: '指定链接 · 小红书爆款仿写',
+    scenarioLinkModeDesc: '不通过关键词搜索，直接粘贴 1-3 个小红书文章链接，NoobClaw 取下原文，AI 改写标题和正文，生成新配图并上传到创作中心草稿箱。',
+    scenarioLinkModeBtn: '粘贴链接开始',
+    scenarioLinkModeLabel: '小红书文章链接',
+    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\n每行一个，最多 3 个',
+    scenarioLinkModeSubmit: '开始仿写',
+    scenarioLinkModeHint: '每行一个链接，1-3 个',
 
     // Login gate modal
     scenarioLoginRequiredTitle: '请先登录小红书',
@@ -2291,10 +2300,19 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: 'Comparison',
 
     // Quick-start banner
-    scenarioQuickStartTitle: 'One-click start · Xiaohongshu viral rewrite',
-    scenarioQuickStartDesc: 'NoobClaw auto-discovers viral posts in your logged-in Xiaohongshu session, extracts them with AI, rewrites in your persona, and drops them into the creator-center draft box.',
+    scenarioQuickStartTitle: 'One-click start · Batch viral rewrite',
+    scenarioQuickStartDesc: 'NoobClaw auto-discovers viral posts via keywords in your logged-in Xiaohongshu session, extracts them with AI, rewrites in your persona, and drops them into the creator-center draft box.',
     scenarioQuickStartBtn: 'Start now',
     scenarioQuickStartContinueBtn: 'Continue',
+
+    // Link-based rewrite
+    scenarioLinkModeTitle: 'Pick-your-links · XHS rewrite',
+    scenarioLinkModeDesc: 'Skip keyword search — paste 1-3 Xiaohongshu article URLs. NoobClaw fetches them, AI rewrites titles + body, generates new images, uploads to the creator-center draft box.',
+    scenarioLinkModeBtn: 'Paste links & start',
+    scenarioLinkModeLabel: 'XHS article URLs',
+    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\none per line, up to 3',
+    scenarioLinkModeSubmit: 'Start rewriting',
+    scenarioLinkModeHint: 'One URL per line, 1-3 total',
 
     // Login gate modal
     scenarioLoginRequiredTitle: 'Please log in to Xiaohongshu',

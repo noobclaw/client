@@ -111,13 +111,16 @@ export interface ScenarioTask {
    *  on-disk artifact organization and default keywords. */
   track: string;
   keywords: string[];
+  /** Link-mode: if set, orchestrator skips keyword search and visits
+   *  these XHS article URLs directly. 1-3 URLs. */
+  urls?: string[];
   persona: string;
   daily_count: number;
   variants_per_post: number;
   /** Preferred run time in HH:MM (24h local). Used when interval is 'daily'. */
   daily_time: string;
-  /** Run interval: '30min' | '1h' | '6h' | 'daily' */
-  run_interval: '30min' | '1h' | '6h' | 'daily';
+  /** Run interval: '30min' | '1h' | '6h' | 'daily' | 'once' */
+  run_interval: '30min' | '1h' | '6h' | 'daily' | 'once';
   /** Legacy field */
   schedule_window?: string;
   enabled: boolean;
