@@ -265,6 +265,7 @@ interface IElectronAPI {
     updateTask: (id: string, patch: Partial<ScenarioTaskIPC>) => Promise<ScenarioTaskIPC | null>;
     deleteTask: (id: string) => Promise<boolean>;
     runTaskNow: (id: string) => Promise<ScenarioRunOutcome>;
+    uploadDraft: (taskId: string, draftId: string) => Promise<{ status: 'started' | 'failed' | 'skipped' | 'ok'; reason?: string }>;
     runStatus: (id: string) => Promise<{ runs: ScenarioTaskRun[]; cooldown_ends_at: number }>;
     listDrafts: (taskId?: string) => Promise<ScenarioDraftIPC[]>;
     pushDraft: (draftId: string) => Promise<{ status: 'ready_for_user' | 'failed'; error?: string }>;

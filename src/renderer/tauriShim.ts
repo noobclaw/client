@@ -247,6 +247,7 @@ export function createTauriElectronShim(): typeof window.electron {
       updateTask: (id: string, patch: any) => ipcInvoke('scenario:updateTask', id, patch),
       deleteTask: (id: string) => ipcInvoke('scenario:deleteTask', id),
       runTaskNow: (id: string) => ipcInvoke('scenario:runTaskNow', id).then(r => r ?? { status: 'failed', reason: 'ipc_error' }),
+      uploadDraft: (taskId: string, draftId: string) => ipcInvoke('scenario:uploadDraft', { taskId, draftId }).then(r => r ?? { status: 'failed', reason: 'ipc_error' }),
       runStatus: (id: string) => ipcInvoke('scenario:runStatus', id).then(r => r ?? { runs: [], cooldown_ends_at: 0 }),
       listDrafts: (taskId?: string) => ipcInvoke('scenario:listDrafts', taskId).then(r => r ?? []),
       pushDraft: (draftId: string) => ipcInvoke('scenario:pushDraft', draftId).then(r => r ?? { status: 'failed', error: 'ipc_error' }),

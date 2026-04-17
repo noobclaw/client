@@ -124,7 +124,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
-  const [, setDrafts] = useState<Draft[]>([]);
+  const [drafts, setDrafts] = useState<Draft[]>([]);
+  const [uploadingDraftId, setUploadingDraftId] = useState<string | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -520,7 +521,95 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         })}
       </div>
 
-      {/* Drafts section removed — results shown in progress log */}
+      {/* ── Generated drafts list ── */}
+      {drafts.length > 0 && (() => {
+        const todayStr = new Date().toISOString().slice(0, 10);
+        const uploadedToday = drafts.filter(d => d.status === 'pushed' && d.pushed_at && new Date(d.pushed_at).toISOString().slice(0, 10) === todayStr).length;
+        const DAILY_CAP = 3;
+        const capReached = uploadedToday >= DAILY_CAP;
+        return (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mt-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold dark:text-white">
+                {isZh ? '📋 已生成草稿' : '📋 Generated Drafts'} <span className="text-gray-500 font-normal">({drafts.length})</span>
+              </h3>
+              <div className={`text-xs px-2 py-1 rounded ${capReached ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                {isZh ? `今日已上传 ${uploadedToday} / ${DAILY_CAP}` : `Today: ${uploadedToday} / ${DAILY_CAP} uploaded`}
+              </div>
+            </div>
+            {capReached && (
+              <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                ⚠️ {isZh ? '今日上传已达 3 篇上限，明天再上传可降低封号风险' : 'Daily upload cap reached (3). Upload more tomorrow to reduce ban risk.'}
+              </div>
+            )}
+            <div className="space-y-2">
+              {drafts.map((d) => {
+                const isUploaded = d.status === 'pushed';
+                const isUploading = uploadingDraftId === d.id || (running && !isUploaded);
+                const uploadBtnDisabled = isUploading || isUploaded || capReached;
+                return (
+                  <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-medium dark:text-white truncate">{d.variant?.title || '(无标题)'}</span>
+                        {isUploaded ? (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 border border-green-500/30 shrink-0">
+                            ✓ {isZh ? '已上传' : 'Uploaded'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 shrink-0">
+                            {isZh ? '未上传' : 'Pending'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                        {(d.variant?.body || '').slice(0, 80).replace(/\n/g, ' ')}...
+                      </div>
+                      <div className="text-[11px] text-gray-400 mt-0.5">
+                        {isUploaded && d.pushed_at ? (isZh ? '上传于 ' : 'Uploaded ') + new Date(d.pushed_at).toLocaleString() : (isZh ? '生成于 ' : 'Generated ') + new Date(d.created_at).toLocaleString()}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={uploadBtnDisabled}
+                      onClick={async () => {
+                        if (uploadBtnDisabled) return;
+                        setUploadingDraftId(d.id);
+                        try {
+                          const r = await scenarioService.uploadDraft(task.id, d.id);
+                          if (r.status === 'started') {
+                            setRunning(true);
+                            showToast('ok', isZh ? '已开始上传，进度见上方' : 'Upload started, see progress above');
+                          } else if (r.status === 'skipped') {
+                            showToast('warn', isZh ? '另一个任务正在运行' : 'Another task is running');
+                          } else {
+                            showToast('err', (isZh ? '上传失败: ' : 'Upload failed: ') + (r.reason || ''));
+                          }
+                        } catch (e) {
+                          showToast('err', String(e).slice(0, 120));
+                        } finally {
+                          setUploadingDraftId(null);
+                          void refreshData();
+                        }
+                      }}
+                      className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+                        uploadBtnDisabled
+                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                          : 'bg-green-500 text-white hover:bg-green-600'
+                      }`}
+                    >
+                      {isUploaded ? (isZh ? '✓ 已上传' : '✓ Uploaded') : (uploadingDraftId === d.id ? (isZh ? '上传中...' : 'Uploading...') : (isZh ? '📤 上传到草稿箱' : '📤 Upload'))}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-3">
+              {isZh ? '💡 单日上传 ≤3 篇，发布时段尽量避开深夜，可大幅降低风控概率' : '💡 ≤3 uploads/day, avoid late-night posting to minimize ban risk'}
+            </p>
+          </div>
+        );
+      })()}
 
       {loginModalOpen && (
         <LoginRequiredModal

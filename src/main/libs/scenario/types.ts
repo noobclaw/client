@@ -99,6 +99,10 @@ export interface ScenarioPack {
   prompts: Record<string, string>;
   config: DiscoveryConfig;
   orchestrator: string;           // JS code downloaded from server
+  /** JS code for uploading a single already-generated draft. Used by
+   *  TaskDetailPage "📤 上传" per-draft button. Downloaded from
+   *  scenario pack's upload_draft_script slot. */
+  upload_draft_script?: string;
   draft_uploader?: any;
 }
 

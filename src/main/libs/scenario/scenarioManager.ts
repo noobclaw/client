@@ -35,6 +35,7 @@ async function loadPack(scenario_id: string): Promise<ScenarioPack | null> {
     prompts: raw.prompts || {},
     config: raw.config || {},
     orchestrator: raw.orchestrator || '',
+    upload_draft_script: raw.upload_draft_script || '',
     draft_uploader: raw.draft_uploader || null,
   };
   packCache.set(scenario_id, pack);
@@ -159,6 +160,113 @@ export function getRunningTaskId(): string | null {
  *   daily cap and interval checks (only mutex is enforced). Scheduled
  *   auto-runs pass false/undefined and are subject to all risk guards.
  */
+/**
+ * Upload ONE specific already-generated draft to XHS draft box.
+ * Used by TaskDetailPage "📤 上传" per-draft button when the task was
+ * created with auto_upload=false (safer mode).
+ * Reads the cover/content images back from disk (they were saved by
+ * artifactWriter during the original run), reconstructs the draft
+ * payload, and runs the pack's upload_draft.js orchestrator.
+ */
+export async function uploadOneDraft(taskId: string, draftId: string): Promise<RunOutcome> {
+  if (runningTaskId) {
+    return { status: 'skipped', reason: 'another_task_running' };
+  }
+  const task = taskStore.getTask(taskId);
+  if (!task) return { status: 'failed', reason: 'task_not_found' };
+  const draft = taskStore.getDraft(draftId);
+  if (!draft) return { status: 'failed', reason: 'draft_not_found' };
+
+  runningTaskId = task.id;
+  initProgress(task.id);
+
+  try {
+    const pack = await loadPack(task.scenario_id);
+    if (!pack) {
+      finishProgress('error', 'scenario_pack_not_found');
+      return { status: 'failed', reason: 'scenario_pack_not_found' };
+    }
+    const script = pack.upload_draft_script;
+    if (!script) {
+      finishProgress('error', 'no_upload_script');
+      return { status: 'failed', reason: 'no_upload_script' };
+    }
+
+    // Reload images from disk (saved by artifactWriter during original run).
+    // Path: <taskOutputDir>/改写/配图-<rewriteTitle>/{cover,content}_N.{jpg,png}
+    const fs = await import('fs');
+    const path = await import('path');
+    const { getTaskOutputDir } = await import('./artifactWriter');
+    const batchDir = getTaskOutputDir(task);
+    // Search the most recent batch that has this draft's images
+    const rewritesDir = path.join(batchDir, '改写');
+    const imagesReloaded: { type: string; base64: string; mimeType: string }[] = [];
+    try {
+      const rewriteTitle = (draft.variant?.title || '').slice(0, 80);
+      // sanitize to match artifactWriter's folder name rule
+      const sanitize = (s: string) => s.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').slice(0, 80);
+      const imgDirName = '配图-' + sanitize(rewriteTitle);
+      const imgDir = path.join(rewritesDir, imgDirName);
+      if (fs.existsSync(imgDir)) {
+        const files = fs.readdirSync(imgDir).sort();
+        for (const f of files) {
+          const filePath = path.join(imgDir, f);
+          const ext = path.extname(f).toLowerCase();
+          const mime = ext === '.png' ? 'image/png' : 'image/jpeg';
+          const type = f.startsWith('cover') ? 'cover' : 'content';
+          try {
+            const buf = fs.readFileSync(filePath);
+            imagesReloaded.push({ type, base64: buf.toString('base64'), mimeType: mime });
+          } catch { /* skip */ }
+        }
+      }
+    } catch (e) {
+      coworkLog('WARN', 'scenarioManager', 'uploadOneDraft: image reload failed', { err: String(e) });
+    }
+
+    if (imagesReloaded.length === 0) {
+      finishProgress('error', 'no_local_images');
+      return { status: 'failed', reason: 'no_local_images' };
+    }
+
+    const targetDraft = {
+      id: draft.id,
+      variant: draft.variant,
+      images: imagesReloaded,
+    };
+
+    const seen = taskStore.getSeenPostIds(task.id);
+    const result = await runOrchestrator(pack, task, seen, {
+      stepStart,
+      stepLog,
+      stepDone,
+      stepError,
+      finishProgress,
+      isAbortRequested: () => abortRequested,
+    }, { scriptOverride: script, targetDraft });
+
+    // Update draft status on successful upload
+    if (result.status === 'ok') {
+      taskStore.updateDraft(draft.id, { status: 'pushed', pushed_at: Date.now() });
+      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
+        finishProgress('done');
+      }
+    } else {
+      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
+        finishProgress('error', result.reason || 'upload_failed');
+      }
+    }
+
+    return result;
+  } finally {
+    runningTaskId = null;
+    abortRequested = false;
+    setTimeout(() => {
+      if (currentProgress?.taskId === taskId) currentProgress = null;
+    }, 30000);
+  }
+}
+
 export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
   if (runningTaskId) {
     return { status: 'skipped', reason: 'another_task_running' };

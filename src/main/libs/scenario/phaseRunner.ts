@@ -395,13 +395,18 @@ export async function runOrchestrator(
   task: ScenarioTask,
   seenPostIds: Set<string>,
   progress: ProgressFns,
+  options?: { scriptOverride?: string; targetDraft?: any },
 ): Promise<RunResult> {
-  const orchestratorCode = pack.orchestrator;
+  const orchestratorCode = options?.scriptOverride || pack.orchestrator;
   if (!orchestratorCode) {
     return { status: 'failed', reason: 'no_orchestrator_in_pack' };
   }
 
   const ctx = buildContext(pack, task, seenPostIds, progress);
+  // Inject target draft for the upload_draft.js path
+  if (options?.targetDraft) {
+    (ctx as any)._targetDraft = options.targetDraft;
+  }
 
   try {
     const fn = new AsyncFunction('ctx', orchestratorCode);

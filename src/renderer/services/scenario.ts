@@ -81,6 +81,12 @@ class ScenarioService {
     return window.electron.scenario.runTaskNow(id);
   }
 
+  /** Upload a single already-generated draft. Used by TaskDetailPage
+   *  per-draft 📤 button when auto_upload was false. */
+  uploadDraft(taskId: string, draftId: string): Promise<{ status: string; reason?: string }> {
+    return (window.electron.scenario as any).uploadDraft(taskId, draftId);
+  }
+
   runStatus(id: string): Promise<{ runs: ScenarioTaskRun[]; cooldown_ends_at: number }> {
     return window.electron.scenario.runStatus(id);
   }

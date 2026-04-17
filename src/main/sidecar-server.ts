@@ -1502,6 +1502,36 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { status: 'failed', reason });
             }
           }
+          case 'scenario:uploadDraft': {
+            // { taskId, draftId } — upload a single already-generated draft
+            // to XHS draft box. Used by TaskDetailPage per-draft 📤 button.
+            const scenarioTaskStore = require('./libs/scenario/taskStore');
+            if (!scenarioTaskStore._loaded) {
+              scenarioTaskStore.initTaskStore(getUserDataPath());
+              scenarioTaskStore._loaded = true;
+            }
+            try {
+              const scenarioManager = require('./libs/scenario/scenarioManager');
+              const { taskId, draftId } = args[0] || {};
+              if (!taskId || !draftId) {
+                return writeJSON(res, 200, { status: 'failed', reason: 'missing_ids' });
+              }
+              // Fire-and-forget, same pattern as runTaskNow
+              scenarioManager.uploadOneDraft(taskId, draftId).then((result: any) => {
+                coworkLog('INFO', 'sidecar-server', `scenario:uploadDraft completed`, {
+                  taskId, draftId, status: result?.status, reason: result?.reason,
+                });
+              }).catch((e: any) => {
+                coworkLog('ERROR', 'sidecar-server', `scenario:uploadDraft threw`, {
+                  taskId, draftId, error: e.message || String(e),
+                });
+              });
+              return writeJSON(res, 200, { status: 'started' });
+            } catch (e: any) {
+              const reason = e.message || e.stack || String(e) || 'unknown_error';
+              return writeJSON(res, 200, { status: 'failed', reason });
+            }
+          }
           case 'scenario:getRunningTaskId': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             return writeJSON(res, 200, { runningTaskId: scenarioManager.getRunningTaskId() });
