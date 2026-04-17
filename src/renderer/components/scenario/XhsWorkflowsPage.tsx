@@ -70,6 +70,9 @@ interface Props {
   // onOpenWorkflow removed — no intermediate workflow detail page
   onOpenTask: (task_id: string) => void;
   onConfigure: (scenario: Scenario) => void;
+  /** Called after a new task is created (e.g. link-mode submit)
+   *  so parent can refresh its tasks[] list before routing to detail. */
+  onChanged?: () => void | Promise<void>;
 }
 
 export const XhsWorkflowsPage: React.FC<Props> = ({
@@ -80,6 +83,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   // onOpenWorkflow — unused until auto_reply / mass_comment ship
   onOpenTask,
   onConfigure,
+  onChanged,
 }) => {
   const scenarioById = new Map(scenarios.map(s => [s.id, s]));
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
@@ -186,9 +190,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       } as any);
       setLinkModalOpen(false);
       setLinksText('');
-      // 先跳转到任务详情，再异步触发运行，用户能立刻看到进度
+      // 先 refresh 父组件 tasks[]，否则跳转后 TaskDetailPage.tasks.find() 找不到新任务显示"无任务"
+      if (onChanged) { await onChanged(); }
+      // 然后跳转详情 + 异步触发运行
       onOpenTask(task.id);
-      // 不 await 运行 — 否则 await 可能阻塞几分钟
       scenarioService.runTaskNow(task.id).catch((e) => {
         console.error('[LinkMode] runTaskNow failed:', e);
       });

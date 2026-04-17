@@ -187,6 +187,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           loading={loading}
           onOpenTask={openTask}
           onConfigure={openWizardFor}
+          onChanged={refreshAll}
         />
       );
     }

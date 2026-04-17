@@ -99,13 +99,13 @@ function renderLogMessage(message: string) {
 const STEP_NAMES_ZH = [
   '采集爆款文章。请勿切换浏览器标签页。',
   'AI 改写标题和内容，保存到本地',
-  'AI 生成配图',
+  'AI 生成图片，保存到本地',
   '上传到小红书草稿箱。请勿切换浏览器标签页。',
 ];
 const STEP_NAMES_EN = [
   'Scrape trending articles. Do not switch browser tabs.',
   'AI rewrites titles & content, saved locally',
-  'AI generates images',
+  'AI generates images, saved locally',
   'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
 
@@ -124,8 +124,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
-  const [drafts, setDrafts] = useState<Draft[]>([]);
-  const [uploadingDraftId, setUploadingDraftId] = useState<string | null>(null);
+  const [, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'warn' | 'err'; text: string } | null>(null);
   const [loginModalOpen, setLoginModalOpen] = useState(false);
@@ -437,9 +436,20 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       )}
 
       {/* 运行明细 */}
-      <h2 className="text-base font-bold dark:text-white mb-4">{isZh ? '运行明细' : 'Run Details'}</h2>
-      <div className="space-y-4">
-        {STEP_NAMES.map((name, idx) => {
+      {(() => {
+        const autoUploadMode = (task as any).auto_upload !== false;
+        return (
+          <>
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <h2 className="text-base font-bold dark:text-white">{isZh ? '运行明细' : 'Run Details'}</h2>
+              <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
+                {autoUploadMode
+                  ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload')
+                  : (isZh ? '📁 仅生成保存本地' : '📁 Generate only')}
+              </span>
+            </div>
+            <div className="space-y-4">
+              {STEP_NAMES.map((n, i) => ({ name: n, idx: i })).map(({ name, idx }) => {
           const stepNum = idx + 1;
           const sp = progress?.steps?.[idx];
           const status = sp?.status || 'waiting';
@@ -448,20 +458,43 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           const isDone = status === 'done';
           const isError = status === 'error';
 
+          // 仅生成模式的 step 4：不跑上传，替换为"手动上传指引 + 打开目录按钮"
+          const isManualUploadStep = stepNum === 4 && !autoUploadMode;
+          const displayName = isManualUploadStep
+            ? (isZh ? '请在本地手动上传到小红书草稿箱' : 'Manually upload from local folder')
+            : name;
           return (
             <div key={idx}>
               <div className={`text-sm font-medium mb-2 ${
                 isActive ? 'text-green-500' : isDone ? 'text-green-600 dark:text-green-400' : isError ? 'text-red-500' : 'dark:text-gray-300'
               }`}>
-                {STEP_LABELS[idx]}. {name}
+                {STEP_LABELS[idx]}. {displayName}
               </div>
               <div className={`rounded-xl border min-h-[60px] ${
-                isActive ? 'border-green-500/30 bg-green-500/5'
+                isManualUploadStep ? 'border-blue-500/30 bg-blue-500/5'
+                  : isActive ? 'border-green-500/30 bg-green-500/5'
                   : isDone ? 'border-green-500/20 bg-green-500/5'
                   : isError ? 'border-red-500/20 bg-red-500/5'
                   : 'border-gray-200 dark:border-gray-700'
               }`}>
-                {logs.length > 0 ? (
+                {isManualUploadStep ? (
+                  <div className="p-4 text-xs dark:text-gray-300 space-y-2">
+                    <p>{isZh ? '已生成的标题、正文、配图都保存在本地。打开下方文件夹，自己挑选文章并手动上传到小红书草稿箱（每篇 ≤3 篇/天可降低封号风险）。' : 'Generated titles, bodies and images are saved locally. Open the folder below and manually upload to XHS drafts (≤3/day to reduce ban risk).'}</p>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        try {
+                          const res = await window.electron?.scenario?.getTaskDir?.(task.id);
+                          const dir = typeof res === 'string' ? res : res?.dir;
+                          if (dir) window.electron?.shell?.openPath?.(dir);
+                        } catch {}
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                    >
+                      📂 {isZh ? '打开本地文件夹' : 'Open folder'}
+                    </button>
+                  </div>
+                ) : logs.length > 0 ? (
                   <div
                     className="overflow-y-auto p-3 space-y-1"
                     style={{ maxHeight: '160px' }}
@@ -519,164 +552,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
             </div>
           );
         })}
-      </div>
-
-      {/* ── Generated drafts list ── */}
-      {drafts.length > 0 && (() => {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const uploadedToday = drafts.filter(d => d.status === 'pushed' && d.pushed_at && new Date(d.pushed_at).toISOString().slice(0, 10) === todayStr).length;
-        const DAILY_CAP = 3;
-        const capReached = uploadedToday >= DAILY_CAP;
-        const pendingDrafts = drafts.filter(d => d.status !== 'pushed');
-        const batchRunnable = !capReached && !running && pendingDrafts.length > 0;
-        const remainingCap = Math.max(0, DAILY_CAP - uploadedToday);
-        const batchCount = Math.min(pendingDrafts.length, remainingCap);
-
-        const handleBatchUpload = async () => {
-          if (!batchRunnable) return;
-          const toUpload = pendingDrafts.slice(0, batchCount);
-          if (toUpload.length === 0) return;
-          if (!confirm(isZh ? `将依次上传 ${toUpload.length} 篇未上传的草稿（今日剩余额度 ${remainingCap}）？每篇之间会有 1-3 分钟随机间隔以降低风控。` : `Upload ${toUpload.length} pending drafts sequentially? 1-3 min random gap between each to reduce ban risk.`)) return;
-          for (let i = 0; i < toUpload.length; i++) {
-            const d = toUpload[i];
-            setUploadingDraftId(d.id);
-            try {
-              const r = await scenarioService.uploadDraft(task.id, d.id);
-              if (r.status === 'started') {
-                // Wait for this upload to finish (poll running state)
-                await new Promise<void>((resolve) => {
-                  const check = setInterval(async () => {
-                    const rid = await scenarioService.getRunningTaskId().catch(() => null);
-                    if (!rid) { clearInterval(check); resolve(); }
-                  }, 2000);
-                  setTimeout(() => { clearInterval(check); resolve(); }, 10 * 60 * 1000);
-                });
-                // Pause 1-3 minutes before next
-                if (i < toUpload.length - 1) {
-                  const gap = (60 + Math.random() * 120) * 1000;
-                  showToast('ok', (isZh ? `✓ 第 ${i + 1} 篇完成，等待 ${Math.round(gap / 1000)} 秒...` : `✓ ${i + 1} done, waiting ${Math.round(gap / 1000)}s...`));
-                  await new Promise((r2) => setTimeout(r2, gap));
-                }
-              } else {
-                showToast('err', (isZh ? '第 ' + (i + 1) + ' 篇失败: ' : 'Draft ' + (i + 1) + ' failed: ') + (r.reason || ''));
-              }
-            } catch (e) {
-              showToast('err', String(e).slice(0, 120));
-            }
-          }
-          setUploadingDraftId(null);
-          void refreshData();
-          showToast('ok', isZh ? '🎉 批量上传完成' : '🎉 Batch upload done');
-        };
-
-        return (
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mt-4">
-            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-              <h3 className="text-sm font-semibold dark:text-white">
-                {isZh ? '📋 已生成草稿' : '📋 Generated Drafts'} <span className="text-gray-500 font-normal">({drafts.length})</span>
-              </h3>
-              <div className="flex items-center gap-2">
-                <div className={`text-xs px-2 py-1 rounded ${capReached ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
-                  {isZh ? `今日已上传 ${uploadedToday} / ${DAILY_CAP}` : `Today: ${uploadedToday} / ${DAILY_CAP}`}
-                </div>
-                <button
-                  type="button"
-                  disabled={!batchRunnable}
-                  onClick={handleBatchUpload}
-                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
-                    batchRunnable
-                      ? 'bg-green-500 text-white hover:bg-green-600'
-                      : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                  }`}
-                  title={isZh ? '跳过已上传的草稿，最多上传今日剩余额度 ' + remainingCap + ' 篇' : 'Skips already-uploaded; max ' + remainingCap + ' left today'}
-                >
-                  📤 {isZh ? '批量上传' : 'Batch Upload'} {batchCount > 0 ? `(${batchCount})` : ''}
-                </button>
-              </div>
             </div>
-            {capReached && (
-              <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-                ⚠️ {isZh ? '今日上传已达 3 篇上限，明天再上传可降低封号风险' : 'Daily upload cap reached (3). Upload more tomorrow to reduce ban risk.'}
-              </div>
-            )}
-            <div className="space-y-2">
-              {drafts.map((d) => {
-                const isUploaded = d.status === 'pushed';
-                const isUploading = uploadingDraftId === d.id || (running && !isUploaded);
-                // 单篇按钮：已上传的允许重传（用户明确意图），只在运行中/达日上限时禁用
-                const uploadBtnDisabled = isUploading || capReached;
-                return (
-                  <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-medium dark:text-white truncate">{d.variant?.title || '(无标题)'}</span>
-                        {isUploaded ? (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-500/10 text-green-500 border border-green-500/30 shrink-0">
-                            ✓ {isZh ? '已上传' : 'Uploaded'}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 shrink-0">
-                            {isZh ? '未上传' : 'Pending'}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-                        {(d.variant?.body || '').slice(0, 80).replace(/\n/g, ' ')}...
-                      </div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">
-                        {isUploaded && d.pushed_at ? (isZh ? '上传于 ' : 'Uploaded ') + new Date(d.pushed_at).toLocaleString() : (isZh ? '生成于 ' : 'Generated ') + new Date(d.created_at).toLocaleString()}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={uploadBtnDisabled}
-                      onClick={async () => {
-                        if (uploadBtnDisabled) return;
-                        // 已上传过的再传需要用户确认（避免误点产生重复）
-                        if (isUploaded) {
-                          const ok = confirm(isZh ? '此篇已上传过，再次上传会在草稿箱产生重复。确认继续？' : 'Already uploaded. Uploading again will duplicate in draft box. Continue?');
-                          if (!ok) return;
-                        }
-                        setUploadingDraftId(d.id);
-                        try {
-                          const r = await scenarioService.uploadDraft(task.id, d.id);
-                          if (r.status === 'started') {
-                            setRunning(true);
-                            showToast('ok', isZh ? '已开始上传，进度见上方' : 'Upload started, see progress above');
-                          } else if (r.status === 'skipped') {
-                            showToast('warn', isZh ? '另一个任务正在运行' : 'Another task is running');
-                          } else {
-                            showToast('err', (isZh ? '上传失败: ' : 'Upload failed: ') + (r.reason || ''));
-                          }
-                        } catch (e) {
-                          showToast('err', String(e).slice(0, 120));
-                        } finally {
-                          setUploadingDraftId(null);
-                          void refreshData();
-                        }
-                      }}
-                      className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
-                        uploadBtnDisabled
-                          ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                          : (isUploaded ? 'bg-gray-500 text-white hover:bg-gray-600' : 'bg-green-500 text-white hover:bg-green-600')
-                      }`}
-                    >
-                      {uploadingDraftId === d.id
-                        ? (isZh ? '上传中...' : 'Uploading...')
-                        : isUploaded
-                          ? (isZh ? '🔁 再上传一次' : '🔁 Re-upload')
-                          : (isZh ? '📤 上传到草稿箱' : '📤 Upload')}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="text-[11px] text-gray-400 mt-3">
-              {isZh ? '💡 单日上传 ≤3 篇，发布时段尽量避开深夜，可大幅降低风控概率' : '💡 ≤3 uploads/day, avoid late-night posting to minimize ban risk'}
-            </p>
-          </div>
+          </>
         );
       })()}
+
 
       {loginModalOpen && (
         <LoginRequiredModal
