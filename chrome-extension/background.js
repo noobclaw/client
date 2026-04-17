@@ -182,36 +182,49 @@ async function getActiveTab() {
 
 async function injectContentScript(tabId) {
   try {
-    // Check if already injected
     const [result] = await chrome.scripting.executeScript({
       target: { tabId },
       func: () => window.__noobclaw_injected === true,
     });
-    if (result?.result) return; // Already injected
+    if (result?.result) return true; // Already injected
     await chrome.scripting.executeScript({
       target: { tabId },
       files: ['content.js'],
     });
   } catch (e) {
-    // Already injected or restricted page (chrome://, edge://, etc.)
+    console.warn('[NoobClaw] injectContentScript failed:', e?.message);
+    return false;
   }
-  // Wait a bit for content script to initialize
-  await new Promise(r => setTimeout(r, 100));
+  // Content script registers its message listener synchronously on load,
+  // but chrome.scripting.executeScript resolves before that happens on
+  // a just-loaded or navigating page. 500ms is enough in practice.
+  await new Promise(r => setTimeout(r, 500));
+  return true;
 }
 
-async function sendToContentScript(tabId, command, params, retries = 2) {
+async function sendToContentScript(tabId, command, params, retries = 4) {
+  let lastErr;
   for (let i = 0; i <= retries; i++) {
     try {
       return await chrome.tabs.sendMessage(tabId, { command, params });
     } catch (e) {
-      if (i < retries && e.message?.includes('Receiving end does not exist')) {
-        // Content script not ready, re-inject and retry
+      lastErr = e;
+      const msg = e?.message || '';
+      const transient =
+        msg.includes('Receiving end does not exist') ||
+        msg.includes('The message port closed') ||
+        msg.includes('Could not establish connection');
+      if (i < retries && transient) {
+        // Content script not ready — re-inject and retry with exponential backoff.
+        console.warn(`[NoobClaw] cs message retry ${i + 1}/${retries}: ${msg}`);
         await injectContentScript(tabId);
+        await new Promise(r => setTimeout(r, 300 * (i + 1)));
         continue;
       }
       throw e;
     }
   }
+  throw lastErr;
 }
 
 async function executeCommand(msg) {
