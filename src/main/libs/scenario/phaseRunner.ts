@@ -16,7 +16,7 @@ import { sendBrowserCommand } from '../browserBridge';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
-import { getCurrentApiConfig, getNoobClawAuthToken } from '../claudeSettings';
+import { getNoobClawAuthToken } from '../claudeSettings';
 import { writeTaskArtifacts } from './artifactWriter';
 import type {
   Draft,
@@ -247,25 +247,31 @@ function buildContext(
         userMessage = typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput);
       }
 
-      const baseCfg = getCurrentApiConfig();
-      if (!baseCfg || !baseCfg.apiKey) throw new Error('AI_NOT_CONFIGURED — 请在设置中连接 AI 服务');
-
-      // Force chat model for scenario rewrites — reasoner burns too many
-      // tokens on thinking and truncates the JSON output. Chat is faster
-      // and more reliable for structured-output tasks like rewrite.
+      // Scenario rewrite must ALWAYS go through our NoobClaw proxy with
+      // model=noobclawai-chat, regardless of the user's current default
+      // provider. Rationale:
+      //   - We bill scenario usage against the user's NoobClaw balance,
+      //     not their personal Qwen/Kimi/DeepSeek-direct key. Using a
+      //     third-party provider here would route the cost to them
+      //     (surprise invoice) AND skip our metering / token ledger.
+      //   - The rewrite prompt is tuned for deepseek-chat's JSON
+      //     behaviour; swapping to reasoner/qwen/etc. regresses output
+      //     quality or outright breaks JSON parsing.
+      //   - Support is simpler when every scenario run uses the same
+      //     upstream.
       //
-      // BUT only for the NoobClaw provider. If the user switched their
-      // default to Qwen / DeepSeek-direct / Volcengine / etc., forcing
-      // 'noobclawai-chat' makes the upstream 404 because that model name
-      // only exists on our own proxy. For non-NoobClaw providers we
-      // respect the user's selected model as-is — reasoner is fine there
-      // since the upstream handles its own billing.
-      const baseUrl = String((baseCfg as any).baseURL || '');
-      const isNoobClawProvider = /noobclaw\.com\//i.test(baseUrl)
-        || /^noobclawai/i.test(String(baseCfg.model || ''));
-      const apiCfg = isNoobClawProvider
-        ? { ...baseCfg, model: 'noobclawai-chat' }
-        : baseCfg;
+      // So we construct the NoobClaw config inline, independent of the
+      // user's settings. The auth is the NoobClaw JWT (wallet login),
+      // not the user's personal API key.
+      const nbAuthToken = getNoobClawAuthToken();
+      if (!nbAuthToken) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
+      const apiCfg = {
+        apiKey: nbAuthToken,
+        baseURL: 'https://api.noobclaw.com/api/ai/chat/completions',
+        model: 'noobclawai-chat',
+        apiType: 'openai',
+        isOpenAICompat: true,
+      } as any;
 
       // Use streaming — show partial AI output in progress, abortable
       // Throttle UI updates to 1/s so logs (max 30 entries) aren't spammed
