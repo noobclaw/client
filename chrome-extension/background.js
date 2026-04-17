@@ -10,10 +10,20 @@ let connected = false;
 // Auto-connect on browser startup, install, and periodic keepalive
 chrome.runtime.onStartup.addListener(() => { connect(); });
 chrome.runtime.onInstalled.addListener(() => { connect(); });
-// Keepalive: reconnect every 30s if disconnected (MV3 service worker may sleep)
-chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
+// Keepalive: MV3 service workers sleep after ~30s idle; setTimeout timers
+// don't survive. Chrome alarms DO wake the SW reliably. Every 15 seconds:
+// if disconnected, attempt reconnect.
+chrome.alarms.create('keepalive', { periodInMinutes: 0.25 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepalive' && !connected) { connect(); }
+  if (alarm.name === 'reconnect' && !connected) { connect(); }
+});
+
+// Also reconnect when any tab activates — wakes the SW naturally and
+// handles the "user just opened Chrome" case where onStartup didn't fire
+// (e.g. Chrome was still running in background when last closed).
+chrome.tabs.onActivated.addListener(() => {
+  if (!connected) connect();
 });
 
 
@@ -108,12 +118,19 @@ function disconnect() {
 }
 
 function scheduleReconnect() {
-  if (reconnectTimer) return;
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-    reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
-    connect();
-  }, reconnectDelay);
+  // MV3 service worker can sleep mid-timeout. Use chrome.alarms instead —
+  // it wakes the SW reliably. Alarm min delay is 30s in packed extensions
+  // but ~1s in unpacked/dev. Still better than setTimeout which silently dies.
+  const delayMin = Math.max(0.25, reconnectDelay / 60000); // seconds → minutes
+  reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY);
+  try {
+    chrome.alarms.create('reconnect', { delayInMinutes: delayMin });
+  } catch (e) {
+    // Fallback
+    if (!reconnectTimer) {
+      reconnectTimer = setTimeout(() => { reconnectTimer = null; connect(); }, reconnectDelay);
+    }
+  }
 }
 
 function updateStatus(status) {

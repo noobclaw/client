@@ -43,5 +43,14 @@ reconnectBtn.addEventListener('click', () => {
 });
 
 chrome.runtime.sendMessage({ type: 'get_status' }, (response) => {
-  if (response) updateUI(response.connected ? 'connected' : 'disconnected');
+  if (response) {
+    updateUI(response.connected ? 'connected' : 'disconnected');
+    // Opening the popup wakes the service worker. If we're disconnected,
+    // kick off a reconnect immediately — no need for the user to click
+    // the Reconnect button manually.
+    if (!response.connected) {
+      chrome.runtime.sendMessage({ type: 'reconnect' });
+      updateUI('connecting');
+    }
+  }
 });

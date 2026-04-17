@@ -797,6 +797,22 @@ pub fn run() {
                     if matches!(event, tauri::WindowEvent::Destroyed) {
                         let _ = shutdown_handle.emit("sidecar://shutdown", ());
                     }
+                    // User clicked close (X) — force full app exit across
+                    // all platforms. Without this, macOS keeps the process
+                    // alive in the dock after closing the last window, and
+                    // the sidecar may linger on Windows if Destroyed races
+                    // with the Tokio runtime shutdown.
+                    if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
+                        let _ = shutdown_handle.emit("sidecar://shutdown", ());
+                        // Give listeners a tick to flip shutting_down flag,
+                        // then exit the whole app (SidecarState::drop kills
+                        // the child).
+                        let exit_handle = shutdown_handle.clone();
+                        tauri::async_runtime::spawn(async move {
+                            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                            exit_handle.exit(0);
+                        });
+                    }
                 });
             }
 
