@@ -13,15 +13,13 @@ jobs:
             target: x86_64-pc-windows-msvc
           - platform: macos-latest
             target: aarch64-apple-darwin
-          # Intel macOS build DISABLED — the `macos-15-intel` runner
-          # consistently exceeds the 6h job timeout when compiling Rust for
-          # Tauri (Windows 8m, arm64 4m, intel >6h). Pre-Tauri builds on
-          # `macos-13` were fine; issue is Rust toolchain + the intel
-          # runner's slow/broken CPU allocation. Re-enable once a faster
-          # intel runner is available, or ship universal binary via arm64 +
-          # Rosetta fallback.
-          # - platform: macos-15-intel
-          #   target: x86_64-apple-darwin
+          # Intel macOS via macos-13 (known-working pre-Tauri). The
+          # macos-15-intel runner was pegging at >6h for Rust compile;
+          # macos-13 has dedicated x86_64 hardware that historically
+          # completed in 10-15 min. If this times out too, fall back to
+          # universal binary via `cargo build --target universal-apple-darwin`.
+          - platform: macos-13
+            target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
