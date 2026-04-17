@@ -172,6 +172,25 @@ function renderRewriteMd(variant: ComposedVariant, sourceTitle: string): string 
     lines.push(variant.hashtags.map(h => `#${h}`).join(' '));
     lines.push('');
   }
+  // 保存 LLM 生成的图 prompt，方便用户查看/调试/手动复用
+  const coverPrompt = (variant as any).cover_image_prompt as string | undefined;
+  const contentPrompt = (variant as any).content_image_prompt as string | undefined;
+  if ((coverPrompt && coverPrompt.trim()) || (contentPrompt && contentPrompt.trim())) {
+    lines.push('## 配图 Prompt（LLM 生成）');
+    lines.push('');
+    if (coverPrompt && coverPrompt.trim()) {
+      lines.push('### 封面图');
+      lines.push('');
+      lines.push(coverPrompt.trim());
+      lines.push('');
+    }
+    if (contentPrompt && contentPrompt.trim()) {
+      lines.push('### 内容图');
+      lines.push('');
+      lines.push(contentPrompt.trim());
+      lines.push('');
+    }
+  }
   return lines.join('\n');
 }
 

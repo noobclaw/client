@@ -312,6 +312,11 @@ export interface ComposedVariant {
   suggested_cover_text: string;
   route: string;
   notes_for_user: string;
+  /** LLM-generated image prompt for the XHS cover. Saved to local md
+   *  and passed to /api/image/generate as `cover_prompt`. */
+  cover_image_prompt?: string;
+  /** Same, for the inline content image. */
+  content_image_prompt?: string;
 }
 
 export interface Draft {
