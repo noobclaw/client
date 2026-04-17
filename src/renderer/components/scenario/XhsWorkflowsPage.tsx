@@ -213,7 +213,9 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    setLinkModalOpen(true);
+    // Same pre-check as batch mode: open LoginRequiredModal first, only show
+    // the link-mode URL form after extension + XHS tab + login all pass.
+    setLoginModalReason('linkmode');
   };
 
   const handleQuickStart = () => {
@@ -232,9 +234,14 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   };
 
   const handleLoginConfirmed = () => {
+    const reason = loginModalReason;
     setLoginModalReason(null);
-    // After checks pass, open wizard
-    onConfigure(primaryScenario);
+    // After checks pass, open whichever form the user was heading to.
+    if (reason === 'linkmode') {
+      setLinkModalOpen(true);
+    } else {
+      onConfigure(primaryScenario);
+    }
   };
 
   return (
