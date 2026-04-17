@@ -33,11 +33,15 @@ try {
 
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
-const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistant/dhmjehcfpjjliiknpahbnflgljinjdeo';
+const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf';
 const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/noobclaw-browser-assistant/';
 const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
 const EXTENSION_IDS = [
-  'dhmjehcfpjjliiknpahbnflgljinjdeo',  // Fixed ID (key in manifest.json)
+  // New Chrome Web Store listing ID (current, 2026-04)
+  'abchfdkiphahgkoalhnmlfpfmgkedigf',
+  // Legacy fixed ID (extensions with manifest.key) — kept so users who
+  // still have the dev/sideload build keep working.
+  'dhmjehcfpjjliiknpahbnflgljinjdeo',
 ];
 
 type BrowserType = 'chrome' | 'edge' | 'firefox';
@@ -423,27 +427,32 @@ export function resolveExtensionPrompt(_requestId: string, _result: string): voi
  * Check if extension is actually installed by looking at Chrome's extension directory
  */
 export function isExtensionInstalled(): boolean {
-  const EXTENSION_ID = 'dhmjehcfpjjliiknpahbnflgljinjdeo';
   try {
     const homeDir = require('os').homedir();
-    let extDirs: string[] = [];
+    // Check both new (Store) and legacy (sideloaded) extension IDs
+    const basePaths: string[] = [];
     if (process.platform === 'win32') {
-      extDirs = [
-        path.join(homeDir, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Extensions', EXTENSION_ID),
-        path.join(homeDir, 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Extensions', EXTENSION_ID),
-      ];
+      basePaths.push(
+        path.join(homeDir, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Extensions'),
+        path.join(homeDir, 'AppData', 'Local', 'Microsoft', 'Edge', 'User Data', 'Default', 'Extensions'),
+      );
     } else if (process.platform === 'darwin') {
-      extDirs = [
-        path.join(homeDir, 'Library', 'Application Support', 'Google', 'Chrome', 'Default', 'Extensions', EXTENSION_ID),
-        path.join(homeDir, 'Library', 'Application Support', 'Microsoft Edge', 'Default', 'Extensions', EXTENSION_ID),
-      ];
+      basePaths.push(
+        path.join(homeDir, 'Library', 'Application Support', 'Google', 'Chrome', 'Default', 'Extensions'),
+        path.join(homeDir, 'Library', 'Application Support', 'Microsoft Edge', 'Default', 'Extensions'),
+      );
     } else {
-      extDirs = [
-        path.join(homeDir, '.config', 'google-chrome', 'Default', 'Extensions', EXTENSION_ID),
-        path.join(homeDir, '.config', 'microsoft-edge', 'Default', 'Extensions', EXTENSION_ID),
-      ];
+      basePaths.push(
+        path.join(homeDir, '.config', 'google-chrome', 'Default', 'Extensions'),
+        path.join(homeDir, '.config', 'microsoft-edge', 'Default', 'Extensions'),
+      );
     }
-    return extDirs.some(dir => fs.existsSync(dir));
+    for (const base of basePaths) {
+      for (const id of EXTENSION_IDS) {
+        if (fs.existsSync(path.join(base, id))) return true;
+      }
+    }
+    return false;
   } catch { return false; }
 }
 

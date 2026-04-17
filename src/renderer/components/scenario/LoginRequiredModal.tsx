@@ -117,7 +117,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                       className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
                       {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
                     </button>
-                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/dhmjehcfpjjliiknpahbnflgljinjdeo', '_blank')}
+                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
                       className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
                       {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
                     </button>

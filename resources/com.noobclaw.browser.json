@@ -4,6 +4,7 @@
   "path": "PLACEHOLDER_PATH",
   "type": "stdio",
   "allowed_origins": [
+    "chrome-extension://abchfdkiphahgkoalhnmlfpfmgkedigf/",
     "chrome-extension://dhmjehcfpjjliiknpahbnflgljinjdeo/"
   ]
 }
