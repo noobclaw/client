@@ -119,6 +119,9 @@ interface Props {
 
 export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChanged }) => {
   const isZh = i18nService.currentLanguage === 'zh';
+  // 链接模式是一次性手动运行，没有"下次运行"的概念
+  const isLinkModeForStats = task.track === 'link_mode'
+    || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   const STEP_NAMES = isZh ? STEP_NAMES_ZH : STEP_NAMES_EN;
   // ── Core state ──
@@ -423,26 +426,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+      {/* Stats — link-mode tasks are one-shot so the "下次运行" stat is
+           meaningless; show only the first four for them. */}
+      <div className={`grid grid-cols-2 ${isLinkModeForStats ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} gap-3 mb-6`}>
         <StatCard label={isZh ? '累计采集' : 'Collected'} value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
         <StatCard label={isZh ? '生成草稿' : 'Drafts'} value={stats?.draft_count ?? 0} />
         <StatCard label={isZh ? '已推送' : 'Pushed'} value={stats?.pushed_draft_count ?? 0} />
         <StatCard label={isZh ? '上次运行' : 'Last Run'} value={formatRelative(stats?.last_run_at || null, isZh)} small />
-        <StatCard label={isZh ? '下次运行' : 'Next Run'} value={(() => {
-          if (!task.active) return isZh ? '待命' : 'Standby';
-          const interval = (task as any).run_interval || 'daily';
-          const lastRun = stats?.last_run_at;
-          if (!lastRun) return isZh ? '即将' : 'Soon';
-          const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
-          const ms = intervals[interval] || 24*60*60*1000;
-          const next = lastRun + ms;
-          if (next <= Date.now()) return isZh ? '即将' : 'Soon';
-          const diff = next - Date.now();
-          const mins = Math.round(diff / 60000);
-          if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
-          return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
-        })()} small />
+        {!isLinkModeForStats && (
+          <StatCard label={isZh ? '下次运行' : 'Next Run'} value={(() => {
+            if (!task.active) return isZh ? '待命' : 'Standby';
+            const interval = (task as any).run_interval || 'daily';
+            const lastRun = stats?.last_run_at;
+            if (!lastRun) return isZh ? '即将' : 'Soon';
+            const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
+            const ms = intervals[interval] || 24*60*60*1000;
+            const next = lastRun + ms;
+            if (next <= Date.now()) return isZh ? '即将' : 'Soon';
+            const diff = next - Date.now();
+            const mins = Math.round(diff / 60000);
+            if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
+            return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
+          })()} small />
+        )}
       </div>
 
       {/* Toast */}

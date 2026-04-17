@@ -366,11 +366,9 @@ const LinkModeEditModal: React.FC<{
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-      onClick={() => !submitting && onCancel()}
     >
       <div
-        className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
-        onClick={e => e.stopPropagation()}
+        className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
       >
         <h3 className="text-lg font-bold dark:text-white mb-2">
           🔗 {isZh ? '编辑指定链接任务' : 'Edit link-mode task'}
@@ -384,8 +382,8 @@ const LinkModeEditModal: React.FC<{
         <textarea
           value={linksText}
           onChange={e => setLinksText(e.target.value)}
-          rows={5}
-          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+          rows={8}
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-y min-h-[200px] break-all"
           disabled={submitting}
         />
 

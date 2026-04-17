@@ -307,15 +307,14 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         ))}
       </section>
 
-      {/* Link-mode modal */}
+      {/* Link-mode modal. 背景点击 NOT 关闭弹窗——用户粘贴的链接很长，容易误
+          点关掉；必须通过取消按钮关闭。 */}
       {linkModalOpen && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-          onClick={() => !linkSubmitting && setLinkModalOpen(false)}
         >
           <div
-            className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
-            onClick={e => e.stopPropagation()}
+            className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
           >
             <h3 className="text-lg font-bold dark:text-white mb-2">🔗 {i18nService.t('scenarioLinkModeTitle')}</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">{i18nService.t('scenarioLinkModeHint')}</p>
@@ -326,8 +325,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               value={linksText}
               onChange={e => setLinksText(e.target.value)}
               placeholder={i18nService.t('scenarioLinkModePlaceholder')}
-              rows={5}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
+              rows={8}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-y min-h-[200px] break-all"
               disabled={linkSubmitting}
             />
 
