@@ -197,6 +197,16 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
 
   riskGuard.markRunStart(task.id);
 
+  // Release batch dir cache so this run gets a fresh numbered folder
+  // (1, 2, 3, ...). Without this, multiple manual runs on the same day
+  // all pile into the first batch dir and overwrite each other.
+  try {
+    const { startNewBatch } = await import('./artifactWriter');
+    startNewBatch(task.id);
+  } catch (e) {
+    coworkLog('WARN', 'scenarioManager', 'startNewBatch failed', { err: String(e) });
+  }
+
   try {
     // All orchestration logic now lives on the server (orchestrator.js).
     // We just provide the ctx tools and let it run.

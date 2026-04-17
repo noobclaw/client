@@ -92,7 +92,9 @@ function getNextBatch(dayDir: string): number {
   }
 }
 
-// Cache batch number per day+task to keep consistent within one task run
+// Cache batch number per day+task to keep consistent within ONE task run.
+// Cleared by startNewBatch() at the start of each new run so that multiple
+// manual runs on the same day get successive batch dirs (1, 2, 3, ...).
 const batchCache = new Map<string, number>();
 
 /** Get the output directory for a task run */
@@ -110,6 +112,17 @@ export function getTaskOutputDir(task: ScenarioTask, platform?: string): string 
   }
 
   return path.join(dayDir, String(batch));
+}
+
+/**
+ * Drop the cached batch number for this task so the NEXT call to
+ * getTaskOutputDir() allocates a fresh batch dir (scanning the day dir
+ * again). Call this at the START of each task run, not at the end —
+ * otherwise concurrent saveDrafts within one run would split across dirs.
+ */
+export function startNewBatch(taskId: string): void {
+  const key = taskId + '/' + todayStr();
+  batchCache.delete(key);
 }
 
 // ── Markdown renderers ──
