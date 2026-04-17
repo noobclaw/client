@@ -832,28 +832,30 @@ pub fn run() {
             // Tray icon disabled — close = quit, no hiding to tray.
             // (Was: menubar tray with Show/Quit menu items)
 
-            // ── macOS TCC registration ───────────────────────────────
-            // Call CGRequestScreenCaptureAccess() at startup so the app
-            // appears in System Settings → Privacy → Screen Recording.
-            // CGPreflightScreenCaptureAccess (what we had before) only
-            // QUERIES the TCC database — it never writes a row, so
-            // NoobClaw never showed up in the settings list and users
-            // couldn't grant the permission even if they wanted to.
+            // ── macOS TCC — LAZY, not at startup ─────────────────────
+            // Previously we called CGRequestScreenCaptureAccess() +
+            // AXIsProcessTrusted() here, which triggered two system
+            // permission dialogs the instant a new user opened the app.
+            // Most users don't need either permission on day one (the
+            // XHS scenario flow goes through the browser extension, not
+            // mac APIs), so they experience the popups as aggressive /
+            // suspicious-looking and often just click Deny.
             //
-            // CGRequestScreenCaptureAccess triggers a one-time system
-            // dialog on the first launch ("NoobClaw wants to record
-            // your screen"). After that — whether the user approves or
-            // denies — NoobClaw stays in the list and the user can
-            // toggle it later without us needing to ask again.
+            // New policy: don't ask for any mac permission up front.
+            // Features that actually need Screen Recording or
+            // Accessibility call the exposed tauri commands
+            // (`request_screen_recording_permission`,
+            // `check_accessibility_permission`) lazily, right before
+            // they try to invoke the capability. The OS shows its
+            // consent dialog at that point, in context, so users
+            // understand why the app is asking.
             //
-            // AXIsProcessTrusted is different: it registers the app in
-            // the Accessibility list as a side effect even though it's
-            // technically a query. So we keep calling it as-is.
-            #[cfg(target_os = "macos")]
-            unsafe {
-                let _ = CGRequestScreenCaptureAccess();
-                let _ = AXIsProcessTrusted();
-            }
+            // Side effect: until the user triggers such a feature,
+            // NoobClaw will NOT appear in System Settings → Privacy →
+            // Screen Recording / Accessibility. Users who want to
+            // pre-grant have to trigger the feature once. Acceptable
+            // trade-off — onboarding friction is more expensive than
+            // a power-user edge case.
 
             // Start the Node.js sidecar and install the crash-restart
             // supervisor. The supervisor listens for sidecar://terminated
