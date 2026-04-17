@@ -268,7 +268,9 @@ function buildContext(
       // non-stream fallback.
       const heartbeat = setInterval(() => {
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
-        ctx.report('AI 仍在生成中... (' + elapsedSec + 's, 已输出 ' + lastTextLen + ' 字)');
+        // 非流式兜底时 lastTextLen 永远是 0，写出来反而误导用户以为卡死。
+        // 只保留计时就够了。
+        ctx.report('AI 仍在生成中... (' + elapsedSec + 's)');
       }, 10000);
       try {
         try {
@@ -301,8 +303,9 @@ function buildContext(
           return response;
         } catch (err) {
           if (String(err).includes('user_stopped')) throw err;
+          // Log to dev console for debugging, but don't surface to the user —
+          // the fallback is transparent and the extra line just adds noise.
           coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
-          ctx.report('⚠️ 流式调用失败，切到非流式兜底（会慢一些，但计时仍在继续）');
           return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
         }
       } finally {
