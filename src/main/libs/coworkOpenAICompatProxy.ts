@@ -2689,11 +2689,20 @@ async function handleRequest(
   // Force-remap model name to the user-configured upstream model.
   // The Claude Agent SDK may emit internal model names (e.g. claude-haiku-4-5-20251001)
   // for probe/warmup requests, which non-Anthropic providers don't recognize.
+  //
+  // BUT: callers within the same provider legitimately pick specific model
+  // variants — e.g. phaseRunner intentionally overrides to 'noobclawai-chat'
+  // for scenario rewrites even when the user's default is 'noobclawai-reasoner'.
+  // Both are valid upstream noobclawAI models and the backend /chat/completions
+  // route already maps them correctly, so we must NOT remap these back to the
+  // user's default. Limit the remap to the specific failure mode it was added
+  // for: the Claude SDK leaking 'claude-*' model names to non-Anthropic upstreams.
   if (upstreamConfig.provider && upstreamConfig.provider !== 'anthropic' && upstreamConfig.provider !== 'openai') {
     const requestModel = typeof openAIRequest.model === 'string' ? openAIRequest.model : '';
-    if (requestModel !== upstreamConfig.model) {
+    const looksLikeClaudeSDKProbe = /^claude-/i.test(requestModel);
+    if (looksLikeClaudeSDKProbe && requestModel !== upstreamConfig.model) {
       console.info(
-        `[CoworkProxy] Remapping model: ${requestModel} -> ${upstreamConfig.model} (provider: ${upstreamConfig.provider})`
+        `[CoworkProxy] Remapping Claude SDK probe: ${requestModel} -> ${upstreamConfig.model} (provider: ${upstreamConfig.provider})`
       );
       openAIRequest.model = upstreamConfig.model;
     }
