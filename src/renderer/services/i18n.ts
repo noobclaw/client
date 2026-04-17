@@ -1031,7 +1031,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioWorkflowDmRelyDesc: '自动应答新私信',
     scenarioWorkflowDataMonitor: '数据监控',
     scenarioWorkflowDataMonitorDesc: '每日抓取创作中心数据出日报',
-    scenarioWorkflowAvailable: '可用',
+    scenarioWorkflowAvailable: '批量制作',
     scenarioWorkflowComingSoon: '即将推出',
 
     // Workflow detail hero
@@ -2273,7 +2273,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioWorkflowDmRelyDesc: 'Auto-respond to new direct messages',
     scenarioWorkflowDataMonitor: 'Data Monitor',
     scenarioWorkflowDataMonitorDesc: 'Scrape creator-center metrics daily into a report',
-    scenarioWorkflowAvailable: 'Available',
+    scenarioWorkflowAvailable: 'Batch Produce',
     scenarioWorkflowComingSoon: 'Coming Soon',
 
     scenarioHeroTitle: 'AI works inside your own Chrome',

@@ -95,7 +95,11 @@ const ActivitiesTab: React.FC<{
     activities: Array<{ type: string; claimed: boolean; enabled?: boolean; last_reward: { noob: number; points: number } | null }>;
     pool: { noob_remaining: number; noob_cap: number; points_remaining: number; points_cap: number; exhausted: boolean };
   } | null>(null);
-  const [popup, setPopup] = useState<{ activity: string; reward: { noob: number; points: number } } | null>(null);
+  const [popup, setPopup] = useState<{
+    activity: string;
+    reward: { noob: number; points: number };
+    onAfter?: () => void;
+  } | null>(null);
 
   const reload = useCallback(async () => {
     if (!authState.isAuthenticated) return;
@@ -107,18 +111,24 @@ const ActivitiesTab: React.FC<{
 
   const isClaimed = (type: string) => status?.activities.find(a => a.type === type)?.claimed || false;
   const isEnabled = (type: string) => status?.activities.find(a => a.type === type)?.enabled !== false;
-  const lastReward = (type: string) => status?.activities.find(a => a.type === type)?.last_reward || null;
   const exhausted = status?.pool.exhausted || false;
 
-  const claim = async (type: string, afterClaim?: () => void) => {
+  // 活动流程：点击 → 先领奖（后端 claim）→ 弹窗显示随机奖励 + "太棒了"按钮
+  //   → 点"太棒了" 关闭弹窗并跳转到对应内容（仅对需要引导的活动）
+  const claim = async (type: string, onAfter?: () => void) => {
     if (!authState.isAuthenticated) { noobClawAuth.openWebsiteLogin(); return; }
     const r = await noobClawApi.claimActivity(type);
     if (r.success) {
-      setPopup({ activity: type, reward: { noob: r.noob_reward || 0, points: r.points_reward || 0 } });
+      setPopup({
+        activity: type,
+        reward: { noob: r.noob_reward || 0, points: r.points_reward || 0 },
+        onAfter,
+      });
       reload();
-      afterClaim?.();
     } else if (r.already_claimed) {
       reload();
+      // 已领过仍允许跳转（比如用户已经领过奖但想再去玩一次）
+      onAfter?.();
     } else if (r.pool_exhausted) {
       reload();
     }
@@ -132,13 +142,12 @@ const ActivitiesTab: React.FC<{
         icon="📅"
         titleZh="每日签到"
         titleEn="Daily Check-in"
-        descZh="每天签到领 $NoobCoin 和积分奖励"
-        descEn="Check in daily for $NoobCoin + credit rewards"
-        ctaZh="📅 立即签到"
-        ctaEn="📅 Check in now"
+        descZh="每天来点一下，立即领取随机奖励"
+        descEn="Check in daily for a random reward"
+        ctaZh="🎁 立即签到"
+        ctaEn="🎁 Check in"
         claimed={isClaimed('checkin')}
         enabled={isEnabled('checkin')}
-        lastReward={lastReward('checkin')}
         exhausted={exhausted}
         isAuthenticated={authState.isAuthenticated}
         onClaim={() => claim('checkin')}
@@ -150,13 +159,12 @@ const ActivitiesTab: React.FC<{
         icon="📝"
         titleZh="小红书自动仿写爆款"
         titleEn="XHS Auto-Rewrite Viral Post"
-        descZh="一键跳转小红书自动化栏目，完成一次仿写即可领奖励"
-        descEn="Jump to XHS automation — complete one rewrite to claim rewards"
-        ctaZh="🚀 去仿写 + 领奖"
-        ctaEn="🚀 Go rewrite & claim"
+        descZh="点击立即领奖，随后自动打开小红书自动化栏目"
+        descEn="Claim now, then jump to XHS automation"
+        ctaZh="🎁 领奖并前往"
+        ctaEn="🎁 Claim & go"
         claimed={isClaimed('xhs_rewrite')}
         enabled={isEnabled('xhs_rewrite')}
-        lastReward={lastReward('xhs_rewrite')}
         exhausted={exhausted}
         isAuthenticated={authState.isAuthenticated}
         onClaim={() => claim('xhs_rewrite', () => onShowXhs?.())}
@@ -168,13 +176,12 @@ const ActivitiesTab: React.FC<{
         icon="⚔️"
         titleZh="玩一次 OG 对战"
         titleEn="Play OG Brawl Once"
-        descZh="打开浏览器进入 OG 对战游戏，玩一局就能领奖励"
-        descEn="Opens browser to the OG Brawl game — one match earns rewards"
-        ctaZh="⚔️ 去对战 + 领奖"
-        ctaEn="⚔️ Go battle & claim"
+        descZh="点击立即领奖，随后在浏览器打开 OG 对战游戏"
+        descEn="Claim now, then open OG Brawl in browser"
+        ctaZh="🎁 领奖并开战"
+        ctaEn="🎁 Claim & battle"
         claimed={isClaimed('og_brawl')}
         enabled={isEnabled('og_brawl')}
-        lastReward={lastReward('og_brawl')}
         exhausted={exhausted}
         isAuthenticated={authState.isAuthenticated}
         onClaim={() => claim('og_brawl', () => {
@@ -188,13 +195,12 @@ const ActivitiesTab: React.FC<{
         icon="🧠"
         titleZh="完成一次人格测试"
         titleEn="Complete a Personality Test"
-        descZh="做一次 MBTI / 人格测试，提交即可领奖励"
-        descEn="Take a personality/MBTI test once to earn rewards"
-        ctaZh="🧠 去测试 + 领奖"
-        ctaEn="🧠 Take test & claim"
+        descZh="点击立即领奖，随后打开人格测试页面"
+        descEn="Claim now, then open personality test page"
+        ctaZh="🎁 领奖并测试"
+        ctaEn="🎁 Claim & test"
         claimed={isClaimed('personality_test')}
         enabled={isEnabled('personality_test')}
-        lastReward={lastReward('personality_test')}
         exhausted={exhausted}
         isAuthenticated={authState.isAuthenticated}
         onClaim={() => claim('personality_test', () => onShowPersonality?.())}
@@ -229,7 +235,12 @@ const ActivitiesTab: React.FC<{
           isZh={isZh}
           activity={popup.activity}
           reward={popup.reward}
-          onClose={() => setPopup(null)}
+          onClose={() => {
+            // "太棒了"点击：先关弹窗，再触发跳转（如果有）
+            const after = popup.onAfter;
+            setPopup(null);
+            after?.();
+          }}
         />
       )}
     </div>
@@ -249,7 +260,6 @@ interface ActivityCardProps {
   ctaEn: string;
   claimed: boolean;
   enabled?: boolean;
-  lastReward: { noob: number; points: number } | null;
   exhausted: boolean;
   isAuthenticated: boolean;
   onClaim: () => void | Promise<void>;
@@ -259,7 +269,7 @@ const formatNum = (n: number) => n >= 10000 ? `${(n / 10000).toFixed(1)}万` : n
 
 const ActivityCard: React.FC<ActivityCardProps> = ({
   isZh, icon, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
-  claimed, enabled = true, lastReward, exhausted, isAuthenticated, onClaim,
+  claimed, enabled = true, exhausted, isAuthenticated, onClaim,
 }) => {
   const [submitting, setSubmitting] = useState(false);
   const handleClick = async () => {
@@ -293,14 +303,6 @@ const ActivityCard: React.FC<ActivityCardProps> = ({
           <button disabled className="w-full py-3 rounded-xl text-sm font-semibold bg-gray-300 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
             ✓ {isZh ? '今日已完成' : 'Completed today'}
           </button>
-          {lastReward && (
-            <div className="mt-2 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-              {isZh ? '奖励' : 'Reward'}:
-              {lastReward.noob > 0 && ` +${lastReward.noob} $NoobCoin`}
-              {lastReward.noob > 0 && lastReward.points > 0 && ' ·'}
-              {lastReward.points > 0 && ` +${formatNum(lastReward.points)} ${isZh ? '积分' : 'credits'}`}
-            </div>
-          )}
         </div>
       ) : exhausted ? (
         <div className="text-center py-3">
@@ -355,19 +357,11 @@ const RewardPopup: React.FC<{
 }> = ({ isZh, activity, reward, onClose }) => {
   const labels = isZh ? ACTIVITY_LABELS_ZH : ACTIVITY_LABELS_EN;
   const info = labels[activity] || { title: activity, emoji: '🎉' };
+  // 只允许通过"太棒了"按钮关闭，遮罩点击和 × 按钮都去掉，
+  // 这样才能保证"点关闭就跳转到对应内容"的流程始终触发。
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="relative max-w-sm w-[92vw] rounded-3xl p-8 text-center shadow-2xl animate-[popIn_0.35s_cubic-bezier(.2,1.4,.4,1)] bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600"
-        onClick={e => e.stopPropagation()}
-      >
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 text-white hover:bg-white/30 transition-colors flex items-center justify-center text-lg"
-        >
-          ×
-        </button>
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="relative max-w-sm w-[92vw] rounded-3xl p-8 text-center shadow-2xl animate-[popIn_0.35s_cubic-bezier(.2,1.4,.4,1)] bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600">
         <div className="text-7xl mb-2 drop-shadow-[0_4px_12px_rgba(0,0,0,0.3)]">{info.emoji}</div>
         <div className="text-2xl font-bold text-white mb-1 drop-shadow">{info.title}</div>
         <div className="text-sm text-white/80 mb-5">{isZh ? '恭喜获得今日奖励 🎊' : 'Enjoy your daily rewards 🎊'}</div>
