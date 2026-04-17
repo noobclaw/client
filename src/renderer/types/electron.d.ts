@@ -482,6 +482,9 @@ interface IElectronAPI {
     showItemInFolder: (filePath: string) => Promise<{ success: boolean; error?: string }>;
     openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
   };
+  browserBridge: {
+    installLocal: () => Promise<{ success: boolean; error?: string }>;
+  };
   autoLaunch: {
     get: () => Promise<{ enabled: boolean }>;
     set: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;

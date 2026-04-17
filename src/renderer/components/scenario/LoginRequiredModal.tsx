@@ -25,6 +25,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
+  // Secondary modal: step-by-step guide for loading the unpacked extension
+  const [localInstallOpen, setLocalInstallOpen] = useState(false);
+  const [localInstallMsg, setLocalInstallMsg] = useState<string | null>(null);
 
   const runCheck = useCallback(async () => {
     setChecking(true);
@@ -122,12 +125,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                       {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
                     </button>
                     <button type="button" onClick={() => {
-                      try {
-                        // Open the extension folder bundled with the app
-                        window.electron?.shell?.openPath?.('');
-                      } catch {}
-                      // Also open Chrome extensions page
-                      try { window.open('chrome://extensions', '_blank'); } catch {}
+                      setLocalInstallOpen(true);
+                      setLocalInstallMsg(null);
                     }}
                       className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
                       {isZh ? '📁 本地安装' : '📁 Local Install'}
@@ -179,6 +178,76 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
           </button>
         </div>
       </div>
+
+      {/* Secondary modal: local install step-by-step guide. Clicking
+          "📂 打开扩展目录 & chrome://extensions/" runs the main-process
+          helper which copies the bundled chrome-extension path to the
+          clipboard and opens chrome://extensions in the default browser. */}
+      {localInstallOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+            <h3 className="text-lg font-bold dark:text-white mb-2">
+              📁 {isZh ? '本地安装浏览器插件' : 'Install Local Extension'}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {isZh
+                ? '国内用户推荐用这种方式，无需翻墙。下面这一步会自动复制插件目录到剪贴板并打开浏览器扩展页。'
+                : 'Recommended for users in mainland China (no VPN needed). The button below auto-copies the extension path to the clipboard and opens the browser extensions page.'}
+            </p>
+            <ol className="text-xs text-gray-700 dark:text-gray-300 space-y-2 mb-4 list-decimal list-inside leading-relaxed">
+              <li>{isZh ? '点下方 📂 按钮，会自动打开 chrome://extensions/ 并把插件目录复制到剪贴板' : 'Click 📂 below — opens chrome://extensions/ and copies the extension folder path to clipboard'}</li>
+              <li>{isZh ? '在扩展页右上角打开「开发者模式」' : 'Enable "Developer mode" in the top-right'}</li>
+              <li>{isZh ? '点「加载已解压的扩展程序」，地址栏粘贴刚才复制的路径回车' : 'Click "Load unpacked" and paste the copied path'}</li>
+              <li>{isZh ? '回到本页面点「重新检测」，检测到绿色 ✓ 即安装成功' : 'Return here and click "Re-check" — ✓ means success'}</li>
+            </ol>
+            {localInstallMsg && (
+              <div className="text-xs text-green-500 mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                {localInstallMsg}
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const r = await window.electron?.browserBridge?.installLocal?.();
+                    if (r?.success) {
+                      setLocalInstallMsg(isZh
+                        ? '✅ 已打开浏览器扩展页，插件目录已复制到剪贴板。按步骤 2-4 操作。'
+                        : '✅ Opened extensions page, path copied. Follow steps 2-4.');
+                    } else {
+                      setLocalInstallMsg((isZh ? '❌ 操作失败：' : '❌ Failed: ')
+                        + (r?.error || (isZh ? '未知错误' : 'unknown error')));
+                    }
+                  } catch (e) {
+                    setLocalInstallMsg((isZh ? '❌ 调用失败：' : '❌ Call failed: ')
+                      + String(e).slice(0, 100));
+                  }
+                }}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold bg-purple-500 text-white hover:bg-purple-600 transition-colors"
+              >
+                📂 {isZh ? '打开扩展目录 & chrome://extensions/' : 'Open extension folder & chrome://extensions/'}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setLocalInstallOpen(false)}
+                  className="flex-1 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  {isZh ? '关闭' : 'Close'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLocalInstallOpen(false); void runCheck(); }}
+                  className="flex-1 py-2 rounded-lg text-sm bg-green-500 text-white hover:bg-green-600"
+                >
+                  🔄 {isZh ? '我已安装，重新检测' : 'I installed, re-check'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

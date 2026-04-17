@@ -385,6 +385,15 @@ export function createTauriElectronShim(): typeof window.electron {
       },
     },
 
+    // ── Browser Bridge — exposes local extension install helper. Renderer
+    //    calls this from the 本地安装 button; main process copies the
+    //    bundled chrome-extension path to the clipboard and opens
+    //    chrome://extensions in the user's default browser.
+    browserBridge: {
+      installLocal: () => ipcInvoke('browser-bridge:install-local')
+        .then((r: any) => r ?? { success: false }),
+    },
+
     // ── Auto Launch — bridged to tauri-plugin-autostart ──
     // Settings.tsx talks to `window.electron.autoLaunch.{get,set}` which
     // on Electron hits the autoLaunchManager IPC. Under Tauri we route

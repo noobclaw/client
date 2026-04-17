@@ -14,7 +14,7 @@ import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUt
 import { classifyIntent } from './libs/intentClassifier';
 import { ensureSandboxReady, getSandboxStatus, onSandboxProgress } from './libs/coworkSandboxRuntime';
 import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy, setScheduledTaskDeps } from './libs/coworkOpenAICompatProxy';
-import { startBrowserBridge, stopBrowserBridge, getBrowserBridgeStatus } from './libs/browserBridge';
+import { startBrowserBridge, stopBrowserBridge, getBrowserBridgeStatus, installLocalExtension } from './libs/browserBridge';
 import { IMGatewayManager, IMPlatform, IMGatewayConfig } from './im';
 import { APP_NAME } from './appConstants';
 import { getSkillServiceManager } from './skillServices';
@@ -1426,6 +1426,19 @@ if (!gotTheLock) {
   ipcMain.handle('browser-bridge:restart', async () => {
     await stopBrowserBridge();
     return startBrowserBridge();
+  });
+
+  // Called from the scenario login-gate modal's 本地安装 button — runs the
+  // full local-install flow (detects browser, copies the bundled
+  // chrome-extension path to clipboard, opens chrome://extensions, shows
+  // the native instructions dialog).
+  ipcMain.handle('browser-bridge:install-local', async () => {
+    try {
+      await installLocalExtension();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: String(err?.message || err) };
+    }
   });
 
   // Cowork IPC handlers

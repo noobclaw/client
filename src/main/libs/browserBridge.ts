@@ -483,7 +483,7 @@ export function isExtensionInstalled(): boolean {
   } catch { return false; }
 }
 
-async function installLocalExtension(): Promise<void> {
+export async function installLocalExtension(): Promise<void> {
   let clipboard: any = null;
   try { clipboard = require('electron').clipboard; } catch {}
   const browsers = detectBrowsers();
