@@ -174,6 +174,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">{isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)'}</span>
                 </label>
+                {/* 2026 流量报告说明条 */}
+                <div className="mb-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[11px] text-green-700 dark:text-green-400 leading-relaxed">
+                  {isZh
+                    ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
+                    : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>}
+                </div>
                 <textarea
                   value={customKeywordsText}
                   onChange={e => setCustomKeywordsText(e.target.value)}
