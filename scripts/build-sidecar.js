@@ -15,12 +15,15 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const BINARIES_DIR = path.join(ROOT, 'src-tauri', 'binaries');
 
-// Detect target triple
+// Detect target triple. Allow SIDECAR_TARGET env var to override when
+// the caller needs a specific arch (e.g. universal-apple-darwin build
+// invokes the script twice, once with aarch64 and once with x86_64,
+// to produce both binaries for Tauri to lipo together).
 function getTargetTriple() {
+  if (process.env.SIDECAR_TARGET) return process.env.SIDECAR_TARGET;
   try {
     return execSync('rustc --print host-tuple', { encoding: 'utf8' }).trim();
   } catch {
-    // Fallback based on platform
     if (process.platform === 'win32') return 'x86_64-pc-windows-msvc';
     if (process.platform === 'darwin') {
       return process.arch === 'arm64'
@@ -31,9 +34,18 @@ function getTargetTriple() {
   }
 }
 
+function pkgTargetFor(triple) {
+  if (triple === 'x86_64-pc-windows-msvc')    return 'node20-win-x64';
+  if (triple === 'aarch64-apple-darwin')      return 'node20-macos-arm64';
+  if (triple === 'x86_64-apple-darwin')       return 'node20-macos-x64';
+  if (triple === 'x86_64-unknown-linux-gnu')  return 'node20-linux-x64';
+  if (triple === 'aarch64-unknown-linux-gnu') return 'node20-linux-arm64';
+  throw new Error('Unknown target triple for pkg: ' + triple);
+}
+
 function main() {
   const triple = getTargetTriple();
-  const ext = process.platform === 'win32' ? '.exe' : '';
+  const ext = triple.includes('windows') ? '.exe' : '';
   const outName = `noobclaw-server-${triple}${ext}`;
   const outPath = path.join(BINARIES_DIR, outName);
 
@@ -54,12 +66,11 @@ function main() {
     stdio: 'inherit',
   });
 
-  // Step 3: Package with pkg
+  // Step 3: Package with pkg — derive pkg target from the triple so
+  // SIDECAR_TARGET overrides work (universal-apple-darwin calls this
+  // script twice with aarch64 + x86_64 triples).
   console.log('Step 3: Packaging with pkg...');
-  const pkgTarget = process.platform === 'win32' ? 'node20-win-x64'
-    : process.platform === 'darwin'
-      ? (process.arch === 'arm64' ? 'node20-macos-arm64' : 'node20-macos-x64')
-      : 'node20-linux-x64';
+  const pkgTarget = pkgTargetFor(triple);
 
   if (!fs.existsSync(BINARIES_DIR)) {
     fs.mkdirSync(BINARIES_DIR, { recursive: true });

@@ -11,15 +11,15 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
+          # macOS: one universal binary (arm64 + x86_64 in the same .app)
+          # instead of two separate builds. Previous attempts to build on
+          # macos-13 / macos-15-intel either queued indefinitely or
+          # timed out at 6h compiling Rust. Apple's own recommendation
+          # for cross-CPU macOS apps is a universal binary anyway —
+          # single DMG ships to both M-series and Intel users, size
+          # roughly doubles (~2× .app) but dramatically simpler CI.
           - platform: macos-latest
-            target: aarch64-apple-darwin
-          # Intel macOS via macos-13 (known-working pre-Tauri). The
-          # macos-15-intel runner was pegging at >6h for Rust compile;
-          # macos-13 has dedicated x86_64 hardware that historically
-          # completed in 10-15 min. If this times out too, fall back to
-          # universal binary via `cargo build --target universal-apple-darwin`.
-          - platform: macos-13
-            target: x86_64-apple-darwin
+            target: universal-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
@@ -34,7 +34,11 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          # Universal apple darwin isn't a rustup target — it's a Tauri
+          # pseudo-target that builds both native macOS arches and lipo's
+          # them together. So when universal is requested, install both
+          # real rustup targets so Tauri has them available.
+          targets: ${{ matrix.target == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
 
       - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
@@ -66,11 +70,28 @@ jobs:
         # prepare-tauri-resources.js picks the build output up and
         # copies it into src-tauri/resources/native/ so Tauri bundles
         # it alongside the sidecar binary.
+        #
+        # For universal-apple-darwin target: build once for each arch
+        # and lipo them into a fat binary so the .app works on both M-
+        # series and Intel Macs. Otherwise just build for the runner's
+        # native arch.
         if: runner.os == 'macOS'
         working-directory: native/macos-desktop
         run: |
           npm install
-          npx node-gyp rebuild --verbose
+          if [ "${{ matrix.target }}" = "universal-apple-darwin" ]; then
+            echo "Building x86_64 variant..."
+            arch -x86_64 npx node-gyp rebuild --verbose --arch=x64
+            cp build/Release/noobclaw_desktop.node /tmp/noobclaw_desktop.x64.node
+            echo "Building arm64 variant..."
+            arch -arm64 npx node-gyp rebuild --verbose --arch=arm64
+            cp build/Release/noobclaw_desktop.node /tmp/noobclaw_desktop.arm64.node
+            echo "Merging into universal binary..."
+            lipo -create /tmp/noobclaw_desktop.x64.node /tmp/noobclaw_desktop.arm64.node \
+                 -output build/Release/noobclaw_desktop.node
+          else
+            npx node-gyp rebuild --verbose
+          fi
           test -f build/Release/noobclaw_desktop.node
           lipo -info build/Release/noobclaw_desktop.node || file build/Release/noobclaw_desktop.node
 
@@ -88,7 +109,20 @@ jobs:
           test -f build/Release/noobclaw_desktop_win.node
 
       - name: Build sidecar
-        run: node scripts/build-sidecar.js
+        # Universal-apple-darwin builds both arches of the sidecar so
+        # Tauri's universal packer has both in src-tauri/binaries/ to
+        # lipo together. All other targets use the default single-arch
+        # build based on the runner's host triple.
+        shell: bash
+        run: |
+          if [ "${{ matrix.target }}" = "universal-apple-darwin" ]; then
+            echo "Building sidecar for aarch64-apple-darwin..."
+            SIDECAR_TARGET=aarch64-apple-darwin node scripts/build-sidecar.js
+            echo "Building sidecar for x86_64-apple-darwin..."
+            SIDECAR_TARGET=x86_64-apple-darwin node scripts/build-sidecar.js
+          else
+            node scripts/build-sidecar.js
+          fi
 
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
