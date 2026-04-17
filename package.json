@@ -28,6 +28,7 @@
     "pack": "npm run setup:mingit && npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder --dir",
     "dist": "npm run setup:mingit && npm run setup:python-runtime && npm run build && npm run compile:electron && npm run build:skills && electron-builder",
     "build:sidecar": "node scripts/build-sidecar.js",
+    "package:extension": "node scripts/_zip-helper.cjs chrome-extension chrome-extension.zip",
     "tauri:dev": "npm run build:sidecar && tauri dev",
     "tauri:build": "npm run build:sidecar && tauri build",
     "dist:mac": "node -r dotenv/config node_modules/.bin/electron-builder --mac --config electron-builder.json",
