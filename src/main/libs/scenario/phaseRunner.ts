@@ -266,7 +266,7 @@ function buildContext(
       const heartbeat = setInterval(() => {
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
         ctx.report('AI 仍在生成中... (' + elapsedSec + 's, 已输出 ' + lastTextLen + ' 字)');
-      }, 5000);
+      }, 10000);
       try {
         const aiPromise = localExtractor.callAIWithConfigStreaming(
           apiCfg, prompt, userMessage,
