@@ -46,14 +46,13 @@ const svg = `
   <polygon points="${ARROW_END_X},${ARROW_Y} ${ARROW_END_X - ARROW_HEAD_SIZE},${ARROW_Y - ARROW_HEAD_SIZE * 0.55} ${ARROW_END_X - ARROW_HEAD_SIZE},${ARROW_Y + ARROW_HEAD_SIZE * 0.55}"
            fill="${ARROW_COLOR}"/>
 
-  <!-- Caption (English: DMGs are often shared internationally; app name
-       in English anyway) -->
+  <!-- Caption — keep short to match the original DMG wording. -->
   <text x="${W / 2}" y="${TEXT_Y}"
         font-family="-apple-system, 'Helvetica Neue', Arial, sans-serif"
         font-size="${TEXT_FONT_SIZE}"
         fill="${TEXT_COLOR}"
         text-anchor="middle">
-    Drag to Applications folder to install
+    Drag to install
   </text>
 </svg>
 `.trim();
