@@ -142,6 +142,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const [linkModalOpen, setLinkModalOpen] = useState(false);
   const [linksText, setLinksText] = useState('');
   const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const [linkAutoUpload, setLinkAutoUpload] = useState(true);
 
   const validateLinks = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -181,12 +182,16 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         run_interval: 'once',
         enabled: true,
         active: true,
+        auto_upload: linkAutoUpload,
       } as any);
       setLinkModalOpen(false);
       setLinksText('');
-      // 立即开跑
-      await scenarioService.runTaskNow(task.id);
+      // 先跳转到任务详情，再异步触发运行，用户能立刻看到进度
       onOpenTask(task.id);
+      // 不 await 运行 — 否则 await 可能阻塞几分钟
+      scenarioService.runTaskNow(task.id).catch((e) => {
+        console.error('[LinkMode] runTaskNow failed:', e);
+      });
     } catch (e) {
       alert((i18nService.currentLanguage === 'zh' ? '创建失败：' : 'Create failed: ') + String(e).slice(0, 120));
     } finally {
@@ -320,6 +325,36 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-purple-500/50 resize-none"
               disabled={linkSubmitting}
             />
+
+            {/* 自动上传 vs 仅生成 */}
+            <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
+              {i18nService.currentLanguage === 'zh' ? '生成后的处理' : 'After generation'}
+            </label>
+            <div className="space-y-2">
+              <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${linkAutoUpload ? 'border-purple-500 bg-purple-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                <input type="radio" name="link_auto_upload" checked={linkAutoUpload} onChange={() => setLinkAutoUpload(true)} className="mt-0.5" disabled={linkSubmitting} />
+                <div className="flex-1 text-xs leading-relaxed">
+                  <div className="font-semibold dark:text-white mb-0.5">
+                    {i18nService.currentLanguage === 'zh' ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">
+                    {i18nService.currentLanguage === 'zh' ? '全流程无人值守。⚠️ 单日 >3 篇有封号风险。' : 'Unattended. ⚠️ >3/day risks ban.'}
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!linkAutoUpload ? 'border-purple-500 bg-purple-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                <input type="radio" name="link_auto_upload" checked={!linkAutoUpload} onChange={() => setLinkAutoUpload(false)} className="mt-0.5" disabled={linkSubmitting} />
+                <div className="flex-1 text-xs leading-relaxed">
+                  <div className="font-semibold dark:text-white mb-0.5">
+                    {i18nService.currentLanguage === 'zh' ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">
+                    {i18nService.currentLanguage === 'zh' ? '存盘后手动审核上传，封号风险最低。' : 'Review and upload manually later.'}
+                  </div>
+                </div>
+              </label>
+            </div>
+
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
@@ -371,6 +406,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               // "已生成" 用 drafts 总数统计（包括 pending 和已上传的），反映 AI 产出量
               const generatedCount = taskDrafts.length;
               const trackPreset = TRACK_PRESETS.find(t => t.id === task.track);
+              const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+              const taskUrls: string[] = (task as any).urls || [];
               return (
                 <button
                   key={task.id}
@@ -381,9 +418,11 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   {/* Top row: track + ID + status badge */}
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg">{trackPreset?.icon || scenario?.icon || '🔥'}</span>
+                      <span className="text-lg">{isLinkMode ? '🔗' : (trackPreset?.icon || scenario?.icon || '🔥')}</span>
                       <span className="font-medium dark:text-white">
-                        {trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id}
+                        {isLinkMode
+                          ? (i18nService.currentLanguage === 'zh' ? '指定链接 · 小红书爆款仿写' : 'Pick-your-links · XHS rewrite')
+                          : (trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id)}
                       </span>
                       <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
                         #{task.id.slice(0, 8)}
@@ -394,6 +433,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                         <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           {i18nService.currentLanguage === 'zh' ? '运行中' : 'Running'}
+                        </span>
+                      ) : isLinkMode ? (
+                        <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
+                          ✋ {i18nService.currentLanguage === 'zh' ? '手动运行' : 'Manual'}
                         </span>
                       ) : task.active ? (
                         <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
@@ -413,8 +456,19 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   </div>
                   {/* Config details */}
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    <div>{i18nService.currentLanguage === 'zh' ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
-                    <div>⏰ {({ '30min': i18nService.currentLanguage === 'zh' ? '每30分钟' : 'Every 30min', '1h': i18nService.currentLanguage === 'zh' ? '每小时' : 'Hourly', '6h': i18nService.currentLanguage === 'zh' ? '每6小时' : 'Every 6h', 'daily': (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</div>
+                    {isLinkMode ? (
+                      <>
+                        <div>{i18nService.currentLanguage === 'zh' ? '原文链接' : 'Source URLs'}: {taskUrls.length} {i18nService.currentLanguage === 'zh' ? '个' : ''}</div>
+                        {taskUrls.slice(0, 3).map((u, i) => (
+                          <div key={i} className="truncate text-[11px] text-gray-400">{i + 1}. {u}</div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div>{i18nService.currentLanguage === 'zh' ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                        <div>⏰ {({ '30min': i18nService.currentLanguage === 'zh' ? '每30分钟' : 'Every 30min', '1h': i18nService.currentLanguage === 'zh' ? '每小时' : 'Hourly', '6h': i18nService.currentLanguage === 'zh' ? '每6小时' : 'Every 6h', 'daily': (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</div>
+                      </>
+                    )}
                   </div>
                 </button>
               );

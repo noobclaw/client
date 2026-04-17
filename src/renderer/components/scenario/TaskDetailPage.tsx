@@ -306,13 +306,37 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
-            <div className="flex items-center gap-3">
-              <span className="text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
-              <span className="dark:text-white font-medium">{trackName}</span>
-              <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
-            </div>
-            <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
-            <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
+            {(() => {
+              const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+              const taskUrls: string[] = (task as any).urls || [];
+              return (
+                <>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
+                    <span className="dark:text-white font-medium">
+                      {isLinkMode
+                        ? (isZh ? '🔗 指定链接 · 小红书爆款仿写' : '🔗 Pick-your-links · XHS rewrite')
+                        : trackName}
+                    </span>
+                    <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                  </div>
+                  {isLinkMode ? (
+                    <>
+                      <div>{isZh ? '原文链接' : 'Source URLs'}: {taskUrls.length} {isZh ? '个' : ''}</div>
+                      {taskUrls.map((u, i) => (
+                        <div key={i} className="truncate text-[11px] text-gray-400 pl-4">{i + 1}. {u}</div>
+                      ))}
+                      <div>{isZh ? '运行模式' : 'Mode'}: ✋ {isZh ? '一次性手动运行' : 'Manual one-shot'}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
             <div>{isZh ? '创建时间' : 'Created'}: {new Date(task.created_at).toLocaleString()}</div>
             <div className="flex items-center gap-1">
               <span>{isZh ? '输出目录:' : 'Output:'}</span>

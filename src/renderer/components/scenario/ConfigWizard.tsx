@@ -92,6 +92,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (initialTask?.daily_time) return initialTask.daily_time;
     return '08:00';
   });
+  // 自动上传草稿箱开关；默认 true 保持向后兼容
+  const [autoUpload, setAutoUpload] = useState<boolean>(
+    (initialTask as any)?.auto_upload !== undefined ? !!(initialTask as any).auto_upload : true
+  );
 
   // Confirm
   const [termsAccepted, setTermsAccepted] = useState([false, false]);
@@ -124,6 +128,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         variants_per_post: variants,
         daily_time: dailyTime,
         run_interval: runInterval,
+        auto_upload: autoUpload,
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
@@ -284,6 +289,49 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     className="flex-1"
                   />
                   <div className="w-12 text-center font-semibold text-green-500">{variants}</div>
+                </div>
+              </div>
+
+              {/* 自动上传草稿箱 / 仅生成本地 开关 */}
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                  {isZh ? '生成后的处理' : 'After generation'}
+                </label>
+                <div className="space-y-2">
+                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                    <input
+                      type="radio"
+                      name="auto_upload"
+                      checked={autoUpload}
+                      onChange={() => setAutoUpload(true)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 text-xs leading-relaxed">
+                      <div className="font-semibold dark:text-white mb-0.5">
+                        {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+                      </div>
+                      <div className="text-gray-500 dark:text-gray-400">
+                        {isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.'}
+                      </div>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                    <input
+                      type="radio"
+                      name="auto_upload"
+                      checked={!autoUpload}
+                      onChange={() => setAutoUpload(false)}
+                      className="mt-0.5"
+                    />
+                    <div className="flex-1 text-xs leading-relaxed">
+                      <div className="font-semibold dark:text-white mb-0.5">
+                        {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                      </div>
+                      <div className="text-gray-500 dark:text-gray-400">
+                        {isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.'}
+                      </div>
+                    </div>
+                  </label>
                 </div>
               </div>
 

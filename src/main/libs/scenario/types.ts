@@ -121,6 +121,11 @@ export interface ScenarioTask {
   daily_time: string;
   /** Run interval: '30min' | '1h' | '6h' | 'daily' | 'once' */
   run_interval: '30min' | '1h' | '6h' | 'daily' | 'once';
+  /** 任务末步是否自动上传到 XHS 草稿箱。
+   *  true（默认）= 跑完改写+生图后自动调上传 orchestrator；
+   *  false = 停在 step 3，草稿留本地待用户人工上传，降低封号风险。
+   *  任务创建时用户在 wizard/modal 里选。 */
+  auto_upload?: boolean;
   /** Legacy field */
   schedule_window?: string;
   enabled: boolean;
