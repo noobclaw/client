@@ -580,7 +580,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   </p>
                 </div>
                 <div className="text-right ml-3 flex-shrink-0">
-                  <p className="text-sm font-bold text-orange-400">-{formatTokens(r.total_tokens)}</p>
+                  {/* 显示 billable（实际扣减，含缓存折扣）而不是 total（DeepSeek
+                      原始消耗）。后端钱包余额是按 billable 扣的，这里
+                      要和钱包实际减少的数对齐。fallback 到 total 兼容老
+                      记录（旧行 billable 字段可能为 null，迁移时已回填）。*/}
+                  <p className="text-sm font-bold text-orange-400">
+                    -{formatTokens(r.billable_tokens ?? r.total_tokens)}
+                  </p>
                   <p className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
                     {new Date(r.created_at).toLocaleString()}
                   </p>
