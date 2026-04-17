@@ -219,7 +219,12 @@ export async function openExternal(url: string): Promise<boolean> {
   if (isElectronMode()) {
     try {
       const { shell } = require('electron');
-      await shell.openExternal(url);
+      // shell.openPath for local paths (opens in explorer/finder); openExternal for URLs
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        await shell.openExternal(url);
+      } else {
+        await shell.openPath(url);
+      }
       return true;
     } catch {}
   }
@@ -227,7 +232,16 @@ export async function openExternal(url: string): Promise<boolean> {
   // Sidecar fallback: use OS-specific commands
   try {
     if (process.platform === 'win32') {
-      execSync(`start "" "${url}"`, { windowsHide: true });
+      // Windows:
+      //   - `cmd /c start` chokes on Chinese paths (cp936 vs UTF-8 mismatch)
+      //   - `execFile('explorer.exe', [path])` passes args via UTF-16 wire, no codepage issue
+      // Use explorer for local paths, cmd start for URLs.
+      const { execFile } = require('child_process');
+      if (/^https?:\/\//i.test(url) || /^mailto:/i.test(url)) {
+        execSync(`start "" "${url}"`, { windowsHide: true });
+      } else {
+        execFile('explorer.exe', [url], { windowsHide: false }, () => {});
+      }
     } else if (process.platform === 'darwin') {
       execSync(`open "${url}"`);
     } else {

@@ -368,7 +368,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             {tasks.map(task => {
               const scenario = scenarioById.get(task.scenario_id);
               const taskDrafts = draftsByTask.get(task.id) || [];
-              const pendingCount = taskDrafts.filter(d => d.status === 'pending').length;
+              // "已生成" 用 drafts 总数统计（包括 pending 和已上传的），反映 AI 产出量
+              const generatedCount = taskDrafts.length;
               const trackPreset = TRACK_PRESETS.find(t => t.id === task.track);
               return (
                 <button
@@ -403,9 +404,9 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                           {i18nService.currentLanguage === 'zh' ? '待命' : 'Standby'}
                         </span>
                       )}
-                      {pendingCount > 0 && (
-                        <span className="text-xs px-2 py-1 rounded bg-amber-500/10 text-amber-500 border border-amber-500/30">
-                          {pendingCount} {i18nService.currentLanguage === 'zh' ? '条待审' : 'pending'}
+                      {generatedCount > 0 && (
+                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30">
+                          {i18nService.currentLanguage === 'zh' ? '已生成 ' + generatedCount + ' 条' : 'Generated ' + generatedCount}
                         </span>
                       )}
                     </div>

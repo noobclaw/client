@@ -315,23 +315,21 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               </div>
 
-              {/* Usage warning */}
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4 mb-4">
-                <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
+              {/* Usage warning — compacted into 2 lines */}
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
+                <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
                   {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
                 </div>
-                <ul className="text-xs text-gray-700 dark:text-gray-300 space-y-1.5 leading-relaxed">
-                  <li>🤖 {isZh ? <>所有操作都是<strong>模拟你本人在小红书上的行为</strong></> : <>All actions <strong>simulate your own behavior on Xiaohongshu</strong></>}</li>
-                  <li>🌐 {isZh ? <>任务运行期间请<strong>不要关闭浏览器中的小红书页面</strong></> : <><strong>Do not close the Xiaohongshu tab</strong> during a run</>}</li>
-                  <li>🔐 {isZh ? <>请<strong>不要退出小红书登录</strong>，否则任务会中断</> : <><strong>Do not log out of Xiaohongshu</strong>, or the task will be interrupted</>}</li>
-                  <li>🔄 {isZh ? <>每次执行前会<strong>自动检查登录状态</strong></> : <>Login status is <strong>automatically checked</strong> before each run</>}</li>
-                  <li>⏰ {isZh ? '任务运行时你可以正常使用电脑，但请保持浏览器打开' : 'You can use your computer normally, just keep the browser open'}</li>
-                </ul>
+                <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                  {isZh
+                    ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
+                    : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>}
+                </p>
               </div>
 
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
-                  {isZh ? '📋 使用条款' : '📋 Terms'}
+                  {isZh ? '使用条款' : 'Terms'}
                 </div>
                 {[
                   i18nService.t('scenarioWizardConfirmTerm1'),
