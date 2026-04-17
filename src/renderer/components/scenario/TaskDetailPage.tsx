@@ -527,14 +527,71 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
         const uploadedToday = drafts.filter(d => d.status === 'pushed' && d.pushed_at && new Date(d.pushed_at).toISOString().slice(0, 10) === todayStr).length;
         const DAILY_CAP = 3;
         const capReached = uploadedToday >= DAILY_CAP;
+        const pendingDrafts = drafts.filter(d => d.status !== 'pushed');
+        const batchRunnable = !capReached && !running && pendingDrafts.length > 0;
+        const remainingCap = Math.max(0, DAILY_CAP - uploadedToday);
+        const batchCount = Math.min(pendingDrafts.length, remainingCap);
+
+        const handleBatchUpload = async () => {
+          if (!batchRunnable) return;
+          const toUpload = pendingDrafts.slice(0, batchCount);
+          if (toUpload.length === 0) return;
+          if (!confirm(isZh ? `将依次上传 ${toUpload.length} 篇未上传的草稿（今日剩余额度 ${remainingCap}）？每篇之间会有 1-3 分钟随机间隔以降低风控。` : `Upload ${toUpload.length} pending drafts sequentially? 1-3 min random gap between each to reduce ban risk.`)) return;
+          for (let i = 0; i < toUpload.length; i++) {
+            const d = toUpload[i];
+            setUploadingDraftId(d.id);
+            try {
+              const r = await scenarioService.uploadDraft(task.id, d.id);
+              if (r.status === 'started') {
+                // Wait for this upload to finish (poll running state)
+                await new Promise<void>((resolve) => {
+                  const check = setInterval(async () => {
+                    const rid = await scenarioService.getRunningTaskId().catch(() => null);
+                    if (!rid) { clearInterval(check); resolve(); }
+                  }, 2000);
+                  setTimeout(() => { clearInterval(check); resolve(); }, 10 * 60 * 1000);
+                });
+                // Pause 1-3 minutes before next
+                if (i < toUpload.length - 1) {
+                  const gap = (60 + Math.random() * 120) * 1000;
+                  showToast('ok', (isZh ? `✓ 第 ${i + 1} 篇完成，等待 ${Math.round(gap / 1000)} 秒...` : `✓ ${i + 1} done, waiting ${Math.round(gap / 1000)}s...`));
+                  await new Promise((r2) => setTimeout(r2, gap));
+                }
+              } else {
+                showToast('err', (isZh ? '第 ' + (i + 1) + ' 篇失败: ' : 'Draft ' + (i + 1) + ' failed: ') + (r.reason || ''));
+              }
+            } catch (e) {
+              showToast('err', String(e).slice(0, 120));
+            }
+          }
+          setUploadingDraftId(null);
+          void refreshData();
+          showToast('ok', isZh ? '🎉 批量上传完成' : '🎉 Batch upload done');
+        };
+
         return (
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mt-4">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
               <h3 className="text-sm font-semibold dark:text-white">
                 {isZh ? '📋 已生成草稿' : '📋 Generated Drafts'} <span className="text-gray-500 font-normal">({drafts.length})</span>
               </h3>
-              <div className={`text-xs px-2 py-1 rounded ${capReached ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
-                {isZh ? `今日已上传 ${uploadedToday} / ${DAILY_CAP}` : `Today: ${uploadedToday} / ${DAILY_CAP} uploaded`}
+              <div className="flex items-center gap-2">
+                <div className={`text-xs px-2 py-1 rounded ${capReached ? 'bg-amber-500/10 text-amber-600 border border-amber-500/30' : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'}`}>
+                  {isZh ? `今日已上传 ${uploadedToday} / ${DAILY_CAP}` : `Today: ${uploadedToday} / ${DAILY_CAP}`}
+                </div>
+                <button
+                  type="button"
+                  disabled={!batchRunnable}
+                  onClick={handleBatchUpload}
+                  className={`text-xs px-3 py-1.5 rounded-lg font-semibold transition-colors ${
+                    batchRunnable
+                      ? 'bg-green-500 text-white hover:bg-green-600'
+                      : 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
+                  }`}
+                  title={isZh ? '跳过已上传的草稿，最多上传今日剩余额度 ' + remainingCap + ' 篇' : 'Skips already-uploaded; max ' + remainingCap + ' left today'}
+                >
+                  📤 {isZh ? '批量上传' : 'Batch Upload'} {batchCount > 0 ? `(${batchCount})` : ''}
+                </button>
               </div>
             </div>
             {capReached && (
@@ -546,7 +603,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               {drafts.map((d) => {
                 const isUploaded = d.status === 'pushed';
                 const isUploading = uploadingDraftId === d.id || (running && !isUploaded);
-                const uploadBtnDisabled = isUploading || isUploaded || capReached;
+                // 单篇按钮：已上传的允许重传（用户明确意图），只在运行中/达日上限时禁用
+                const uploadBtnDisabled = isUploading || capReached;
                 return (
                   <div key={d.id} className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
                     <div className="flex-1 min-w-0">
@@ -574,6 +632,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                       disabled={uploadBtnDisabled}
                       onClick={async () => {
                         if (uploadBtnDisabled) return;
+                        // 已上传过的再传需要用户确认（避免误点产生重复）
+                        if (isUploaded) {
+                          const ok = confirm(isZh ? '此篇已上传过，再次上传会在草稿箱产生重复。确认继续？' : 'Already uploaded. Uploading again will duplicate in draft box. Continue?');
+                          if (!ok) return;
+                        }
                         setUploadingDraftId(d.id);
                         try {
                           const r = await scenarioService.uploadDraft(task.id, d.id);
@@ -595,10 +658,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                       className={`shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
                         uploadBtnDisabled
                           ? 'bg-gray-200 dark:bg-gray-700 text-gray-400 cursor-not-allowed'
-                          : 'bg-green-500 text-white hover:bg-green-600'
+                          : (isUploaded ? 'bg-gray-500 text-white hover:bg-gray-600' : 'bg-green-500 text-white hover:bg-green-600')
                       }`}
                     >
-                      {isUploaded ? (isZh ? '✓ 已上传' : '✓ Uploaded') : (uploadingDraftId === d.id ? (isZh ? '上传中...' : 'Uploading...') : (isZh ? '📤 上传到草稿箱' : '📤 Upload'))}
+                      {uploadingDraftId === d.id
+                        ? (isZh ? '上传中...' : 'Uploading...')
+                        : isUploaded
+                          ? (isZh ? '🔁 再上传一次' : '🔁 Re-upload')
+                          : (isZh ? '📤 上传到草稿箱' : '📤 Upload')}
                     </button>
                   </div>
                 );
