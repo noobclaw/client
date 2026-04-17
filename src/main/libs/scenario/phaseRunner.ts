@@ -253,7 +253,19 @@ function buildContext(
       // Force chat model for scenario rewrites — reasoner burns too many
       // tokens on thinking and truncates the JSON output. Chat is faster
       // and more reliable for structured-output tasks like rewrite.
-      const apiCfg = { ...baseCfg, model: 'noobclawai-chat' };
+      //
+      // BUT only for the NoobClaw provider. If the user switched their
+      // default to Qwen / DeepSeek-direct / Volcengine / etc., forcing
+      // 'noobclawai-chat' makes the upstream 404 because that model name
+      // only exists on our own proxy. For non-NoobClaw providers we
+      // respect the user's selected model as-is — reasoner is fine there
+      // since the upstream handles its own billing.
+      const baseUrl = String((baseCfg as any).baseURL || '');
+      const isNoobClawProvider = /noobclaw\.com\//i.test(baseUrl)
+        || /^noobclawai/i.test(String(baseCfg.model || ''));
+      const apiCfg = isNoobClawProvider
+        ? { ...baseCfg, model: 'noobclawai-chat' }
+        : baseCfg;
 
       // Use streaming — show partial AI output in progress, abortable
       // Throttle UI updates to 1/s so logs (max 30 entries) aren't spammed
