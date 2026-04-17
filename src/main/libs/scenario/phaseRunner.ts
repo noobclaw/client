@@ -260,47 +260,53 @@ function buildContext(
       const startedAt = Date.now();
       let lastReport = 0;
       let lastTextLen = 0;
-      // Heartbeat: if the stream stalls (no new text for a while) or just
-      // takes a long time, keep printing "仍在生成中... (Xs)" every 5s so the
-      // user can tell the task is still alive vs genuinely hung.
+      // Heartbeat covers BOTH streaming and non-streaming fallback paths.
+      // Previously it was cleared in the catch before the fallback ran, so a
+      // 60s non-streaming call showed zero progress after the first 10s tick.
+      // Keeping one interval over the whole call means the user sees
+      // "仍在生成中 (20s / 30s / 40s...)" even if we silently switched to the
+      // non-stream fallback.
       const heartbeat = setInterval(() => {
         const elapsedSec = Math.floor((Date.now() - startedAt) / 1000);
         ctx.report('AI 仍在生成中... (' + elapsedSec + 's, 已输出 ' + lastTextLen + ' 字)');
       }, 10000);
       try {
-        const aiPromise = localExtractor.callAIWithConfigStreaming(
-          apiCfg, prompt, userMessage,
-          (partialText) => {
-            lastTextLen = partialText.length;
-            const now = Date.now();
-            if (now - lastReport < 1000) return;
-            lastReport = now;
-            const elapsedSec = Math.floor((now - startedAt) / 1000);
-            const preview = partialText.replace(/[\n\r]/g, ' ').slice(-80);
-            ctx.report('AI 生成中 (' + elapsedSec + 's, ' + partialText.length + ' 字): ' + preview);
-          }
-        );
-        // Race with abort checker
-        const response = await Promise.race([
-          aiPromise,
-          new Promise<never>((_, reject) => {
-            const check = setInterval(() => {
-              if (progress.isAbortRequested()) {
-                clearInterval(check);
-                reject(new Error('user_stopped'));
-              }
-            }, 500);
-            // Auto-clear after 5 min
-            setTimeout(() => clearInterval(check), 300000);
-          }),
-        ]);
+        try {
+          const aiPromise = localExtractor.callAIWithConfigStreaming(
+            apiCfg, prompt, userMessage,
+            (partialText) => {
+              lastTextLen = partialText.length;
+              const now = Date.now();
+              if (now - lastReport < 1000) return;
+              lastReport = now;
+              const elapsedSec = Math.floor((now - startedAt) / 1000);
+              const preview = partialText.replace(/[\n\r]/g, ' ').slice(-80);
+              ctx.report('AI 生成中 (' + elapsedSec + 's, ' + partialText.length + ' 字): ' + preview);
+            }
+          );
+          // Race with abort checker
+          const response = await Promise.race([
+            aiPromise,
+            new Promise<never>((_, reject) => {
+              const check = setInterval(() => {
+                if (progress.isAbortRequested()) {
+                  clearInterval(check);
+                  reject(new Error('user_stopped'));
+                }
+              }, 500);
+              // Auto-clear after 5 min
+              setTimeout(() => clearInterval(check), 300000);
+            }),
+          ]);
+          return response;
+        } catch (err) {
+          if (String(err).includes('user_stopped')) throw err;
+          coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
+          ctx.report('⚠️ 流式调用失败，切到非流式兜底（会慢一些，但计时仍在继续）');
+          return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
+        }
+      } finally {
         clearInterval(heartbeat);
-        return response;
-      } catch (err) {
-        clearInterval(heartbeat);
-        if (String(err).includes('user_stopped')) throw err;
-        coworkLog('WARN', 'phaseRunner', 'streaming fallback', { err: String(err) });
-        return await localExtractor.callAIWithConfig(apiCfg, prompt, userMessage);
       }
     },
 
