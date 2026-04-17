@@ -324,7 +324,26 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
                     <>
                       <div>{isZh ? '原文链接' : 'Source URLs'}: {taskUrls.length} {isZh ? '个' : ''}</div>
                       {taskUrls.map((u, i) => (
-                        <div key={i} className="truncate text-[11px] text-gray-400 pl-4">{i + 1}. {u}</div>
+                        <div key={i} className="flex items-start gap-2 pl-4 text-[11px]">
+                          <span className="text-gray-500 shrink-0 pt-0.5">{i + 1}.</span>
+                          {/* break-all so 长链接能换行展示而不是被截断 */}
+                          <span className="text-gray-400 break-all flex-1 min-w-0">{u}</span>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                await navigator.clipboard.writeText(u);
+                                showToast('ok', isZh ? '已复制链接' : 'Link copied');
+                              } catch {
+                                showToast('err', isZh ? '复制失败' : 'Copy failed');
+                              }
+                            }}
+                            className="shrink-0 px-2 py-0.5 text-[10px] rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:text-purple-500 hover:border-purple-500/50 transition-colors"
+                            title={isZh ? '复制链接' : 'Copy URL'}
+                          >
+                            📋 {isZh ? '复制' : 'Copy'}
+                          </button>
+                        </div>
                       ))}
                       <div>{isZh ? '运行模式' : 'Mode'}: ✋ {isZh ? '一次性手动运行' : 'Manual one-shot'}</div>
                     </>
