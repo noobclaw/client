@@ -152,7 +152,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     workflow_type: 'auto_reply' as any,
     name_zh: '小红书自动回复',
     name_en: 'XHS Auto Reply',
-    description_zh: '按关键词找文章，AI 生成评论+用户回复，2-10 分钟间隔安全发布。',
+    description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。',
     description_en: 'Find articles by keyword, AI-generate replies, post on a safe jitter.',
     icon: '💬',
     default_config: {
@@ -385,8 +385,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按 2-10 分钟随机间隔安全发布。'
-                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post on a 2-10 min jitter to stay below risk limits.'}
+                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。'
+                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post with 30-80s between replies and 60-200s between articles.'}
             </p>
             <button
               type="button"

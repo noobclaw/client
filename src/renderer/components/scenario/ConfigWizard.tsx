@@ -472,8 +472,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {isAutoReply && (
                   <div className="text-[11px] text-gray-400 mt-1">
                     {isZh
-                      ? `每篇文章生成 1 条文章评论 + ${replyCommentsPerArticle} 条用户回复（共 ${dailyCount * (1 + replyCommentsPerArticle)} 条），按 2-10 分钟随机间隔发布`
-                      : `Each article gets 1 note reply + ${replyCommentsPerArticle} user-comment replies (total ${dailyCount * (1 + replyCommentsPerArticle)} posts), with 2-10 min jitter between sends`}
+                      ? `每篇 1 文章评论 + ${replyCommentsPerArticle} 用户回复（共 ${dailyCount * (1 + replyCommentsPerArticle)} 条）。评论间隔 30-80 秒，文章间隔 60-200 秒`
+                      : `Per article: 1 note + ${replyCommentsPerArticle} user-comment replies (total ${dailyCount * (1 + replyCommentsPerArticle)}). Reply jitter 30-80s, article jitter 60-200s`}
                   </div>
                 )}
               </div>
@@ -549,7 +549,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <>
                       <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
                       <li>{isZh ? '· 每篇文章 LLM 一次性生成评论 + 用户回复，确保口吻一致' : '· One LLM call per article generates note + user-comment replies in a consistent voice'}</li>
-                      <li>{isZh ? '· 每条回复之间间隔 2-10 分钟随机停留，避开规律性发评' : '· 2-10 min random jitter between sends to avoid pattern detection'}</li>
+                      <li>{isZh ? '· 评论之间间隔 30-80 秒，文章之间间隔 60-200 秒，避开规律性发评' : '· Reply jitter 30-80s, article jitter 60-200s — avoids pattern detection'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭小红书页面' : '· Keep the browser open during the run, do not close the Xiaohongshu tab'}</li>
                       <li>{isZh ? '· 评论发布后无法撤回，建议先用 1-2 篇试运行确认风格' : '· Comments cannot be unposted — start with 1-2 articles to validate the voice'}</li>
                     </>
@@ -611,8 +611,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
                   {isAutoReply
                     ? (isZh
-                        ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>2-10 分钟随机间隔</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
-                        : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing and posts replies one-by-one with <strong>2-10 min random jitter</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
+                        ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
+                        : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
                     : (isZh
                         ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
                         : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
