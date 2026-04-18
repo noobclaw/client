@@ -347,11 +347,11 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         </div>
 
         {/* 3. Sensitive-word checker */}
-        <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
-          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+        <div className="relative rounded-2xl border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-amber-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-yellow-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-yellow-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
               {i18nService.currentLanguage === 'zh' ? '即开即用' : 'Instant'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
@@ -365,7 +365,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => onOpenSensitiveCheck && onOpenSensitiveCheck()}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-500/25 transition-all active:scale-95"
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-yellow-500 text-white hover:bg-rose-600 shadow-lg shadow-yellow-500/25 transition-all active:scale-95"
             >
               🚫 {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
             </button>
