@@ -549,7 +549,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <>
                       <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
                       <li>{isZh ? '· 每篇文章 LLM 一次性生成评论 + 用户回复，确保口吻一致' : '· One LLM call per article generates note + user-comment replies in a consistent voice'}</li>
-                      <li>{isZh ? '· 顺序：先逐条回复其他用户评论，最后再发文章评论（更像真人）' : '· Order: reply to other users\' comments first, then post the article-level comment last (mimics real users)'}</li>
+                      <li>{isZh ? '· 顺序：先发文章评论，再逐条回复 Top 评论' : '· Order: post the article-level comment first, then reply to top user comments'}</li>
                       <li>{isZh ? '· 每个 Top 评论 50% 几率回复（同一作者去重），避免老是骚扰同一个人' : '· Each top comment has a 50% chance of getting a reply (deduped by author) — avoids spamming the same person'}</li>
                       <li>{isZh ? '· 评论之间间隔 30-80 秒，文章之间间隔 60-200 秒，避开规律性发评' : '· Reply jitter 30-80s, article jitter 60-200s — avoids pattern detection'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭小红书页面' : '· Keep the browser open during the run, do not close the Xiaohongshu tab'}</li>
