@@ -365,7 +365,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             <button
               type="button"
               onClick={() => onOpenSensitiveCheck && onOpenSensitiveCheck()}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-yellow-500 text-white hover:bg-rose-600 shadow-lg shadow-yellow-500/25 transition-all active:scale-95"
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-yellow-500 text-white hover:bg-yellow-600 shadow-lg shadow-yellow-500/25 transition-all active:scale-95"
             >
               🚫 {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
             </button>

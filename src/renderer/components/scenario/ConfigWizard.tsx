@@ -232,7 +232,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Schedule
   const [dailyCount, setDailyCount] = useState(initialTask?.daily_count ?? defaults.daily_count);
   const [variants, setVariants] = useState(initialTask?.variants_per_post ?? defaults.variants_per_post);
-  const [runInterval, setRunInterval] = useState<string>((initialTask as any)?.run_interval || 'daily');
+  // Auto-reply defaults to daily_random (no fixed hour) for risk-control;
+  // other scenarios keep the legacy "daily" (fixed HH:MM) default.
+  const isAutoReplyDefault = (scenario.workflow_type as any) === 'auto_reply';
+  const [runInterval, setRunInterval] = useState<string>(
+    (initialTask as any)?.run_interval || (isAutoReplyDefault ? 'daily_random' : 'daily')
+  );
   const [dailyTime, setDailyTime] = useState<string>(() => {
     if (initialTask?.daily_time) return initialTask.daily_time;
     return '08:00';
@@ -398,13 +403,25 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
                 </label>
                 <div className="flex gap-2 flex-wrap">
-                  {[
-                    { value: 'once', label: isZh ? '不重复' : 'Once' },
-                    { value: '30min', label: isZh ? '每 30 分钟' : 'Every 30min' },
-                    { value: '1h', label: isZh ? '每小时' : 'Hourly' },
-                    { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
-                    { value: 'daily', label: isZh ? '每天' : 'Daily' },
-                  ].map(opt => (
+                  {(isAutoReply
+                    // ⚠️ Auto-reply must NOT pin to a fixed wall-clock hour
+                    // (XHS risk-control flags accounts that comment at the
+                    // same time daily). So only loose intervals + the
+                    // random-time daily option are exposed.
+                    ? [
+                        { value: 'once', label: isZh ? '不重复（手动触发）' : 'Once (manual only)' },
+                        { value: '3h', label: isZh ? '每 3 小时' : 'Every 3h' },
+                        { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
+                        { value: 'daily_random', label: isZh ? '每日随机时间一次' : 'Once daily (random time)' },
+                      ]
+                    : [
+                        { value: 'once', label: isZh ? '不重复' : 'Once' },
+                        { value: '30min', label: isZh ? '每 30 分钟' : 'Every 30min' },
+                        { value: '1h', label: isZh ? '每小时' : 'Hourly' },
+                        { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
+                        { value: 'daily', label: isZh ? '每天' : 'Daily' },
+                      ]
+                  ).map(opt => (
                     <button
                       key={opt.value}
                       type="button"
@@ -419,8 +436,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </button>
                   ))}
                 </div>
+                {isAutoReply && runInterval === 'daily_random' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    {isZh
+                      ? '⚠️ 评论类任务为避免被风控判定为机器人，禁止固定每日时间，每天会在随机时间点触发一次（每次距离上次至少 24 小时）'
+                      : '⚠️ Comment tasks must not run at the same hour daily — XHS flags that as bot behavior. Triggers once per day at a randomized time, with at least 24h between runs.'}
+                  </p>
+                )}
               </div>
 
+              {/* HH:MM picker only for the legacy fixed-time `daily` (rewrite scenarios) and `once`.
+                  Auto-reply's `daily_random` deliberately has NO time picker. */}
               {(runInterval === 'daily' || runInterval === 'once') && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
@@ -590,8 +616,24 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <div className="dark:text-white">
                     {(() => {
                       const intervalLabel = (isZh
-                        ? { 'once': '不重复 ' + dailyTime, '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime }
-                        : { 'once': 'Once ' + dailyTime, '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>
+                        ? {
+                            'once': '不重复 ' + dailyTime,
+                            '30min': '每30分钟',
+                            '1h': '每小时',
+                            '3h': '每3小时',
+                            '6h': '每6小时',
+                            'daily': '每天 ' + dailyTime,
+                            'daily_random': '每日随机时间一次',
+                          }
+                        : {
+                            'once': 'Once ' + dailyTime,
+                            '30min': 'Every 30min',
+                            '1h': 'Hourly',
+                            '3h': 'Every 3h',
+                            '6h': 'Every 6h',
+                            'daily': 'Daily ' + dailyTime,
+                            'daily_random': 'Once daily (random time)',
+                          } as Record<string, string>
                       )[runInterval] || runInterval;
                       if (isAutoReply) {
                         const minTotal = dailyCount;          // 每篇固定 1 文章评论

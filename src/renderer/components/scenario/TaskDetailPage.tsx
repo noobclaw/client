@@ -371,7 +371,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   ) : (
                     <>
                       <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
-                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') } : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
+                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' } : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
                     </>
                   )}
                 </>
@@ -432,9 +432,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     : task.active ? (() => {
                         const interval = (task as any).run_interval || 'daily';
                         const map: Record<string, string> = isZh
-                          ? { '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00') }
-                          : { '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00') };
-                        return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 定时运行' : ' Scheduled');
+                          ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' }
+                          : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' };
+                        return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 自动运行' : ' Scheduled');
                       })() : (isZh ? '待命' : 'Standby')}
                 </span>
                 <button type="button" onClick={handleRunNow}
@@ -470,7 +470,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             const interval = (task as any).run_interval || 'daily';
             const lastRun = stats?.last_run_at;
             if (!lastRun) return isZh ? '即将' : 'Soon';
-            const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
+            const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '3h': 3*60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000, 'daily_random': 24*60*60*1000 };
             const ms = intervals[interval] || 24*60*60*1000;
             const next = lastRun + ms;
             if (next <= Date.now()) return isZh ? '即将' : 'Soon';
@@ -592,7 +592,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       const interval = (task as any).run_interval || 'daily';
                       // Calculate next run time
                       const lastRun = stats?.last_run_at;
-                      const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000 };
+                      const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '3h': 3*60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000, 'daily_random': 24*60*60*1000 };
                       const ms = intervals[interval] || 24*60*60*1000;
                       let nextRunStr = '';
                       if (lastRun) {

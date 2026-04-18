@@ -123,8 +123,9 @@ export interface ScenarioTask {
   variants_per_post: number;
   /** Preferred run time in HH:MM (24h local). Used when interval is 'daily'. */
   daily_time: string;
-  /** Run interval: '30min' | '1h' | '6h' | 'daily' | 'once' */
-  run_interval: '30min' | '1h' | '6h' | 'daily' | 'once';
+  /** Run interval. `daily_random` = once per day at a random hour (no fixed time);
+   *  used by auto-reply scenarios where pinning to the same hour would trip XHS risk-control. */
+  run_interval: '30min' | '1h' | '3h' | '6h' | 'daily' | 'daily_random' | 'once';
   /** 任务末步是否自动上传到 XHS 草稿箱。
    *  true（默认）= 跑完改写+生图后自动调上传 orchestrator；
    *  false = 停在 step 3，草稿留本地待用户人工上传，降低封号风险。

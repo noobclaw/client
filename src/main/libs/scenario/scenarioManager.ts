@@ -360,8 +360,12 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunO
 const INTERVAL_MS: Record<string, number> = {
   '30min': 30 * 60 * 1000,
   '1h': 60 * 60 * 1000,
+  '3h': 3 * 60 * 60 * 1000,
   '6h': 6 * 60 * 60 * 1000,
   'daily': 24 * 60 * 60 * 1000,
+  // daily_random = 24h elapsed but no fixed-hour pin; XHS auto-reply uses
+  // this so the comment burst hits a different wall-clock time each day.
+  'daily_random': 24 * 60 * 60 * 1000,
 };
 
 let schedulerStarted = false;
@@ -399,6 +403,15 @@ export function startScheduler(): void {
           // Run if within ±15 min window and hasn't run today
           if (Math.abs(currentMin - targetMin) > 15) continue;
           if (elapsed < 20 * 60 * 60 * 1000) continue; // Already ran in last 20h
+        } else if (interval === 'daily_random') {
+          // Wait at least 24h since last run, then trigger with a small per-tick
+          // probability so the actual hour of day drifts each day. With p=1/180
+          // and tick=60s, after the 24h mark we expect to fire within ~3h on
+          // average — enough randomness to avoid a fixed-hour pattern. (Anti
+          // risk-control: XHS flags accounts that comment at the same wall-clock
+          // hour every day.)
+          if (elapsed < ms) continue;
+          if (Math.random() > 1 / 180) continue;
         } else {
           // For interval-based: just check if enough time has passed
           if (elapsed < ms) continue;
