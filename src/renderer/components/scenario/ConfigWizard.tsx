@@ -203,7 +203,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //  - no auto_upload toggle (replies are posted directly with jitter)
   //  - safety notice / confirm copy talks about reply jitter, not draft uploads
   const isAutoReply = (scenario.workflow_type as any) === 'auto_reply';
-  const replyCommentsPerArticle = (scenario.risk_caps as any)?.comment_replies_per_article || 2;
+  // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
+  // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
+  // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
