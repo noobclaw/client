@@ -520,7 +520,17 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               const generatedCount = taskDrafts.length;
               const trackPreset = TRACK_PRESETS.find(t => t.id === task.track);
               const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+              const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
               const taskUrls: string[] = (task as any).urls || [];
+              // Task type label so users can tell three workflow types apart at a glance
+              const typeLabel = isLinkMode
+                ? { icon: '🔗', zh: '指定链接改写', en: 'Pick-your-links Rewrite', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' }
+                : isAutoReplyTask
+                  ? { icon: '💬', zh: '自动回复', en: 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' }
+                  : { icon: '🔥', zh: '批量爆款改写', en: 'Batch Viral Rewrite', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+              const subTitle = isLinkMode
+                ? (i18nService.currentLanguage === 'zh' ? '指定链接' : 'Manual links')
+                : (trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id);
               return (
                 <button
                   key={task.id}
@@ -528,16 +538,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   onClick={() => onOpenTask(task.id)}
                   className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900 p-4 transition-colors"
                 >
-                  {/* Top row: track + ID + status badge */}
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{isLinkMode ? '🔗' : (trackPreset?.icon || scenario?.icon || '🔥')}</span>
-                      <span className="font-medium dark:text-white">
-                        {isLinkMode
-                          ? (i18nService.currentLanguage === 'zh' ? '指定链接 · 小红书爆款仿写' : 'Pick-your-links · XHS rewrite')
-                          : (trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id)}
+                  {/* Top row: type badge + track/subtitle + ID + status badge */}
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
+                        {typeLabel.icon} {i18nService.currentLanguage === 'zh' ? typeLabel.zh : typeLabel.en}
                       </span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+                      <span className="text-lg">{isLinkMode ? '🔗' : (trackPreset?.icon || scenario?.icon || '🔥')}</span>
+                      <span className="font-medium dark:text-white truncate">{subTitle}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
                         #{task.id.slice(0, 8)}
                       </span>
                     </div>

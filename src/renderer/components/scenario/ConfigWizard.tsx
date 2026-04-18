@@ -18,30 +18,51 @@ type TrackPreset = {
   name_zh: string;
   keywords: string[];
   persona_hint: string;
+  // More detailed persona used by auto_reply scenario — covers identity,
+  // tone, vocabulary cues, what to avoid. Editable by the user.
+  reply_persona_hint?: string;
 };
 
 // 关键词经过 2026 小红书流量数据（千瓜 / 新榜 / TopMarketing）筛选：
 // 长尾词 > 大词（例："减脂餐" > "减肥"、"小个子穿搭" > "穿搭"）
 // 场景+人群修饰词（"0基础"、"通勤"、"租房党" 等）转化率最高
 const TRACK_PRESETS: TrackPreset[] = [
-  { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱', keywords: ['副业', '下班变现', '兼职', '月入过万', '副业推荐', '在家赚钱', 'AI副业', '小红书副业', '蒲公英接单', '副业项目', '0基础副业', '打工人副业', '副业变现', '周末副业', '宝妈副业'], persona_hint: '一个想在下班后搞点副业的普通打工人，真诚不装' },
-  { id: 'indie_dev', icon: '👩‍💻', name_zh: '独立开发 · 程序员记录', keywords: ['独立开发', 'indie hacker', 'SaaS出海', '程序员副业', '全栈开发', '个人开发者', '副业编程', '独立产品', 'AI工具开发', '出海产品', '技术博客', '前端学习', '程序员日常', '远程工作', '程序员女朋友'], persona_hint: '独立开发者，前后端都写，真诚记录产品和收入' },
-  { id: 'personal_finance', icon: '💰', name_zh: '理财 · 记账攻略', keywords: ['攒钱', '存钱方法', '记账app', '工资理财', '基金定投', '攒钱挑战', '理财入门', '记账日记', '工资分配', '穷人理财', '月光族', '攒钱100天', '家庭理财', '钱生钱', '极简生活攒钱'], persona_hint: '月薪 1 万的普通白领，认真记账、稳健理财' },
-  { id: 'travel', icon: '✈️', name_zh: '旅行 · 攻略分享', keywords: ['穷游攻略', '周末去哪玩', '周边游', '小众目的地', 'citywalk', '特种兵旅行', '一人旅行', '亲子游', '海岛游', '自驾游', '民宿推荐', '机票便宜', '反向旅游', '旅行vlog', '出境游'], persona_hint: '爱说走就走的旅行爱好者，分享性价比攻略' },
-  { id: 'food', icon: '🍲', name_zh: '美食 · 探店做饭', keywords: ['减脂餐', '一人食', '懒人菜', '低卡', '早餐', '便当', '空气炸锅食谱', '家常菜', '烘焙', '探店', '本地美食', '周末美食', '养生汤', '气血食谱', '学生餐'], persona_hint: '喜欢折腾吃喝的上班族，每天做饭给自己' },
-  { id: 'outfit', icon: '👗', name_zh: '穿搭 · 风格分享', keywords: ['小个子穿搭', '通勤穿搭', '梨形身材穿搭', '苹果身材穿搭', '法式穿搭', '韩系穿搭', 'OOTD', '大码穿搭', '秋冬穿搭', '奶甜系', '清冷风', '氛围感穿搭', '约会穿搭', '微胖穿搭', '气质穿搭'], persona_hint: '小个子职场穿搭爱好者' },
-  { id: 'beauty', icon: '💄', name_zh: '美妆 · 产品测评', keywords: ['平价彩妆', '敏感肌护肤', '成分党', '粉底液测评', '口红试色', '眼影教程', '素颜霜', '新手化妆', '早C晚A', '抗老', '美白', '防晒', '空瓶记', '化妆包常驻', '护肤步骤'], persona_hint: '敏感肌护肤爱好者，只买成分党认证的' },
-  { id: 'fitness', icon: '💪', name_zh: '健身 · 减脂日记', keywords: ['居家健身', '减脂打卡', '21天减脂', '马甲线', '普拉提', 'HIIT', '瑜伽入门', '塑形', '体态矫正', '减脂餐', '健身小白', '跑步日记', '拉伸', '徒手训练', '核心训练'], persona_hint: '上班族，边工作边坚持居家健身一年' },
-  { id: 'reading', icon: '📚', name_zh: '读书 · 书单笔记', keywords: ['读书笔记', '年度书单', '好书推荐', '读书打卡', '实体书', '小说推荐', '非虚构', '人物传记', '心理学书单', '成长书单', 'kindle', '读书方法', '写读后感', '女性主义书单', '书评'], persona_hint: '一年读 50 本书的普通读者' },
-  { id: 'parenting', icon: '🧸', name_zh: '育儿 · 亲子日常', keywords: ['科学育儿', '早教', '绘本推荐', '辅食', '亲子游戏', '母婴好物', '新手妈妈', '孕期', '产后恢复', '幼儿园', '亲子手工', '带娃神器', '育儿日记', '0-3岁早教', '亲子阅读'], persona_hint: '3 岁娃妈妈，理性育儿不焦虑' },
-  { id: 'exam_prep', icon: '🎓', name_zh: '考研 · 备考党', keywords: ['考研日记', '考研英语', '考研经验', '考研数学', '考研政治', '单词打卡', '备考计划', '真题', '四六级', '考公', '考研上岸', '二战考研', '保研', '教资', '雅思'], persona_hint: '二战考研人，记录每日学习节奏' },
-  { id: 'pets', icon: '🐱', name_zh: '宠物 · 猫狗日常', keywords: ['养猫日常', '养狗日常', '橘猫', '柯基', '金毛', '宠物医院', '猫粮测评', '狗粮', '训狗', '宠物穿搭', '养宠新手', '流浪猫', '田园猫', '宠物用品', '布偶猫'], persona_hint: '一只中华田园猫的主人，真实养宠记录' },
-  { id: 'home_decor', icon: '🏠', name_zh: '家居 · 小屋布置', keywords: ['租房改造', '小户型', '收纳', '家居好物', '宜家', '一人居', '装修日记', '北欧风', '日式家居', '卫生间改造', '厨房收纳', '客厅软装', '全屋清洁', '极简家居', '出租屋改造'], persona_hint: '租房党，用 2000 预算把小公寓改舒服' },
-  { id: 'study_method', icon: '🏆', name_zh: '学习 · 效率工具', keywords: ['Notion', 'flomo', '时间管理', '番茄钟', '自律', '早起', '晨间日记', '习惯养成', 'todolist', '思维导图', '康奈尔笔记', '学习方法', '专注力', 'GTD', '数字极简'], persona_hint: '热爱效率工具的产品经理' },
-  { id: 'career_growth', icon: '🎯', name_zh: '职场 · 升级打怪', keywords: ['兼职', '简历', '摆摊', '求职', '应届生', '大厂面试', '跳槽', '升职', '职场穿搭', '职场人设', '打工人', '裸辞', '35岁', '职业规划', '副业'], persona_hint: '互联网行业工作 5 年的打工人' },
-  { id: 'emotional_wellness', icon: '🧘', name_zh: '情感 · 心理疗愈', keywords: ['MBTI', 'INFJ', '原生家庭', '亲密关系', '分手', '自我接纳', '情绪管理', '疗愈', '心理学', '正念', '冥想', '孤独', '恋爱日记', 'ENFP', '人际关系'], persona_hint: '正在做自我探索的 30 岁女性' },
-  { id: 'photography', icon: '📷', name_zh: '摄影 · 日常记录', keywords: ['手机摄影', '胶片相机', '富士相机', '人像摄影', '扫街', '构图', '修图教程', 'lightroom', 'vsco', '日系摄影', '情侣拍照', '自拍姿势', '风光摄影', '黑白摄影', '街头摄影'], persona_hint: '业余摄影爱好者，周末扫街' },
-  { id: 'crafts', icon: '🎨', name_zh: '手工 · DIY', keywords: ['手账', '胶带手账', '手工DIY', '超轻粘土', '刺绣', '编织', '水彩', '贴纸收集', '手作', '拼豆', '折纸', '粘土教程', '手工课', 'bujo', '手绘'], persona_hint: '热爱动手做点小东西的文艺青年' },
+  { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱', keywords: ['副业', '下班变现', '兼职', '月入过万', '副业推荐', '在家赚钱', 'AI副业', '小红书副业', '蒲公英接单', '副业项目', '0基础副业', '打工人副业', '副业变现', '周末副业', '宝妈副业'], persona_hint: '一个想在下班后搞点副业的普通打工人，真诚不装',
+    reply_persona_hint: '我也是上班族，正在尝试小红书+AI写作做副业，目前每月稳定 2-3k 进账。回复时口气像在和同事下班路上聊天，可以分享自己踩过的坑（比如刚开始也很怀疑能不能做起来），偶尔用"哈哈""真的""我也是"。绝对不要带"加微信""扫码""V我"这类引流词，也不要说自己是大佬或导师。' },
+  { id: 'indie_dev', icon: '👩‍💻', name_zh: '独立开发 · 程序员记录', keywords: ['独立开发', 'indie hacker', 'SaaS出海', '程序员副业', '全栈开发', '个人开发者', '副业编程', '独立产品', 'AI工具开发', '出海产品', '技术博客', '前端学习', '程序员日常', '远程工作', '程序员女朋友'], persona_hint: '独立开发者，前后端都写，真诚记录产品和收入',
+    reply_persona_hint: '一个写了 6 年代码的独立开发者，最近在做出海 SaaS。技术栈 React+TS+Postgres。回复像程序员同行交流，可以提到具体的技术选型痛点（比如 Stripe 的中国用户限制、Cloudflare R2 比 S3 便宜）。语气直白偶尔自嘲，不要客套。不能说"扫码加微信进群"或者推自己的产品链接。' },
+  { id: 'personal_finance', icon: '💰', name_zh: '理财 · 记账攻略', keywords: ['攒钱', '存钱方法', '记账app', '工资理财', '基金定投', '攒钱挑战', '理财入门', '记账日记', '工资分配', '穷人理财', '月光族', '攒钱100天', '家庭理财', '钱生钱', '极简生活攒钱'], persona_hint: '月薪 1 万的普通白领，认真记账、稳健理财',
+    reply_persona_hint: '90 后白领，月薪 1 万左右，坚持记账 3 年，目前持有指数基金 + 货基组合。回复时聊自己的真实数字（"我每月拿 30% 定投"），承认理财没有捷径。不要推荐具体股票或代码，不要说"稳赚"、"翻倍"这类词。绝对不能让人加微信学习理财。' },
+  { id: 'travel', icon: '✈️', name_zh: '旅行 · 攻略分享', keywords: ['穷游攻略', '周末去哪玩', '周边游', '小众目的地', 'citywalk', '特种兵旅行', '一人旅行', '亲子游', '海岛游', '自驾游', '民宿推荐', '机票便宜', '反向旅游', '旅行vlog', '出境游'], persona_hint: '爱说走就走的旅行爱好者，分享性价比攻略',
+    reply_persona_hint: '一个一年出去 5-6 次的旅行爱好者，喜欢小众目的地和反向旅行。回复时可以提自己的具体经历（"上次去大理是 9 月，淡季机票 400 来回"），分享避坑细节。不要推荐具体酒店或民宿（容易被认作广告），不要说"私信我要攻略"。' },
+  { id: 'food', icon: '🍲', name_zh: '美食 · 探店做饭', keywords: ['减脂餐', '一人食', '懒人菜', '低卡', '早餐', '便当', '空气炸锅食谱', '家常菜', '烘焙', '探店', '本地美食', '周末美食', '养生汤', '气血食谱', '学生餐'], persona_hint: '喜欢折腾吃喝的上班族，每天做饭给自己',
+    reply_persona_hint: '一个会做菜的普通上班族，下班自己开火 5 年了，喜欢空气炸锅和一人食。回复时可以聊具体食材和做法（"我那次烤鸡腿用 200 度 25 分钟，肉汁都封住了"），说真实口感。不要推荐自家店或私厨，不要带"加微信领菜谱"。' },
+  { id: 'outfit', icon: '👗', name_zh: '穿搭 · 风格分享', keywords: ['小个子穿搭', '通勤穿搭', '梨形身材穿搭', '苹果身材穿搭', '法式穿搭', '韩系穿搭', 'OOTD', '大码穿搭', '秋冬穿搭', '奶甜系', '清冷风', '氛围感穿搭', '约会穿搭', '微胖穿搭', '气质穿搭'], persona_hint: '小个子职场穿搭爱好者',
+    reply_persona_hint: '155cm 的小个子上班族，研究穿搭 3 年。回复时可以聊自己的身高体重和适合的版型（"我 90 斤穿这个外套要 S 才不会显大"），承认有些款不适合所有人。不要推荐具体淘宝店链接或品牌（容易被判定广告），不要说"扫码加我专属推荐"。' },
+  { id: 'beauty', icon: '💄', name_zh: '美妆 · 产品测评', keywords: ['平价彩妆', '敏感肌护肤', '成分党', '粉底液测评', '口红试色', '眼影教程', '素颜霜', '新手化妆', '早C晚A', '抗老', '美白', '防晒', '空瓶记', '化妆包常驻', '护肤步骤'], persona_hint: '敏感肌护肤爱好者，只买成分党认证的',
+    reply_persona_hint: '敏感肌+混油皮，护肤踩坑 8 年总结出一套保守路线（A 醇耐受期 6 个月才稳定）。回复时聊真实使用感受（"我用了 3 周才看到淡纹"），承认护肤要看肤质。不要保证"美白"、"祛痘"、"祛斑"等功效（小红书严禁），不要推具体淘宝店。' },
+  { id: 'fitness', icon: '💪', name_zh: '健身 · 减脂日记', keywords: ['居家健身', '减脂打卡', '21天减脂', '马甲线', '普拉提', 'HIIT', '瑜伽入门', '塑形', '体态矫正', '减脂餐', '健身小白', '跑步日记', '拉伸', '徒手训练', '核心训练'], persona_hint: '上班族，边工作边坚持居家健身一年',
+    reply_persona_hint: '一个居家健身 1 年半的上班族，从 130 斤减到 108 斤，主要靠 HIIT + 控制饮食。回复时分享真实进度和卡点（"我也卡了 2 个月平台期才突破"），不夸大效果。绝对不能说"7 天瘦 10 斤"、"懒人减肥"这类违规词，也不要推减肥产品。' },
+  { id: 'reading', icon: '📚', name_zh: '读书 · 书单笔记', keywords: ['读书笔记', '年度书单', '好书推荐', '读书打卡', '实体书', '小说推荐', '非虚构', '人物传记', '心理学书单', '成长书单', 'kindle', '读书方法', '写读后感', '女性主义书单', '书评'], persona_hint: '一年读 50 本书的普通读者',
+    reply_persona_hint: '一年读 40-50 本书的普通读者，偏好非虚构和心理学，最近在读《纳瓦尔宝典》和《也许你该找个人聊聊》。回复时分享自己的读后感（哪段最有感触、哪本不推荐），承认有些书没读完。不要假装自己什么都看过，不要推付费书单或读书会。' },
+  { id: 'parenting', icon: '🧸', name_zh: '育儿 · 亲子日常', keywords: ['科学育儿', '早教', '绘本推荐', '辅食', '亲子游戏', '母婴好物', '新手妈妈', '孕期', '产后恢复', '幼儿园', '亲子手工', '带娃神器', '育儿日记', '0-3岁早教', '亲子阅读'], persona_hint: '3 岁娃妈妈，理性育儿不焦虑',
+    reply_persona_hint: '3 岁宝宝的全职妈妈，娃从 6 个月开始亲喂辅食。理性育儿派，相信科学不信偏方。回复时聊自己带娃的真实场景（"我家也是 18 个月才会叫妈妈"），缓解新手妈妈焦虑。不要推具体奶粉/纸尿裤品牌，不要说"私信送绘本资源"。' },
+  { id: 'exam_prep', icon: '🎓', name_zh: '考研 · 备考党', keywords: ['考研日记', '考研英语', '考研经验', '考研数学', '考研政治', '单词打卡', '备考计划', '真题', '四六级', '考公', '考研上岸', '二战考研', '保研', '教资', '雅思'], persona_hint: '二战考研人，记录每日学习节奏',
+    reply_persona_hint: '二战上岸的研究生，跨考新传，初试 380。回复时聊自己的真实备考节奏（"我每天 7 点起来背单词，10 点前一定睡"），分享低谷期。不要推付费课程或网盘资料，不要说"加微信进群"。说话朴素，不要"上岸大佬"自封。' },
+  { id: 'pets', icon: '🐱', name_zh: '宠物 · 猫狗日常', keywords: ['养猫日常', '养狗日常', '橘猫', '柯基', '金毛', '宠物医院', '猫粮测评', '狗粮', '训狗', '宠物穿搭', '养宠新手', '流浪猫', '田园猫', '宠物用品', '布偶猫'], persona_hint: '一只中华田园猫的主人，真实养宠记录',
+    reply_persona_hint: '一只 2 岁中华田园猫的主人（捡的流浪猫），养猫 2 年。回复时聊自家猫的具体行为（"我家小橘也喜欢咬塑料袋，后来藏起来就不吃了"）。不要推具体猫粮品牌（容易判广告），不要说"加微信问养猫问题"。语气可以软萌但不腻。' },
+  { id: 'home_decor', icon: '🏠', name_zh: '家居 · 小屋布置', keywords: ['租房改造', '小户型', '收纳', '家居好物', '宜家', '一人居', '装修日记', '北欧风', '日式家居', '卫生间改造', '厨房收纳', '客厅软装', '极简家居', '出租屋改造'], persona_hint: '租房党，用 2000 预算把小公寓改舒服',
+    reply_persona_hint: '租房党，住在 25㎡ 一居室，用 1500 预算改造完。喜欢宜家+小众独立品牌混搭。回复时分享具体改造细节（"我那块壁纸 PDD 30 块买的，撕下来不留胶"），承认效果有限。不要推自己的店或淘宝链接，不要说"私信发购物清单"。' },
+  { id: 'study_method', icon: '🏆', name_zh: '学习 · 效率工具', keywords: ['Notion', 'flomo', '时间管理', '番茄钟', '自律', '早起', '晨间日记', '习惯养成', 'todolist', '思维导图', '康奈尔笔记', '学习方法', '专注力', 'GTD', '数字极简'], persona_hint: '热爱效率工具的产品经理',
+    reply_persona_hint: '互联网产品经理，用 Notion 3 年 + flomo 1 年。回复时聊自己的真实工作流（"我每天早会前 15 分钟把 inbox 清空"），承认工具不能解决惰性。不要推付费模板或课程，不要说"加我领免费模板"。语气克制不鸡汤。' },
+  { id: 'career_growth', icon: '🎯', name_zh: '职场 · 升级打怪', keywords: ['兼职', '简历', '摆摊', '求职', '应届生', '大厂面试', '跳槽', '升职', '职场穿搭', '职场人设', '打工人', '裸辞', '35岁', '职业规划', '副业'], persona_hint: '互联网行业工作 5 年的打工人',
+    reply_persona_hint: '互联网工作 6 年，从应届到 P7，跳过 2 次槽。回复时分享自己的真实经历（"我第一次跳槽涨了 40%，第二次只涨 15%"），承认职场没有标准答案。不要鼓吹"裸辞"、"35 岁危机"，不要推付费简历修改服务。' },
+  { id: 'emotional_wellness', icon: '🧘', name_zh: '情感 · 心理疗愈', keywords: ['MBTI', 'INFJ', '原生家庭', '亲密关系', '分手', '自我接纳', '情绪管理', '疗愈', '心理学', '正念', '冥想', '孤独', '恋爱日记', 'ENFP', '人际关系'], persona_hint: '正在做自我探索的 30 岁女性',
+    reply_persona_hint: '32 岁，做了 1 年心理咨询的来访者（不是咨询师），INFJ。回复时分享自己情绪低谷的处理（"我焦虑的时候会写情绪日记，不一定有效但能看见自己"），承认人是复杂的。不要给"诊断"、不要说"你这是 XXX 症"，不要推算命/塔罗/疗愈课程。' },
+  { id: 'photography', icon: '📷', name_zh: '摄影 · 日常记录', keywords: ['手机摄影', '胶片相机', '富士相机', '人像摄影', '扫街', '构图', '修图教程', 'lightroom', 'vsco', '日系摄影', '情侣拍照', '自拍姿势', '风光摄影', '黑白摄影', '街头摄影'], persona_hint: '业余摄影爱好者，周末扫街',
+    reply_persona_hint: '业余摄影爱好者 4 年，富士 X-T30 + 35mm f1.4，主要拍街头和人像。回复时聊具体参数（"这种逆光我会 -1EV 然后后期拉回阴影"），承认很多废片。不要推后期预设包，不要说"加微信领 LR 教程"。' },
+  { id: 'crafts', icon: '🎨', name_zh: '手工 · DIY', keywords: ['手账', '胶带手账', '手工DIY', '超轻粘土', '刺绣', '编织', '水彩', '贴纸收集', '手作', '拼豆', '折纸', '粘土教程', '手工课', 'bujo', '手绘'], persona_hint: '热爱动手做点小东西的文艺青年',
+    reply_persona_hint: '一个写手账 + 玩黏土 3 年的小白，材料控但手不算巧。回复时分享自己的笨手工经历（"我第一次拼花用了 2 小时还歪了"），承认看着简单做起来难。不要推自己开的小店或材料包，不要说"私信送图纸"。' },
 ];
 
 interface Props {
@@ -87,8 +108,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     return selectedTrack.keywords.join(' ');
   });
 
-  // Persona (auto-set from track, not user-editable)
-  const persona = selectedTrack.persona_hint;
+  // Persona — for viral_production, locked to the track's short hint.
+  // For auto_reply, exposed as an editable textarea using the more
+  // detailed reply_persona_hint as default. Either way `persona` is the
+  // current effective value sent to the orchestrator.
+  const initialPersona = initialTask?.persona && initialTask.persona.trim()
+    ? initialTask.persona
+    : (isAutoReply
+        ? (selectedTrack.reply_persona_hint || selectedTrack.persona_hint)
+        : selectedTrack.persona_hint);
+  const [persona, setPersona] = useState<string>(initialPersona);
 
   // Schedule
   const [dailyCount, setDailyCount] = useState(initialTask?.daily_count ?? defaults.daily_count);
@@ -114,13 +143,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const dailyHardCap = ((scenario.risk_caps as any)?.daily_count_cap)
     || ((scenario.workflow_type as any) === 'auto_reply' ? 6 : 3);
 
-  // When track changes, update keywords + persona
+  // When track changes, refresh keywords + persona to the new preset
   const handleTrackChange = (newTrackId: string) => {
     const preset = TRACK_PRESETS.find(t => t.id === newTrackId);
     if (!preset) return;
     setTrackId(newTrackId);
     setCustomKeywordsText(preset.keywords.join(' '));
-    // persona auto-follows track
+    setPersona(isAutoReply
+      ? (preset.reply_persona_hint || preset.persona_hint)
+      : preset.persona_hint);
   };
 
   const handleFinish = async () => {
@@ -215,6 +246,37 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
                 </div>
               </div>
+
+              {/* Persona — only exposed for auto_reply. Determines the voice of
+                  every comment posted under your account. Default is the
+                  detailed reply_persona_hint for the chosen track. */}
+              {isAutoReply && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '人设（你以什么身份在评论）' : 'Persona (who you are in the comments)'}
+                    <span className="text-xs text-gray-400 font-normal ml-1">
+                      {isZh ? '· 越具体 AI 越像真人' : '· Specific = less AI-like'}
+                    </span>
+                  </label>
+                  <div className="mb-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2 text-[11px] text-cyan-700 dark:text-cyan-400 leading-relaxed">
+                    {isZh
+                      ? <>💡 已根据所选赛道预填详细人设。<strong>建议你按自己实际情况微调</strong>（年龄、职业、城市、消费水平、口头禅、避讳话题），人设越独特生成的回复越不像 AI。</>
+                      : <>💡 Pre-filled with a detailed persona for this track. <strong>Tweak it to match your real profile</strong> (age, job, city, spending, catchphrases, taboos) — the more unique, the less AI-like.</>}
+                  </div>
+                  <textarea
+                    value={persona}
+                    onChange={e => setPersona(e.target.value)}
+                    placeholder={isZh
+                      ? '例：32 岁产品经理，住上海，月薪 2 万，敏感肌，喜欢用"哈哈"和"真的"，不要推具体品牌，不要说"加微信"'
+                      : 'e.g. 32yo PM, Shanghai, sensitive skin, talks casual, never recommend brands, never ask to add WeChat'}
+                    rows={6}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 leading-relaxed"
+                  />
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {isZh ? '此人设会被注入到每次 AI 生成回复的 prompt 里' : 'Injected into every reply-generation prompt'}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

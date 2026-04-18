@@ -108,6 +108,19 @@ const STEP_NAMES_EN = [
   'AI generates images, saved locally',
   'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
+// Auto-reply has a different per-step narrative than viral_production.
+const STEP_NAMES_AUTOREPLY_ZH = [
+  '搜索关键词，按「最多评论 + 一周内」筛选并采集候选文章',
+  '依次访问每篇文章，读取标题/正文/Top3 高赞评论',
+  'AI 一次生成「文章评论 + 用户回复」（注入人设、控制字数、去 AI 化）',
+  '间歇发布：先回文章再依次回复评论，2-10 分钟随机间隔',
+];
+const STEP_NAMES_AUTOREPLY_EN = [
+  'Search keyword, filter "most comments + last week", collect candidates',
+  'Visit each article, read title / body / top-3 most-liked comments',
+  'One LLM call per article: note reply + user-comment replies (persona-aware)',
+  'Post with 2-10 min jitter: note reply first, then comment replies',
+];
 
 interface Props {
   task: Task;
@@ -117,13 +130,19 @@ interface Props {
   onChanged: () => void | Promise<void>;
 }
 
-export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChanged }) => {
+export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   // 链接模式是一次性手动运行，没有"下次运行"的概念
   const isLinkModeForStats = task.track === 'link_mode'
     || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+  // Auto-reply tasks have a different step narrative and don't produce
+  // local drafts (replies post directly), so the upload-mode badge and
+  // the manual-upload step variant don't apply to them.
+  const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
-  const STEP_NAMES = isZh ? STEP_NAMES_ZH : STEP_NAMES_EN;
+  const STEP_NAMES = isAutoReplyTask
+    ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
+    : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
@@ -360,18 +379,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
               );
             })()}
             <div>{isZh ? '创建时间' : 'Created'}: {new Date(task.created_at).toLocaleString()}</div>
-            <div className="flex items-center gap-1">
-              <span>{isZh ? '输出目录:' : 'Output:'}</span>
-              <button type="button" onClick={async () => {
-                try {
-                  const res = await window.electron?.scenario?.getTaskDir?.(task.id);
-                  const dir = typeof res === 'string' ? res : res?.dir;
-                  if (dir) window.electron?.shell?.openPath?.(dir);
-                } catch {}
-              }} className="text-blue-500 hover:underline text-[11px]">
-                {isZh ? '📂 打开输出文件夹' : '📂 Open folder'}
-              </button>
-            </div>
+            {/* Auto-reply doesn't write drafts to disk — hide the folder link
+                so users don't get confused looking for output that never lands. */}
+            {!isAutoReplyTask && (
+              <div className="flex items-center gap-1">
+                <span>{isZh ? '输出目录:' : 'Output:'}</span>
+                <button type="button" onClick={async () => {
+                  try {
+                    const res = await window.electron?.scenario?.getTaskDir?.(task.id);
+                    const dir = typeof res === 'string' ? res : res?.dir;
+                    if (dir) window.electron?.shell?.openPath?.(dir);
+                  } catch {}
+                }} className="text-blue-500 hover:underline text-[11px]">
+                  {isZh ? '📂 打开输出文件夹' : '📂 Open folder'}
+                </button>
+              </div>
+            )}
+            {isAutoReplyTask && task.persona && (
+              <div className="text-[11px] text-gray-400 leading-relaxed">
+                <span className="text-gray-500">{isZh ? '人设:' : 'Persona:'}</span>{' '}
+                <span className="italic">{task.persona.length > 120 ? task.persona.slice(0, 120) + '...' : task.persona}</span>
+              </div>
+            )}
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {running ? (
@@ -465,15 +494,23 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
       {/* 运行明细 */}
       {(() => {
         const autoUploadMode = (task as any).auto_upload !== false;
+        // Auto-reply mode has no draft/upload concept — skip the badge.
+        const showUploadBadge = !isAutoReplyTask;
         return (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
               <h2 className="text-base font-bold dark:text-white">{isZh ? '运行明细' : 'Run Details'}</h2>
-              <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
-                {autoUploadMode
-                  ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload')
-                  : (isZh ? '📁 仅生成保存本地' : '📁 Generate only')}
-              </span>
+              {showUploadBadge ? (
+                <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
+                  {autoUploadMode
+                    ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload')
+                    : (isZh ? '📁 仅生成保存本地' : '📁 Generate only')}
+                </span>
+              ) : (
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-cyan-500/10 text-cyan-500 border-cyan-500/30">
+                  💬 {isZh ? '直接发布到小红书' : 'Posts directly to XHS'}
+                </span>
+              )}
             </div>
             <div className="space-y-4">
               {STEP_NAMES.map((n, i) => ({ name: n, idx: i })).map(({ name, idx }) => {
@@ -485,8 +522,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, onBack, onEdit, onChange
           const isDone = status === 'done';
           const isError = status === 'error';
 
-          // 仅生成模式的 step 4：不跑上传，替换为"手动上传指引 + 打开目录按钮"
-          const isManualUploadStep = stepNum === 4 && !autoUploadMode;
+          // 仅生成模式的 step 4：不跑上传，替换为"手动上传指引 + 打开目录按钮"。
+          // 自动回复模式没有草稿概念，永远不进入此分支。
+          const isManualUploadStep = !isAutoReplyTask && stepNum === 4 && !autoUploadMode;
           const displayName = isManualUploadStep
             ? (isZh ? '请在本地手动上传到小红书草稿箱' : 'Manually upload from local folder')
             : name;
