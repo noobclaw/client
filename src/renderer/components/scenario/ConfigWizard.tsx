@@ -472,8 +472,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {isAutoReply && (
                   <div className="text-[11px] text-gray-400 mt-1">
                     {isZh
-                      ? `每篇 1 文章评论 + ${replyCommentsPerArticle} 用户回复（共 ${dailyCount * (1 + replyCommentsPerArticle)} 条）。评论间隔 30-80 秒，文章间隔 60-200 秒`
-                      : `Per article: 1 note + ${replyCommentsPerArticle} user-comment replies (total ${dailyCount * (1 + replyCommentsPerArticle)}). Reply jitter 30-80s, article jitter 60-200s`}
+                      ? `每篇 1 文章评论 + 0~${replyCommentsPerArticle} 用户回复（每个 Top 评论 50% 几率回复，去重同一作者）。评论间隔 30-80 秒，文章间隔 60-200 秒`
+                      : `Per article: 1 note + 0–${replyCommentsPerArticle} user-comment replies (50% coin flip per top commenter, deduped by author). Reply jitter 30-80s, article jitter 60-200s`}
                   </div>
                 )}
               </div>
@@ -549,6 +549,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <>
                       <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
                       <li>{isZh ? '· 每篇文章 LLM 一次性生成评论 + 用户回复，确保口吻一致' : '· One LLM call per article generates note + user-comment replies in a consistent voice'}</li>
+                      <li>{isZh ? '· 顺序：先逐条回复其他用户评论，最后再发文章评论（更像真人）' : '· Order: reply to other users\' comments first, then post the article-level comment last (mimics real users)'}</li>
+                      <li>{isZh ? '· 每个 Top 评论 50% 几率回复（同一作者去重），避免老是骚扰同一个人' : '· Each top comment has a 50% chance of getting a reply (deduped by author) — avoids spamming the same person'}</li>
                       <li>{isZh ? '· 评论之间间隔 30-80 秒，文章之间间隔 60-200 秒，避开规律性发评' : '· Reply jitter 30-80s, article jitter 60-200s — avoids pattern detection'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭小红书页面' : '· Keep the browser open during the run, do not close the Xiaohongshu tab'}</li>
                       <li>{isZh ? '· 评论发布后无法撤回，建议先用 1-2 篇试运行确认风格' : '· Comments cannot be unposted — start with 1-2 articles to validate the voice'}</li>
@@ -592,10 +594,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         : { 'once': 'Once ' + dailyTime, '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>
                       )[runInterval] || runInterval;
                       if (isAutoReply) {
-                        const total = dailyCount * (1 + replyCommentsPerArticle);
+                        const minTotal = dailyCount; // 每篇至少 1 文章评论
+                        const maxTotal = dailyCount * (1 + replyCommentsPerArticle);
                         return isZh
-                          ? `⏰ ${intervalLabel} · 回复 ${dailyCount} 篇文章 · 共 ${total} 条评论 (1 文章评论 + ${replyCommentsPerArticle} 用户回复 / 篇)`
-                          : `⏰ ${intervalLabel} · ${dailyCount} articles · ${total} posts (1 note + ${replyCommentsPerArticle} user-comment replies each)`;
+                          ? `⏰ ${intervalLabel} · 回复 ${dailyCount} 篇文章 · 共 ${minTotal}~${maxTotal} 条评论（每篇 1 文章评论 + 0~${replyCommentsPerArticle} 用户回复，随机决定）`
+                          : `⏰ ${intervalLabel} · ${dailyCount} articles · ${minTotal}–${maxTotal} posts total (1 note + 0–${replyCommentsPerArticle} user-comment replies per article, randomized)`;
                       }
                       return `⏰ ${intervalLabel} · ${dailyCount} ${isZh ? '条/次' : '/run'} · ${variants} ${isZh ? '份改写' : 'rewrites'}`;
                     })()}
