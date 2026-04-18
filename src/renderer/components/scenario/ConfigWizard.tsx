@@ -103,7 +103,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   const canFinish = allTermsAccepted && keywordList.length > 0 && persona.trim().length > 0 && trackId;
-  const dailyHardCap = 3;
+  // Auto-reply scenario allows up to 6 articles/day (each with 1 note + 2
+  // user-comment replies). Other scenarios still cap at 3 to keep XHS happy.
+  const dailyHardCap = ((scenario.risk_caps as any)?.daily_count_cap)
+    || ((scenario.workflow_type as any) === 'auto_reply' ? 6 : 3);
 
   // When track changes, update keywords + persona
   const handleTrackChange = (newTrackId: string) => {

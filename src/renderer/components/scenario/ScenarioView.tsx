@@ -19,12 +19,14 @@ import { XhsWorkflowsPage } from './XhsWorkflowsPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { PlatformPlaceholder } from './PlatformPlaceholder';
 import { ConfigWizard } from './ConfigWizard';
+import { SensitiveCheckPage } from './SensitiveCheckPage';
 
 type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
 
 type ViewState =
   | { kind: 'workflows'; platform: PlatformId }
-  | { kind: 'task_detail'; task_id: string };
+  | { kind: 'task_detail'; task_id: string }
+  | { kind: 'sensitive_check' };
 
 interface ScenarioViewProps {
   isSidebarCollapsed?: boolean;
@@ -101,6 +103,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setView({ kind: 'task_detail', task_id });
   };
 
+  const openSensitiveCheck = () => {
+    setView({ kind: 'sensitive_check' });
+  };
+
   // Always go back to the main page (no intermediate workflow detail page)
   const goBack = () => {
     setView({ kind: 'workflows', platform: currentPlatform });
@@ -172,6 +178,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // ── Render ──
 
   const platformTabContent = (() => {
+    if (view.kind === 'sensitive_check') {
+      return <SensitiveCheckPage onBack={goBack} />;
+    }
     if (view.kind === 'task_detail') {
       const task = tasks.find(t => t.id === view.task_id);
       if (!task) {
@@ -203,6 +212,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onOpenTask={openTask}
           onConfigure={openWizardFor}
           onChanged={refreshAll}
+          onOpenSensitiveCheck={openSensitiveCheck}
         />
       );
     }

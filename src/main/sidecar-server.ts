@@ -1701,7 +1701,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Version ──
     if (pathname === '/api/version') {
-      return writeJSON(res, 200, { version: '2.1.0', mode: 'tauri-sidecar' });
+      return writeJSON(res, 200, { version: '2.2.0', mode: 'tauri-sidecar' });
     }
 
     // ── 404 ──

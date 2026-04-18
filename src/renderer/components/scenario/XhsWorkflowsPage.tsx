@@ -73,6 +73,8 @@ interface Props {
   /** Called after a new task is created (e.g. link-mode submit)
    *  so parent can refresh its tasks[] list before routing to detail. */
   onChanged?: () => void | Promise<void>;
+  /** Open the standalone sensitive-word check page (no scenario, no task). */
+  onOpenSensitiveCheck?: () => void;
 }
 
 export const XhsWorkflowsPage: React.FC<Props> = ({
@@ -84,6 +86,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   onOpenTask,
   onConfigure,
   onChanged,
+  onOpenSensitiveCheck,
 }) => {
   const scenarioById = new Map(scenarios.map(s => [s.id, s]));
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
@@ -139,6 +142,30 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   ) || FALLBACK_SCENARIO;
 
   const primaryTask = tasks.find(t => t.scenario_id === primaryScenario.id);
+
+  // Auto-reply scenario lookup (Plan B). Fallback id matches the scenario
+  // folder name on the backend so the wizard can boot before the scenarios
+  // list arrives over network.
+  const AUTO_REPLY_FALLBACK: Scenario = {
+    ...FALLBACK_SCENARIO,
+    id: 'xhs_auto_reply_universal',
+    workflow_type: 'auto_reply' as any,
+    name_zh: '小红书自动回复',
+    name_en: 'XHS Auto Reply',
+    description_zh: '按关键词找文章，AI 生成评论+用户回复，2-10 分钟间隔安全发布。',
+    description_en: 'Find articles by keyword, AI-generate replies, post on a safe jitter.',
+    icon: '💬',
+    default_config: {
+      keywords: ['副业', '兼职', '下班赚钱'],
+      persona: '一个热心、有共鸣感的同行',
+      daily_count: 6,
+      schedule_window: '10:00-11:30',
+    } as any,
+  };
+  const autoReplyScenario = scenarios.find(
+    s => s.platform === 'xhs' && (s.workflow_type as any) === 'auto_reply'
+  ) || AUTO_REPLY_FALLBACK;
+  const autoReplyTask = tasks.find(t => t.scenario_id === autoReplyScenario.id);
 
   const MAX_TASKS = 5;
 
@@ -218,6 +245,24 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     setLoginModalReason('linkmode');
   };
 
+  const handleAutoReplyClick = () => {
+    if (tasks.length >= MAX_TASKS) {
+      alert(i18nService.currentLanguage === 'zh' ? '最多创建 ' + MAX_TASKS + ' 个任务' : 'Max ' + MAX_TASKS + ' tasks allowed');
+      return;
+    }
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.openWebsiteLogin();
+      return;
+    }
+    if (autoReplyTask) {
+      onOpenTask(autoReplyTask.id);
+      return;
+    }
+    // Reuse the same login-gate modal — once cleared, route to the
+    // wizard for the auto-reply scenario.
+    setLoginModalReason('autoreply');
+  };
+
   const handleQuickStart = () => {
     // Gate: max 5 tasks
     if (tasks.length >= MAX_TASKS) {
@@ -239,6 +284,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     // After checks pass, open whichever form the user was heading to.
     if (reason === 'linkmode') {
       setLinkModalOpen(true);
+    } else if (reason === 'autoreply') {
+      onConfigure(autoReplyScenario);
     } else {
       onConfigure(primaryScenario);
     }
@@ -488,9 +535,61 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         )}
       </section>
 
-      {/* Future workflow types — hidden for now (only 爆款仿写 is live,
-          and it's already represented by the quick-start banner above).
-          Will be re-enabled when auto_reply / mass_comment ship. */}
+      {/* Additional XHS tools — placed under the rewrite tasks per spec */}
+      <section className="mb-8">
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
+          🧰 {i18nService.currentLanguage === 'zh' ? '更多工具' : 'More Tools'}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Sensitive-word check */}
+          <button
+            type="button"
+            onClick={() => onOpenSensitiveCheck && onOpenSensitiveCheck()}
+            className="text-left rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden hover:border-rose-500/60 transition-colors"
+          >
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '即开即用' : 'Instant'}
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              🚫 {i18nService.currentLanguage === 'zh' ? '敏感词检测' : 'Sensitive Word Checker'}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+              {i18nService.currentLanguage === 'zh'
+                ? '粘贴笔记标题/正文，1 秒比对 2026 版小红书敏感词库，标出绝对化用语、引流话术、医疗医美等限流词。'
+                : 'Paste your note, instantly check against the 2026 XHS sensitive-word library. Flags ad-law violations, off-platform funnels and rate-limit triggers.'}
+            </p>
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-500 text-xs font-semibold">
+              {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
+            </span>
+          </button>
+
+          {/* Auto-reply */}
+          <button
+            type="button"
+            onClick={handleAutoReplyClick}
+            className="text-left rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden hover:border-cyan-500/60 transition-colors"
+          >
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
+            </div>
+            <h3 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动回复' : 'XHS Auto Reply'}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+              {i18nService.currentLanguage === 'zh'
+                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按 2-10 分钟随机间隔安全发布。'
+                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post on a 2-10 min jitter to stay below risk limits.'}
+            </p>
+            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-500 text-xs font-semibold">
+              {autoReplyTask
+                ? (i18nService.currentLanguage === 'zh' ? '继续任务' : 'Continue task') + ' →'
+                : (i18nService.currentLanguage === 'zh' ? '配置回复' : 'Configure') + ' →'}
+            </span>
+          </button>
+        </div>
+      </section>
 
       {loginModalReason && (
         <LoginRequiredModal
