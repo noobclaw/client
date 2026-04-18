@@ -67,6 +67,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const isZh = i18nService.currentLanguage === 'zh';
   const defaults = scenario.default_config;
   const [step, setStep] = useState<1 | 2 | 3>(1);
+  // Auto-reply has different inputs/copy than viral_production:
+  //  - no per-article variants (we generate exactly 1 note + N comment replies)
+  //  - no auto_upload toggle (replies are posted directly with jitter)
+  //  - safety notice / confirm copy talks about reply jitter, not draft uploads
+  const isAutoReply = (scenario.workflow_type as any) === 'auto_reply';
+  const replyCommentsPerArticle = (scenario.risk_caps as any)?.comment_replies_per_article || 2;
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -147,7 +153,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
-            {isZh ? '配置赛道' : 'Configure Track'}
+            {isAutoReply
+              ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
+              : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
             {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
@@ -180,13 +188,21 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Keywords */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">{isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)'}</span>
+                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">
+                    {isAutoReply
+                      ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
+                      : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
+                  </span>
                 </label>
-                {/* 2026 流量报告说明条 */}
+                {/* Pre-fill hint, scenario-aware */}
                 <div className="mb-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[11px] text-green-700 dark:text-green-400 leading-relaxed">
-                  {isZh
-                    ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
-                    : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>}
+                  {isAutoReply
+                    ? (isZh
+                        ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
+                        : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
+                    : (isZh
+                        ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
+                        : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
                 </div>
                 <textarea
                   value={customKeywordsText}
@@ -269,7 +285,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '每天采集爆款数量' : 'Articles per run'}
+                  {isAutoReply
+                    ? (isZh ? '每天回复文章数' : 'Articles to reply to per run')
+                    : (isZh ? '每天采集爆款数量' : 'Articles per run')}
                 </label>
                 <div className="flex items-center gap-3">
                   <input
@@ -279,73 +297,97 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   />
                   <div className="w-12 text-center font-semibold text-green-500">{dailyCount}</div>
                 </div>
+                {isAutoReply && (
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {isZh
+                      ? `每篇文章生成 1 条文章评论 + ${replyCommentsPerArticle} 条用户回复（共 ${dailyCount * (1 + replyCommentsPerArticle)} 条），按 2-10 分钟随机间隔发布`
+                      : `Each article gets 1 note reply + ${replyCommentsPerArticle} user-comment replies (total ${dailyCount * (1 + replyCommentsPerArticle)} posts), with 2-10 min jitter between sends`}
+                  </div>
+                )}
               </div>
 
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range" min={1} max={5} value={variants}
-                    onChange={e => setVariants(parseInt(e.target.value, 10))}
-                    className="flex-1"
-                  />
-                  <div className="w-12 text-center font-semibold text-green-500">{variants}</div>
+              {/* Variants slider only matters for viral_production rewrite scenarios. */}
+              {!isAutoReply && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range" min={1} max={5} value={variants}
+                      onChange={e => setVariants(parseInt(e.target.value, 10))}
+                      className="flex-1"
+                    />
+                    <div className="w-12 text-center font-semibold text-green-500">{variants}</div>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              {/* 自动上传草稿箱 / 仅生成本地 开关 */}
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '生成后的处理' : 'After generation'}
-                </label>
-                <div className="space-y-2">
-                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
-                    <input
-                      type="radio"
-                      name="auto_upload"
-                      checked={autoUpload}
-                      onChange={() => setAutoUpload(true)}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 text-xs leading-relaxed">
-                      <div className="font-semibold dark:text-white mb-0.5">
-                        {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
-                      </div>
-                      <div className="text-gray-500 dark:text-gray-400">
-                        {isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.'}
-                      </div>
-                    </div>
+              {/* Auto-upload toggle is rewrite-only — auto-reply posts directly. */}
+              {!isAutoReply && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '生成后的处理' : 'After generation'}
                   </label>
-                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
-                    <input
-                      type="radio"
-                      name="auto_upload"
-                      checked={!autoUpload}
-                      onChange={() => setAutoUpload(false)}
-                      className="mt-0.5"
-                    />
-                    <div className="flex-1 text-xs leading-relaxed">
-                      <div className="font-semibold dark:text-white mb-0.5">
-                        {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                  <div className="space-y-2">
+                    <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                      <input
+                        type="radio"
+                        name="auto_upload"
+                        checked={autoUpload}
+                        onChange={() => setAutoUpload(true)}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 text-xs leading-relaxed">
+                        <div className="font-semibold dark:text-white mb-0.5">
+                          {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+                        </div>
+                        <div className="text-gray-500 dark:text-gray-400">
+                          {isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.'}
+                        </div>
                       </div>
-                      <div className="text-gray-500 dark:text-gray-400">
-                        {isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.'}
+                    </label>
+                    <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                      <input
+                        type="radio"
+                        name="auto_upload"
+                        checked={!autoUpload}
+                        onChange={() => setAutoUpload(false)}
+                        className="mt-0.5"
+                      />
+                      <div className="flex-1 text-xs leading-relaxed">
+                        <div className="font-semibold dark:text-white mb-0.5">
+                          {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                        </div>
+                        <div className="text-gray-500 dark:text-gray-400">
+                          {isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.'}
+                        </div>
                       </div>
-                    </div>
-                  </label>
+                    </label>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-4">
                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
                   {isZh ? '⚠️ 安全提示' : '⚠️ Safety Notice'}
                 </div>
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                  <li>{isZh ? '· 每次运行会在你已登录的小红书上模拟人类浏览' : '· Each run simulates human browsing on your logged-in Xiaohongshu'}</li>
-                  <li>{isZh ? '· 运行期间请不要切换浏览器标签页' : '· Do not switch browser tabs during a run'}</li>
-                  <li>{isZh ? '· 推送草稿后，发布由你手动完成' : '· After drafts are pushed, publishing is done manually by you'}</li>
+                  {isAutoReply ? (
+                    <>
+                      <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
+                      <li>{isZh ? '· 每篇文章 LLM 一次性生成评论 + 用户回复，确保口吻一致' : '· One LLM call per article generates note + user-comment replies in a consistent voice'}</li>
+                      <li>{isZh ? '· 每条回复之间间隔 2-10 分钟随机停留，避开规律性发评' : '· 2-10 min random jitter between sends to avoid pattern detection'}</li>
+                      <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭小红书页面' : '· Keep the browser open during the run, do not close the Xiaohongshu tab'}</li>
+                      <li>{isZh ? '· 评论发布后无法撤回，建议先用 1-2 篇试运行确认风格' : '· Comments cannot be unposted — start with 1-2 articles to validate the voice'}</li>
+                    </>
+                  ) : (
+                    <>
+                      <li>{isZh ? '· 每次运行会在你已登录的小红书上模拟人类浏览' : '· Each run simulates human browsing on your logged-in Xiaohongshu'}</li>
+                      <li>{isZh ? '· 运行期间请不要切换浏览器标签页' : '· Do not switch browser tabs during a run'}</li>
+                      <li>{isZh ? '· 推送草稿后，发布由你手动完成' : '· After drafts are pushed, publishing is done manually by you'}</li>
+                    </>
+                  )}
                 </ul>
               </div>
             </div>
@@ -355,7 +397,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {step === 3 && (
             <div>
               <h3 className="text-lg font-bold dark:text-white mb-4">
-                {isZh ? '确认并启用' : 'Confirm & Enable'}
+                {isAutoReply
+                  ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
+                  : (isZh ? '确认并启用' : 'Confirm & Enable')}
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
@@ -370,20 +414,36 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '频次:' : 'Schedule:'}</span>
                   <div className="dark:text-white">
-                    ⏰ {(isZh ? { 'once': '不重复 ' + dailyTime, '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime } : { 'once': 'Once ' + dailyTime, '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>)[runInterval] || runInterval} · {dailyCount} {isZh ? '条/次' : '/run'} · {variants} {isZh ? '份改写' : 'rewrites'}
+                    {(() => {
+                      const intervalLabel = (isZh
+                        ? { 'once': '不重复 ' + dailyTime, '30min': '每30分钟', '1h': '每小时', '6h': '每6小时', 'daily': '每天 ' + dailyTime }
+                        : { 'once': 'Once ' + dailyTime, '30min': 'Every 30min', '1h': 'Hourly', '6h': 'Every 6h', 'daily': 'Daily ' + dailyTime } as Record<string, string>
+                      )[runInterval] || runInterval;
+                      if (isAutoReply) {
+                        const total = dailyCount * (1 + replyCommentsPerArticle);
+                        return isZh
+                          ? `⏰ ${intervalLabel} · 回复 ${dailyCount} 篇文章 · 共 ${total} 条评论 (1 文章评论 + ${replyCommentsPerArticle} 用户回复 / 篇)`
+                          : `⏰ ${intervalLabel} · ${dailyCount} articles · ${total} posts (1 note + ${replyCommentsPerArticle} user-comment replies each)`;
+                      }
+                      return `⏰ ${intervalLabel} · ${dailyCount} ${isZh ? '条/次' : '/run'} · ${variants} ${isZh ? '份改写' : 'rewrites'}`;
+                    })()}
                   </div>
                 </div>
               </div>
 
-              {/* Usage warning — compacted into 2 lines */}
+              {/* Usage warning — scenario-specific copy */}
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
                 <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
                   {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
                 </div>
                 <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                  {isZh
-                    ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
-                    : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>}
+                  {isAutoReply
+                    ? (isZh
+                        ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>2-10 分钟随机间隔</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
+                        : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing and posts replies one-by-one with <strong>2-10 min random jitter</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
+                    : (isZh
+                        ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
+                        : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
                 </p>
               </div>
 
