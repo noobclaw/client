@@ -109,22 +109,29 @@ export async function submit(params: SubmitParams): Promise<{ ok: boolean; post_
   }
 }
 
-/** Fetch a scenario pack once and cache in memory. */
-const packCache = new Map<string, unknown>();
+/** Always fetch the scenario pack from the server — no caching.
+ *  Pack size is ~100KB and we want server-side hot-updates to take effect
+ *  immediately. Last-resort fallback to a stale value if the network call
+ *  fails (so an offline manual run still works). */
+let lastGood = new Map<string, any>();
+
 export async function fetchScenarioPack(id: string): Promise<any | null> {
-  if (packCache.has(id)) return packCache.get(id);
   try {
     const res = await fetch(`${baseUrl()}/api/viral/scenarios/${encodeURIComponent(id)}`);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      coworkLog('WARN', 'viralPoolClient', 'fetchScenarioPack non-2xx', { id, status: res.status });
+      return lastGood.get(id) || null;
+    }
     const json = await res.json();
-    packCache.set(id, json);
+    lastGood.set(id, json);
     return json;
   } catch (err) {
     coworkLog('WARN', 'viralPoolClient', 'fetchScenarioPack failed', { id, err: String(err) });
-    return null;
+    return lastGood.get(id) || null;
   }
 }
 
+/** No-op kept for backward compatibility — cache is gone. */
 export function clearScenarioPackCache(): void {
-  packCache.clear();
+  lastGood.clear();
 }
