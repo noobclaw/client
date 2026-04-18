@@ -293,9 +293,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Two-card row: 批量仿写 (left) + 指定链接 (right) */}
+      {/* Four-card grid — all XHS tools grouped together at the top:
+          批量仿写 · 指定链接 · 敏感词检测 · 自动回复 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* LEFT: Batch rewrite (keyword) */}
+        {/* 1. Batch rewrite (keyword) */}
         <div className="relative rounded-2xl border border-green-500/30 bg-gradient-to-br from-green-500/10 via-emerald-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-green-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -321,7 +322,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* RIGHT: Link mode */}
+        {/* 2. Link mode */}
         <div className="relative rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 via-fuchsia-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -341,6 +342,60 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-purple-500 text-white hover:bg-purple-600 shadow-lg shadow-purple-500/25 transition-all active:scale-95"
             >
               🔗 {i18nService.t('scenarioLinkModeBtn')} →
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Sensitive-word checker */}
+        <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '即开即用' : 'Instant'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              🚫 {i18nService.currentLanguage === 'zh' ? '敏感词检测' : 'Sensitive Word Checker'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '粘贴笔记标题/正文，1 秒比对 2026 版小红书敏感词库，标出绝对化用语、引流话术、医疗医美等限流词。'
+                : 'Paste your note, instantly check against the 2026 XHS sensitive-word library. Flags ad-law violations, off-platform funnels and rate-limit triggers.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => onOpenSensitiveCheck && onOpenSensitiveCheck()}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-500/25 transition-all active:scale-95"
+            >
+              🚫 {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Auto-reply */}
+        <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动回复' : 'XHS Auto Reply'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按 2-10 分钟随机间隔安全发布。'
+                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post on a 2-10 min jitter to stay below risk limits.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleAutoReplyClick}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
+            >
+              💬 {autoReplyTask
+                ? (i18nService.currentLanguage === 'zh' ? '继续任务' : 'Continue task')
+                : (i18nService.currentLanguage === 'zh' ? '配置回复' : 'Configure')} →
             </button>
           </div>
         </div>
@@ -533,62 +588,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             })}
           </div>
         )}
-      </section>
-
-      {/* Additional XHS tools — placed under the rewrite tasks per spec */}
-      <section className="mb-8">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
-          🧰 {i18nService.currentLanguage === 'zh' ? '更多工具' : 'More Tools'}
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Sensitive-word check */}
-          <button
-            type="button"
-            onClick={() => onOpenSensitiveCheck && onOpenSensitiveCheck()}
-            className="text-left rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden hover:border-rose-500/60 transition-colors"
-          >
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '即开即用' : 'Instant'}
-            </div>
-            <h3 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              🚫 {i18nService.currentLanguage === 'zh' ? '敏感词检测' : 'Sensitive Word Checker'}
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-              {i18nService.currentLanguage === 'zh'
-                ? '粘贴笔记标题/正文，1 秒比对 2026 版小红书敏感词库，标出绝对化用语、引流话术、医疗医美等限流词。'
-                : 'Paste your note, instantly check against the 2026 XHS sensitive-word library. Flags ad-law violations, off-platform funnels and rate-limit triggers.'}
-            </p>
-            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-500 text-xs font-semibold">
-              {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
-            </span>
-          </button>
-
-          {/* Auto-reply */}
-          <button
-            type="button"
-            onClick={handleAutoReplyClick}
-            className="text-left rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden hover:border-cyan-500/60 transition-colors"
-          >
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
-            </div>
-            <h3 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动回复' : 'XHS Auto Reply'}
-            </h3>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
-              {i18nService.currentLanguage === 'zh'
-                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按 2-10 分钟随机间隔安全发布。'
-                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post on a 2-10 min jitter to stay below risk limits.'}
-            </p>
-            <span className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-500/15 text-cyan-500 text-xs font-semibold">
-              {autoReplyTask
-                ? (i18nService.currentLanguage === 'zh' ? '继续任务' : 'Continue task') + ' →'
-                : (i18nService.currentLanguage === 'zh' ? '配置回复' : 'Configure') + ' →'}
-            </span>
-          </button>
-        </div>
       </section>
 
       {loginModalReason && (
