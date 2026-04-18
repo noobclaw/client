@@ -108,18 +108,17 @@ const STEP_NAMES_EN = [
   'AI generates images, saved locally',
   'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
-// Auto-reply has a different per-step narrative than viral_production.
+// Auto-reply: 3 steps now. Step 2 contains the entire per-article loop
+// (read → AI → post → next), step 3 saves the run report to disk.
 const STEP_NAMES_AUTOREPLY_ZH = [
-  '搜索关键词，按「最多评论 + 一周内」筛选并采集候选文章',
-  '依次访问每篇文章，读取标题/正文/Top3 高赞评论',
-  'AI 一次生成「文章评论 + 用户回复」（注入人设、控制字数、去 AI 化）',
-  '间歇发布：先回文章再依次回复评论，2-10 分钟随机间隔',
+  '搜索关键词 + 应用筛选条件 (最多评论 / 一周内 / 不限文章类型) + 采集候选 URL',
+  '逐篇闭环：进入文章 → 读标题/正文/Top3 高赞评论 → AI 生成 → 发文章评论 + 间歇逐条回复 → 全部发完才换下一篇',
+  '生成 Markdown 报告（含每篇文章标题/链接/我发的评论与回复）保存到本地任务目录',
 ];
 const STEP_NAMES_AUTOREPLY_EN = [
-  'Search keyword, filter "most comments + last week", collect candidates',
-  'Visit each article, read title / body / top-3 most-liked comments',
-  'One LLM call per article: note reply + user-comment replies (persona-aware)',
-  'Post with 2-10 min jitter: note reply first, then comment replies',
+  'Search + apply filters (most-commented / last week / any type) + collect candidate URLs',
+  'Per-article loop: enter article → read title/body/top-3 comments → AI → post note + replies (with jitter) → next',
+  'Save Markdown report (titles, links, posted note + replies) to the local task folder',
 ];
 
 interface Props {
@@ -379,22 +378,23 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               );
             })()}
             <div>{isZh ? '创建时间' : 'Created'}: {new Date(task.created_at).toLocaleString()}</div>
-            {/* Auto-reply doesn't write drafts to disk — hide the folder link
-                so users don't get confused looking for output that never lands. */}
-            {!isAutoReplyTask && (
-              <div className="flex items-center gap-1">
-                <span>{isZh ? '输出目录:' : 'Output:'}</span>
-                <button type="button" onClick={async () => {
-                  try {
-                    const res = await window.electron?.scenario?.getTaskDir?.(task.id);
-                    const dir = typeof res === 'string' ? res : res?.dir;
-                    if (dir) window.electron?.shell?.openPath?.(dir);
-                  } catch {}
-                }} className="text-blue-500 hover:underline text-[11px]">
-                  {isZh ? '📂 打开输出文件夹' : '📂 Open folder'}
-                </button>
-              </div>
-            )}
+            {/* Output folder link — for auto_reply this contains the run-report
+                Markdown; for viral_production this contains the rewrite drafts
+                + images. Either way it's the place to look for what was produced. */}
+            <div className="flex items-center gap-1">
+              <span>{isZh ? '输出目录:' : 'Output:'}</span>
+              <button type="button" onClick={async () => {
+                try {
+                  const res = await window.electron?.scenario?.getTaskDir?.(task.id);
+                  const dir = typeof res === 'string' ? res : res?.dir;
+                  if (dir) window.electron?.shell?.openPath?.(dir);
+                } catch {}
+              }} className="text-blue-500 hover:underline text-[11px]">
+                {isZh
+                  ? (isAutoReplyTask ? '📂 打开报告文件夹' : '📂 打开输出文件夹')
+                  : '📂 Open folder'}
+              </button>
+            </div>
             {isAutoReplyTask && task.persona && (
               <div className="text-[11px] text-gray-400 leading-relaxed">
                 <span className="text-gray-500">{isZh ? '人设:' : 'Persona:'}</span>{' '}

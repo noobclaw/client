@@ -18,7 +18,9 @@ import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
 import { parseJsonSafe } from './localExtractor';
 import { getNoobClawAuthToken } from '../claudeSettings';
-import { writeTaskArtifacts } from './artifactWriter';
+import * as fs from 'fs';
+import * as path from 'path';
+import { writeTaskArtifacts, getTaskOutputDir } from './artifactWriter';
 import type {
   Draft,
   ScenarioPack,
@@ -398,6 +400,26 @@ function buildContext(
       } finally {
         clearInterval(abortPoll);
         if (heartbeat) clearInterval(heartbeat);
+      }
+    },
+
+    // Generic file-write into the task's output dir. Used by scenarios
+    // that produce a free-form report (e.g. auto_reply's run summary)
+    // instead of structured drafts. Returns the absolute path so the
+    // orchestrator can log it.
+    writeReport: async (filename: string, content: string) => {
+      try {
+        const dir = getTaskOutputDir(task);
+        try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+        // sanitize: strip path separators, keep CJK + alnum + safe punctuation
+        const safeName = String(filename || 'report.md').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+        const filePath = path.join(dir, safeName);
+        fs.writeFileSync(filePath, String(content), 'utf8');
+        coworkLog('INFO', 'phaseRunner', 'writeReport ok', { path: filePath, bytes: Buffer.byteLength(String(content), 'utf8') });
+        return { ok: true, path: filePath, dir };
+      } catch (err) {
+        coworkLog('WARN', 'phaseRunner', 'writeReport failed', { err: String(err) });
+        return { ok: false, reason: String(err && (err as any).message ? (err as any).message : err) };
       }
     },
 
