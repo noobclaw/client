@@ -298,6 +298,86 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
   }
 }
 
+// ── Tab Group status indicator (v1.2.2) ───────────────────────────────
+// Goal: visual cue in the tab bar showing which tabs NoobClaw is actively
+// driving, so XHS and Twitter automation are unambiguous.
+//
+// Why Tab Groups (not a page-injected banner): page DOM injection is
+// detectable by host-site JS (XHS / X scan for known automation
+// markers) and would risk getting the user flagged. Tab groups live
+// entirely in browser chrome — page scripts cannot read tab.groupId,
+// group title, or group color. Zero detection surface.
+function platformLabelForPattern(patternStr) {
+  if (!patternStr) return null;
+  if (/xiaohongshu/i.test(patternStr)) {
+    return { title: '🔴 NoobClaw · 小红书任务', color: 'red' };
+  }
+  if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
+    return { title: '🐦 NoobClaw · 推特任务', color: 'blue' };
+  }
+  return { title: '🤖 NoobClaw 任务', color: 'green' };
+}
+
+// Per-window cache of "platform label → groupId" so we don't recreate
+// the group on every command. Cleared on group-removed events.
+const platformGroupByWindow = new Map(); // key: `${windowId}|${title}` → groupId
+
+async function ensureTabInPlatformGroup(tab, patternStr) {
+  // chrome.tabGroups requires the tabGroups permission. Skip pinned/
+  // incognito tabs (Chrome refuses to group them).
+  if (!tab || !tab.id || tab.incognito || tab.pinned) return;
+  if (!chrome.tabGroups || !chrome.tabs.group) return; // very old Chrome
+
+  const info = platformLabelForPattern(patternStr);
+  if (!info) return;
+
+  const cacheKey = `${tab.windowId}|${info.title}`;
+  const cachedGroupId = platformGroupByWindow.get(cacheKey);
+
+  // Fast path: already in the right group.
+  if (cachedGroupId && tab.groupId === cachedGroupId) return;
+
+  try {
+    let groupId;
+    if (cachedGroupId) {
+      try {
+        // Confirm the cached group still exists (user could have closed it).
+        await chrome.tabGroups.get(cachedGroupId);
+        groupId = await chrome.tabs.group({ groupId: cachedGroupId, tabIds: [tab.id] });
+      } catch {
+        platformGroupByWindow.delete(cacheKey);
+        groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+      }
+    } else {
+      groupId = await chrome.tabs.group({ tabIds: [tab.id] });
+    }
+
+    // First time this group is created → set its title + color.
+    if (groupId !== cachedGroupId) {
+      await chrome.tabGroups.update(groupId, {
+        title: info.title,
+        color: info.color,
+        collapsed: false,
+      });
+      platformGroupByWindow.set(cacheKey, groupId);
+    }
+  } catch (e) {
+    // Non-fatal — automation continues even if grouping fails (e.g. user
+    // manually moved the tab to another window mid-flight).
+    console.warn('[NoobClaw] tab group failed:', e?.message || e);
+  }
+}
+
+// Clean up cache when groups go away (user dragged the last tab out,
+// closed the group, etc.) so we recreate fresh next time.
+if (chrome.tabGroups && chrome.tabGroups.onRemoved) {
+  chrome.tabGroups.onRemoved.addListener((group) => {
+    for (const [k, v] of platformGroupByWindow.entries()) {
+      if (v === group.id) platformGroupByWindow.delete(k);
+    }
+  });
+}
+
 async function executeCommand(msg) {
   const { id, command, params, tabPattern } = msg;
   // Per-message tab resolution. If the envelope carries a tabPattern (new
@@ -313,6 +393,13 @@ async function executeCommand(msg) {
     _resolvedTab = tabPattern
       ? await findOrOpenTabByPattern(tabPattern)
       : await _outerGetActiveTab();
+    // Drop the resolved tab into a labeled tab group so the user can
+    // visually distinguish "X-controlled tab" from "XHS-controlled tab"
+    // in the tab strip. Fire-and-forget — failure must NOT affect the
+    // command (grouping is a UX nicety, not a correctness requirement).
+    if (_resolvedTab && tabPattern) {
+      ensureTabInPlatformGroup(_resolvedTab, tabPattern).catch(() => {});
+    }
     return _resolvedTab;
   };
   try {
