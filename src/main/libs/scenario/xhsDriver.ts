@@ -30,9 +30,17 @@ export interface XhsLoginStatus {
 // Platform-aware tab matchers. Twitter v1: when the wizard / login modal
 // targets x_*, it passes platform='x' so we look for x.com / twitter.com
 // tabs instead of xiaohongshu.com.
+//
+// ⚠️ The previous attempt was `(?:^|\.)(?:twitter|x)\.com` — required the
+// domain to be preceded by start-of-string or a literal dot. That broke on
+// real URLs like `https://x.com/home` (the char before `x` is `/`, neither).
+// `\b` (word boundary) handles every case: `/` before `x` is a boundary;
+// `https://www.x.com` has `.` before `x` which is also a boundary; meanwhile
+// `https://mybox.com` doesn't get a false-positive because there's no word
+// boundary between `o` and `x`.
 const TAB_PATTERNS: Record<'xhs' | 'x', RegExp> = {
   xhs: /xiaohongshu\.com/i,
-  x: /(?:^|\.)(?:twitter|x)\.com\b/i,
+  x: /\b(?:twitter|x)\.com\b/i,
 };
 
 const NOT_REACHABLE_REASON: Record<'xhs' | 'x', string> = {
