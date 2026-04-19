@@ -626,6 +626,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       {loginModalOpen && (
         <LoginRequiredModal
           mode="run"
+          platform={(scenario?.platform === 'x' ? 'x' : 'xhs') as 'x' | 'xhs'}
           onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}
         />
