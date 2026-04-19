@@ -93,8 +93,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     return () => { clearTimeout(t1); };
   }, [refreshAll]);
 
-  const currentPlatform: PlatformId =
-    view.kind === 'workflows' ? view.platform : 'xhs';
+  // Derive the platform tab to highlight + return to:
+  //   - workflows view  → use view.platform directly
+  //   - task_detail     → look up task → its scenario → scenario.platform
+  //                       (so Twitter tasks keep the 🐦 tab active)
+  //   - sensitive_check → XHS-only feature, fall back to 'xhs'
+  const currentPlatform: PlatformId = (() => {
+    if (view.kind === 'workflows') return view.platform;
+    if (view.kind === 'task_detail') {
+      const t = tasks.find(t => t.id === view.task_id);
+      const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
+      const p = s?.platform;
+      if (p === 'xhs' || p === 'x' || p === 'douyin' || p === 'tiktok' || p === 'youtube') return p;
+      return 'xhs';
+    }
+    return 'xhs';
+  })();
 
   const setPlatform = (platform: PlatformId) => {
     setView({ kind: 'workflows', platform });
