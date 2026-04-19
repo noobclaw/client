@@ -309,13 +309,17 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
 // group title, or group color. Zero detection surface.
 function platformLabelForPattern(patternStr) {
   if (!patternStr) return null;
+  // All NoobClaw tab groups use the brand green so the user spots them
+  // immediately as "us" regardless of platform. Platform is conveyed by
+  // the emoji + label text instead of color.
+  const color = 'green';
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🔴 NoobClaw · 小红书任务', color: 'red' };
+    return { title: '🤖 NoobClaw · 小红书任务', color };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🐦 NoobClaw · 推特任务', color: 'blue' };
+    return { title: '🤖 NoobClaw · 推特任务', color };
   }
-  return { title: '🤖 NoobClaw 任务', color: 'green' };
+  return { title: '🤖 NoobClaw 任务', color };
 }
 
 // Per-window cache of "platform label → groupId" so we don't recreate
