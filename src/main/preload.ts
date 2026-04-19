@@ -78,6 +78,8 @@ contextBridge.exposeInMainWorld('electron', {
     /** Connected browser extensions (one per Chrome instance). Used to
      *  detect outdated extension versions and prompt the user to update. */
     getConnectedExtensions: () => ipcRenderer.invoke('scenario:getConnectedExtensions'),
+    /** Aggregate runs across all tasks for the unified Run History page. */
+    getAllRuns: () => ipcRenderer.invoke('scenario:getAllRuns'),
     getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
     checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),

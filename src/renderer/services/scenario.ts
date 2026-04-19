@@ -159,6 +159,25 @@ class ScenarioService {
     }
   }
 
+  /** All recorded runs across every task, newest-first. Used by the
+   *  Run History page. */
+  async getAllRuns(): Promise<Array<{
+    task_id: string;
+    started_at: number;
+    finished_at?: number;
+    status: 'success' | 'failure' | 'skipped' | 'running';
+    reason?: string;
+    collected_count?: number;
+    draft_count?: number;
+  }>> {
+    try {
+      const r = await window.electron.scenario.getAllRuns();
+      return Array.isArray(r?.runs) ? r.runs : [];
+    } catch {
+      return [];
+    }
+  }
+
   async getRunProgress(taskId?: string): Promise<ScenarioRunProgress | null> {
     try {
       return await window.electron.scenario.getRunProgress(taskId) || null;

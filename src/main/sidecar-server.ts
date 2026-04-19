@@ -1596,6 +1596,18 @@ const server = http.createServer(async (req, res) => {
               cooldown_ends_at: scenarioRiskGuard.getCooldown(args[0]),
             });
           }
+          case 'scenario:getAllRuns': {
+            // All recorded runs across every task (newest-first). Used by
+            // the new "运行记录" page so users have a single timeline of
+            // everything the app has done, regardless of which task it
+            // belonged to.
+            const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+            if (!scenarioRiskGuard._loaded) {
+              scenarioRiskGuard.initRiskGuard(getUserDataPath());
+              scenarioRiskGuard._loaded = true;
+            }
+            return writeJSON(res, 200, { runs: scenarioRiskGuard.getAllRuns() });
+          }
           case 'scenario:pushDraft': {
             const scenarioTaskStore = require('./libs/scenario/taskStore');
             if (!scenarioTaskStore._loaded) {

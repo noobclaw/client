@@ -224,6 +224,22 @@ export function getRuns(task_id: string): TaskRun[] {
   return state.runs[task_id] || [];
 }
 
+/** Snapshot of EVERY recorded run across all tasks, with the originating
+ *  taskId stamped on each entry. Used by the new "运行记录" page to show
+ *  a unified history. Sorted newest-first for convenient rendering. */
+export function getAllRuns(): Array<TaskRun & { task_id: string }> {
+  ensureLoaded();
+  const out: Array<TaskRun & { task_id: string }> = [];
+  for (const [task_id, runs] of Object.entries(state.runs || {})) {
+    if (!Array.isArray(runs)) continue;
+    for (const r of runs) {
+      out.push({ ...r, task_id });
+    }
+  }
+  out.sort((a, b) => (b.started_at || 0) - (a.started_at || 0));
+  return out;
+}
+
 export function getCooldown(task_id: string): number {
   ensureLoaded();
   return state.cooldowns[task_id] || 0;

@@ -21,12 +21,24 @@ import { TaskDetailPage } from './TaskDetailPage';
 import { PlatformPlaceholder } from './PlatformPlaceholder';
 import { ConfigWizard } from './ConfigWizard';
 import { SensitiveCheckPage } from './SensitiveCheckPage';
+import { MyTasksPage } from './MyTasksPage';
+import { RunHistoryPage } from './RunHistoryPage';
 
 type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
 
+// Top-level navigation:
+//   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
+//             but with the bottom task list stripped out — those are now
+//             over in `tasks`).
+//   tasks   — unified "我的自动化运营任务" page across all platforms,
+//             filtered by the active platform sub-tab.
+//   history — unified "运行记录" page across all platforms, filtered by
+//             the active platform sub-tab.
+type SectionId = 'create' | 'tasks' | 'history';
+
 type ViewState =
-  | { kind: 'workflows'; platform: PlatformId }
-  | { kind: 'task_detail'; task_id: string }
+  | { kind: 'main'; section: SectionId; platform: PlatformId }
+  | { kind: 'task_detail'; task_id: string; from?: SectionId }
   | { kind: 'sensitive_check' };
 
 interface ScenarioViewProps {
@@ -41,6 +53,12 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
 ];
 
+const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
+  { id: 'create',  zh: '创建自动化运营任务', en: 'Create Task',     icon: '✨' },
+  { id: 'tasks',   zh: '我的自动化运营任务', en: 'My Tasks',        icon: '📋' },
+  { id: 'history', zh: '运行记录',          en: 'Run History',     icon: '📊' },
+];
+
 export const ScenarioView: React.FC<ScenarioViewProps> = ({
   isSidebarCollapsed,
   onToggleSidebar,
@@ -48,7 +66,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   updateBadge,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  const [view, setView] = useState<ViewState>({ kind: 'workflows', platform: 'xhs' });
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: 'xhs' });
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -93,13 +111,59 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     return () => { clearTimeout(t1); };
   }, [refreshAll]);
 
+  // Live window title showing running tasks. Polls running task ids + each
+  // task's current step every 3s. Shows e.g.:
+  //   "推特任务-步骤2 · 小红书任务-步骤1 — NoobClaw"
+  // when 2 tasks are running, or just "NoobClaw" when idle. The user can
+  // glance at the OS window list / dock and see status without bringing
+  // the app to foreground.
+  useEffect(() => {
+    let cancelled = false;
+    const baseTitle = 'NoobClaw';
+    const tick = async () => {
+      try {
+        const ids = await scenarioService.getRunningTaskIds();
+        if (cancelled) return;
+        if (ids.length === 0) {
+          document.title = baseTitle;
+          return;
+        }
+        const scenarioById = new Map(scenarios.map(s => [s.id, s]));
+        const parts: string[] = [];
+        for (const id of ids) {
+          const t = tasks.find(t => t.id === id);
+          if (!t) continue;
+          const s = scenarioById.get(t.scenario_id);
+          const platform = s?.platform === 'x' ? '推特' : s?.platform === 'xhs' ? '小红书' : (s?.platform || '');
+          // Get this task's progress to know which step it's in
+          const prog = await scenarioService.getRunProgress(id).catch(() => null);
+          if (prog && prog.status === 'running' && prog.currentStep > 0) {
+            parts.push(`${platform}任务-步骤${prog.currentStep}`);
+          } else if (prog && prog.status === 'done') {
+            parts.push(`${platform}任务-已结束`);
+          } else if (prog && prog.status === 'error') {
+            parts.push(`${platform}任务-异常`);
+          } else {
+            parts.push(`${platform}任务-启动中`);
+          }
+        }
+        document.title = parts.length > 0 ? `${parts.join(' · ')} — ${baseTitle}` : baseTitle;
+      } catch {
+        if (!cancelled) document.title = baseTitle;
+      }
+    };
+    void tick();
+    const h = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(h); document.title = baseTitle; };
+  }, [tasks, scenarios]);
+
   // Derive the platform tab to highlight + return to:
   //   - workflows view  → use view.platform directly
   //   - task_detail     → look up task → its scenario → scenario.platform
   //                       (so Twitter tasks keep the 🐦 tab active)
   //   - sensitive_check → XHS-only feature, fall back to 'xhs'
   const currentPlatform: PlatformId = (() => {
-    if (view.kind === 'workflows') return view.platform;
+    if (view.kind === 'main') return view.platform;
     if (view.kind === 'task_detail') {
       const t = tasks.find(t => t.id === view.task_id);
       const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
@@ -110,21 +174,39 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     return 'xhs';
   })();
 
+  // The currently-active top-level section (create / tasks / history). Used
+  // to highlight the right L1 tab AND to remember which section to go back
+  // to after viewing a task detail.
+  const currentSection: SectionId = (() => {
+    if (view.kind === 'main') return view.section;
+    if (view.kind === 'task_detail') return view.from || 'tasks';
+    return 'create';
+  })();
+
+  const setSection = (section: SectionId) => {
+    setView({ kind: 'main', section, platform: currentPlatform });
+  };
+
   const setPlatform = (platform: PlatformId) => {
-    setView({ kind: 'workflows', platform });
+    setView({ kind: 'main', section: currentSection, platform });
   };
 
   const openTask = (task_id: string) => {
-    setView({ kind: 'task_detail', task_id });
+    setView({ kind: 'task_detail', task_id, from: currentSection });
   };
 
   const openSensitiveCheck = () => {
     setView({ kind: 'sensitive_check' });
   };
 
-  // Always go back to the main page (no intermediate workflow detail page)
+  // Go back to the section the user was on before opening a detail page.
+  // task_detail remembers via `view.from`; sensitive_check just goes home.
   const goBack = () => {
-    setView({ kind: 'workflows', platform: currentPlatform });
+    if (view.kind === 'task_detail' && view.from) {
+      setView({ kind: 'main', section: view.from, platform: currentPlatform });
+    } else {
+      setView({ kind: 'main', section: 'tasks', platform: currentPlatform });
+    }
   };
 
   const openWizardFor = (scenario: Scenario) => {
@@ -221,6 +303,34 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
+    // Section + platform branching. Each L1 section has a per-platform
+    // view; the user picked the platform via the L2 sub-tabs above.
+    const platformLabel = currentPlatform === 'xhs' ? '小红书' : currentPlatform === 'x' ? '推特' : currentPlatform;
+
+    if (currentSection === 'tasks') {
+      return (
+        <MyTasksPage
+          tasks={tasksForPlatform}
+          scenarios={scenarios}
+          loading={loading}
+          platformLabel={platformLabel}
+          onOpenTask={openTask}
+        />
+      );
+    }
+
+    if (currentSection === 'history') {
+      return (
+        <RunHistoryPage
+          tasks={tasksForPlatform}
+          scenarios={scenarios}
+          platformLabel={platformLabel}
+          onOpenTask={openTask}
+        />
+      );
+    }
+
+    // currentSection === 'create' — show the platform's scenario cards
     if (currentPlatform === 'xhs') {
       return (
         <XhsWorkflowsPage
@@ -285,32 +395,61 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <WindowTitleBar inline />
       </div>
 
-      {/* Platform tabs */}
-      <div className="flex items-center gap-1 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
-        {PLATFORM_TABS.map(tab => {
-          const active = currentPlatform === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setPlatform(tab.id)}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                active
-                  ? 'bg-green-500/10 text-green-500 border border-green-500/30'
-                  : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
-              }`}
-            >
-              <span>{tab.icon}</span>
-              <span>{i18nService.t(tab.labelKey)}</span>
-              {!tab.enabled && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
-                  {i18nService.t('scenarioPlatformSoon')}
-                </span>
-              )}
-            </button>
-          );
-        })}
-      </div>
+      {/* L1 — section tabs (Create / My Tasks / History). Hidden when in
+          a sub-page (task_detail / sensitive_check) so the user gets a
+          full-bleed page without competing nav. */}
+      {view.kind === 'main' && (
+        <div className="flex items-center gap-1 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
+          {SECTION_TABS.map(tab => {
+            const active = currentSection === tab.id;
+            const isZh = i18nService.currentLanguage === 'zh';
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setSection(tab.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                  active
+                    ? 'bg-blue-500/10 text-blue-500 border border-blue-500/30'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{isZh ? tab.zh : tab.en}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* L2 — platform sub-tabs (XHS / Twitter). Same hidden rule. */}
+      {view.kind === 'main' && (
+        <div className="flex items-center gap-1 px-4 pt-2 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
+          {PLATFORM_TABS.map(tab => {
+            const active = currentPlatform === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPlatform(tab.id)}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                  active
+                    ? 'bg-green-500/10 text-green-500 border border-green-500/30'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{i18nService.t(tab.labelKey)}</span>
+                {!tab.enabled && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
+                    {i18nService.t('scenarioPlatformSoon')}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Main content */}
       {/* Main content — guarded with a fallback so a render crash doesn't black-screen the app */}

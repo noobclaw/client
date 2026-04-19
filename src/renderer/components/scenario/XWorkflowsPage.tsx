@@ -18,8 +18,11 @@ import { scenarioService, type Scenario, type Task, type Draft } from '../../ser
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
-// web3 KOL track preset 的简表（用于任务卡片显示图标+名称）
-const WEB3_TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
+// web3 KOL track preset table — task list moved to MyTasksPage so this is
+// no longer used in this file; MyTasksPage has its own copy.
+// @ts-ignore — keep here in case the create-only page wants to surface
+// track previews in the future.
+const _WEB3_TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = { // eslint-disable-line
   web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
   web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
   web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
@@ -174,18 +177,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linksText, linkAutoUpload, linkSubmitting, linkRewrite, isZh]);
 
-  // ── UI helpers ──
-  const scheduleLabel = (task: Task): string => {
-    const interval = (task as any).run_interval || 'daily_random';
-    const map: Record<string, string> = isZh
-      ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时',
-          'daily': '每天 ' + (task.daily_time || '08:00'),
-          'daily_random': '每日随机时间', 'once': '手动' }
-      : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h',
-          'daily': 'Daily ' + (task.daily_time || '08:00'),
-          'daily_random': 'Once daily (random)', 'once': 'Manual' };
-    return map[interval] || interval;
-  };
+  // (scheduleLabel helper used to live here for the bottom task list.
+  //  Tasks moved to MyTasksPage which has its own implementation.)
 
   // ── Render ──
 
@@ -282,125 +275,6 @@ export const XWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* My Twitter tasks — rich card layout matching XHS task list:
-          type badge, track icon + name, ID hash, status badge, persona
-          snippet, schedule line. For x_link_rewrite tasks we also show
-          the URL count + first 3 URLs since that's the user's main input. */}
-      {tasks.length > 0 && (
-        <section className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-              🐦 {isZh ? '推特任务' : 'Twitter Tasks'}
-            </h2>
-            <span className="text-[11px] text-gray-500 dark:text-gray-400">
-              {isZh ? '同一平台最多同时运行一个任务' : 'One task per platform at a time'}
-            </span>
-          </div>
-          <div className="space-y-3">
-            {/* Sort: running tasks first (so user immediately sees what's
-                actively going), then everything else in original order.
-                Stable sort — non-running tasks keep their relative order. */}
-            {tasks
-              .map((t, i) => ({ t, i, running: runningTaskIds.has(t.id) }))
-              .sort((a, b) => {
-                if (a.running !== b.running) return a.running ? -1 : 1;
-                return a.i - b.i;
-              })
-              .map(({ t }) => {
-              const isRunning = runningTaskIds.has(t.id);
-              const track = WEB3_TRACK_ICONS[t.track] || { icon: '🐦', name_zh: t.track };
-              const scenarioId = t.scenario_id;
-              // Type badge per scenario, mirrors XHS workflow-type badge styling
-              const typeLabel = scenarioId === 'x_auto_engage'
-                ? { icon: '🐦', zh: '自动互动', en: 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' }
-                : scenarioId === 'x_post_creator'
-                  ? { icon: '📝', zh: '每日发推', en: 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' }
-                  : scenarioId === 'x_link_rewrite'
-                    ? { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' }
-                    : { icon: '🐦', zh: t.scenario_id, en: t.scenario_id, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
-              const isLinkRewrite = scenarioId === 'x_link_rewrite';
-              const taskUrls: string[] = (t as any).urls || [];
-              const personaSnippet = (t.persona || '').trim().split('\n')[0].slice(0, 80);
-              const interval = (t as any).run_interval || 'daily_random';
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => onOpenTask(t.id)}
-                  className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
-                    isRunning
-                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-sky-500/50 dark:hover:border-sky-500/50 bg-white dark:bg-gray-900'
-                  }`}
-                >
-                  {/* Top row: type badge + track + ID + status badges */}
-                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
-                        {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
-                      </span>
-                      {/* Track icon/name hidden for x_link_rewrite — that scenario
-                          is URL-driven, the track is meaningless for it. */}
-                      {!isLinkRewrite && (
-                        <>
-                          <span className="text-lg">{track.icon}</span>
-                          <span className="font-medium dark:text-white truncate">{track.name_zh}</span>
-                        </>
-                      )}
-                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-                        #{t.id.slice(0, 8)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {isRunning ? (
-                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          {isZh ? '运行中' : 'Running'}
-                        </span>
-                      ) : interval === 'once' || isLinkRewrite ? (
-                        <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
-                          ✋ {isZh ? '手动运行' : 'Manual'}
-                        </span>
-                      ) : t.active ? (
-                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
-                          ⏰ {isZh ? '定时运行' : 'Scheduled'}
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
-                          {isZh ? '待命' : 'Standby'}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {/* Persona snippet — first line so users can quickly tell which voice
-                      this task is using without opening detail page. */}
-                  {personaSnippet && (
-                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
-                      👤 {personaSnippet}
-                    </div>
-                  )}
-                  {/* Config details */}
-                  <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    {isLinkRewrite ? (
-                      <>
-                        <div>{isZh ? '推文链接' : 'Tweet URLs'}: {taskUrls.length} {isZh ? '条' : ''}</div>
-                        {taskUrls.slice(0, 3).map((u, i) => (
-                          <div key={i} className="truncate text-[11px] text-gray-400">{i + 1}. {u}</div>
-                        ))}
-                      </>
-                    ) : (
-                      <div>
-                        {isZh ? '频次: ' : 'Frequency: '}
-                        ⏰ {scheduleLabel(t)} · {t.daily_count} {isZh ? '条/次' : '/run'}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
 
       {/* Login modal (reuses XHS login gate component but shows "X" copy).
           TODO: if we need X-specific login detection (twitter.com not

@@ -15,14 +15,15 @@
  *   - If a task already exists, jumps straight to its task detail page
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
-const TRACK_PRESETS: Array<{ id: string; icon: string; name_zh: string }> = [
+// @ts-ignore — kept inline so future card layouts can reference it without re-importing
+const _TRACK_PRESETS: Array<{ id: string; icon: string; name_zh: string }> = [ // eslint-disable-line
   { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱' },
   { id: 'indie_dev', icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
   { id: 'personal_finance', icon: '💰', name_zh: '理财 · 记账攻略' },
@@ -80,30 +81,21 @@ interface Props {
 export const XhsWorkflowsPage: React.FC<Props> = ({
   scenarios,
   tasks,
-  draftsByTask,
-  loading,
+  draftsByTask: _draftsByTask,
+  loading: _loading,
   // onOpenWorkflow — unused until auto_reply / mass_comment ship
   onOpenTask,
   onConfigure,
   onChanged,
   onOpenSensitiveCheck,
 }) => {
-  const scenarioById = new Map(scenarios.map(s => [s.id, s]));
+  // @ts-ignore — Pre-create-only refactor used scenarioById to look up
+  // each task's scenario when rendering the task list. Tasks moved out
+  // (now in MyTasksPage), but the wizard helpers might still need this.
+  const _scenarioById = new Map(scenarios.map(s => [s.id, s])); // eslint-disable-line
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
-  // Track which tasks are actually running right now (not just scheduled).
-  // We poll once on mount and every 5s. Returns a SET — multi-tab concurrency
-  // means we may have an XHS task AND a Twitter task running at the same
-  // time; the singleton getRunningTaskId() only returns whichever the Map
-  // iterator yields first (could be Twitter, hiding the XHS running badge).
-  const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const poll = () => {
-      scenarioService.getRunningTaskIds().then(ids => setRunningTaskIds(new Set(ids))).catch(() => {});
-    };
-    poll();
-    const t = setInterval(poll, 5000);
-    return () => clearInterval(t);
-  }, []);
+  // (Task list moved to its own top-level "我的任务" page in v2.4.20+.
+  //  This page is now creation-only — no task polling needed here.)
 
   // Find the default viral-production scenario. If the backend scenario list
   // hasn't loaded yet, use a hardcoded fallback so the "立即开始" button
@@ -493,126 +485,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
       )}
-
-      {/* Platform tasks */}
-      <section className="mb-8">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            📕 {i18nService.currentLanguage === 'zh' ? '小红书任务' : 'XHS Tasks'}
-          </h2>
-          <span className="text-[11px] text-gray-500 dark:text-gray-400">
-            {i18nService.currentLanguage === 'zh' ? '同一平台最多同时运行一个任务' : 'One task per platform at a time'}
-          </span>
-        </div>
-        {loading && tasks.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
-            <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
-            {i18nService.currentLanguage === 'zh' ? '加载中...' : 'Loading...'}
-          </div>
-        ) : tasks.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-            {i18nService.t('scenarioSectionNoTasks')}
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {/* Sort: running tasks first so user sees what's actively going
-                without scrolling. Stable sort — non-running keep their order. */}
-            {tasks
-              .map((t, i) => ({ task: t, i, running: runningTaskIds.has(t.id) }))
-              .sort((a, b) => {
-                if (a.running !== b.running) return a.running ? -1 : 1;
-                return a.i - b.i;
-              })
-              .map(({ task }) => {
-              const scenario = scenarioById.get(task.scenario_id);
-              const taskDrafts = draftsByTask.get(task.id) || [];
-              // "已生成" 用 drafts 总数统计（包括 pending 和已上传的），反映 AI 产出量
-              const generatedCount = taskDrafts.length;
-              const trackPreset = TRACK_PRESETS.find(t => t.id === task.track);
-              const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
-              const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
-              const taskUrls: string[] = (task as any).urls || [];
-              const isRunning = runningTaskIds.has(task.id);
-              // Task type label so users can tell three workflow types apart at a glance
-              const typeLabel = isLinkMode
-                ? { icon: '🔗', zh: '指定链接改写', en: 'Pick-your-links Rewrite', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' }
-                : isAutoReplyTask
-                  ? { icon: '💬', zh: '自动回复', en: 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' }
-                  : { icon: '🔥', zh: '批量爆款改写', en: 'Batch Viral Rewrite', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-              const subTitle = isLinkMode
-                ? (i18nService.currentLanguage === 'zh' ? '指定链接' : 'Manual links')
-                : (trackPreset?.name_zh || task.track || scenario?.name_zh || task.scenario_id);
-              return (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => onOpenTask(task.id)}
-                  className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
-                    isRunning
-                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900'
-                  }`}
-                >
-                  {/* Top row: type badge + track/subtitle + ID + status badge */}
-                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
-                        {typeLabel.icon} {i18nService.currentLanguage === 'zh' ? typeLabel.zh : typeLabel.en}
-                      </span>
-                      <span className="text-lg">{isLinkMode ? '🔗' : (trackPreset?.icon || scenario?.icon || '🔥')}</span>
-                      <span className="font-medium dark:text-white truncate">{subTitle}</span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-                        #{task.id.slice(0, 8)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      {runningTaskIds.has(task.id) ? (
-                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
-                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          {i18nService.currentLanguage === 'zh' ? '运行中' : 'Running'}
-                        </span>
-                      ) : isLinkMode ? (
-                        <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
-                          ✋ {i18nService.currentLanguage === 'zh' ? '手动运行' : 'Manual'}
-                        </span>
-                      ) : task.active ? (
-                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
-                          ⏰ {i18nService.currentLanguage === 'zh' ? '定时运行' : 'Scheduled'}
-                        </span>
-                      ) : (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
-                          {i18nService.currentLanguage === 'zh' ? '待命' : 'Standby'}
-                        </span>
-                      )}
-                      {generatedCount > 0 && (
-                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30">
-                          {i18nService.currentLanguage === 'zh' ? '已生成 ' + generatedCount + ' 条' : 'Generated ' + generatedCount}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  {/* Config details */}
-                  <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    {isLinkMode ? (
-                      <>
-                        <div>{i18nService.currentLanguage === 'zh' ? '原文链接' : 'Source URLs'}: {taskUrls.length} {i18nService.currentLanguage === 'zh' ? '个' : ''}</div>
-                        {taskUrls.slice(0, 3).map((u, i) => (
-                          <div key={i} className="truncate text-[11px] text-gray-400">{i + 1}. {u}</div>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <div>{i18nService.currentLanguage === 'zh' ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
-                        <div>⏰ {({ '30min': i18nService.currentLanguage === 'zh' ? '每30分钟' : 'Every 30min', '1h': i18nService.currentLanguage === 'zh' ? '每小时' : 'Hourly', '6h': i18nService.currentLanguage === 'zh' ? '每6小时' : 'Every 6h', 'daily': (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00') } as Record<string, string>)[(task as any).run_interval || 'daily'] || (i18nService.currentLanguage === 'zh' ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {i18nService.currentLanguage === 'zh' ? '条/次' : '/run'}</div>
-                      </>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </section>
 
       {loginModalReason && (
         <LoginRequiredModal
