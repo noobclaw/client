@@ -323,27 +323,28 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   });
 
   // Persona — picks the most-detailed available hint per track:
-  //   - XHS auto_reply (isAutoReply, !isXPlatform): reply_persona_hint (long)
+  //   - XHS auto_reply (isAutoReply): reply_persona_hint, trimmed at "口气："
   //   - XHS viral_production (!isAutoReply, !isXPlatform): persona_hint (short)
-  //   - All Twitter scenarios (isXPlatform): reply_persona_hint trimmed —
-  //     drop "口气：" and everything after (回复方向 / 绝对不能说). Twitter
-  //     scenarios are post-oriented, not reply-oriented; the trailing
-  //     directive sections aren't useful and just bloat the prompt window.
-  //     All three Twitter scenarios on the SAME web3 track share the same
-  //     trimmed persona for consistency.
-  const trimPersonaForX = (text: string): string => {
+  //   - All Twitter scenarios (isXPlatform): reply_persona_hint, trimmed at
+  //     "口气：" too — Twitter is post-oriented, not reply-oriented. Per
+  //     user request the trailing 口气/回复方向/绝对不能说 sections are
+  //     dropped from BOTH detailed-persona consumers (auto_reply + Twitter)
+  //     since users found them too rigid and the LLM was over-fitting on
+  //     the constraints. The 身份/现在做的/真实状态 prefix is kept — it's
+  //     what gives the AI a real voice.
+  const trimPersonaTail = (text: string): string => {
     if (!text) return text;
-    // Strip first "口气：" (or "口气:") onward — keep身份/真实状态/真实数据 etc.
+    // Strip first "口气：" (or "口气:") onward — keep 身份/真实状态/真实数据 etc.
     const idx = text.search(/\n\s*口气[：:]/);
     if (idx < 0) return text;
     return text.slice(0, idx).trimEnd();
   };
   const useDetailedPersona = isAutoReply || isXPlatform;
   const computeDefaultPersona = (preset: TrackPreset): string => {
-    const base = useDetailedPersona
-      ? (preset.reply_persona_hint || preset.persona_hint)
-      : preset.persona_hint;
-    return isXPlatform ? trimPersonaForX(base) : base;
+    if (!useDetailedPersona) return preset.persona_hint;
+    const base = preset.reply_persona_hint || preset.persona_hint;
+    // Both XHS auto_reply and Twitter want the trimmed version — drop tail.
+    return trimPersonaTail(base);
   };
   const initialPersona = initialTask?.persona && initialTask.persona.trim()
     ? initialTask.persona
@@ -537,23 +538,27 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {/* Step 1: Track + Keywords + Persona (all in one) */}
           {step === 1 && (
             <div className="space-y-5">
-              {/* Track dropdown */}
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '选择赛道' : 'Select Track'}
-                </label>
-                <select
-                  value={trackId}
-                  onChange={e => handleTrackChange(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                >
-                  {VISIBLE_TRACKS.map(preset => (
-                    <option key={preset.id} value={preset.id}>
-                      {preset.icon} {preset.name_zh}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Track dropdown — hidden for x_link_rewrite (URL-rewrite has
+                  no "track" concept; the source URL IS the topic). All other
+                  scenarios still need it for keyword/persona presets. */}
+              {!isLinkRewriteScenario && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '选择赛道' : 'Select Track'}
+                  </label>
+                  <select
+                    value={trackId}
+                    onChange={e => handleTrackChange(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                  >
+                    {VISIBLE_TRACKS.map(preset => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.icon} {preset.name_zh}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               {/* Keywords — only for XHS scenarios.
                   Twitter scenarios don't use keyword search (auto_engage uses
@@ -1130,10 +1135,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
-                  <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
-                </div>
+                {/* Track row hidden for x_link_rewrite — no track concept */}
+                {!isLinkRewriteScenario && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
+                    <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
+                  </div>
+                )}
                 {!isXPlatform && (
                   <div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '关键词:' : 'Keywords:'}</span>

@@ -221,9 +221,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // ── Check running state on mount (ONE TIME) ──
   useEffect(() => {
     void refreshData();
-    // Check if this task or any task is already running
-    scenarioService.getRunningTaskId().then(rid => {
-      if (mountedRef.current && rid === task.id) setRunning(true);
+    // Check if THIS task is already running. Use the plural getter so a
+    // different concurrent task doesn't shadow ours (singleton returns
+    // whichever map entry iterates first — could be the wrong one).
+    scenarioService.getRunningTaskIds().then(ids => {
+      if (mountedRef.current && ids.includes(task.id)) setRunning(true);
     }).catch(() => {});
   }, [refreshData, task.id]);
 
@@ -232,7 +234,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (!running) return;
     const timer = setInterval(async () => {
       try {
-        const prog = await scenarioService.getRunProgress().catch(() => null);
+        // Pass task.id so the main process returns THIS task's progress
+        // even when another task (different platform) is also running.
+        const prog = await scenarioService.getRunProgress(task.id).catch(() => null);
         if (mountedRef.current && prog && prog.taskId === task.id) {
           setProgress(prog);
           // If progress says "done" or "error", task has finished
@@ -286,12 +290,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     //    platform compete for the same tab and must serialize. Block only
     //    if a different task on the SAME platform is already running.
     try {
-      const runningIds = await scenarioService.getRunningTaskIds().catch(() => []);
-      const otherRunning = runningIds.filter(id => id !== task.id);
+      const runningIds: string[] = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
+      const otherRunning = runningIds.filter((id: string) => id !== task.id);
       if (otherRunning.length > 0) {
         const [allTasks, allScenarios] = await Promise.all([
-          scenarioService.listTasks().catch(() => []),
-          scenarioService.listScenarios().catch(() => []),
+          scenarioService.listTasks().catch(() => [] as Task[]),
+          scenarioService.listScenarios().catch(() => [] as Scenario[]),
         ]);
         const scenarioById = new Map(allScenarios.map(s => [s.id, s]));
         const myPlatform = scenario?.platform;
@@ -351,7 +355,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const handleStop = async () => {
     setStopping(true);
     try {
-      await scenarioService.requestAbort();
+      // Pass task.id so we abort THIS task only — without it we'd kill
+      // any other concurrent task (e.g. XHS) at the same time.
+      await scenarioService.requestAbort(task.id);
       showToast('warn', '正在停止，请稍候...');
     } catch {
       showToast('err', '停止请求失败');
@@ -360,10 +366,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   };
 
   const handleDelete = async () => {
-    // Check if THIS task is running
+    // Check if THIS task is running. Use the plural getter — singleton
+    // would miss us if a different concurrent task happens to iterate first.
     try {
-      const rid = await scenarioService.getRunningTaskId().catch(() => null);
-      if (rid === task.id) {
+      const ids: string[] = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
+      if (ids.includes(task.id)) {
         showToast('warn', '该任务正在运行中，请先停止再删除');
         return;
       }
@@ -438,7 +445,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     </>
                   ) : (
                     <>
-                      <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                      {/* Keywords are XHS-only — Twitter scenarios don't search
+                          by keyword (auto_engage uses KOL pool + Home feed,
+                          post_creator uses topic_context, link_rewrite is
+                          URL-driven). Hide on X to avoid showing a misleading
+                          empty/default keyword list. */}
+                      {!isXTask && (
+                        <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                      )}
                       <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' } : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
                     </>
                   )}

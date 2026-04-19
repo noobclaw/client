@@ -77,8 +77,17 @@ export interface RunProgress {
   error?: string;
 }
 
-let currentProgress: RunProgress | null = null;
-let abortRequested = false;
+// Per-task progress + abort flag.
+//
+// PRE-Twitter v1 these were single globals — fine when only one task ran at
+// a time. With cross-platform concurrency (an XHS task and a Twitter task
+// targeting different browser tabs running in parallel), the second
+// initProgress() would clobber the first's state, the renderer's poll
+// would see the wrong task's progress in BOTH detail pages, and stop on
+// task A would also abort task B. Switching to per-task Maps fixes all of
+// that — every task has its own RunProgress + its own abort flag.
+const progressByTaskId: Map<string, RunProgress> = new Map();
+const abortByTaskId: Map<string, boolean> = new Map();
 
 function now(): string {
   const d = new Date();
@@ -86,7 +95,7 @@ function now(): string {
 }
 
 function initProgress(taskId: string): void {
-  currentProgress = {
+  progressByTaskId.set(taskId, {
     taskId,
     status: 'running',
     currentStep: 0,
@@ -96,53 +105,80 @@ function initProgress(taskId: string): void {
       { name: 'AI 生成配图', status: 'waiting', logs: [] },
       { name: '上传到小红书草稿箱。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
     ],
-  };
-  abortRequested = false;
+  });
+  abortByTaskId.set(taskId, false);
 }
 
-function stepStart(step: number): void {
-  if (!currentProgress) return;
-  currentProgress.currentStep = step;
-  currentProgress.steps[step - 1].status = 'running';
+function stepStart(taskId: string, step: number): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  p.currentStep = step;
+  p.steps[step - 1].status = 'running';
 }
 
-function stepLog(step: number, status: 'done' | 'running' | 'error', message: string): void {
-  if (!currentProgress) return;
-  const logs = currentProgress.steps[step - 1].logs;
+function stepLog(taskId: string, step: number, status: 'done' | 'running' | 'error', message: string): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  const logs = p.steps[step - 1].logs;
   // Always append — UI shows a live timeline of what's happening.
   // Keep max 30 entries to avoid memory bloat on long runs.
   if (logs.length >= 30) logs.shift();
   logs.push({ time: now(), status, message });
 }
 
-function stepDone(step: number): void {
-  if (!currentProgress) return;
-  currentProgress.steps[step - 1].status = 'done';
+function stepDone(taskId: string, step: number): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  p.steps[step - 1].status = 'done';
 }
 
-function stepError(step: number, error: string): void {
-  if (!currentProgress) return;
-  currentProgress.steps[step - 1].status = 'error';
-  stepLog(step, 'error', error);
+function stepError(taskId: string, step: number, error: string): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  p.steps[step - 1].status = 'error';
+  stepLog(taskId, step, 'error', error);
 }
 
-function finishProgress(status: 'done' | 'error', error?: string): void {
-  if (!currentProgress) return;
-  currentProgress.status = status;
-  if (error) currentProgress.error = error;
+function finishProgress(taskId: string, status: 'done' | 'error', error?: string): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  p.status = status;
+  if (error) p.error = error;
 }
 
-export function getRunProgress(): RunProgress | null {
-  return currentProgress;
+/**
+ * Returns progress for a specific task. If `taskId` omitted (legacy callers),
+ * returns the first running task's progress as a back-compat fallback —
+ * but new callers should always pass taskId so the renderer's two open
+ * detail pages each see their own task's state.
+ */
+export function getRunProgress(taskId?: string): RunProgress | null {
+  if (taskId) return progressByTaskId.get(taskId) || null;
+  // Back-compat: prefer a task that's still running
+  for (const p of progressByTaskId.values()) {
+    if (p.status === 'running') return p;
+  }
+  // Fall through to any (could be a recently-finished one we kept around)
+  const first = progressByTaskId.values().next();
+  return first.done ? null : first.value;
 }
 
-export function requestAbort(): void {
-  abortRequested = true;
+/** Per-task abort. Stop button on Task A no longer also kills Task B. */
+export function requestAbort(taskId?: string): void {
+  if (taskId) {
+    abortByTaskId.set(taskId, true);
+    return;
+  }
+  // Back-compat path: if no taskId given, abort all running tasks
+  for (const id of abortByTaskId.keys()) abortByTaskId.set(id, true);
 }
 
-/** Called by xhsDriver inside its scroll loop to check if user hit stop. */
-export function isAbortRequested(): boolean {
-  return abortRequested;
+/** Called by orchestrator inside loops to check if user hit stop. */
+export function isAbortRequested(taskId?: string): boolean {
+  if (taskId) return abortByTaskId.get(taskId) === true;
+  // Back-compat: ANY task aborted? (Old callers without per-task scope)
+  for (const v of abortByTaskId.values()) if (v) return true;
+  return false;
 }
 
 // ── Concurrency control (Twitter v1: per-tab-resource gating) ─────────────
@@ -287,7 +323,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     }
 
     if (imagesReloaded.length === 0) {
-      finishProgress('error', 'no_local_images');
+      finishProgress(task.id, 'error', 'no_local_images');
       return { status: 'failed', reason: 'no_local_images' };
     }
 
@@ -298,33 +334,33 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     };
 
     const seen = taskStore.getSeenPostIds(task.id);
+    // Per-task callbacks: each closure captures THIS task's id so concurrent
+    // runs don't bleed into each other's progress map.
+    const tid = task.id;
     const result = await runOrchestrator(pack, task, seen, {
-      stepStart,
-      stepLog,
-      stepDone,
-      stepError,
-      finishProgress,
-      isAbortRequested: () => abortRequested,
+      stepStart: (step) => stepStart(tid, step),
+      stepLog: (step, status, message) => stepLog(tid, step, status, message),
+      stepDone: (step) => stepDone(tid, step),
+      stepError: (step, error) => stepError(tid, step, error),
+      finishProgress: (status, error) => finishProgress(tid, status, error),
+      isAbortRequested: () => isAbortRequested(tid),
     }, { scriptOverride: script, targetDraft });
 
     // Update draft status on successful upload
+    const cur = progressByTaskId.get(tid);
     if (result.status === 'ok') {
       taskStore.updateDraft(draft.id, { status: 'pushed', pushed_at: Date.now() });
-      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
-        finishProgress('done');
-      }
+      if (cur?.status === 'running') finishProgress(tid, 'done');
     } else {
-      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
-        finishProgress('error', result.reason || 'upload_failed');
-      }
+      if (cur?.status === 'running') finishProgress(tid, 'error', result.reason || 'upload_failed');
     }
 
     return result;
   } finally {
     releaseResource(resource);
-    abortRequested = false;
+    abortByTaskId.delete(task.id);
     setTimeout(() => {
-      if (currentProgress?.taskId === taskId) currentProgress = null;
+      progressByTaskId.delete(task.id);
     }, 30000);
   }
 }
@@ -351,9 +387,10 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     return await _runTaskInner(task, manual, pack);
   } finally {
     releaseResource(resource);
+    abortByTaskId.delete(task.id);
     // Keep progress around for 30s so UI can show final state
     setTimeout(() => {
-      if (currentProgress?.taskId === task.id) currentProgress = null;
+      progressByTaskId.delete(task.id);
     }, 30000);
   }
 }
@@ -394,30 +431,30 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
     // All orchestration logic now lives on the server (orchestrator.js).
     // We just provide the ctx tools and let it run.
     const seen = taskStore.getSeenPostIds(task.id);
+    // Per-task callbacks: each closure captures THIS task's id so concurrent
+    // runs don't bleed into each other's progress map.
+    const tid = task.id;
 
     const result = await runOrchestrator(pack, task, seen, {
-      stepStart,
-      stepLog,
-      stepDone,
-      stepError,
-      finishProgress,
-      isAbortRequested: () => abortRequested,
+      stepStart: (step) => stepStart(tid, step),
+      stepLog: (step, status, message) => stepLog(tid, step, status, message),
+      stepDone: (step) => stepDone(tid, step),
+      stepError: (step, error) => stepError(tid, step, error),
+      finishProgress: (status, error) => finishProgress(tid, status, error),
+      isAbortRequested: () => isAbortRequested(tid),
     });
 
+    const cur = progressByTaskId.get(tid);
     if (result.status === 'ok') {
       riskGuard.markRunSuccess(task.id, result.collected_count || 0, result.draft_count || 0);
       // 保证 UI 最终收到 done 状态（orchestrator 里大多数路径已经调过，
       // 但 orchestrator 抛异常经 phaseRunner catch 返回时没调，这里兜底）
-      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
-        finishProgress('done');
-      }
+      if (cur?.status === 'running') finishProgress(tid, 'done');
     } else {
       riskGuard.markRunFailure(task.id, result.reason || 'unknown');
       // 关键修复：orchestrator 抛 user_stopped → phaseRunner catch → 这里。
       // 之前没调 finishProgress，UI 永远看不到 error 状态，一直显示"停止中"。
-      if (currentProgress?.taskId === task.id && currentProgress.status === 'running') {
-        finishProgress('error', result.reason || 'unknown');
-      }
+      if (cur?.status === 'running') finishProgress(tid, 'error', result.reason || 'unknown');
     }
 
     return result;
@@ -425,7 +462,7 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
     let msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('user_stopped')) msg = 'user_stopped';
     riskGuard.markRunFailure(task.id, msg);
-    finishProgress('error', msg);
+    finishProgress(task.id, 'error', msg);
     return { status: 'failed', reason: msg };
   }
 }

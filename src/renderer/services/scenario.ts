@@ -146,17 +146,17 @@ class ScenarioService {
     }
   }
 
-  async getRunProgress(): Promise<ScenarioRunProgress | null> {
+  async getRunProgress(taskId?: string): Promise<ScenarioRunProgress | null> {
     try {
-      return await window.electron.scenario.getRunProgress() || null;
+      return await window.electron.scenario.getRunProgress(taskId) || null;
     } catch {
       return null;
     }
   }
 
-  async requestAbort(): Promise<void> {
+  async requestAbort(taskId?: string): Promise<void> {
     try {
-      await window.electron.scenario.requestAbort();
+      await window.electron.scenario.requestAbort(taskId);
     } catch {}
   }
 

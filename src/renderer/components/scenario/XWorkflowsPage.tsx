@@ -44,11 +44,34 @@ export const XWorkflowsPage: React.FC<Props> = ({
   loading,
   onOpenTask,
   onConfigure,
-  onChanged: _onChanged,
+  onChanged,
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
+
+  // ── x_link_rewrite quick-create modal (mirrors XHS link-mode flow) ──
+  // The user's expectation: paste URLs → click run → done. No wizard, no
+  // schedule (it's a one-shot job, run_interval='once'). Modal collects
+  // the URL list + auto_upload toggle, creates the task, jumps to detail
+  // page, fires runTaskNow asynchronously. Same shape as XHS link-mode.
+  const [linkModalOpen, setLinkModalOpen] = useState(false);
+  const [linksText, setLinksText] = useState('');
+  const [linkSubmitting, setLinkSubmitting] = useState(false);
+  const [linkAutoUpload, setLinkAutoUpload] = useState(true);
+
+  const validateTweetLinks = (text: string): { ok: string[]; err: string | null } => {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 条推文链接' : 'Paste at least 1 tweet URL' };
+    if (lines.length > 5) return { ok: [], err: isZh ? '最多 5 条' : 'Max 5 URLs' };
+    for (const l of lines) {
+      // Accept twitter.com or x.com /<handle>/status/<id>
+      if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/[^/]+\/status\/\d+/i.test(l)) {
+        return { ok: [], err: (isZh ? '不是有效推文链接：' : 'Not a valid tweet URL: ') + l.slice(0, 80) };
+      }
+    }
+    return { ok: lines, err: null };
+  };
 
   // Poll which tasks are currently running (could be > 1 with multi-tab
   // concurrency when XHS task + Twitter task are both in flight)
@@ -92,8 +115,64 @@ export const XWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
+    // x_link_rewrite is intentionally a one-shot job — same UX as XHS link
+    // mode: open a quick modal for URLs + auto_upload, no wizard / schedule.
+    // Other Twitter scenarios still go through the full ConfigWizard.
+    if (scenario.id === 'x_link_rewrite') {
+      setLinkModalOpen(true);
+      return;
+    }
     onConfigure(scenario);
   }, [onConfigure, isZh]);
+
+  const handleLinkSubmit = useCallback(async () => {
+    if (linkSubmitting) return;
+    const { ok, err } = validateTweetLinks(linksText);
+    if (err) { alert(err); return; }
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.openWebsiteLogin();
+      return;
+    }
+    if (!linkRewrite) {
+      alert(isZh ? '场景元数据还在加载中，请稍后再试' : 'Scenario metadata still loading');
+      return;
+    }
+    setLinkSubmitting(true);
+    try {
+      const now = new Date();
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const newTask = await scenarioService.createTask({
+        scenario_id: linkRewrite.id,
+        // No track concept for link rewrite — pass an explicit sentinel so
+        // detail page knows this came from URL-mode (not a real preset).
+        track: 'link_mode',
+        keywords: [],
+        urls: ok,
+        persona: '',
+        daily_count: ok.length,
+        variants_per_post: 1,
+        daily_time: `${hh}:${mm}`,
+        run_interval: 'once',
+        enabled: true,
+        active: true,
+        auto_upload: linkAutoUpload,
+      } as any);
+      setLinkModalOpen(false);
+      setLinksText('');
+      // Refresh parent tasks[] before jumping so detail page can find it
+      if (onChanged) { await onChanged(); }
+      onOpenTask(newTask.id);
+      scenarioService.runTaskNow(newTask.id).catch((e: any) => {
+        console.error('[XLinkMode] runTaskNow failed:', e);
+      });
+    } catch (e) {
+      alert((isZh ? '创建失败：' : 'Create failed: ') + String(e).slice(0, 120));
+    } finally {
+      setLinkSubmitting(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [linksText, linkAutoUpload, linkSubmitting, linkRewrite, isZh]);
 
   // ── UI helpers ──
   const scheduleLabel = (task: Task): string => {
@@ -112,43 +191,10 @@ export const XWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Hero */}
-      <section className="mb-6 rounded-2xl border border-sky-500/30 bg-gradient-to-br from-sky-500/10 via-blue-500/5 to-transparent p-5 relative overflow-hidden">
-        <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-sky-500/10 blur-3xl pointer-events-none" />
-        <div className="relative">
-          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-500 mb-2">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-sky-500 animate-pulse" />
-            {isZh ? 'Twitter / X' : 'Twitter / X'}
-          </div>
-          <h2 className="text-xl font-bold dark:text-white mb-1.5">
-            🐦 {isZh ? 'Twitter 自动化' : 'Twitter Automation'}
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
-            {isZh
-              ? '专为 Web3 KOL 设计：自动关注圈内 KOL、智能评论互动、每日自动发推，三件事随机打散，看起来像真人而不是机器。'
-              : 'Built for Web3 KOLs: auto-follow peers, smart-engage with tweets, and post daily. All randomized to feel human.'}
-          </p>
-          <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed mt-2">
-            {isZh
-              ? '⚠️ 大陆用户注意：x.com 在大陆需 VPN / 代理访问，运行任务前请确保浏览器能正常打开 Twitter。'
-              : '⚠️ Mainland China users: x.com requires VPN / proxy. Verify your browser can reach Twitter before running tasks.'}
-          </p>
-          <div className="flex flex-wrap gap-1.5 mt-3">
-            {[
-              { icon: '🛡️', zh: '严风控', en: 'Strict caps' },
-              { icon: '🎲', zh: '随机节奏', en: 'Randomized pacing' },
-              { icon: '🌐', zh: '中英混合', en: 'zh/en/mixed' },
-              { icon: '🤝', zh: '500 KOL 池', en: '500+ KOL pool' },
-            ].map((p, i) => (
-              <span key={i} className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">
-                {p.icon} {isZh ? p.zh : p.en}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Scenario cards */}
+      {/* Scenario cards — match XHS layout: jump straight to the cards,
+          no platform hero / intro paragraph / mainland-VPN warning above.
+          The three Twitter scenarios speak for themselves; the bottom
+          features row covers what was previously in the hero pills. */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 1. Auto engage */}
         <ScenarioCard
@@ -209,6 +255,33 @@ export const XWorkflowsPage: React.FC<Props> = ({
         />
       </section>
 
+      {/* Twitter features row — replaces the old hero. Per-platform notes
+          users actually need: risk-control posture, randomization, language,
+          KOL pool, mainland-VPN reminder. Compact pill design so it doesn't
+          steal attention from the cards above. */}
+      <section className="mb-6">
+        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
+          {isZh ? '🐦 推特自动化 · 几个特点' : '🐦 Twitter Automation · Highlights'}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {[
+            { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
+            { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
+            { icon: '🌐', zh: '中英混合（自动跟随原推语言）', en: 'zh/en/mixed (follows source language)' },
+            { icon: '🤝', zh: '500+ web3 KOL 池', en: '500+ Web3 KOL pool' },
+            { icon: '🎨', zh: '随机配图（约 30% 概率，AI 生图）', en: 'Random images (~30%, AI-generated)' },
+            { icon: '⚠️', zh: '大陆需 VPN / 代理访问 x.com', en: 'Mainland China: VPN required for x.com' },
+          ].map((p, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-sky-500/20 bg-sky-500/5 text-gray-700 dark:text-gray-300"
+            >
+              {p.icon} {isZh ? p.zh : p.en}
+            </span>
+          ))}
+        </div>
+      </section>
+
       {/* My Twitter tasks — rich card layout matching XHS task list:
           type badge, track icon + name, ID hash, status badge, persona
           snippet, schedule line. For x_link_rewrite tasks we also show
@@ -257,8 +330,14 @@ export const XWorkflowsPage: React.FC<Props> = ({
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
                         {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
                       </span>
-                      <span className="text-lg">{track.icon}</span>
-                      <span className="font-medium dark:text-white truncate">{track.name_zh}</span>
+                      {/* Track icon/name hidden for x_link_rewrite — that scenario
+                          is URL-driven, the track is meaningless for it. */}
+                      {!isLinkRewrite && (
+                        <>
+                          <span className="text-lg">{track.icon}</span>
+                          <span className="font-medium dark:text-white truncate">{track.name_zh}</span>
+                        </>
+                      )}
                       <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
                         #{t.id.slice(0, 8)}
                       </span>
@@ -301,7 +380,10 @@ export const XWorkflowsPage: React.FC<Props> = ({
                         ))}
                       </>
                     ) : (
-                      <div>⏰ {scheduleLabel(t)} · {t.daily_count} {isZh ? '次/天' : '/day'}</div>
+                      <div>
+                        {isZh ? '频次: ' : 'Frequency: '}
+                        ⏰ {scheduleLabel(t)} · {t.daily_count} {isZh ? '条/次' : '/run'}
+                      </div>
                     )}
                   </div>
                 </button>
@@ -322,6 +404,84 @@ export const XWorkflowsPage: React.FC<Props> = ({
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={() => setLoginModalReason(null)}
         />
+      )}
+
+      {/* x_link_rewrite quick-create modal (mirrors XHS link-mode UX).
+          Click outside DOES NOT dismiss — pasted URL lists are long, easy to
+          mis-click and lose. Cancel button only. */}
+      {linkModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+            <h3 className="text-lg font-bold dark:text-white mb-2">
+              ✍️ {isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)'}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {isZh
+                ? '粘贴 1-5 条推文链接（x.com / twitter.com /<handle>/status/<id>）。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
+                : 'Paste 1-5 tweet URLs. AI deconstructs hook + structure, rewrites in source language/style (no copying), posts with 10-30 min spacing.'}
+            </p>
+            <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+              {isZh ? '推文链接（每行 1 条）' : 'Tweet URLs (one per line)'}
+            </label>
+            <textarea
+              value={linksText}
+              onChange={e => setLinksText(e.target.value)}
+              placeholder={'https://x.com/handle/status/12345...\nhttps://x.com/handle/status/67890...'}
+              rows={8}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-y min-h-[180px] break-all"
+              disabled={linkSubmitting}
+            />
+
+            <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
+              {isZh ? '生成后的处理' : 'After rewriting'}
+            </label>
+            <div className="space-y-2">
+              <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${linkAutoUpload ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                <input type="radio" name="x_link_auto_upload" checked={linkAutoUpload} onChange={() => setLinkAutoUpload(true)} className="mt-0.5" disabled={linkSubmitting} />
+                <div className="flex-1 text-xs leading-relaxed">
+                  <div className="font-semibold dark:text-white mb-0.5">
+                    {isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter'}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">
+                    {isZh ? '逐条间隔 10-30 分钟随机发布。⚠️ 推文一旦发布无法撤回。' : 'Posts with 10-30 min jitter. ⚠️ Tweets cannot be unposted.'}
+                  </div>
+                </div>
+              </label>
+              <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!linkAutoUpload ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                <input type="radio" name="x_link_auto_upload" checked={!linkAutoUpload} onChange={() => setLinkAutoUpload(false)} className="mt-0.5" disabled={linkSubmitting} />
+                <div className="flex-1 text-xs leading-relaxed">
+                  <div className="font-semibold dark:text-white mb-0.5">
+                    {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                  </div>
+                  <div className="text-gray-500 dark:text-gray-400">
+                    {isZh ? '存盘后人工审核挑选。' : 'Saved locally for manual review.'}
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => !linkSubmitting && setLinkModalOpen(false)}
+                disabled={linkSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                {isZh ? '取消' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleLinkSubmit}
+                disabled={linkSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50"
+              >
+                {linkSubmitting
+                  ? (isZh ? '创建中...' : 'Creating...')
+                  : '🚀 ' + (isZh ? '立即开始仿写' : 'Start Rewriting Now')}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

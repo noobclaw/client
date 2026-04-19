@@ -75,8 +75,8 @@ contextBridge.exposeInMainWorld('electron', {
     getRunningTaskId: () => ipcRenderer.invoke('scenario:getRunningTaskId'),
     /** Twitter v1 concurrency: ALL running task ids (legacy returns just the first). */
     getRunningTaskIds: () => ipcRenderer.invoke('scenario:getRunningTaskIds'),
-    getRunProgress: () => ipcRenderer.invoke('scenario:getRunProgress'),
-    requestAbort: () => ipcRenderer.invoke('scenario:requestAbort'),
+    getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
+    requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
     checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
     openXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
   },

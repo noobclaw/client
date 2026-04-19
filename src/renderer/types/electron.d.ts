@@ -277,8 +277,8 @@ interface IElectronAPI {
     getRunningTaskId: () => Promise<{ runningTaskId: string | null }>;
     getRunningTaskIds: () => Promise<{ runningTaskIds: string[] }>;
     getTaskDir: (id: string) => Promise<{ dir: string }>;
-    getRunProgress: () => Promise<ScenarioRunProgress | null>;
-    requestAbort: () => Promise<{ ok: boolean }>;
+    getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
+    requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
     checkXhsLogin: (platform?: 'xhs' | 'x') => Promise<XhsLoginStatus>;
     openXhsLogin: (platform?: 'xhs' | 'x') => Promise<{ ok: boolean; reason?: string }>;
   };

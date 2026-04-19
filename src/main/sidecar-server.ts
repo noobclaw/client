@@ -1555,11 +1555,18 @@ const server = http.createServer(async (req, res) => {
           }
           case 'scenario:getRunProgress': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
-            return writeJSON(res, 200, scenarioManager.getRunProgress());
+            // Optional taskId — when provided we return that specific task's
+            // progress (needed when 2 tasks run concurrently on different
+            // platforms, otherwise the wrong task's progress could leak into
+            // the renderer's polling result).
+            const taskId = body?.taskId || undefined;
+            return writeJSON(res, 200, scenarioManager.getRunProgress(taskId));
           }
           case 'scenario:requestAbort': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
-            scenarioManager.requestAbort();
+            // Per-task abort — stop button on Task A no longer also kills B.
+            const taskId = body?.taskId || undefined;
+            scenarioManager.requestAbort(taskId);
             return writeJSON(res, 200, { ok: true });
           }
           case 'scenario:runStatus': {
