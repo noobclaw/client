@@ -145,12 +145,67 @@ export function isAbortRequested(): boolean {
   return abortRequested;
 }
 
-// ── Global mutex ──
+// ── Concurrency control (Twitter v1: per-tab-resource gating) ─────────────
+//
+// Pre-Twitter we had a single `runningTaskId` global mutex — only one task
+// at a time, period. With multi-tab routing landed in Sprint 1.2, an XHS
+// task and a Twitter task can target different Chrome tabs, so they don't
+// actually compete for the same browser surface and CAN run in parallel.
+//
+// Resource keys:
+//   'tab:default'                        — scenarios with no tab_url_pattern
+//                                          (legacy XHS scenarios). Stay
+//                                          serial because they all target
+//                                          whatever the active tab is.
+//   'tab:<pack.manifest.tab_url_pattern>' — scenarios with a pattern. Two
+//                                          tasks on the same pattern still
+//                                          serialize (same browser tab); two
+//                                          tasks on different patterns run
+//                                          concurrently.
+//
+// MAX_CONCURRENT_TASKS bounds the total — even with N different patterns,
+// we won't melt the user's machine. Default 2 keeps headroom.
 
-let runningTaskId: string | null = null;
+const MAX_CONCURRENT_TASKS = 2;
 
+/** resource key → taskId currently occupying it */
+const runningByResource = new Map<string, string>();
+
+function resourceKeyForPack(pack: { manifest?: { tab_url_pattern?: string } } | null | undefined): string {
+  const pattern = pack?.manifest?.tab_url_pattern;
+  return pattern ? `tab:${pattern}` : 'tab:default';
+}
+
+function isResourceBusy(key: string): boolean {
+  return runningByResource.has(key);
+}
+
+function atConcurrencyLimit(): boolean {
+  return runningByResource.size >= MAX_CONCURRENT_TASKS;
+}
+
+function markResourceBusy(key: string, taskId: string): void {
+  runningByResource.set(key, taskId);
+}
+
+function releaseResource(key: string): void {
+  runningByResource.delete(key);
+}
+
+/**
+ * Legacy singleton accessor — returns the first running task (if any)
+ * for backwards-compat with UI code that assumed at most 1 task ran at
+ * a time. New callers should prefer getRunningTaskIds().
+ */
 export function getRunningTaskId(): string | null {
-  return runningTaskId;
+  const first = runningByResource.values().next();
+  return first.done ? null : first.value;
+}
+
+/** All currently-running task ids. Lets the UI light up multiple "running"
+ *  badges when XHS task + Twitter task are in flight at the same time. */
+export function getRunningTaskIds(): string[] {
+  return Array.from(runningByResource.values());
 }
 
 // ── Main entry ──
@@ -169,23 +224,30 @@ export function getRunningTaskId(): string | null {
  * payload, and runs the pack's upload_draft.js orchestrator.
  */
 export async function uploadOneDraft(taskId: string, draftId: string): Promise<RunOutcome> {
-  if (runningTaskId) {
-    return { status: 'skipped', reason: 'another_task_running' };
-  }
   const task = taskStore.getTask(taskId);
   if (!task) return { status: 'failed', reason: 'task_not_found' };
   const draft = taskStore.getDraft(draftId);
   if (!draft) return { status: 'failed', reason: 'draft_not_found' };
 
-  runningTaskId = task.id;
+  // Load pack first so we know the resource key before claiming the mutex.
+  const pack = await loadPack(task.scenario_id);
+  if (!pack) {
+    return { status: 'failed', reason: 'scenario_pack_not_found' };
+  }
+
+  // Per-resource concurrency: same-platform tasks still serialize, but a
+  // Twitter upload won't block an XHS scheduled run (and vice versa).
+  const resource = resourceKeyForPack(pack);
+  if (isResourceBusy(resource)) {
+    return { status: 'skipped', reason: 'resource_busy:' + resource };
+  }
+  if (atConcurrencyLimit()) {
+    return { status: 'skipped', reason: 'concurrency_limit_reached' };
+  }
+  markResourceBusy(resource, task.id);
   initProgress(task.id);
 
   try {
-    const pack = await loadPack(task.scenario_id);
-    if (!pack) {
-      finishProgress('error', 'scenario_pack_not_found');
-      return { status: 'failed', reason: 'scenario_pack_not_found' };
-    }
     const script = pack.upload_draft_script;
     if (!script) {
       finishProgress('error', 'no_upload_script');
@@ -259,7 +321,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 
     return result;
   } finally {
-    runningTaskId = null;
+    releaseResource(resource);
     abortRequested = false;
     setTimeout(() => {
       if (currentProgress?.taskId === taskId) currentProgress = null;
@@ -268,16 +330,27 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 }
 
 export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
-  if (runningTaskId) {
-    return { status: 'skipped', reason: 'another_task_running' };
+  // Per-resource concurrency: load pack first to derive its tab pattern,
+  // then check the resource. Tasks targeting the same tab serialize; tasks
+  // targeting different tabs (XHS vs Twitter) can run in parallel.
+  const pack = await loadPack(task.scenario_id);
+  if (!pack) {
+    return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
-  runningTaskId = task.id;
+  const resource = resourceKeyForPack(pack);
+  if (isResourceBusy(resource)) {
+    return { status: 'skipped', reason: 'resource_busy:' + resource };
+  }
+  if (atConcurrencyLimit()) {
+    return { status: 'skipped', reason: 'concurrency_limit_reached' };
+  }
+  markResourceBusy(resource, task.id);
   initProgress(task.id);
 
   try {
-    return await _runTaskInner(task, manual);
+    return await _runTaskInner(task, manual, pack);
   } finally {
-    runningTaskId = null;
+    releaseResource(resource);
     // Keep progress around for 30s so UI can show final state
     setTimeout(() => {
       if (currentProgress?.taskId === task.id) currentProgress = null;
@@ -285,8 +358,10 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   }
 }
 
-async function _runTaskInner(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
-  const pack = await loadPack(task.scenario_id);
+async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPack?: ScenarioPack): Promise<RunOutcome> {
+  // Avoid double-loading: caller (runTask) already loads the pack to derive
+  // the resource key for concurrency gating. If supplied, reuse it.
+  const pack = prefetchedPack || await loadPack(task.scenario_id);
   if (!pack) {
     finishProgress('error', 'scenario_pack_not_found');
     return { status: 'failed', reason: 'scenario_pack_not_found' };
@@ -375,7 +450,12 @@ export function startScheduler(): void {
   schedulerStarted = true;
 
   setInterval(async () => {
-    if (runningTaskId) return; // Already running
+    // Twitter v1: instead of bailing when ANY task is running, scan all
+    // eligible tasks each tick and start every one whose target tab
+    // resource is free. The atConcurrencyLimit() / isResourceBusy() guards
+    // are inside runTask itself, so the worst case here is "we tried to
+    // start, runTask returned skipped" — cheap.
+    if (atConcurrencyLimit()) return;
 
     try {
       const allTasks = taskStore.listTasks();
@@ -383,7 +463,7 @@ export function startScheduler(): void {
 
       for (const task of allTasks) {
         if (!task.active || !task.enabled) continue;
-        if (runningTaskId) break;
+        if (atConcurrencyLimit()) break;
 
         const interval = (task as any).run_interval || 'daily';
         if (interval === 'once') continue; // 不重复：仅手动触发
@@ -421,7 +501,9 @@ export function startScheduler(): void {
         runTask(task, false).catch(err => {
           coworkLog('ERROR', 'scheduler', `Auto-run failed: ${err}`);
         });
-        break; // Only run one task at a time
+        // Do NOT break — keep scanning. If two tasks on different tabs are
+        // both due, we want to start them both this tick (subject to the
+        // atConcurrencyLimit guard at the top of the loop body).
       }
     } catch (err) {
       coworkLog('ERROR', 'scheduler', `Scheduler check failed: ${err}`);

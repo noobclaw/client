@@ -135,6 +135,17 @@ class ScenarioService {
     }
   }
 
+  /** Multi-tab concurrency (Twitter v1): returns ALL running task ids —
+   *  can be > 1 when XHS task + Twitter task are both in flight. */
+  async getRunningTaskIds(): Promise<string[]> {
+    try {
+      const r = await window.electron.scenario.getRunningTaskIds();
+      return Array.isArray(r?.runningTaskIds) ? r.runningTaskIds : [];
+    } catch {
+      return [];
+    }
+  }
+
   async getRunProgress(): Promise<ScenarioRunProgress | null> {
     try {
       return await window.electron.scenario.getRunProgress() || null;

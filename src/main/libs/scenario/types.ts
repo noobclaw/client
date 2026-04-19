@@ -36,6 +36,21 @@ export interface ScenarioManifest {
   entry_urls: Record<string, string>;
   creator_urls?: Record<string, string>;
   skills: Record<string, any>;      // key → filename or nested object
+  /**
+   * Optional URL pattern (regex string) identifying which Chrome tab this
+   * scenario's commands should be routed to. Introduced for multi-tab
+   * concurrency (Twitter v1) so XHS tasks talk to xiaohongshu.com tabs
+   * and Twitter tasks talk to x.com tabs without stepping on each other.
+   *
+   * Examples:
+   *   '^https?://(www\\.)?xiaohongshu\\.com/'       — XHS scenarios
+   *   '^https?://(www\\.)?(twitter|x)\\.com/'       — Twitter scenarios
+   *
+   * When omitted (legacy XHS scenarios pre-v4.18.5), commands route to
+   * whichever tab the extension considers active — same behavior as before
+   * this field existed. Backward compatible.
+   */
+  tab_url_pattern?: string;
 }
 
 export interface ScenarioDefaultConfig {
@@ -133,6 +148,14 @@ export interface ScenarioTask {
   auto_upload?: boolean;
   /** Legacy field */
   schedule_window?: string;
+  /** Twitter v1: content language mode for tweet generation. zh/en/mixed.
+   *  Optional — XHS scenarios ignore this. */
+  language?: 'zh' | 'en' | 'mixed';
+  /** Twitter v1: user's "real-experience pool" — free-form notes about
+   *  recent activity, positions, opinions. AI scenarios (post_creator /
+   *  link_rewrite) inject this into rewrite/original prompts so generated
+   *  tweets have real substance instead of generic templates. Optional. */
+  user_context?: string;
   enabled: boolean;
   /** Only the 'active' task is eligible for scheduled auto-runs.
    *  When multiple tasks exist, user must explicitly pick which one is active.

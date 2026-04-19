@@ -21,6 +21,10 @@ type TrackPreset = {
   // More detailed persona used by auto_reply scenario — covers identity,
   // tone, vocabulary cues, what to avoid. Editable by the user.
   reply_persona_hint?: string;
+  /** Which platform this preset is intended for. Defaults to 'xhs' for
+   *  legacy presets; 'x' for Twitter web3 personas added in Twitter v1.
+   *  Wizard filters TRACK_PRESETS by scenario.platform. */
+  platform?: 'xhs' | 'x';
 };
 
 // 关键词经过 2026 小红书流量数据（千瓜 / 新榜 / TopMarketing）筛选：
@@ -173,6 +177,76 @@ const TRACK_PRESETS: TrackPreset[] = [
 回复方向：分享自己的笨手工经历 / 共鸣材料控烦恼 / 推荐工具时说"我这套大概 X 元够用了"。
 绝对不能说：推自己的小店 / 手作 / 课程、"加微信发图纸""私信进手作群"、自称"手作博主""手工老师"。
 避免：把手工说成"治愈""疗愈系"过度浪漫化，承认这就是个慢慢练的爱好。` },
+
+  // ── Web3 / Twitter 专用 presets (Twitter v1) ──
+  // 关键词主要用于 reply 评分时给 AI 一个赛道线索，并不是用于"搜索"（推特
+  // 搜索我们 v1 不做）。每条 reply_persona_hint 包含真实身份 + 现状 + 口气，
+  // 推特版强调「中英混合 / 黑话密度 / 观点克制」三点。
+  {
+    id: 'web3_alpha', icon: '🎯', platform: 'x',
+    name_zh: 'Web3 · Alpha 猎人',
+    keywords: ['airdrop', 'alpha', '撸毛', '新链', 'L2', '空投', 'pre-mine', 'TGE', 'launchpad', 'farming'],
+    persona_hint: '混迹链上的 alpha 猎人，每天跟新协议 / 新空投',
+    reply_persona_hint: `身份：30 岁，国内 web3 老油条，链上活动 3 年了。撸过 OP/ARB/ZK/JUP 多次主流空投，最高单号近 4 万 U。
+现状：每天 3-5 小时刷 alpha，关注新 L2 / Move 系 / Solana 生态新动态。同时跑 5-8 个号交互。
+真实状态：吃过 SBF 时代 FTX 跑路（亏了 3 万 U）、屯过 Pepe 没拿住、错过 Wif 巅峰。心态调好了，承认"看不懂"是常态。
+口气：中英混合，常说 "ape" "rugged" "ngmi" "alpha leak" "梭哈" "拿铁" "下车"，emoji 少用但 👀 🚀 🤔 偶尔点缀。
+回复方向：实操经验 (gas 多少 / 几号了 / 等多久)、共鸣交互痛苦、提醒新人风险点；不预测价格、不提具体合约地址。
+绝对不能说：referral / invite link、"X 项目即将上线必撸"、"我教你撸毛"、加 TG 群、推自己的 dashboard / bot。
+避免：装大佬、预测涨跌、跟人吵架（看不顺直接划走）。`
+  },
+  {
+    id: 'web3_defi', icon: '🏛️', platform: 'x',
+    name_zh: 'Web3 · DeFi 用户',
+    keywords: ['defi', 'lending', 'aave', 'compound', '收益', 'yield', 'TVL', 'pendle', 'curve', 'liquid staking', 'restaking'],
+    persona_hint: 'DeFi 重度用户，关注收益率和协议安全',
+    reply_persona_hint: `身份：32 岁，前传统金融人转 web3 三年。本职做协议研究，自有仓位 ~$80k 主要在 ETH / stablecoin DeFi。
+现状：常用 Aave / Compound / Pendle / EigenLayer，关注 LRT 赛道演化。会读协议白皮书和审计报告。
+真实状态：经历过 Anchor 崩盘 (亏 $3k)、Curve war 高峰、UST 脱锚、SVB 当时 USDC 短暂脱锚都熬过来了。
+口气：英文为主中文偶尔，专业但不学院派。常说 "looks reasonable" "not financial advice" "interesting design" "honestly idk yet"。
+回复方向：协议设计观察、收益率合理性分析、安全性提醒（"这个 collateral ratio 可能有点紧"）；不喊单。
+绝对不能说："X 协议必涨 100%"、推具体 farming 池给链接、加 TG / Discord 拉新、保证收益、自称"DeFi 专家"。
+避免：装预言家、推具体合约地址、把 yield farming 说成稳赚。`
+  },
+  {
+    id: 'web3_meme', icon: '🎪', platform: 'x',
+    name_zh: 'Web3 · Meme 文化',
+    keywords: ['meme', 'memecoin', 'pepe', 'wif', 'shitpost', 'doge', 'solana meme', 'pump', 'gm', 'shitcoin'],
+    persona_hint: 'crypto twitter shitposter，meme 文化原住民',
+    reply_persona_hint: `身份：26 岁，全职炒 meme 1.5 年。Pepe / Wif / Bonk / Popcat 各种主流 meme 都玩过，亏赢都见过。
+现状：每天 8 小时挂在 crypto twitter，看 pump.fun / phantom 排行榜，跟踪 KOL 仓位变化。
+真实状态：最高过 $50k 单 meme 翻 30x，最惨一周亏掉 $20k 在 zero MC shitcoin 上。
+口气：极度 casual，全小写英文为主，emoji 多 (🚀 💎 🤡 😭)。常说 "ngmi" "wagmi" "this is the way" "ser" "anon" "ape" "wen" "fud"。中文有时混进 "梭哈" "土狗" "归零" "上车"。
+回复方向：玩梗、自嘲、对群体情绪的反讽（"another day another rug"）；不严肃分析。
+绝对不能说：具体推荐 meme（"X 必涨"）、"加我学 sniper"、推 bot / 工具、"100x guarantee"。
+避免：装严肃、做技术分析、给投资建议；shitpost 文化里"不专业"才是味道。`
+  },
+  {
+    id: 'web3_builder', icon: '🛠️', platform: 'x',
+    name_zh: 'Web3 · 建设者',
+    keywords: ['build in public', 'indie hacker', 'crypto product', 'web3 founder', 'open source', 'devtool', 'evm', 'solana', 'rust', 'zk', 'zero knowledge', 'proof'],
+    persona_hint: 'web3 独立开发者 / build in public',
+    reply_persona_hint: `身份：28 岁，全栈 + Solidity 4 年，从蚂蚁出来做 indie 1 年。当前在做一个 EVM 链上数据 dashboard，月活 200，无收入。
+技术栈：TypeScript / Hono / viem / wagmi / Tenderly / The Graph，前端 Next.js + tailwind。
+真实状态：build in public 一年发了 80 多条进度推，平均 3 个赞。承认大部分时候没人 care。
+口气：英文为主中文偶尔，技术名词直接说。常说 "shipping today" "killed the feature" "got rugged by my own bug" "0 users still"，自嘲多。emoji 偶尔。
+回复方向：技术细节交流（gas 优化、合约模式、subgraph 怎么写）、build in public 共鸣、推荐开源工具。
+绝对不能说：推自己的产品链接（除非对方主动问）、"我教你做 web3 项目"、"加 TG 进 builder 群"、卖课、卖模板。
+避免：装大佬、过早讨论商业模式、把"早期"说得太自信。`
+  },
+  {
+    id: 'web3_zh_kol', icon: '📢', platform: 'x',
+    name_zh: 'Web3 · 中文通用 KOL',
+    keywords: ['eth', 'btc', '比特币', '以太坊', 'solana', '加密货币', '区块链', 'web3', 'crypto twitter', '链上', 'on-chain', '空投', 'l2', 'meme'],
+    persona_hint: '中文 web3 圈通用 KOL，覆盖 BTC/ETH/Sol 几大叙事',
+    reply_persona_hint: `身份：33 岁男，南方人，full-time crypto 5 年。关注 ETH / BTC / Solana / Memecoin / RWA 几大主线。
+现状：仓位 50 万 U 上下，写公众号 + 推特双开，推特 8k 粉，公众号 5k 订阅。
+真实状态：经历过 17 牛 18 熊 / 21 牛 22 熊 / FTX 暴雷 / Luna 归零 / SVB / 现在的 23-24 周期。心态稳。
+口气：中文为主，英文术语原样说（不译）。常说 "我个人感觉" "看不懂" "等等看" "持仓不动" "这波我不参与" "没意思了"。emoji 极少，最多 👀 🤔。
+回复方向：分享周期观察、不带杠杆地推理、共鸣"看不懂"、提醒新人这个市场很难赚到钱。
+绝对不能说：喊单 / 价格预测、推具体项目（哪怕真有研究也避嫌）、"我有内幕"、加 TG / 微信、付费社群、referral。
+避免：装老师、装 100% 准、跟人吵架、用力过猛的标题党。`
+  },
 ];
 
 interface Props {
@@ -187,6 +261,14 @@ interface Props {
     daily_count: number;
     variants_per_post: number;
     daily_time: string;
+    /** Twitter v1: content language mode. zh/en/mixed. Only shown on
+     *  Twitter scenarios; XHS implicitly 'zh'. */
+    language?: 'zh' | 'en' | 'mixed';
+    /** Twitter v1: user_context is the "my real experience" pool used by
+     *  post_creator rewrite/original/quote mechanisms. Optional free-form. */
+    user_context?: string;
+    /** Twitter v1: URL list for x_link_rewrite (1-5 tweet URLs). */
+    urls?: string[];
   }) => Promise<void> | void;
 }
 
@@ -209,10 +291,20 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Track
-  const initialTrackId = initialTask?.track || TRACK_PRESETS[0].id;
+  // Track — filter by scenario platform. XHS scenarios see lifestyle tracks;
+  // Twitter (x) scenarios see only web3 tracks. Legacy presets with no
+  // explicit `platform` field default to 'xhs' to preserve current behavior.
+  const platformForTracks: 'xhs' | 'x' = (scenario.platform === 'x' ? 'x' : 'xhs');
+  const VISIBLE_TRACKS = TRACK_PRESETS.filter(t => {
+    const presetPlatform = t.platform || 'xhs';
+    return presetPlatform === platformForTracks;
+  });
+  const initialTrackId = initialTask?.track
+    || (VISIBLE_TRACKS[0] ? VISIBLE_TRACKS[0].id : TRACK_PRESETS[0].id);
   const [trackId, setTrackId] = useState<string>(initialTrackId);
-  const selectedTrack = TRACK_PRESETS.find(t => t.id === trackId) || TRACK_PRESETS[0];
+  const selectedTrack = VISIBLE_TRACKS.find(t => t.id === trackId)
+    || VISIBLE_TRACKS[0]
+    || TRACK_PRESETS[0];
 
   // Keywords
   const [customKeywordsText, setCustomKeywordsText] = useState<string>(() => {
@@ -249,12 +341,45 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     (initialTask as any)?.auto_upload !== undefined ? !!(initialTask as any).auto_upload : true
   );
 
+  // Twitter-specific fields (only rendered when scenario.platform === 'x')
+  const isXPlatform = scenario.platform === 'x';
+  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
+  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(() => {
+    const initLang = (initialTask as any)?.language;
+    if (initLang === 'zh' || initLang === 'en' || initLang === 'mixed') return initLang;
+    return 'mixed'; // default for Twitter — most NoobClaw users are zh-en bilingual
+  });
+  const [userContext, setUserContext] = useState<string>(
+    (initialTask as any)?.user_context || ''
+  );
+  // For x_link_rewrite: list of tweet URLs (newline-separated in textarea)
+  const [urlsText, setUrlsText] = useState<string>(() => {
+    const urls = (initialTask as any)?.urls;
+    return Array.isArray(urls) ? urls.join('\n') : '';
+  });
+  const parsedUrls = urlsText
+    .split('\n')
+    .map(u => u.trim())
+    .filter(u => u.length > 0)
+    .filter(u => /^https?:\/\/(www\.)?(twitter|x)\.com\/[^/]+\/status\/\d+/.test(u));
+
   // Confirm
   const [termsAccepted, setTermsAccepted] = useState([false, false]);
 
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
-  const canFinish = allTermsAccepted && keywordList.length > 0 && persona.trim().length > 0 && trackId;
+  // canFinish — different scenarios have different "minimum input":
+  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 5). Keywords
+  //                      auto-populated from preset, persona auto-populated.
+  //   - other XHS / X  : needs ≥1 keyword + non-empty persona + a track
+  // Always: terms accepted + a track selected.
+  const canFinish = (() => {
+    if (!allTermsAccepted || !trackId) return false;
+    if (isLinkRewriteScenario) {
+      return parsedUrls.length >= 1 && parsedUrls.length <= 5;
+    }
+    return keywordList.length > 0 && persona.trim().length > 0;
+  })();
   // Auto-reply scenario allows up to 6 articles/day (each with 1 note + 2
   // user-comment replies). Other scenarios still cap at 3 to keep XHS happy.
   const dailyHardCap = ((scenario.risk_caps as any)?.daily_count_cap)
@@ -286,6 +411,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         daily_time: dailyTime,
         run_interval: runInterval,
         auto_upload: autoUpload,
+        // Twitter v1 fields. Sent only when relevant; XHS scenarios don't
+        // care about these and ignore them, but we always include the
+        // typed fields so the orchestrator on the backend has them when
+        // it does care.
+        ...(isXPlatform ? { language, user_context: userContext.trim() || undefined } : {}),
+        ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
@@ -325,7 +456,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   onChange={e => handleTrackChange(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                 >
-                  {TRACK_PRESETS.map(preset => (
+                  {VISIBLE_TRACKS.map(preset => (
                     <option key={preset.id} value={preset.id}>
                       {preset.icon} {preset.name_zh}
                     </option>
@@ -393,6 +524,117 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '此人设会被注入到每次 AI 生成回复的 prompt 里' : 'Injected into every reply-generation prompt'}
                   </div>
                 </div>
+              )}
+
+              {/* ── Twitter-only fields ── */}
+              {isXPlatform && (
+                <>
+                  {/* Persona for Twitter (always shown — all 3 X scenarios use it) */}
+                  {!isAutoReply && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-700 dark:text-sky-400 leading-relaxed">
+                        {isZh
+                          ? <>💡 已根据所选 web3 赛道预填详细人设。<strong>越具体（年龄/链/仓位/风格/口头禅）越像真人</strong>。</>
+                          : <>💡 Pre-filled with a detailed web3 persona. <strong>The more specific, the less AI-like.</strong></>}
+                      </div>
+                      <textarea
+                        value={persona}
+                        onChange={e => setPersona(e.target.value)}
+                        rows={6}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 leading-relaxed"
+                      />
+                    </div>
+                  )}
+
+                  {/* Language mode */}
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '🌐 内容语言' : '🌐 Content language'}
+                    </label>
+                    <div className="flex gap-2">
+                      {([
+                        { v: 'zh' as const, label: isZh ? '中文' : 'Chinese' },
+                        { v: 'en' as const, label: isZh ? '英文' : 'English' },
+                        { v: 'mixed' as const, label: isZh ? '中英混合（推荐）' : 'Mixed (recommended)' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          onClick={() => setLanguage(opt.v)}
+                          className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                            language === opt.v
+                              ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                      {isZh
+                        ? '中英混合 = 回复语言跟原推匹配（中文推回中文 / 英文推回英文）'
+                        : 'Mixed = reply language matches the original tweet (zh→zh, en→en).'}
+                    </p>
+                  </div>
+
+                  {/* user_context — optional free-form notes (used by post_creator + link_rewrite) */}
+                  {!isAutoReply && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '📝 你的真实素材池（选填）' : '📝 Your real-experience notes (optional)'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        {isZh
+                          ? <>💡 写下你最近真实在做的事 / 持仓 / 看到的有趣现象 / 想表达的观点。AI 在「仿写 / 原创发推」时会从这里挑素材填进去，让推文有具体内容而不是空洞模板。</>
+                          : <>💡 Real things you're doing / positions / observations / opinions. AI uses these in rewrite/original posts so they have substance instead of being template-y.</>}
+                      </div>
+                      <textarea
+                        value={userContext}
+                        onChange={e => setUserContext(e.target.value)}
+                        placeholder={isZh
+                          ? '例：最近重仓 SOL（30%）+ ETH（40%），做了 Hyperliquid 30 天交互拿了 100 个 HYPE，觉得 RWA 赛道还在炒概念，看不上 AI agent 板块的 90%项目...'
+                          : 'e.g. Heavy on SOL (30%) and ETH (40%) right now. Did 30 days of Hyperliquid trading + got 100 HYPE airdrop. RWA narrative still feels speculative imo. Skeptical of 90% of AI agent projects.'}
+                        rows={5}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 leading-relaxed"
+                      />
+                    </div>
+                  )}
+
+                  {/* URL list mode — only for x_link_rewrite */}
+                  {isLinkRewriteScenario && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '🔗 推文链接（每行 1 个，最多 5 条）' : '🔗 Tweet URLs (1 per line, max 5)'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
+                        {isZh
+                          ? <>✍️ 粘贴你想仿写的推文链接（要是高赞 / 写得好的）。AI 会解构每条的钩子结构，再用你的人设 + 真实素材池仿写一条新推（不抄袭原文）。</>
+                          : <>✍️ Paste tweet URLs you'd like to rewrite (preferably high-engagement). AI deconstructs each one's hook + structure, then rewrites a fresh tweet in your voice + with your context (no copying).</>}
+                      </div>
+                      <textarea
+                        value={urlsText}
+                        onChange={e => setUrlsText(e.target.value)}
+                        placeholder={'https://x.com/cz_binance/status/1234567890\nhttps://x.com/elonmusk/status/9876543210'}
+                        rows={5}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono leading-relaxed"
+                      />
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 flex items-center justify-between">
+                        <span>
+                          {isZh
+                            ? '只接受 x.com / twitter.com 完整推文链接，其他自动忽略'
+                            : 'Only x.com / twitter.com tweet URLs accepted; others ignored.'}
+                        </span>
+                        <span className={parsedUrls.length > 5 ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                          {isZh ? '识别到' : 'Parsed'}: {parsedUrls.length}/5
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}

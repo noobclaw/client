@@ -144,6 +144,58 @@ async function getActiveTab() {
   throw new Error('No active tab. Please open a tab in Chrome.');
 }
 
+// ── Multi-tab routing (Twitter v1) ─────────────────────────────────────────
+// When NoobClaw sends a command with a `tabPattern` (regex string), we route
+// it to the first tab whose URL matches. If no tab matches, we auto-open one
+// at the platform's anchor URL. This lets XHS tasks and Twitter tasks run
+// concurrently in different tabs without stepping on each other.
+//
+// Backward compatible: if the message has no tabPattern field (= old
+// scenarios), we fall back to getActiveTab() exactly as before.
+
+function anchorUrlFor(patternStr) {
+  // Map known platform regexes to their canonical landing URL. Adding a
+  // new platform = add one branch here. We don't try to reverse-engineer
+  // arbitrary regexes — keep this explicit.
+  if (/xiaohongshu/.test(patternStr)) return 'https://www.xiaohongshu.com';
+  if (/twitter|x\\\.com|x\.com/.test(patternStr)) return 'https://x.com/home';
+  return null;
+}
+
+function waitForTabLoad(tabId, timeoutMs = 12000) {
+  return new Promise(resolve => {
+    const listener = (id, info) => {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, timeoutMs);
+  });
+}
+
+async function findOrOpenTabByPattern(patternStr) {
+  let pattern;
+  try { pattern = new RegExp(patternStr); }
+  catch (e) { throw new Error('Invalid tabPattern regex: ' + patternStr); }
+
+  // Scan all tabs across all windows for a URL match.
+  const tabs = await chrome.tabs.query({});
+  const match = tabs.find(t => pattern.test(t.url || ''));
+  if (match) return match;
+
+  // No matching tab — open a new one at the platform's anchor URL.
+  const anchorUrl = anchorUrlFor(patternStr);
+  if (!anchorUrl) {
+    throw new Error('No tab matching ' + patternStr + ' and no anchor URL known for that pattern');
+  }
+  // Open in background (active: false) so we don't steal focus from the user.
+  const created = await chrome.tabs.create({ url: anchorUrl, active: false });
+  await waitForTabLoad(created.id);
+  return await chrome.tabs.get(created.id);
+}
+
 async function injectContentScript(tabId) {
   try {
     // Check if already injected
@@ -179,7 +231,22 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
 }
 
 async function executeCommand(msg) {
-  const { id, command, params } = msg;
+  const { id, command, params, tabPattern } = msg;
+  // Per-message tab resolution. If the envelope carries a tabPattern (new
+  // multi-tab routing introduced in Twitter v1), we resolve it ONCE and
+  // alias it as `getActiveTab` inside this function so all downstream
+  // code paths transparently target the matched tab. The cached resolve
+  // means a single command doesn't pay the lookup cost twice.
+  let _resolvedTab = null;
+  const _outerGetActiveTab = getActiveTab; // legacy "active tab" resolver
+  // eslint-disable-next-line no-shadow
+  const getActiveTab = async () => {
+    if (_resolvedTab) return _resolvedTab;
+    _resolvedTab = tabPattern
+      ? await findOrOpenTabByPattern(tabPattern)
+      : await _outerGetActiveTab();
+    return _resolvedTab;
+  };
   try {
     let data;
 

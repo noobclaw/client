@@ -54,6 +54,9 @@ export interface ScenarioManifestIPC {
   entry_urls: Record<string, string>;
   creator_urls?: Record<string, string>;
   skills: Record<string, string>;
+  /** Tab URL regex for multi-tab concurrency. Optional — see main-process
+   *  ScenarioManifest docstring. */
+  tab_url_pattern?: string;
 }
 
 export interface ScenarioTaskIPC {
@@ -72,6 +75,12 @@ export interface ScenarioTaskIPC {
   /** Legacy: original "HH:MM-HH:MM" window string. Kept for backward
    *  compatibility with tasks created before the v2 wizard. */
   schedule_window?: string;
+  /** Twitter v1: content language mode (zh/en/mixed). Optional. */
+  language?: 'zh' | 'en' | 'mixed';
+  /** Twitter v1: user's real-experience notes pool. Optional. */
+  user_context?: string;
+  /** Twitter v1: tweet URLs for x_link_rewrite scenario. Optional. */
+  urls?: string[];
   enabled: boolean;
   /** Only the active task gets auto-run by the scheduler. At most 1 task
    *  can be active at a time. User switches via "设为运行" button. */

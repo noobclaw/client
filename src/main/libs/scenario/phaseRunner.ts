@@ -84,6 +84,14 @@ function buildContext(
 ): Record<string, any> {
   const { manifest, scripts, config } = pack;
 
+  // ⭐ Multi-tab routing (Twitter v1): if the scenario manifest declares
+  // a tab_url_pattern, every sendBrowserCommand call gets the pattern as
+  // a routing hint so the chrome-extension dispatches to the matching
+  // tab instead of the active one. Backward compatible — old manifests
+  // omit the field, the option object is empty, behavior unchanged.
+  const tabPattern = (manifest as any).tab_url_pattern as string | undefined;
+  const bridgeOpts = tabPattern ? { tabPattern } : undefined;
+
   // All drafts collected during this run (for saveDrafts)
   const allDrafts: Draft[] = [];
 
@@ -111,7 +119,7 @@ function buildContext(
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const t = timeout || 10000;
       return Promise.race([
-        sendBrowserCommand(command, params || {}, t),
+        sendBrowserCommand(command, params || {}, t, bridgeOpts),
         new Promise<never>((_, reject) => {
           const check = setInterval(() => {
             if (progress.isAbortRequested()) {
@@ -127,12 +135,12 @@ function buildContext(
     // Convenience shortcuts for common operations
     navigate: async (url: string) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('navigate', { url }, 30000);
+      await sendBrowserCommand('navigate', { url }, 30000, bridgeOpts);
     },
 
     scroll: async (amount?: number) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000);
+      await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, bridgeOpts);
     },
 
     sleep: async (min: number, max?: number) => {
@@ -160,7 +168,7 @@ function buildContext(
         }
       }
       try {
-        const res = await sendBrowserCommand('javascript', { code: script }, 8000);
+        const res = await sendBrowserCommand('javascript', { code: script }, 8000, bridgeOpts);
         const raw = res?.result;
         if (typeof raw === 'string') {
           try { return JSON.parse(raw); } catch { return raw; }
@@ -174,7 +182,7 @@ function buildContext(
 
     // Atomic click at coordinates — used by orchestrator's clickByText()
     click: async (x: number, y: number) => {
-      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000);
+      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000, bridgeOpts);
     },
 
     // Debug log (visible in sidecar console, not in UI)
@@ -185,7 +193,7 @@ function buildContext(
     checkAnomaly: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('check_anomaly', {}, 5000);
+        const res = await sendBrowserCommand('check_anomaly', {}, 5000, bridgeOpts);
         const data = res?.data || res || {};
         const status = data.status || 'ok';
         if (status === 'captcha' || status === 'login_wall' || status === 'rate_limited' || status === 'account_flag') {
@@ -202,7 +210,7 @@ function buildContext(
     readCards: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('read_feed_cards', {}, 8000);
+        const res = await sendBrowserCommand('read_feed_cards', {}, 8000, bridgeOpts);
         const data = res?.data || res || {};
         return data.cards || [];
       } catch (err) {
@@ -215,7 +223,7 @@ function buildContext(
     readDetail: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('read_detail_page', {}, 8000);
+        const res = await sendBrowserCommand('read_detail_page', {}, 8000, bridgeOpts);
         return res?.data || res || null;
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', 'readDetail failed', { err: String(err) });
