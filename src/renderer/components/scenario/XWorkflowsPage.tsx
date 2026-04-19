@@ -176,8 +176,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '每日发推' : 'Daily post'}
           titleZh="推特发推"
           titleEn="X Post Creator"
-          descZh="每天自动发 1 条推，30% feed 仿写 / 30% 按热点原创 / 40% 引用回应，三机制随机保持多样性。"
-          descEn="Posts 1 tweet/day: 30% feed-rewrite / 30% original / 40% quote-tweet, randomized for variety."
+          descZh="每天自动发 1 条推，40% feed 仿写（字数≥100、浏览≥1万）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
+          descEn="Posts 1 tweet/day: 40% feed-rewrite (≥100 chars, ≥10K views) / 40% original / 20% quote-tweet, randomized for variety."
           loading={loading}
           scenario={postCreator}
           existingTasks={postCreator ? tasksByScenario[postCreator.id] || [] : []}
@@ -209,43 +209,100 @@ export const XWorkflowsPage: React.FC<Props> = ({
         />
       </section>
 
-      {/* My Twitter tasks (flat list) */}
+      {/* My Twitter tasks — rich card layout matching XHS task list:
+          type badge, track icon + name, ID hash, status badge, persona
+          snippet, schedule line. For x_link_rewrite tasks we also show
+          the URL count + first 3 URLs since that's the user's main input. */}
       {tasks.length > 0 && (
-        <section>
-          <h3 className="text-sm font-semibold dark:text-white mb-3">
-            {isZh ? '🐦 我的推特任务' : '🐦 My Twitter Tasks'}
-          </h3>
-          <div className="space-y-2">
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+              🐦 {isZh ? '推特任务' : 'Twitter Tasks'}
+            </h2>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              {isZh ? '同一平台最多同时运行一个任务' : 'One task per platform at a time'}
+            </span>
+          </div>
+          <div className="space-y-3">
             {tasks.map(t => {
               const isRunning = runningTaskIds.has(t.id);
               const track = WEB3_TRACK_ICONS[t.track] || { icon: '🐦', name_zh: t.track };
+              const scenarioId = t.scenario_id;
+              // Type badge per scenario, mirrors XHS workflow-type badge styling
+              const typeLabel = scenarioId === 'x_auto_engage'
+                ? { icon: '🐦', zh: '自动互动', en: 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' }
+                : scenarioId === 'x_post_creator'
+                  ? { icon: '📝', zh: '每日发推', en: 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' }
+                  : scenarioId === 'x_link_rewrite'
+                    ? { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' }
+                    : { icon: '🐦', zh: t.scenario_id, en: t.scenario_id, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
+              const isLinkRewrite = scenarioId === 'x_link_rewrite';
+              const taskUrls: string[] = (t as any).urls || [];
+              const personaSnippet = (t.persona || '').trim().split('\n')[0].slice(0, 80);
+              const interval = (t as any).run_interval || 'daily_random';
               return (
                 <button
                   key={t.id}
                   type="button"
                   onClick={() => onOpenTask(t.id)}
-                  className={`w-full rounded-xl border p-3 text-left transition-colors ${
+                  className={`w-full text-left rounded-xl border p-4 transition-colors ${
                     isRunning
-                      ? 'border-green-500/50 ring-1 ring-green-500/20 bg-white dark:bg-gray-800/50'
-                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/50 hover:border-sky-500/50'
+                      ? 'border-green-500/50 ring-1 ring-green-500/20 bg-white dark:bg-gray-900'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-sky-500/50 dark:hover:border-sky-500/50 bg-white dark:bg-gray-900'
                   }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium dark:text-white mb-0.5 truncate">
-                        {track.icon} {track.name_zh}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400">
-                        ⏰ {scheduleLabel(t)} · {t.daily_count} {isZh ? '次/天' : '/day'}
-                      </div>
-                    </div>
-                    {isRunning && (
-                      <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 font-medium shrink-0">
-                        <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        {isZh ? '运行中' : 'Running'}
+                  {/* Top row: type badge + track + ID + status badges */}
+                  <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
+                        {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
                       </span>
+                      <span className="text-lg">{track.icon}</span>
+                      <span className="font-medium dark:text-white truncate">{track.name_zh}</span>
+                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
+                        #{t.id.slice(0, 8)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isRunning ? (
+                        <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          {isZh ? '运行中' : 'Running'}
+                        </span>
+                      ) : interval === 'once' || isLinkRewrite ? (
+                        <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
+                          ✋ {isZh ? '手动运行' : 'Manual'}
+                        </span>
+                      ) : t.active ? (
+                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
+                          ⏰ {isZh ? '定时运行' : 'Scheduled'}
+                        </span>
+                      ) : (
+                        <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
+                          {isZh ? '待命' : 'Standby'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Persona snippet — first line so users can quickly tell which voice
+                      this task is using without opening detail page. */}
+                  {personaSnippet && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
+                      👤 {personaSnippet}
+                    </div>
+                  )}
+                  {/* Config details */}
+                  <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
+                    {isLinkRewrite ? (
+                      <>
+                        <div>{isZh ? '推文链接' : 'Tweet URLs'}: {taskUrls.length} {isZh ? '条' : ''}</div>
+                        {taskUrls.slice(0, 3).map((u, i) => (
+                          <div key={i} className="truncate text-[11px] text-gray-400">{i + 1}. {u}</div>
+                        ))}
+                      </>
+                    ) : (
+                      <div>⏰ {scheduleLabel(t)} · {t.daily_count} {isZh ? '次/天' : '/day'}</div>
                     )}
-                    <span className="text-xs text-gray-400">›</span>
                   </div>
                 </button>
               );

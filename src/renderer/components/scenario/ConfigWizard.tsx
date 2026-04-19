@@ -325,16 +325,29 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Persona — picks the most-detailed available hint per track:
   //   - XHS auto_reply (isAutoReply, !isXPlatform): reply_persona_hint (long)
   //   - XHS viral_production (!isAutoReply, !isXPlatform): persona_hint (short)
-  //   - All Twitter scenarios (isXPlatform): reply_persona_hint (long), so all
-  //     three Twitter scenarios on the SAME web3 track share the same persona
-  //     instead of auto_engage getting the long version and post_creator /
-  //     link_rewrite getting the short one.
+  //   - All Twitter scenarios (isXPlatform): reply_persona_hint trimmed —
+  //     drop "口气：" and everything after (回复方向 / 绝对不能说). Twitter
+  //     scenarios are post-oriented, not reply-oriented; the trailing
+  //     directive sections aren't useful and just bloat the prompt window.
+  //     All three Twitter scenarios on the SAME web3 track share the same
+  //     trimmed persona for consistency.
+  const trimPersonaForX = (text: string): string => {
+    if (!text) return text;
+    // Strip first "口气：" (or "口气:") onward — keep身份/真实状态/真实数据 etc.
+    const idx = text.search(/\n\s*口气[：:]/);
+    if (idx < 0) return text;
+    return text.slice(0, idx).trimEnd();
+  };
   const useDetailedPersona = isAutoReply || isXPlatform;
+  const computeDefaultPersona = (preset: TrackPreset): string => {
+    const base = useDetailedPersona
+      ? (preset.reply_persona_hint || preset.persona_hint)
+      : preset.persona_hint;
+    return isXPlatform ? trimPersonaForX(base) : base;
+  };
   const initialPersona = initialTask?.persona && initialTask.persona.trim()
     ? initialTask.persona
-    : (useDetailedPersona
-        ? (selectedTrack.reply_persona_hint || selectedTrack.persona_hint)
-        : selectedTrack.persona_hint);
+    : computeDefaultPersona(selectedTrack);
   const [persona, setPersona] = useState<string>(initialPersona);
 
   // Schedule
@@ -457,11 +470,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (!preset) return;
     setTrackId(newTrackId);
     setCustomKeywordsText(preset.keywords.join(' '));
-    // Same useDetailedPersona rule as initial — Twitter scenarios always
-    // get the long persona so the 3 share one consistent voice per track.
-    setPersona(useDetailedPersona
-      ? (preset.reply_persona_hint || preset.persona_hint)
-      : preset.persona_hint);
+    // Same persona resolution as initial mount — Twitter scenarios get the
+    // long persona TRIMMED at "口气：" (post-oriented, no need for reply
+    // directives). XHS auto_reply gets the full long version. XHS viral
+    // production gets the short version.
+    setPersona(computeDefaultPersona(preset));
   };
 
   const handleFinish = async () => {
@@ -974,9 +987,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '🎲 每日发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
                   </div>
                   <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                    <li>{isZh ? '· 30% 仿写：从 feed 找长推 → AI 用同样钩子 + 你的素材池写一条新推' : '· 30% rewrite: find a long feed tweet → AI rewrites in your voice'}</li>
-                    <li>{isZh ? '· 30% 原创：按你最近的话题 + 随机钩子类型生成' : '· 30% original: AI generates based on your topic_context + random hook'}</li>
-                    <li>{isZh ? '· 40% 引用回应：feed 里挑一条 → 写带观点的 quote tweet' : '· 40% quote: pick a feed tweet → write a quote with a viewpoint'}</li>
+                    <li>{isZh ? '· 40% 仿写：feed 找爆款长推（字数≥100 + 浏览≥1万） → AI 用同样钩子写一条新推' : '· 40% rewrite: find viral long tweet (≥100 chars + ≥10K views) → AI rewrites in your voice'}</li>
+                    <li>{isZh ? '· 40% 原创：按你最近的话题 + 随机钩子类型生成' : '· 40% original: AI generates based on your topic_context + random hook'}</li>
+                    <li>{isZh ? '· 20% 转推回应：feed 里挑一条 → 写带观点的 quote tweet' : '· 20% quote: pick a feed tweet → write a quote with a viewpoint'}</li>
                   </ul>
                 </div>
               )}
@@ -1064,7 +1077,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </>
                   ) : isXPostCreator ? (
                     <>
-                      <li>{isZh ? '· 每日 1 条推文，3 种机制（仿写 30% / 原创 30% / 引用 40%）随机选' : '· 1 tweet/day, mechanism randomized (30% rewrite / 30% original / 40% quote)'}</li>
+                      <li>{isZh ? '· 每日 1 条推文，3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1万' : '· 1 tweet/day, mechanism randomized (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥10K views'}</li>
                       <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
                       <li>{isZh ? '· 在「真实素材池」里写得越具体，AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>

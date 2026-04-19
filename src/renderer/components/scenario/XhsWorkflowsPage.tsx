@@ -90,13 +90,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 }) => {
   const scenarioById = new Map(scenarios.map(s => [s.id, s]));
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
-  // Track which task is actually running right now (not just scheduled).
-  // We poll once on mount and every 5s so the badge shows "运行中" when
-  // a job is in progress, vs "定时运行" when it's just armed.
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
+  // Track which tasks are actually running right now (not just scheduled).
+  // We poll once on mount and every 5s. Returns a SET — multi-tab concurrency
+  // means we may have an XHS task AND a Twitter task running at the same
+  // time; the singleton getRunningTaskId() only returns whichever the Map
+  // iterator yields first (could be Twitter, hiding the XHS running badge).
+  const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     const poll = () => {
-      scenarioService.getRunningTaskId().then(id => setRunningTaskId(id || null)).catch(() => {});
+      scenarioService.getRunningTaskIds().then(ids => setRunningTaskIds(new Set(ids))).catch(() => {});
     };
     poll();
     const t = setInterval(poll, 5000);
@@ -496,7 +498,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            📌 {i18nService.currentLanguage === 'zh' ? '仿写任务' : 'Rewrite Tasks'}
+            📕 {i18nService.currentLanguage === 'zh' ? '小红书任务' : 'XHS Tasks'}
           </h2>
           <span className="text-[11px] text-gray-500 dark:text-gray-400">
             {i18nService.currentLanguage === 'zh' ? '同一平台最多同时运行一个任务' : 'One task per platform at a time'}
@@ -551,7 +553,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      {runningTaskId === task.id ? (
+                      {runningTaskIds.has(task.id) ? (
                         <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           {i18nService.currentLanguage === 'zh' ? '运行中' : 'Running'}

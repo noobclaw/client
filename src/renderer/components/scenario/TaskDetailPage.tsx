@@ -281,12 +281,31 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       return;
     }
 
-    // 2. Check if ANOTHER task is already running
+    // 2. Per-platform concurrency: a Twitter task and an XHS task can run
+    //    in parallel (different browser tabs), but two tasks on the SAME
+    //    platform compete for the same tab and must serialize. Block only
+    //    if a different task on the SAME platform is already running.
     try {
-      const rid = await scenarioService.getRunningTaskId().catch(() => null);
-      if (rid && rid !== task.id) {
-        showToast('warn', '有另一个任务正在运行，请先停掉再运行这个');
-        return;
+      const runningIds = await scenarioService.getRunningTaskIds().catch(() => []);
+      const otherRunning = runningIds.filter(id => id !== task.id);
+      if (otherRunning.length > 0) {
+        const [allTasks, allScenarios] = await Promise.all([
+          scenarioService.listTasks().catch(() => []),
+          scenarioService.listScenarios().catch(() => []),
+        ]);
+        const scenarioById = new Map(allScenarios.map(s => [s.id, s]));
+        const myPlatform = scenario?.platform;
+        const samePlatformBusy = otherRunning.some(rid => {
+          const otherTask = allTasks.find(t => t.id === rid);
+          if (!otherTask) return false;
+          const otherPlatform = scenarioById.get(otherTask.scenario_id)?.platform;
+          return otherPlatform === myPlatform;
+        });
+        if (samePlatformBusy) {
+          const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : '该平台';
+          showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
+          return;
+        }
       }
     } catch {}
 
