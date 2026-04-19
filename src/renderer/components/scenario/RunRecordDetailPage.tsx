@@ -127,8 +127,51 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
   }
 
   const sc = rec.scenario_snapshot;
-  const platform = sc.platform === 'x' ? '推特' : sc.platform === 'xhs' ? '小红书' : sc.platform || '';
-  const taskName = (isZh ? sc.name_zh : sc.name_en) || sc.id;
+  const platform = sc.platform === 'x' ? (isZh ? '推特' : 'Twitter')
+    : sc.platform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
+    : (sc.platform || '');
+  // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
+  // the detail page header matches the row the user clicked on. Inlined
+  // (not imported) to keep this component self-contained — they're tiny.
+  const TRACK_ICONS_INLINE: Record<string, { icon: string; name_zh: string }> = {
+    web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
+    web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
+    web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
+    web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
+    web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
+    career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
+    indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
+    personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
+    travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
+    food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
+    outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
+    beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
+    fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
+    reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
+    parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
+    exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
+    pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
+    home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
+    study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
+  };
+  const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
+  const trackInfo = TRACK_ICONS_INLINE[trackId];
+  const taskName = trackInfo ? trackInfo.name_zh : ((isZh ? sc.name_zh : sc.name_en) || sc.id);
+  const taskIcon = trackInfo?.icon || sc.icon || '🤖';
+  // Type label
+  const typeBadge = (() => {
+    const sid = sc.id;
+    const wf = sc.workflow_type;
+    const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
+    const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
+      || (Array.isArray(taskUrls) && taskUrls.length > 0 && sc.platform === 'xhs');
+    if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '自动互动' : 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '每日发推' : 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '指定链接改写' : 'Pick-your-links', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '自动回复' : 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    return { icon: '🔥', label: isZh ? '批量爆款改写' : 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+  })();
 
   const statusPill = (() => {
     switch (rec.status) {
@@ -166,7 +209,10 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
           {sc.platform === 'x' ? '🐦' : '📕'} {platform}
         </span>
-        <span className="text-base">{sc.icon || '🤖'}</span>
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${typeBadge.color}`}>
+          {typeBadge.icon} {typeBadge.label}
+        </span>
+        <span className="text-base">{taskIcon}</span>
         <span className="font-bold text-base dark:text-white">{taskName}</span>
         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${statusPill.color}`}>
           {statusPill.icon} {statusPill.label}

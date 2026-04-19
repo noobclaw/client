@@ -339,7 +339,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
     // Section + platform branching. Each L1 section has a per-platform
     // view; the user picked the platform via the L2 sub-tabs above.
-    const platformLabel = currentPlatform === 'xhs' ? '小红书' : currentPlatform === 'x' ? '推特' : currentPlatform;
+    // Platform display label — locale-aware so the My Tasks / History
+    // page headers don't show Chinese names in EN mode.
+    const isZh = i18nService.currentLanguage === 'zh';
+    const platformLabel = currentPlatform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
+      : currentPlatform === 'x' ? (isZh ? '推特' : 'Twitter')
+      : currentPlatform;
 
     if (currentSection === 'tasks') {
       return (
@@ -349,6 +354,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           loading={loading}
           platformLabel={platformLabel}
           onOpenTask={openTask}
+          onRefresh={refreshAll}
         />
       );
     }

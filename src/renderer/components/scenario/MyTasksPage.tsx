@@ -30,19 +30,66 @@ interface Props {
   /** Used in the empty-state hint and the section header label. */
   platformLabel: string;
   onOpenTask: (task_id: string) => void;
+  /** Optional refresh callback — called on mount so freshly-edited tasks
+   *  show up with the latest config (e.g. user changed track in detail
+   *  page → comes back to My Tasks → list reflects the new track without
+   *  needing the user to wait for the next periodic poll). */
+  onRefresh?: () => void | Promise<void>;
 }
 
-const PLATFORM_META: Record<string, { icon: string; label: string }> = {
-  xhs: { icon: '📕', label: '小红书' },
-  x: { icon: '🐦', label: '推特' },
-};
+// Platform pill label is locale-aware: Chinese when zh, English when en.
+// Returns { icon, label } for whichever locale is active right now.
+function platformMeta(platformId: string, isZh: boolean): { icon: string; label: string } {
+  if (platformId === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'Xiaohongshu' };
+  if (platformId === 'x')   return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
+  return { icon: '🤖', label: platformId };
+}
 
-const WEB3_TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
+// Persona snippets are seeded from Chinese templates (the reply_persona_hint
+// arrays in ConfigWizard) — they always start with "身份：" / "现在做的：" /
+// "真实状态：" prefixes. In EN mode we translate the prefix so the user
+// doesn't see Chinese labels (the body content stays Chinese — that's
+// user-editable copy and we can't auto-translate it).
+function localizePersonaPrefix(text: string, isZh: boolean): string {
+  if (isZh) return text;
+  return text
+    .replace(/^身份[：:]\s*/, 'Identity: ')
+    .replace(/^现在做的[：:]\s*/, 'Currently doing: ')
+    .replace(/^真实状态[：:]\s*/, 'Status: ')
+    .replace(/^技术栈[：:]\s*/, 'Tech stack: ')
+    .replace(/^理财习惯[：:]\s*/, 'Finance habits: ')
+    .replace(/^旅行风格[：:]\s*/, 'Travel style: ')
+    .replace(/^饮食习惯[：:]\s*/, 'Food habits: ')
+    .replace(/^穿搭习惯[：:]\s*/, 'Style: ')
+    .replace(/^护肤路线[：:]\s*/, 'Skincare: ')
+    .replace(/^饮食[：:]\s*/, 'Diet: ')
+    .replace(/^偏好[：:]\s*/, 'Preferences: ');
+}
+
+const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
+  // Twitter (web3) tracks
   web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
   web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
   web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
   web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
   web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
+  // XHS tracks (mirrored from ConfigWizard's TRACK_PRESETS so the task list
+  // can show the user's chosen track name instead of falling back to the
+  // generic scenario name like "小红书自动回复")
+  career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
+  indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
+  personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
+  travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
+  food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
+  outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
+  beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
+  fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
+  reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
+  parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
+  exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
+  pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
+  home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
+  study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
 };
 
 function scheduleLabel(task: Task, isZh: boolean): string {
@@ -61,7 +108,7 @@ function scheduleLabel(task: Task, isZh: boolean): string {
   return map[interval] || interval;
 }
 
-export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask }) => {
+export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
 
@@ -75,6 +122,15 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
     void tick();
     const h = setInterval(tick, 3000);
     return () => { cancelled = true; clearInterval(h); };
+  }, []);
+
+  // Refresh tasks on mount so edits made in TaskDetailPage (e.g. user
+  // changed track) propagate immediately when the user comes back to
+  // the list — without this, the displayed task.track was stale until
+  // the next refresh cycle.
+  useEffect(() => {
+    if (onRefresh) void onRefresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const scenarioById = useMemo(() => {
@@ -124,7 +180,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
             {sortedTasks.map(task => {
               const scenario = scenarioById.get(task.scenario_id);
               const platformId = scenario?.platform || 'xhs';
-              const platformMeta = PLATFORM_META[platformId] || { icon: '🤖', label: platformId };
+              const platMeta = platformMeta(platformId, isZh);
               const isRunning = runningTaskIds.has(task.id);
               // Type badge per scenario id (Twitter has 3 distinct ones,
               // XHS has 2 distinct ones via workflow_type)
@@ -141,7 +197,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 return { icon: '🔥', zh: '批量爆款改写', en: 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name
-              const track = WEB3_TRACK_ICONS[task.track];
+              const track = TRACK_ICONS[task.track];
               const subTitle = (() => {
                 if (isLinkRewriteTwitter) return isZh ? '指定推文链接' : 'Manual tweet URLs';
                 if (isXhsLinkMode) return isZh ? '指定链接' : 'Manual XHS links';
@@ -167,7 +223,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-                        {platformMeta.icon} {platformMeta.label}
+                        {platMeta.icon} {platMeta.label}
                       </span>
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
                         {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
@@ -203,10 +259,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       )}
                     </div>
                   </div>
-                  {/* Persona snippet */}
+                  {/* Persona snippet — strip Chinese prefix in EN mode */}
                   {personaSnippet && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
-                      👤 {personaSnippet}
+                      👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
                   )}
                   {/* Frequency / URL details */}

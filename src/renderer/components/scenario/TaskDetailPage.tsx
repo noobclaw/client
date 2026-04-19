@@ -421,18 +421,38 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
       {/* Header: badges so the task detail page identifies itself the same
           way it appeared in the list — at a glance "this is the推特/自动互动
-          task you clicked on". */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-          {platformBadge.icon} {platformBadge.label}
-        </span>
-        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${typeBadge.color}`}>
-          {typeBadge.icon} {typeBadge.label}
-        </span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
-          #{task.id.slice(0, 8)}
-        </span>
-      </div>
+          task you clicked on". For Twitter scenarios we ALSO show the
+          language pill so users immediately see whether their language
+          choice (中文 / English / 中英混合) is registered for this task —
+          without it users were confused why posts came out in English even
+          though they picked Chinese. */}
+      {(() => {
+        const langCode = (task as any).language as ('zh' | 'en' | 'mixed') | undefined;
+        const langPill = langCode === 'zh' ? { icon: '🇨🇳', label: isZh ? '中文' : 'Chinese', color: 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600' }
+          : langCode === 'en' ? { icon: '🇺🇸', label: 'English', color: 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600' }
+          : langCode === 'mixed' ? { icon: '🌐', label: isZh ? '中英混合' : 'zh+en mixed', color: 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-600' }
+          : null;
+        return (
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+              {platformBadge.icon} {platformBadge.label}
+            </span>
+            <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${typeBadge.color}`}>
+              {typeBadge.icon} {typeBadge.label}
+            </span>
+            {/* Language pill — Twitter scenarios only (XHS doesn't have a
+                language toggle; everything is Chinese by definition). */}
+            {isXTask && langPill && (
+              <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${langPill.color}`} title={isZh ? 'AI 输出语言（在配置时设置）' : 'Output language (set during config)'}>
+                {langPill.icon} {langPill.label}
+              </span>
+            )}
+            <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+              #{task.id.slice(0, 8)}
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Config + actions */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
@@ -515,12 +535,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   : '📂 Open folder'}
               </button>
             </div>
-            {isAutoReplyTask && task.persona && (
-              <div className="text-[11px] text-gray-400 leading-relaxed">
-                <span className="text-gray-500">{isZh ? '人设:' : 'Persona:'}</span>{' '}
-                <span className="italic">{task.persona.length > 120 ? task.persona.slice(0, 120) + '...' : task.persona}</span>
-              </div>
-            )}
+            {isAutoReplyTask && task.persona && (() => {
+              // Strip the Chinese prefix in EN mode so users on English UI
+              // don't see "身份:" / "技术栈:" / etc. labels — body content
+              // stays Chinese (it's user-editable copy, can't auto-xlate).
+              const personaText = isZh ? task.persona : task.persona
+                .replace(/(^|\n)身份[：:]\s*/g, (_, p) => p + 'Identity: ')
+                .replace(/(^|\n)现在做的[：:]\s*/g, (_, p) => p + 'Currently doing: ')
+                .replace(/(^|\n)真实状态[：:]\s*/g, (_, p) => p + 'Status: ')
+                .replace(/(^|\n)技术栈[：:]\s*/g, (_, p) => p + 'Tech stack: ');
+              return (
+                <div className="text-[11px] text-gray-400 leading-relaxed">
+                  <span className="text-gray-500">{isZh ? '人设:' : 'Persona:'}</span>{' '}
+                  <span className="italic">{personaText.length > 120 ? personaText.slice(0, 120) + '...' : personaText}</span>
+                </div>
+              );
+            })()}
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {running ? (

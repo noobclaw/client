@@ -30,6 +30,44 @@ interface RunRecord {
   output_dir?: string;
 }
 
+// Same lookup as MyTasksPage so XHS records show "💼 副业" instead of
+// the generic scenario name. Twitter web3 tracks + XHS niche tracks.
+const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
+  web3_alpha: { icon: '🎯', name_zh: 'Web3 · Alpha 猎人' },
+  web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
+  web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
+  web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
+  web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
+  career_side_hustle: { icon: '💼', name_zh: '副业 · 打工人赚钱' },
+  indie_dev: { icon: '👩‍💻', name_zh: '独立开发 · 程序员记录' },
+  personal_finance: { icon: '💰', name_zh: '理财 · 记账攻略' },
+  travel: { icon: '✈️', name_zh: '旅行 · 攻略分享' },
+  food: { icon: '🍲', name_zh: '美食 · 探店做饭' },
+  outfit: { icon: '👗', name_zh: '穿搭 · 风格分享' },
+  beauty: { icon: '💄', name_zh: '美妆 · 产品测评' },
+  fitness: { icon: '💪', name_zh: '健身 · 减脂日记' },
+  reading: { icon: '📚', name_zh: '读书 · 书单笔记' },
+  parenting: { icon: '🧸', name_zh: '育儿 · 亲子日常' },
+  exam_prep: { icon: '🎓', name_zh: '考研 · 备考党' },
+  pets: { icon: '🐱', name_zh: '宠物 · 猫狗日常' },
+  home_decor: { icon: '🏠', name_zh: '家居 · 小屋布置' },
+  study_method: { icon: '🏆', name_zh: '学习 · 效率工具' },
+};
+
+function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; label: string; color: string } {
+  const sid = rec.scenario_snapshot.id;
+  const wf = rec.scenario_snapshot.workflow_type;
+  const taskUrls = (rec.task_snapshot && rec.task_snapshot.urls) || [];
+  const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
+    || (Array.isArray(taskUrls) && taskUrls.length > 0 && rec.scenario_snapshot.platform === 'xhs');
+  if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '自动互动' : 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+  if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '每日发推' : 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+  if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+  if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '指定链接改写' : 'Pick-your-links', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+  if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '自动回复' : 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  return { icon: '🔥', label: isZh ? '批量爆款改写' : 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+}
+
 interface Props {
   /** Pre-filtered tasks for the active platform (parent handles the
    *  platform sub-tab and re-filters). */
@@ -157,7 +195,15 @@ export const RunHistoryPage: React.FC<Props> = ({
           <div className="space-y-2">
             {records.map(rec => {
               const sc = rec.scenario_snapshot;
-              const taskName = (isZh ? sc.name_zh : sc.name_en) || sc.id;
+              const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
+              const trackInfo = TRACK_ICONS[trackId];
+              const typeBadge = typeLabelForRecord(rec, isZh);
+              // Display name: prefer track (matches MyTasksPage), fall back to
+              // generic scenario name, then to id.
+              const displayName = trackInfo
+                ? trackInfo.name_zh
+                : ((isZh ? sc.name_zh : sc.name_en) || sc.id);
+              const displayIcon = trackInfo?.icon || sc.icon || '🤖';
               const duration = rec.finished_at
                 ? formatDuration(rec.finished_at - rec.started_at, isZh)
                 : null;
@@ -183,12 +229,15 @@ export const RunHistoryPage: React.FC<Props> = ({
                   } cursor-pointer`}
                 >
                   <div className="flex items-center justify-between gap-3 flex-wrap">
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusPill.color}`}>
                         {statusPill.icon} {statusPill.label}
                       </span>
-                      <span className="text-base shrink-0">{sc.icon || '🤖'}</span>
-                      <span className="font-medium dark:text-white truncate">{taskName}</span>
+                      <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeBadge.color}`}>
+                        {typeBadge.icon} {typeBadge.label}
+                      </span>
+                      <span className="text-base shrink-0">{displayIcon}</span>
+                      <span className="font-medium dark:text-white truncate">{displayName}</span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
