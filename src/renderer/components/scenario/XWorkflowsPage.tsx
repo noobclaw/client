@@ -24,7 +24,7 @@ const WEB3_TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
   web3_defi: { icon: '🏛️', name_zh: 'Web3 · DeFi 用户' },
   web3_meme: { icon: '🎪', name_zh: 'Web3 · Meme 文化' },
   web3_builder: { icon: '🛠️', name_zh: 'Web3 · 建设者' },
-  web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 中文通用 KOL' },
+  web3_zh_kol: { icon: '📢', name_zh: 'Web3 · 通用 KOL' },
 };
 
 interface Props {
@@ -125,8 +125,13 @@ export const XWorkflowsPage: React.FC<Props> = ({
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
             {isZh
-              ? '专为国内 web3 KOL 设计：自动关注圈内 KOL、智能评论互动、每日自动发推，三件事随机打散，看起来像真人而不是机器。'
-              : 'Built for Chinese web3 KOLs: auto-follow peers, smart-engage with tweets, and post daily. All randomized to feel human.'}
+              ? '专为 Web3 KOL 设计：自动关注圈内 KOL、智能评论互动、每日自动发推，三件事随机打散，看起来像真人而不是机器。'
+              : 'Built for Web3 KOLs: auto-follow peers, smart-engage with tweets, and post daily. All randomized to feel human.'}
+          </p>
+          <p className="text-[11px] text-amber-600 dark:text-amber-400 leading-relaxed mt-2">
+            {isZh
+              ? '⚠️ 大陆用户注意：x.com 在大陆需 VPN / 代理访问，运行任务前请确保浏览器能正常打开 Twitter。'
+              : '⚠️ Mainland China users: x.com requires VPN / proxy. Verify your browser can reach Twitter before running tasks.'}
           </p>
           <div className="flex flex-wrap gap-1.5 mt-3">
             {[
@@ -259,6 +264,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
+          platform="x"
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={() => setLoginModalReason(null)}
         />

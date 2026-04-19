@@ -187,7 +187,7 @@ const TRACK_PRESETS: TrackPreset[] = [
     name_zh: 'Web3 · Alpha 猎人',
     keywords: ['airdrop', 'alpha', '撸毛', '新链', 'L2', '空投', 'pre-mine', 'TGE', 'launchpad', 'farming'],
     persona_hint: '混迹链上的 alpha 猎人，每天跟新协议 / 新空投',
-    reply_persona_hint: `身份：30 岁，国内 web3 老油条，链上活动 3 年了。撸过 OP/ARB/ZK/JUP 多次主流空投，最高单号近 4 万 U。
+    reply_persona_hint: `身份：30 岁 Web3 老油条，链上活动 3 年了。撸过 OP/ARB/ZK/JUP 多次主流空投，最高单号近 4 万 U。
 现状：每天 3-5 小时刷 alpha，关注新 L2 / Move 系 / Solana 生态新动态。同时跑 5-8 个号交互。
 真实状态：吃过 SBF 时代 FTX 跑路（亏了 3 万 U）、屯过 Pepe 没拿住、错过 Wif 巅峰。心态调好了，承认"看不懂"是常态。
 口气：中英混合，常说 "ape" "rugged" "ngmi" "alpha leak" "梭哈" "拿铁" "下车"，emoji 少用但 👀 🚀 🤔 偶尔点缀。
@@ -236,9 +236,9 @@ const TRACK_PRESETS: TrackPreset[] = [
   },
   {
     id: 'web3_zh_kol', icon: '📢', platform: 'x',
-    name_zh: 'Web3 · 中文通用 KOL',
+    name_zh: 'Web3 · 通用 KOL',
     keywords: ['eth', 'btc', '比特币', '以太坊', 'solana', '加密货币', '区块链', 'web3', 'crypto twitter', '链上', 'on-chain', '空投', 'l2', 'meme'],
-    persona_hint: '中文 web3 圈通用 KOL，覆盖 BTC/ETH/Sol 几大叙事',
+    persona_hint: 'Web3 通用 KOL，覆盖 BTC/ETH/Sol 几大叙事',
     reply_persona_hint: `身份：33 岁男，南方人，full-time crypto 5 年。关注 ETH / BTC / Solana / Memecoin / RWA 几大主线。
 现状：仓位 50 万 U 上下，写公众号 + 推特双开，推特 8k 粉，公众号 5k 订阅。
 真实状态：经历过 17 牛 18 熊 / 21 牛 22 熊 / FTX 暴雷 / Luna 归零 / SVB / 现在的 23-24 周期。心态稳。
@@ -285,6 +285,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //  - no auto_upload toggle (replies are posted directly with jitter)
   //  - safety notice / confirm copy talks about reply jitter, not draft uploads
   const isAutoReply = (scenario.workflow_type as any) === 'auto_reply';
+  // ── Platform / scenario-specific flags ──
+  // x_auto_engage shares workflow_type='auto_reply' with XHS auto-reply for
+  // wizard scaffolding, but its actual UX is totally different (KOL pool +
+  // follow + feed engage rather than article reply). Split the copy so XHS
+  // strings don't bleed into the Twitter wizard.
+  const isXAutoEngage = scenario.id === 'x_auto_engage';
+  const isXPostCreator = scenario.id === 'x_post_creator';
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
@@ -369,14 +376,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   // canFinish — different scenarios have different "minimum input":
-  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 5). Keywords
-  //                      auto-populated from preset, persona auto-populated.
-  //   - other XHS / X  : needs ≥1 keyword + non-empty persona + a track
+  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 5)
+  //   - Twitter (auto_engage / post_creator) : needs persona only — no keywords
+  //   - XHS scenarios  : needs ≥1 keyword + non-empty persona + a track
   // Always: terms accepted + a track selected.
   const canFinish = (() => {
     if (!allTermsAccepted || !trackId) return false;
     if (isLinkRewriteScenario) {
       return parsedUrls.length >= 1 && parsedUrls.length <= 5;
+    }
+    if (isXPlatform) {
+      return persona.trim().length > 0;
     }
     return keywordList.length > 0 && persona.trim().length > 0;
   })();
@@ -432,9 +442,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
-            {isAutoReply
-              ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
-              : (isZh ? '配置赛道' : 'Configure Track')}
+            {isXAutoEngage
+              ? (isZh ? '配置 Twitter 自动互动' : 'Configure X Auto Engagement')
+              : isXPostCreator
+                ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
+                : isAutoReply
+                  ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
+                  : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
             {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
@@ -464,36 +478,41 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </select>
               </div>
 
-              {/* Keywords */}
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">
+              {/* Keywords — only for XHS scenarios.
+                  Twitter scenarios don't use keyword search (auto_engage uses
+                  the KOL pool + Home feed; post_creator uses topic_context;
+                  link_rewrite uses URL list). Hide entirely on X. */}
+              {!isXPlatform && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">
+                      {isAutoReply
+                        ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
+                        : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
+                    </span>
+                  </label>
+                  {/* Pre-fill hint, scenario-aware */}
+                  <div className="mb-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[11px] text-green-700 dark:text-green-400 leading-relaxed">
                     {isAutoReply
-                      ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
-                      : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
-                  </span>
-                </label>
-                {/* Pre-fill hint, scenario-aware */}
-                <div className="mb-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[11px] text-green-700 dark:text-green-400 leading-relaxed">
-                  {isAutoReply
-                    ? (isZh
-                        ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
-                        : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
-                    : (isZh
-                        ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
-                        : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
+                      ? (isZh
+                          ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
+                          : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
+                      : (isZh
+                          ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
+                          : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
+                  </div>
+                  <textarea
+                    value={customKeywordsText}
+                    onChange={e => setCustomKeywordsText(e.target.value)}
+                    placeholder={isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated'}
+                    rows={6}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                  />
+                  <div className="text-[11px] text-gray-400 mt-1">
+                    {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
+                  </div>
                 </div>
-                <textarea
-                  value={customKeywordsText}
-                  onChange={e => setCustomKeywordsText(e.target.value)}
-                  placeholder={isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated'}
-                  rows={6}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                />
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
-                </div>
-              </div>
+              )}
 
               {/* Persona — only exposed for auto_reply. Determines the voice of
                   every comment posted under your account. Default is the
@@ -725,28 +744,62 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isAutoReply
-                    ? (isZh ? '每天回复文章数' : 'Articles to reply to per run')
-                    : (isZh ? '每天采集爆款数量' : 'Articles per run')}
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range" min={1} max={dailyHardCap} value={dailyCount}
-                    onChange={e => setDailyCount(parseInt(e.target.value, 10))}
-                    className="flex-1"
-                  />
-                  <div className="w-12 text-center font-semibold text-green-500">{dailyCount}</div>
-                </div>
-                {isAutoReply && (
-                  <div className="text-[11px] text-gray-400 mt-1">
-                    {isZh
-                      ? `每篇 1 文章评论 + 0~1 用户回复（50% 几率回复 Top1 高赞评论，翻面则跳过）。评论间隔 30-80 秒，文章间隔 60-200 秒`
-                      : `Per article: 1 article comment + 0–1 user-comment reply (50% chance to reply to the top-liked comment, otherwise skip it). Reply jitter 30-80s, article jitter 60-200s`}
+              {/* Twitter scenarios manage daily count internally (auto_engage =
+                  0-3 follows + 0-1 reply followed + 0-1 reply feed; post_creator =
+                  1 tweet/day) so the user-facing slider doesn't apply.
+                  link_rewrite is one-shot — the URL list is the count. */}
+              {!isXPlatform && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isAutoReply
+                      ? (isZh ? '每天回复文章数' : 'Articles to reply to per run')
+                      : (isZh ? '每天采集爆款数量' : 'Articles per run')}
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="range" min={1} max={dailyHardCap} value={dailyCount}
+                      onChange={e => setDailyCount(parseInt(e.target.value, 10))}
+                      className="flex-1"
+                    />
+                    <div className="w-12 text-center font-semibold text-green-500">{dailyCount}</div>
                   </div>
-                )}
-              </div>
+                  {isAutoReply && (
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {isZh
+                        ? `每篇 1 文章评论 + 0~1 用户回复（50% 几率回复 Top1 高赞评论，翻面则跳过）。评论间隔 30-80 秒，文章间隔 60-200 秒`
+                        : `Per article: 1 article comment + 0–1 user-comment reply (50% chance to reply to the top-liked comment, otherwise skip it). Reply jitter 30-80s, article jitter 60-200s`}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Twitter daily-budget summary card (replaces XHS slider) */}
+              {isXAutoEngage && (
+                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                  <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
+                    {isZh ? '🎲 每日动作配额（系统内部随机调度）' : '🎲 Daily action budget (auto-scheduled)'}
+                  </div>
+                  <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
+                    <li>{isZh ? '· 关注 Web3 KOL：0-3 个 / 天（从 KOL 池随机抽未关注的）' : '· Follow web3 KOLs: 0-3/day (random unfollowed picks from KOL pool)'}</li>
+                    <li>{isZh ? '· 评论已关注 KOL 的最新推：0-1 条 / 天' : '· Reply to a followed KOL\'s latest tweet: 0-1/day'}</li>
+                    <li>{isZh ? '· 浏览推荐 feed 挑一条评论：0-1 条 / 天' : '· Scroll For You feed and reply to one: 0-1/day'}</li>
+                    <li>{isZh ? '· 三种动作随机顺序，每个动作之间 8-30 分钟随机间隔' : '· Three action types in random order, 8-30 min random spacing'}</li>
+                    <li>{isZh ? '· 同一 KOL 7 天内不重复 engage' : '· No re-engaging same KOL within 7 days'}</li>
+                  </ul>
+                </div>
+              )}
+              {isXPostCreator && (
+                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                  <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
+                    {isZh ? '🎲 每日发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
+                  </div>
+                  <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
+                    <li>{isZh ? '· 30% 仿写：从 feed 找长推 → AI 用同样钩子 + 你的素材池写一条新推' : '· 30% rewrite: find a long feed tweet → AI rewrites in your voice'}</li>
+                    <li>{isZh ? '· 30% 原创：按你最近的话题 + 随机钩子类型生成' : '· 30% original: AI generates based on your topic_context + random hook'}</li>
+                    <li>{isZh ? '· 40% 引用回应：feed 里挑一条 → 写带观点的 quote tweet' : '· 40% quote: pick a feed tweet → write a quote with a viewpoint'}</li>
+                  </ul>
+                </div>
+              )}
 
               {/* Variants slider only matters for viral_production rewrite scenarios. */}
               {!isAutoReply && (
@@ -815,7 +868,31 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⚠️ 安全提示' : '⚠️ Safety Notice'}
                 </div>
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                  {isAutoReply ? (
+                  {isXAutoEngage ? (
+                    <>
+                      <li>{isZh ? '· 每天 3 种动作随机执行：关注 0-3 个 Web3 KOL / 评论已关注 0-1 / 评论 feed 0-1' : '· 3 daily actions in random order: follow 0-3 KOLs / reply followed 0-1 / reply feed 0-1'}</li>
+                      <li>{isZh ? '· 动作之间间隔 8-30 分钟随机，模拟真人节奏' : '· 8-30 min random jitter between actions to mimic human pacing'}</li>
+                      <li>{isZh ? '· 同一 KOL 7 天内不重复 engage，避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
+                      <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
+                      <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone'}</li>
+                      <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启，且 x.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running'}</li>
+                    </>
+                  ) : isXPostCreator ? (
+                    <>
+                      <li>{isZh ? '· 每日 1 条推文，3 种机制（仿写 30% / 原创 30% / 引用 40%）随机选' : '· 1 tweet/day, mechanism randomized (30% rewrite / 30% original / 40% quote)'}</li>
+                      <li>{isZh ? '· 在「真实素材池」里写得越具体，AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output'}</li>
+                      <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
+                      <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查' : '· Tweets cannot be unposted — review AI output after first run'}</li>
+                      <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
+                    </>
+                  ) : isLinkRewriteScenario ? (
+                    <>
+                      <li>{isZh ? '· 一次性手动任务，逐条仿写 + 发布，间隔 10-30 分钟' : '· One-shot manual task. Rewrites + posts each URL with 10-30 min spacing'}</li>
+                      <li>{isZh ? '· AI 解构原推钩子和结构，用你的素材池仿写新推（不抄袭）' : '· AI deconstructs hook + structure, rewrites in your voice (no copying)'}</li>
+                      <li>{isZh ? '· 推文发布后无法撤回，建议先用 1-2 条试运行' : '· Tweets cannot be unposted — start with 1-2 URLs to test'}</li>
+                      <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
+                    </>
+                  ) : isAutoReply ? (
                     <>
                       <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
                       <li>{isZh ? '· 每篇文章 LLM 一次性生成评论 + 用户回复，确保口吻一致' : '· One LLM call per article generates note + user-comment replies in a consistent voice'}</li>
@@ -841,9 +918,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {step === 3 && (
             <div>
               <h3 className="text-lg font-bold dark:text-white mb-4">
-                {isAutoReply
-                  ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
-                  : (isZh ? '确认并启用' : 'Confirm & Enable')}
+                {isXAutoEngage
+                  ? (isZh ? '确认并启用 Twitter 自动互动' : 'Confirm & Enable X Auto Engagement')
+                  : isXPostCreator
+                    ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
+                    : isLinkRewriteScenario
+                      ? (isZh ? '确认并开始仿写' : 'Confirm & Start Rewriting')
+                      : isAutoReply
+                        ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
+                        : (isZh ? '确认并启用' : 'Confirm & Enable')}
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
@@ -851,10 +934,28 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
                   <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
                 </div>
-                <div>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '关键词:' : 'Keywords:'}</span>
-                  <div className="dark:text-white">{keywordList.join(' · ')}</div>
-                </div>
+                {!isXPlatform && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '关键词:' : 'Keywords:'}</span>
+                    <div className="dark:text-white">{keywordList.join(' · ')}</div>
+                  </div>
+                )}
+                {isXPlatform && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '语言:' : 'Language:'}</span>
+                    <div className="dark:text-white">
+                      {language === 'zh' ? (isZh ? '中文' : 'Chinese')
+                        : language === 'en' ? (isZh ? '英文' : 'English')
+                        : (isZh ? '中英混合' : 'Mixed')}
+                    </div>
+                  </div>
+                )}
+                {isLinkRewriteScenario && parsedUrls.length > 0 && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '推文链接:' : 'Tweet URLs:'}</span>
+                    <div className="dark:text-white text-xs font-mono">{parsedUrls.length} 条</div>
+                  </div>
+                )}
                 <div>
                   <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '频次:' : 'Schedule:'}</span>
                   <div className="dark:text-white">
@@ -879,6 +980,21 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             'daily_random': 'Once daily (random time)',
                           } as Record<string, string>
                       )[runInterval] || runInterval;
+                      if (isXAutoEngage) {
+                        return isZh
+                          ? `⏰ ${intervalLabel} · 关注 0-3 人 + 评论已关注 0-1 + 评论 feed 0-1（随机顺序，动作间隔 8-30 分钟）`
+                          : `⏰ ${intervalLabel} · follow 0-3 + reply followed 0-1 + reply feed 0-1 (random order, 8-30 min between)`;
+                      }
+                      if (isXPostCreator) {
+                        return isZh
+                          ? `⏰ ${intervalLabel} · 每日 1 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
+                          : `⏰ ${intervalLabel} · 1 tweet/day (30% rewrite / 30% original / 40% quote, randomized)`;
+                      }
+                      if (isLinkRewriteScenario) {
+                        return isZh
+                          ? `🔗 一次性手动 · 处理 ${parsedUrls.length} 条推文链接（间隔 10-30 分钟）`
+                          : `🔗 One-shot manual · ${parsedUrls.length} URLs (10-30 min spacing)`;
+                      }
                       if (isAutoReply) {
                         const minTotal = dailyCount;          // 每篇固定 1 文章评论
                         const maxTotal = dailyCount * 2;      // 每篇最多 + 1 用户回复
@@ -898,13 +1014,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
                 </div>
                 <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                  {isAutoReply
+                  {isXPlatform
                     ? (isZh
-                        ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
-                        : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
-                    : (isZh
-                        ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
-                        : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
+                        ? <>推文一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 x.com 标签页或退出登录。⚠️ <strong>大陆用户需开启 VPN / 代理</strong>确保 x.com 可访问。建议第一次运行后人工检查 AI 生成内容的风格。</>
+                        : <>Tweets <strong>cannot be unposted</strong>. Keep the browser open and don't close the x.com tab or log out. ⚠️ <strong>Mainland China users must use a VPN / proxy</strong> for x.com access. Review AI output after first run to confirm voice.</>)
+                    : isAutoReply
+                      ? (isZh
+                          ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
+                          : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
+                      : (isZh
+                          ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
+                          : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
                 </p>
               </div>
 
@@ -913,7 +1033,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '使用条款' : 'Terms'}
                 </div>
                 {[
-                  i18nService.t('scenarioWizardConfirmTerm1'),
+                  // Term 1 is platform-aware so XHS users see "小红书", Twitter
+                  // users see "x.com" (instead of inheriting the XHS string).
+                  isXPlatform
+                    ? (isZh
+                        ? '我理解 NoobClaw 会在我本地浏览器代我浏览 x.com，所有行为使用我自己的 IP 和账号'
+                        : 'I understand NoobClaw browses x.com inside my own browser using my IP and my account.')
+                    : i18nService.t('scenarioWizardConfirmTerm1'),
                   i18nService.t('scenarioWizardConfirmTerm3'),
                 ].map((term, i) => (
                   <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">

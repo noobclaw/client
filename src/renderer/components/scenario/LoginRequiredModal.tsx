@@ -13,14 +13,25 @@ import { i18nService } from '../../services/i18n';
 
 interface Props {
   mode: 'create' | 'run';
+  /** Which platform's login state we're checking. Default 'xhs' for
+   *  back-compat. 'x' (Twitter) shows different copy + opens x.com +
+   *  surfaces a VPN reminder for mainland China users. */
+  platform?: 'xhs' | 'x';
   onCancel: () => void;
   onConfirmed: () => void;
 }
 
 type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 
-export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirmed }) => {
+export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
+  const isX = platform === 'x';
+  // Platform-specific labels — single source of truth so all the strings
+  // below stay consistent.
+  const platformLabel = isX
+    ? (isZh ? 'Twitter (x.com)' : 'Twitter (x.com)')
+    : (isZh ? '小红书' : 'Xiaohongshu');
+  const platformUrl = isX ? 'https://x.com/home' : 'https://www.xiaohongshu.com';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [checking, setChecking] = useState(false);
@@ -56,8 +67,18 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
   const handleOpenXhs = async () => {
     setOpening(true);
     try {
-      const res = await scenarioService.openXhsLogin();
-      if (!res.ok) { try { window.open('https://www.xiaohongshu.com', '_blank'); } catch {} }
+      // For Twitter we don't have a dedicated openXLogin IPC yet — just open
+      // x.com via the browser. checkXhsLogin's xhs-specific probe will return
+      // a "tab not reachable" reason when the user lands on x.com, but that's
+      // actually OK because the multi-tab routing in background.js auto-opens
+      // the right tab when a Twitter task runs. The check here is just a
+      // smoke test that *some* browser tab is open and the extension is alive.
+      if (isX) {
+        try { window.open(platformUrl, '_blank'); } catch {}
+      } else {
+        const res = await scenarioService.openXhsLogin();
+        if (!res.ok) { try { window.open(platformUrl, '_blank'); } catch {} }
+      }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
@@ -84,16 +105,20 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[xhsTabStatus]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">{isZh ? '① 在浏览器中打开小红书并登录' : '① Open Xiaohongshu in browser & login'}</div>
+              <div className="text-sm font-medium dark:text-white">
+                {isZh ? `① 在浏览器中打开 ${platformLabel} 并登录` : `① Open ${platformLabel} in browser & login`}
+              </div>
               {extensionStatus === 'fail' && (
                 <div className="text-xs text-gray-400 mt-1">{isZh ? '请先安装浏览器插件（步骤②）' : 'Install browser extension first (step ②)'}</div>
               )}
               {extensionStatus === 'pass' && xhsTabStatus === 'fail' && (
                 <div className="mt-1">
-                  <div className="text-xs text-red-500">{isZh ? '未检测到小红书页面' : 'Xiaohongshu page not detected'}</div>
+                  <div className="text-xs text-red-500">
+                    {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
+                  </div>
                   <button type="button" onClick={handleOpenXhs} disabled={opening}
                     className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
-                    {opening ? '...' : (isZh ? '🌐 打开小红书' : '🌐 Open Xiaohongshu')}
+                    {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
                   </button>
                 </div>
               )}
@@ -150,10 +175,17 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
           }`}>
             <div className="text-sm font-medium dark:text-white mb-2">{isZh ? '③ 使用须知' : '③ Usage Notes'}</div>
             <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1.5 leading-relaxed">
-              <li>🤖 {isZh ? '所有操作模拟你本人在小红书上的行为' : 'All actions simulate your own behavior on Xiaohongshu'}</li>
+              <li>🤖 {isZh ? `所有操作模拟你本人在 ${platformLabel} 上的行为` : `All actions simulate your own behavior on ${platformLabel}`}</li>
               <li>🌐 {isZh ? <>运行期间请<strong>不要切换浏览器标签页</strong></> : <><strong>Do not switch browser tabs</strong> during a run</>}</li>
-              <li>🔐 {isZh ? <>请<strong>不要退出小红书登录</strong></> : <><strong>Do not log out</strong> of Xiaohongshu</>}</li>
+              <li>🔐 {isZh ? <>请<strong>不要退出 {platformLabel} 登录</strong></> : <><strong>Do not log out</strong> of {platformLabel}</>}</li>
               <li>⏰ {isZh ? '可以正常使用电脑，保持浏览器打开即可' : 'You can use your computer normally, just keep the browser open'}</li>
+              {isX && (
+                <li className="text-amber-600 dark:text-amber-400">
+                  ⚠️ {isZh
+                    ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启，且 x.com 能正常访问</>
+                    : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify x.com is reachable</>}
+                </li>
+              )}
             </ul>
           </div>
         </div>
@@ -170,7 +202,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, onCancel, onConfirme
                 : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'
             }`}
           >
-            {mode === 'create' ? (isZh ? '✅ 我已登录，下一步' : '✅ Logged in, Next') : (isZh ? '✅ 我已登录小红书，开始' : '✅ Logged in, Start')}
+            {mode === 'create'
+              ? (isZh ? '✅ 我已登录，下一步' : '✅ Logged in, Next')
+              : (isZh ? `✅ 我已登录 ${platformLabel}，开始` : `✅ Logged in to ${platformLabel}, Start`)}
           </button>
           <button type="button" onClick={onCancel}
             className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
