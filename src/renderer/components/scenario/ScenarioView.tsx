@@ -148,6 +148,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     daily_count: number;
     variants_per_post: number;
     daily_time: string;
+    /** Twitter v1: extra optional fields. Spread through unchanged. */
+    language?: 'zh' | 'en' | 'mixed';
+    user_context?: string;
+    urls?: string[];
   }) => {
     if (wizardEditingTask) {
       // Edit → always activate as scheduled task

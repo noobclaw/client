@@ -148,6 +148,14 @@ export interface ScenarioTask {
   auto_upload?: boolean;
   /** Legacy field */
   schedule_window?: string;
+  /** Twitter v1: content language mode for tweet generation. zh/en/mixed.
+   *  Optional — XHS scenarios ignore this. */
+  language?: 'zh' | 'en' | 'mixed';
+  /** Twitter v1: user's "real-experience pool" — free-form notes about
+   *  recent activity, positions, opinions. AI scenarios (post_creator /
+   *  link_rewrite) inject this into rewrite/original prompts so generated
+   *  tweets have real substance instead of generic templates. Optional. */
+  user_context?: string;
   enabled: boolean;
   /** Only the 'active' task is eligible for scheduled auto-runs.
    *  When multiple tasks exist, user must explicitly pick which one is active.
