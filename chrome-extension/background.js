@@ -427,17 +427,29 @@ async function executeCommand(msg) {
   const { id, command, params, tabPattern } = msg;
   // Per-message tab resolution. If the envelope carries a tabPattern (new
   // multi-tab routing introduced in Twitter v1), we resolve it ONCE and
-  // alias it as `getActiveTab` inside this function so all downstream
-  // code paths transparently target the matched tab. The cached resolve
-  // means a single command doesn't pay the lookup cost twice.
+  // expose it as `resolveTab` for all downstream code paths. The cached
+  // resolve means a single command doesn't pay the lookup cost twice.
+  //
+  // ⚠️ HISTORICAL BUG (fixed in 1.2.6+): pre-1.2.6 this used to do
+  //   const _outerGetActiveTab = getActiveTab;     // line A
+  //   const getActiveTab = async () => { ... };    // line B
+  // ...which threw `Cannot access 'getActiveTab' before initialization`
+  // on EVERY call because line B's const shadows the outer function
+  // declaration in this scope, putting `getActiveTab` (line A's RHS) in
+  // the temporal dead zone. The error was an unhandled promise rejection
+  // → no response posted back → bridge timed out after 3s on EVERY
+  // command. That's the root cause of the "运行前检查 卡半天" symptom
+  // and "插件 popup 显示连接 / 客户端显示未连接" state mismatch.
+  //
+  // Renamed the local resolver to `resolveTab` so it doesn't shadow the
+  // module-level `getActiveTab` function — TDZ goes away. All inner
+  // usages updated below from `getActiveTab()` → `resolveTab()`.
   let _resolvedTab = null;
-  const _outerGetActiveTab = getActiveTab; // legacy "active tab" resolver
-  // eslint-disable-next-line no-shadow
-  const getActiveTab = async () => {
+  const resolveTab = async () => {
     if (_resolvedTab) return _resolvedTab;
     _resolvedTab = tabPattern
       ? await findOrOpenTabByPattern(tabPattern)
-      : await _outerGetActiveTab();
+      : await resolveTab();
     // Drop the resolved tab into a labeled tab group so the user can
     // visually distinguish "X-controlled tab" from "XHS-controlled tab"
     // in the tab strip. Fire-and-forget — failure must NOT affect the
@@ -451,12 +463,12 @@ async function executeCommand(msg) {
     let data;
 
     if (command === 'screenshot') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'jpeg', quality: 25 });
       const resized = await resizeImage(dataUrl, 640);
       data = { image: resized.split(',')[1] };
     } else if (command === 'navigate') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       let url = params.url;
       if (!url.startsWith('http://') && !url.startsWith('https://')) url = 'https://' + url;
       await chrome.tabs.update(tab.id, { url });
@@ -482,7 +494,7 @@ async function executeCommand(msg) {
       if (params.tabId) {
         await chrome.tabs.remove(params.tabId);
       } else {
-        const tab = await getActiveTab();
+        const tab = await resolveTab();
         await chrome.tabs.remove(tab.id);
       }
       data = { message: 'Tab closed' };
@@ -497,7 +509,7 @@ async function executeCommand(msg) {
         data = { error: 'tabId is required' };
       }
     } else if (command === 'resize_window') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       const win = await chrome.windows.get(tab.windowId);
       await chrome.windows.update(win.id, {
         width: params.width || win.width,
@@ -505,26 +517,26 @@ async function executeCommand(msg) {
       });
       data = { message: `Resized to ${params.width}x${params.height}` };
     } else if (command === 'go_back') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       await chrome.tabs.goBack(tab.id);
       data = { message: 'Navigated back' };
     } else if (command === 'go_forward') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       await chrome.tabs.goForward(tab.id);
       data = { message: 'Navigated forward' };
     } else if (command === 'reload') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       await chrome.tabs.reload(tab.id);
       data = { message: 'Page reloaded' };
     } else if (command === 'list_tabs') {
       const tabs = await chrome.tabs.query({ currentWindow: true });
       data = { tabs: tabs.map(t => ({ id: t.id, title: t.title, url: t.url, active: t.active })) };
     } else if (command === 'get_tab_info') {
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       data = { id: tab.id, title: tab.title, url: tab.url, status: tab.status };
     } else if (command === 'main_world_click') {
       // Click in MAIN world — works on React apps where isolated world click fails
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
@@ -556,7 +568,7 @@ async function executeCommand(msg) {
       data = results[0]?.result || { error: 'executeScript failed' };
     } else {
       // Forward to content script
-      const tab = await getActiveTab();
+      const tab = await resolveTab();
       await injectContentScript(tab.id);
       data = await sendToContentScript(tab.id, command, params);
     }

@@ -120,6 +120,11 @@ interface BrowserConn {
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
   extensionVersion: string;
   lastActivityAt: number;
+  /** Consecutive sendBrowserCommand timeouts on this conn. After 2 in a
+   *  row the socket is considered dead and force-destroyed (the close
+   *  handler then removes it from browserConns). Reset to 0 on every
+   *  successful response. */
+  consecutiveTimeouts: number;
 }
 const browserConns = new Map<string, BrowserConn>();
 let connSeq = 0;
@@ -620,7 +625,18 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
         tabs: [],
         extensionVersion: '',
         lastActivityAt: Date.now(),
+        consecutiveTimeouts: 0,
       };
+      // OS-level TCP keepalive — if the socket goes silently dead (system
+      // sleep, network blip, native host crash without proper FIN), the OS
+      // will probe every ~30s and after a few failed probes will fire
+      // socket.on('close'), which removes the stale conn from the map.
+      // Without this, dead sockets linger for 2 hours (default Linux/macOS
+      // TCP keepalive timer) — long enough that every sendBrowserCommand
+      // hits the dead conn first, waits 3s for timeout, returns failure.
+      // User-visible symptom: "运行前检查" hangs forever.
+      try { socket.setKeepAlive(true, 30000); } catch {}
+      try { socket.setNoDelay(true); } catch {}
       browserConns.set(connId, conn);
       console.log(`[BrowserBridge] Browser ${connId} connected (total: ${browserConns.size})`);
 
