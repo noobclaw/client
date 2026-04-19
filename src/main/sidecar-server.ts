@@ -1547,6 +1547,12 @@ const server = http.createServer(async (req, res) => {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             return writeJSON(res, 200, { runningTaskId: scenarioManager.getRunningTaskId() });
           }
+          case 'scenario:getRunningTaskIds': {
+            // Twitter v1 concurrency: returns ALL running task ids
+            // (can be > 1 when XHS task + Twitter task are both in flight).
+            const scenarioManager = require('./libs/scenario/scenarioManager');
+            return writeJSON(res, 200, { runningTaskIds: scenarioManager.getRunningTaskIds() });
+          }
           case 'scenario:getRunProgress': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             return writeJSON(res, 200, scenarioManager.getRunProgress());
