@@ -493,8 +493,18 @@ export function startScheduler(): void {
           if (elapsed < ms) continue;
           if (Math.random() > 1 / 180) continue;
         } else {
-          // For interval-based: just check if enough time has passed
+          // For interval-based (30min / 1h / 3h / 6h):
+          // Wait at least `ms` since last run, then add an additional 0-10
+          // minute random jitter so consecutive runs don't fire on a perfect
+          // clock. Implementation: once the threshold is crossed, fire on
+          // each 60s tick with probability 1/10 → average ~5 min extra delay,
+          // bounded ~10 min. (Anti risk-control: a task firing exactly every
+          // 60.0 minutes is a giveaway bot pattern.)
+          //
+          // Daily picker (above) already has its own ±15 min jitter so it
+          // doesn't need this branch.
           if (elapsed < ms) continue;
+          if (Math.random() > 1 / 10) continue;
         }
 
         coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval})`);

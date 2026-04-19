@@ -765,6 +765,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       : '⚠️ Comment tasks must not run at the same hour daily — XHS flags that as bot behavior. Triggers once per day at a randomized time, with at least 24h between runs.'}
                   </p>
                 )}
+                {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h)
+                    — scheduler adds 0-10 min random delay after the nominal
+                    interval so successive runs don't fire on a perfect clock.
+                    Daily picker has its own ±15 min jitter (shown below). */}
+                {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    {isZh
+                      ? '⚠️ 实际调度会在到点后再随机延迟 1-10 分钟才触发，避免每次精准卡点（防风控）'
+                      : '⚠️ Actual schedule adds 1-10 min random delay after the threshold so runs don\'t fire on a perfect clock (anti-detection).'}
+                  </p>
+                )}
               </div>
 
               {/* HH:MM picker only for the legacy fixed-time `daily` (XHS rewrite
@@ -813,8 +824,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isAutoReply
-                      ? (isZh ? '每天回复文章数' : 'Articles to reply to per run')
-                      : (isZh ? '每天采集爆款数量' : 'Articles per run')}
+                      ? (isZh ? '每次运行回复文章数' : 'Articles per scheduled run')
+                      : (isZh ? '每次运行采集爆款数量' : 'Articles per scheduled run')}
                   </label>
                   <div className="flex items-center gap-3">
                     <input

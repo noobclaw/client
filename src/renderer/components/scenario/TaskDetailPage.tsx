@@ -108,7 +108,7 @@ const STEP_NAMES_EN = [
   'AI generates images, saved locally',
   'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
-// Auto-reply: 3 steps now. Step 2 contains the entire per-article loop
+// XHS Auto-reply: 3 steps. Step 2 contains the entire per-article loop
 // (read → AI → post → next), step 3 saves the run report to disk.
 const STEP_NAMES_AUTOREPLY_ZH = [
   '搜索关键词 + 应用筛选条件 (最多评论 / 一周内 / 不限文章类型) + 采集候选 URL',
@@ -119,6 +119,40 @@ const STEP_NAMES_AUTOREPLY_EN = [
   'Search + apply filters (most-commented / last week / any type) + collect candidate URLs',
   'Per-article loop: enter article → read title/body/top-3 comments → AI → post note + replies (with jitter) → next',
   'Save Markdown report (titles, links, posted note + replies) to the local task folder',
+];
+// Twitter x_auto_engage: 3 steps. Different mechanics from XHS auto_reply
+// (KOL pool + follow + feed engage rather than article search/reply).
+const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
+  '从后端拉 KOL 池 + 决定今日动作清单（关注 / 评论已关注 / 评论 feed 随机分布）',
+  '逐个执行动作：访问 profile → 关注 / 读最新推 → AI 起草回复 → 发推。动作间 3-10 分钟随机间隔',
+  '生成 Markdown 报告（含每个动作的目标 KOL / 推文 / 我发的回复）保存到本地任务目录',
+];
+const STEP_NAMES_X_AUTO_ENGAGE_EN = [
+  'Pull KOL pool from backend + plan today\'s actions (follow / reply followed / reply feed mix)',
+  'Execute actions one by one: visit profile → follow / read latest → AI drafts reply → post. 3-10 min random jitter between actions',
+  'Save Markdown report (each action\'s target KOL / tweet / posted reply) to the local task folder',
+];
+// Twitter x_post_creator: 3 steps. Daily 1 tweet via random mechanism.
+const STEP_NAMES_X_POST_CREATOR_ZH = [
+  '随机抽机制（30% 仿写 / 30% 原创 / 40% 引用回应）+ 准备素材（仿写/引用：扫 feed；原创：用 topic_context）',
+  'AI 生成推文 + 发布到推特',
+  '生成 Markdown 报告保存到本地',
+];
+const STEP_NAMES_X_POST_CREATOR_EN = [
+  'Pick mechanism (30% rewrite / 30% original / 40% quote) + prepare material (rewrite/quote: scroll feed; original: use topic_context)',
+  'AI generates tweet + post to X',
+  'Save Markdown report to local task folder',
+];
+// Twitter x_link_rewrite: 3 steps.
+const STEP_NAMES_X_LINK_REWRITE_ZH = [
+  '逐条访问推文 URL → 读取原推 → AI 解构钩子 + 结构',
+  'AI 用同样钩子 + 你的素材池仿写新推 → 逐条发布（间隔 10-30 分钟）',
+  '生成 Markdown 报告保存到本地',
+];
+const STEP_NAMES_X_LINK_REWRITE_EN = [
+  'Visit each tweet URL → read original → AI deconstructs hook + structure',
+  'AI rewrites in your voice + posts each (10-30 min spacing)',
+  'Save Markdown report to local task folder',
 ];
 
 interface Props {
@@ -144,9 +178,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isXTask = scenario?.platform === 'x';
   const platformLabelForTask = isXTask ? 'Twitter' : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
-  const STEP_NAMES = isAutoReplyTask
-    ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
-    : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
+  // Pick step names by scenario id first (Twitter has 3 distinct flavors),
+  // then fall back to the legacy isAutoReply branch for XHS.
+  const STEP_NAMES = (() => {
+    const sid = scenario?.id;
+    if (sid === 'x_auto_engage') return isZh ? STEP_NAMES_X_AUTO_ENGAGE_ZH : STEP_NAMES_X_AUTO_ENGAGE_EN;
+    if (sid === 'x_post_creator') return isZh ? STEP_NAMES_X_POST_CREATOR_ZH : STEP_NAMES_X_POST_CREATOR_EN;
+    if (sid === 'x_link_rewrite') return isZh ? STEP_NAMES_X_LINK_REWRITE_ZH : STEP_NAMES_X_LINK_REWRITE_EN;
+    return isAutoReplyTask
+      ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
+      : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
+  })();
   // ── Core state ──
   const [running, setRunning] = useState(false);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
@@ -215,8 +257,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 err.includes('scenario_pack') ? '场景包未找到' :
                 err.includes('anomaly:captcha') ? '遇到验证码，请手动处理后重试' :
                 err.includes('anomaly:rate_limited') ? '操作过于频繁，请稍后再试' :
-                err.includes('anomaly:login_wall') ? '需要重新登录小红书' :
-                err.includes('anomaly:account_flag') ? '账号异常，请检查小红书账号状态' :
+                err.includes('anomaly:login_wall') ? `需要重新登录 ${platformLabelForTask}` :
+                err.includes('anomaly:account_flag') ? `账号异常，请检查 ${platformLabelForTask} 账号状态` :
                 err || '未知错误'
               }`);
             }
@@ -341,7 +383,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <span className="text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
                     <span className="dark:text-white font-medium">
                       {isLinkMode
-                        ? (isZh ? '🔗 指定链接 · 小红书爆款仿写' : '🔗 Pick-your-links · XHS rewrite')
+                        ? (isXTask
+                            ? (isZh ? '🔗 指定推文 · Twitter 仿写' : '🔗 Pick-your-tweets · X rewrite')
+                            : (isZh ? '🔗 指定链接 · 小红书爆款仿写' : '🔗 Pick-your-links · XHS rewrite'))
                         : trackName}
                     </span>
                     <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
