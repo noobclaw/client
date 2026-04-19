@@ -785,16 +785,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </label>
                     <div className="flex items-center gap-3">
                       <input
-                        type="range" min={1} max={10} value={dailyCount}
+                        type="range" min={1} max={8} value={Math.min(8, dailyCount)}
                         onChange={e => setDailyCount(parseInt(e.target.value, 10))}
                         className="flex-1"
                       />
-                      <div className="w-12 text-center font-semibold text-sky-500">{dailyCount}</div>
+                      <div className="w-12 text-center font-semibold text-sky-500">{Math.min(8, dailyCount)}</div>
                     </div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
-                        ? '1-10 条 / 天。每条独立随机决定是回复已关注 KOL 还是 feed 推。'
-                        : '1-10 per day. Each reply independently chooses between followed-KOL or feed.'}
+                        ? '1-8 条 / 天。每条独立随机决定是回复已关注 KOL 还是 feed 推。'
+                        : '1-8 per day. Each reply independently chooses between followed-KOL or feed.'}
                     </div>
                   </div>
                   <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
