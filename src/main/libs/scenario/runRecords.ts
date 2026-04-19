@@ -116,9 +116,36 @@ function persist(): void {
   }
 }
 
-/** Initialize on app boot. Safe to call multiple times. */
+let _initOnce = false;
+/** Initialize on app boot. Safe to call multiple times — only the first
+ *  call performs the stale-running sweep.
+ *
+ *  STALE-RUNNING SWEEP (one-time on first init):
+ *  At app startup, nothing is actually running yet (tasks live in process
+ *  memory, not on disk). So ANY record still flagged "running" must be
+ *  from a previous app session that didn't get a chance to finalize —
+ *  app crash, app force-quit, OS kill, power loss. Mark them all as
+ *  "stopped" with reason "app_restart_or_crash" so they don't show as
+ *  ghost "running" rows in the History page forever.
+ *
+ *  Only sweep on the FIRST init call (not on subsequent re-inits during
+ *  the same app session) — otherwise actively-running records would get
+ *  wiped mid-run. */
 export function initRunRecords(userDataPath: string): void {
   load(userDataPath);
+  if (_initOnce) return;
+  _initOnce = true;
+  const now = Date.now();
+  let touched = false;
+  for (const rec of _records) {
+    if (rec.status === 'running') {
+      rec.status = 'stopped';
+      rec.error = 'app_restart_or_crash';
+      rec.finished_at = now;
+      touched = true;
+    }
+  }
+  if (touched) persist();
 }
 
 /**

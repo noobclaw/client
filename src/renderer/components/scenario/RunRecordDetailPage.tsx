@@ -162,18 +162,22 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       </div>
 
       {/* Header badges */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
           {sc.platform === 'x' ? '🐦' : '📕'} {platform}
         </span>
         <span className="text-base">{sc.icon || '🤖'}</span>
         <span className="font-bold text-base dark:text-white">{taskName}</span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
-          #{rec.task_id.slice(0, 8)}
-        </span>
         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${statusPill.color}`}>
           {statusPill.icon} {statusPill.label}
         </span>
+      </div>
+      {/* IDs row — both task id and this record's id, in mono font, so
+          users can copy/paste them to disambiguate runs in support chat. */}
+      <div className="flex items-center gap-3 mb-3 text-[11px] text-gray-500 dark:text-gray-500 font-mono">
+        <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
+        <span>·</span>
+        <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
       </div>
 
       {/* Stats */}

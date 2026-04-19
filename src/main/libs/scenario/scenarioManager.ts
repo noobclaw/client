@@ -183,7 +183,9 @@ function startTaskRecord(task: ScenarioTask, scenario: any): void {
     const runRecords = require('./runRecords');
     const { getTaskOutputDir } = require('./artifactWriter');
     let outputDir: string | undefined;
-    try { outputDir = getTaskOutputDir(task); } catch { /* ignore */ }
+    // Pass platform so Twitter tasks land in 推特/, not 小红书/.
+    const platform = scenario?.platform || 'xhs';
+    try { outputDir = getTaskOutputDir(task, platform); } catch { /* ignore */ }
     const recordId = runRecords.startRecord({
       task,
       scenario: scenario ? {

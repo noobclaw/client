@@ -203,9 +203,10 @@ export interface ArtifactWriteResult {
 
 export async function writeTaskArtifacts(
   task: ScenarioTask,
-  drafts: Draft[]
+  drafts: Draft[],
+  platform?: string,
 ): Promise<ArtifactWriteResult> {
-  const batchDir = getTaskOutputDir(task);
+  const batchDir = getTaskOutputDir(task, platform);
   const originalsDir = path.join(batchDir, '原文');
   const rewritesDir = path.join(batchDir, '改写');
   const files: string[] = [];

@@ -89,11 +89,15 @@ export const RunHistoryPage: React.FC<Props> = ({
         task_id: filterByTaskId || undefined,
       });
       if (cancelled) return;
-      setRecords(recs as RunRecord[]);
+      // History page shows ONLY completed records — per user request:
+      // "历史记录中不放进行中的，只放有结果的". Live "running" tasks are
+      // already visible (with the green pulse glow) on the My Tasks page.
+      const finished = (recs as RunRecord[]).filter(r => r.status !== 'running');
+      setRecords(finished);
       setLoading(false);
     };
     void tick();
-    // Refresh every 5s — running records will tick their step logs
+    // Refresh every 5s — picks up new finished records as tasks complete.
     const h = setInterval(tick, 5000);
     return () => { cancelled = true; clearInterval(h); };
   }, [platformId, filterByTaskId]);
@@ -185,14 +189,18 @@ export const RunHistoryPage: React.FC<Props> = ({
                       </span>
                       <span className="text-base shrink-0">{sc.icon || '🤖'}</span>
                       <span className="font-medium dark:text-white truncate">{taskName}</span>
-                      <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-                        #{rec.task_id.slice(0, 8)}
-                      </span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
                     </div>
+                  </div>
+                  {/* IDs row — both task id and record id so users can
+                      tell separate runs of the same task apart. */}
+                  <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+                    <span>{isZh ? '任务id:' : 'task:'} #{rec.task_id.slice(0, 8)}</span>
+                    <span>·</span>
+                    <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
                   </div>
                   {/* Result summary + error reason */}
                   {(rec.error || rec.result) && (

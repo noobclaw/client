@@ -417,7 +417,12 @@ function buildContext(
     // orchestrator can log it.
     writeReport: async (filename: string, content: string) => {
       try {
-        const dir = getTaskOutputDir(task);
+        // Resolve platform from the manifest so Twitter tasks' outputs
+        // land in "推特/<task>/..." not "小红书/<task>/...". Before the
+        // v2.4.23 fix, getTaskOutputDir defaulted to 'xhs' which put
+        // every Twitter report under the XHS folder.
+        const platform = (manifest as any).platform || 'xhs';
+        const dir = getTaskOutputDir(task, platform);
         try { fs.mkdirSync(dir, { recursive: true }); } catch {}
         // sanitize: strip path separators, keep CJK + alnum + safe punctuation
         const safeName = String(filename || 'report.md').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
@@ -446,7 +451,8 @@ function buildContext(
       taskStore.addDrafts(drafts);
       allDrafts.push(...drafts);
       try {
-        const result = await writeTaskArtifacts(task, drafts);
+        const platform = (manifest as any).platform || 'xhs';
+        const result = await writeTaskArtifacts(task, drafts, platform);
         return { dir: result.dir, files: result.files };
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', 'artifact save failed', { err: String(err) });
