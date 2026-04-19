@@ -342,9 +342,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const [variants, setVariants] = useState(initialTask?.variants_per_post ?? defaults.variants_per_post);
   // Auto-reply defaults to daily_random (no fixed hour) for risk-control;
   // other scenarios keep the legacy "daily" (fixed HH:MM) default.
-  const isAutoReplyDefault = (scenario.workflow_type as any) === 'auto_reply';
+  // Unified default: ALL scenarios default to daily_random — XHS comments,
+  // XHS rewrites, and Twitter all benefit from a randomized fire time
+  // (anti risk-control). Users who want a fixed daily HH:MM can still
+  // pick `daily` for posting/rewriting scenarios from the interval list
+  // below — it's not exposed for reply scenarios at all.
   const [runInterval, setRunInterval] = useState<string>(
-    (initialTask as any)?.run_interval || (isAutoReplyDefault ? 'daily_random' : 'daily')
+    (initialTask as any)?.run_interval || 'daily_random'
   );
   const [dailyTime, setDailyTime] = useState<string>(() => {
     if (initialTask?.daily_time) return initialTask.daily_time;
@@ -733,10 +737,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
                 </label>
                 <div className="flex gap-2 flex-wrap">
-                  {((isAutoReply || isXPlatform)
-                    // ⚠️ Risk-control: comment / Twitter scenarios must NOT pin
-                    // to a fixed wall-clock hour. So only loose intervals + the
-                    // random-time daily option are exposed.
+                  {/* Reply scenarios (XHS auto_reply + x_auto_engage which is also
+                      workflow_type=auto_reply) keep a TRIMMED list — no fixed
+                      daily HH:MM allowed (risk-control: comment tasks at the
+                      same wall-clock hour every day get flagged as bots). They
+                      get [once, 3h, 6h, daily_random] only.
+
+                      Posting / rewriting scenarios (XHS viral_production,
+                      x_post_creator, x_link_rewrite) get the FULL list including
+                      BOTH `daily` (fixed HH:MM) and `daily_random`. Default for
+                      both groups is daily_random — user opts INTO fixed time. */}
+                  {(isAutoReply
                     ? [
                         { value: 'once', label: isZh ? '不重复（手动触发）' : 'Once (manual only)' },
                         { value: '3h', label: isZh ? '每 3 小时' : 'Every 3h' },
@@ -747,8 +758,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         { value: 'once', label: isZh ? '不重复' : 'Once' },
                         { value: '30min', label: isZh ? '每 30 分钟' : 'Every 30min' },
                         { value: '1h', label: isZh ? '每小时' : 'Hourly' },
+                        { value: '3h', label: isZh ? '每 3 小时' : 'Every 3h' },
                         { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
-                        { value: 'daily', label: isZh ? '每天' : 'Daily' },
+                        { value: 'daily', label: isZh ? '每天（固定时间）' : 'Daily (fixed time)' },
+                        { value: 'daily_random', label: isZh ? '每日随机时间' : 'Daily (random time)' },
                       ]
                   ).map(opt => (
                     <button
@@ -770,6 +783,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh
                       ? '⚠️ 评论类任务为避免被风控判定为机器人，禁止固定每日时间，每天会在随机时间点触发一次（每次距离上次至少 24 小时）'
                       : '⚠️ Comment tasks must not run at the same hour daily — XHS flags that as bot behavior. Triggers once per day at a randomized time, with at least 24h between runs.'}
+                  </p>
+                )}
+                {!isAutoReply && runInterval === 'daily_random' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    {isZh
+                      ? '✨ 默认推荐 — 每天在随机时间点触发一次（每次距离上次至少 24 小时），比固定钟点更像真人'
+                      : '✨ Default recommended — triggers once per day at a randomized time (≥24h between runs), more human-like than fixed hour'}
                   </p>
                 )}
                 {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h)
@@ -1045,6 +1065,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isXPostCreator ? (
                     <>
                       <li>{isZh ? '· 每日 1 条推文，3 种机制（仿写 30% / 原创 30% / 引用 40%）随机选' : '· 1 tweet/day, mechanism randomized (30% rewrite / 30% original / 40% quote)'}</li>
+                      <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
                       <li>{isZh ? '· 在「真实素材池」里写得越具体，AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查' : '· Tweets cannot be unposted — review AI output after first run'}</li>
@@ -1053,7 +1074,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isLinkRewriteScenario ? (
                     <>
                       <li>{isZh ? '· 一次性手动任务，逐条仿写 + 发布，间隔 10-30 分钟' : '· One-shot manual task. Rewrites + posts each URL with 10-30 min spacing'}</li>
-                      <li>{isZh ? '· AI 解构原推钩子和结构，用你的素材池仿写新推（不抄袭）' : '· AI deconstructs hook + structure, rewrites in your voice (no copying)'}</li>
+                      <li>{isZh ? '· AI 解构原推钩子和结构，仿原推语言和风格写新推（不抄袭）' : '· AI deconstructs hook + structure, rewrites following source language & style (no copying)'}</li>
+                      <li>{isZh ? '· 🎲 每条仿写推文随机决定是否带配图（约 30% 概率），AI 自动生成并上传' : '· 🎲 Each rewritten tweet randomly gets an AI image attached (~30% chance)'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议先用 1-2 条试运行' : '· Tweets cannot be unposted — start with 1-2 URLs to test'}</li>
                       <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
                     </>
