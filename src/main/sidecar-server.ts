@@ -1565,13 +1565,23 @@ const server = http.createServer(async (req, res) => {
             // progress (needed when 2 tasks run concurrently on different
             // platforms, otherwise the wrong task's progress could leak into
             // the renderer's polling result).
-            const taskId = body?.taskId || undefined;
+            // ⚠️ HISTORICAL BUG (fixed in v2.4.19+): used to read body?.taskId
+            // directly, but the actual envelope is { channel, args } where
+            // args = [{ taskId }] (set by ipcInvoke in tauriShim). So body
+            // .taskId was ALWAYS undefined → the fallback "any running task's
+            // progress" was returned instead → wrong progress leaked into
+            // the wrong detail page. Read from args[0].taskId now.
+            const taskId = args?.[0]?.taskId || undefined;
             return writeJSON(res, 200, scenarioManager.getRunProgress(taskId));
           }
           case 'scenario:requestAbort': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
-            // Per-task abort — stop button on Task A no longer also kills B.
-            const taskId = body?.taskId || undefined;
+            // ⚠️ HISTORICAL BUG (fixed in v2.4.19+): same as above — read
+            // body?.taskId returned undefined, so requestAbort fell into
+            // the back-compat "abort ALL running tasks" branch. THAT'S why
+            // hitting Stop on one task killed both. The right field is
+            // args[0].taskId.
+            const taskId = args?.[0]?.taskId || undefined;
             scenarioManager.requestAbort(taskId);
             return writeJSON(res, 200, { ok: true });
           }
