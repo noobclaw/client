@@ -701,9 +701,40 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       });
     });
 
+    // ⚠️ DO NOT silently fall back to a random port on EADDRINUSE — that
+    // was the root cause of the "extension says connected but client says
+    // disconnected" bug. The chrome-extension's native messaging host has
+    // ELECTRON_PORT = 12581 hard-coded; if we bind a random port instead,
+    // the host happily connects to whatever stale process IS holding 12581
+    // (zombie NoobClaw, stale Electron, anything), the extension popup
+    // shows green "Connected", but our actual bridge has zero conns.
+    //
+    // Instead: retry binding TCP_PORT a few times (handles a graceful
+    // shutdown of a previous instance still in cleanup), then give up and
+    // log loudly. UI's bridge-status indicator stays "disconnected" so the
+    // user knows something's wrong and can investigate / kill the stale
+    // process / restart.
+    let retriesLeft = 5;
+    const tryListen = () => {
+      server.listen(TCP_PORT, '127.0.0.1');
+    };
+
     server.on('error', (err: any) => {
       if (err.code === 'EADDRINUSE') {
-        server.listen(0, '127.0.0.1');
+        if (retriesLeft > 0) {
+          retriesLeft--;
+          console.warn(`[BrowserBridge] Port ${TCP_PORT} busy (likely a previous NoobClaw instance still cleaning up), retrying in 1s — ${retriesLeft} attempts left`);
+          setTimeout(tryListen, 1000);
+        } else {
+          console.error(`[BrowserBridge] FATAL: port ${TCP_PORT} is held by another process. ` +
+            `The chrome extension hard-codes this port, so the client cannot route ` +
+            `commands until the holder is freed. ` +
+            `Diagnose with:\n` +
+            `  macOS/Linux: lsof -i :${TCP_PORT}\n` +
+            `  Windows:     netstat -ano | findstr :${TCP_PORT}`);
+          notifyBridgeStatus(false);
+          reject(new Error(`EADDRINUSE: port ${TCP_PORT} held by another process; please close stale NoobClaw / kill the holder PID`));
+        }
       } else {
         reject(err);
       }
@@ -717,7 +748,7 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       resolve({ port: bridgePort });
     });
 
-    server.listen(TCP_PORT, '127.0.0.1');
+    tryListen();
   });
 }
 
