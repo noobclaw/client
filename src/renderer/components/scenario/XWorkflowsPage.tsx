@@ -393,7 +393,7 @@ type ScenarioCardProps = {
 
 const ScenarioCard: React.FC<ScenarioCardProps> = ({
   color, emoji, badge, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
-  loading, scenario, existingTasks, runningTaskIds, onOpenTask, onConfigure,
+  loading, scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask, onConfigure,
   isZh,
 }) => {
   const palette: Record<typeof color, { border: string; bg: string; text: string; btn: string; shadow: string }> = {
@@ -421,7 +421,9 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
   };
   const c = palette[color];
   const firstTask = existingTasks[0];
-  const isRunning = firstTask ? runningTaskIds.has(firstTask.id) : false;
+  // (Per-card running indicator removed in v2.4.21 — these cards are TEMPLATES
+  //  for creating tasks. Live status of actual running tasks lives on the
+  //  "我的任务" page, where the green pulse glow makes it impossible to miss.)
 
   return (
     <div className={`relative rounded-2xl border ${c.border} bg-gradient-to-br ${c.bg} to-transparent p-5 overflow-hidden flex flex-col`}>
@@ -438,25 +440,16 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
           {isZh ? descZh : descEn}
         </p>
 
-        {/* Existing task running indicator (only when active) — drop the
-            "每日随机时间" pill per user feedback. The card already shows the
-            scenario summary, the schedule isn't useful here. */}
-        {firstTask && isRunning && (
-          <div className="text-left rounded-lg border border-green-500/50 bg-green-500/5 p-2 mb-2 text-[11px]">
-            <span className="inline-flex items-center gap-1 text-green-600">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              {isZh ? '运行中' : 'Running'}
-            </span>
-          </div>
-        )}
-        {/* Allow click to open task details */}
+        {/* Convenience link: if user already created a task for this
+            scenario, let them jump straight to it. No live status here —
+            cards are templates, status lives on "我的任务" page. */}
         {firstTask && (
           <button
             type="button"
             onClick={() => onOpenTask(firstTask.id)}
             className="text-left text-[11px] text-gray-500 dark:text-gray-400 underline-offset-2 hover:underline mb-2 self-start"
           >
-            {isZh ? '查看任务详情 →' : 'View task details →'}
+            {isZh ? '查看已配置的任务 →' : 'View configured task →'}
           </button>
         )}
 

@@ -1018,9 +1018,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Auto-upload toggle — XHS viral_production only. Twitter posts
-                  directly (no draft box concept). Hide on X. */}
-              {!isAutoReply && !isXPlatform && (
+              {/* Auto-upload toggle — exposed for:
+                  · XHS viral_production (post to draft box vs save local)
+                  · x_post_creator   (post to Twitter vs save local)
+                  Hidden for reply scenarios (replies always post live —
+                  no "save draft" concept) and x_link_rewrite (its own
+                  modal in XWorkflowsPage already has this toggle). */}
+              {!isAutoReply && (!isXPlatform || isXPostCreator) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '生成后的处理' : 'After generation'}
@@ -1036,10 +1040,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       />
                       <div className="flex-1 text-xs leading-relaxed">
                         <div className="font-semibold dark:text-white mb-0.5">
-                          {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+                          {isXPostCreator
+                            ? (isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter')
+                            : (isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts')}
                         </div>
                         <div className="text-gray-500 dark:text-gray-400">
-                          {isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.'}
+                          {isXPostCreator
+                            ? (isZh ? '全流程无人值守。⚠️ 推文一旦发布无法撤回。' : 'Fully unattended. ⚠️ Tweets cannot be unposted.')
+                            : (isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.')}
                         </div>
                       </div>
                     </label>
@@ -1056,7 +1064,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
                         </div>
                         <div className="text-gray-500 dark:text-gray-400">
-                          {isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.'}
+                          {isXPostCreator
+                            ? (isZh ? '生成的推文存盘，你人工审核挑选后再手动发布。封号风险最低。' : 'Generated tweets saved locally; you review and post manually.')
+                            : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
                         </div>
                       </div>
                     </label>

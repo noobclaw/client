@@ -161,9 +161,13 @@ interface Props {
   onBack: () => void;
   onEdit: () => void;
   onChanged: () => void | Promise<void>;
+  /** Navigate to the Run History page filtered to this task's id.
+   *  Wired up by ScenarioView. Optional so the renderer can no-op if
+   *  history isn't available in the current view context. */
+  onOpenHistory?: () => void;
 }
 
-export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged }) => {
+export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit, onChanged, onOpenHistory }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   // 链接模式是一次性手动运行，没有"下次运行"的概念
   const isLinkModeForStats = task.track === 'link_mode'
@@ -389,12 +393,46 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const trackName = TRACK_NAMES[task.track] || task.track || task.scenario_id;
 
   // ── Render ──
+
+  // Reuse the same badge palette as MyTasksPage / XWorkflowsPage so the
+  // task detail page visually matches what the user clicked from the list.
+  const platformBadge = (() => {
+    if (scenario?.platform === 'x') return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
+    if (scenario?.platform === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'XHS' };
+    return { icon: '🤖', label: scenario?.platform || '' };
+  })();
+  const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+  const typeBadge = (() => {
+    const sid = task.scenario_id;
+    if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '自动互动' : 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '每日发推' : 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (isLinkModeForBadge && !isXTask) return { icon: '🔗', label: isZh ? '指定链接改写' : 'Pick-your-links', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', label: isZh ? '自动回复' : 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    return { icon: '🔥', label: isZh ? '批量爆款改写' : 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+  })();
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <button type="button" onClick={onBack}
         className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
         ← {isZh ? '返回' : 'Back'}
       </button>
+
+      {/* Header: badges so the task detail page identifies itself the same
+          way it appeared in the list — at a glance "this is the推特/自动互动
+          task you clicked on". */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
+        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
+          {platformBadge.icon} {platformBadge.label}
+        </span>
+        <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${typeBadge.color}`}>
+          {typeBadge.icon} {typeBadge.label}
+        </span>
+        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+          #{task.id.slice(0, 8)}
+        </span>
+      </div>
 
       {/* Config + actions */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
@@ -545,7 +583,16 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         <StatCard label={isZh ? '累计采集' : 'Collected'} value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
         <StatCard label={isZh ? '生成草稿' : 'Drafts'} value={stats?.draft_count ?? 0} />
         <StatCard label={isZh ? '已推送' : 'Pushed'} value={stats?.pushed_draft_count ?? 0} />
-        <StatCard label={isZh ? '上次运行' : 'Last Run'} value={formatRelative(stats?.last_run_at || null, isZh)} small />
+        <StatCard
+          label={isZh ? '上次运行' : 'Last Run'}
+          value={formatRelative(stats?.last_run_at || null, isZh)}
+          small
+          // Click on the "上次运行" stat → jump to Run History filtered
+          // to THIS task. Lets users review every previous run without
+          // hunting through the global history page.
+          onClick={onOpenHistory}
+          actionLabel={isZh ? '查看历史运行记录 →' : 'View run history →'}
+        />
         {!isLinkModeForStats && (
           <StatCard label={isZh ? '下次运行' : 'Next Run'} value={(() => {
             if (!task.active) return isZh ? '待命' : 'Standby';
@@ -573,7 +620,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         }`}>{toast.text}</div>
       )}
 
-      {/* 运行明细 */}
+      {/* 当前运行明细 — labeled "current" because it shows ONLY this run's
+          live step logs. Historical runs live on the dedicated Run History
+          page (linked above via the "📊 查看历史运行记录" button). */}
       {(() => {
         const autoUploadMode = (task as any).auto_upload !== false;
         // Auto-reply mode has no draft/upload concept — skip the badge.
@@ -581,7 +630,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         return (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
-              <h2 className="text-base font-bold dark:text-white">{isZh ? '运行明细' : 'Run Details'}</h2>
+              <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
               {showUploadBadge ? (
                 <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
                   {autoUploadMode
@@ -719,11 +768,33 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   );
 };
 
-const StatCard: React.FC<{ label: string; value: string | number; small?: boolean }> = ({ label, value, small }) => (
-  <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3">
-    <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
-    <div className={`font-bold dark:text-white ${small ? 'text-sm' : 'text-2xl'}`}>{value}</div>
-  </div>
-);
+const StatCard: React.FC<{
+  label: string;
+  value: string | number;
+  small?: boolean;
+  /** Optional click handler — turns the whole card into a button. Used
+   *  for "上次运行" → opens the run history page filtered to this task. */
+  onClick?: () => void;
+  /** Tiny CTA shown at the bottom-right of the card when onClick is set,
+   *  e.g. "查看历史运行记录 →". Helps the user know the card is clickable. */
+  actionLabel?: string;
+}> = ({ label, value, small, onClick, actionLabel }) => {
+  const Tag = onClick ? 'button' : 'div';
+  return (
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`text-left w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 ${
+        onClick ? 'hover:border-green-500/50 transition-colors cursor-pointer' : ''
+      }`}
+    >
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
+      <div className={`font-bold dark:text-white ${small ? 'text-sm' : 'text-2xl'}`}>{value}</div>
+      {onClick && actionLabel && (
+        <div className="text-[10px] text-green-500 dark:text-green-400 mt-1 truncate">{actionLabel}</div>
+      )}
+    </Tag>
+  );
+};
 
 export default TaskDetailPage;

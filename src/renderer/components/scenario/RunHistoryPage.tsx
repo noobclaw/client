@@ -35,6 +35,14 @@ interface Props {
   scenarios: Scenario[];
   platformLabel: string;
   onOpenTask: (task_id: string) => void;
+  /** Optional: when present, filters runs to ONLY this task. The page is
+   *  then opened from the task's detail page ("查看历史运行记录"
+   *  button). Header copy adapts to mention "this task" so the user
+   *  knows they're in a filtered view. */
+  filterByTaskId?: string | null;
+  /** Called when user clicks "返回任务详情" on the filtered header.
+   *  Only meaningful when filterByTaskId is set. */
+  onClearFilter?: () => void;
 }
 
 function formatDuration(ms: number, isZh: boolean): string {
@@ -57,7 +65,7 @@ function formatTime(ts: number, isZh: boolean): string {
   });
 }
 
-export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabel, onOpenTask }) => {
+export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabel, onOpenTask, filterByTaskId, onClearFilter }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [allRuns, setAllRuns] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,8 +93,14 @@ export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabe
   const platformTaskIds = useMemo(() => new Set(tasks.map(t => t.id)), [tasks]);
 
   const platformRuns = useMemo(() => {
-    return allRuns.filter(r => platformTaskIds.has(r.task_id));
-  }, [allRuns, platformTaskIds]);
+    let filtered = allRuns.filter(r => platformTaskIds.has(r.task_id));
+    if (filterByTaskId) {
+      filtered = filtered.filter(r => r.task_id === filterByTaskId);
+    }
+    return filtered;
+  }, [allRuns, platformTaskIds, filterByTaskId]);
+
+  const filteredTask = filterByTaskId ? taskById.get(filterByTaskId) : null;
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -94,13 +108,28 @@ export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabe
         <div className="flex items-center justify-between mb-4">
           <div>
             <h2 className="text-lg font-bold dark:text-white">
-              📊 {isZh ? `${platformLabel}运行记录` : `${platformLabel} Run History`}
+              📊 {filterByTaskId
+                ? (isZh ? `任务 #${filterByTaskId.slice(0, 8)} 的运行记录` : `Run History · #${filterByTaskId.slice(0, 8)}`)
+                : (isZh ? `${platformLabel}运行记录` : `${platformLabel} Run History`)}
             </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {isZh
-                ? `共 ${platformRuns.length} 条记录，最新在上`
-                : `${platformRuns.length} run(s), newest first`}
-            </p>
+            {filterByTaskId && onClearFilter && (
+              <button
+                type="button"
+                onClick={onClearFilter}
+                className="mt-1 text-xs text-blue-500 hover:underline"
+              >
+                ← {isZh ? '查看所有' : 'Show all'}{platformLabel} {isZh ? '运行记录' : 'runs'}
+              </button>
+            )}
+            {filteredTask && (() => {
+              const sc = scenarioById.get(filteredTask.scenario_id);
+              const dispName = (isZh ? sc?.name_zh : sc?.name_en) || filteredTask.scenario_id;
+              return (
+                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  {isZh ? '任务: ' : 'Task: '}{dispName}
+                </div>
+              );
+            })()}
           </div>
         </div>
 

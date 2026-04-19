@@ -99,16 +99,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
     <div className="p-6 max-w-6xl mx-auto">
       <section className="mb-6">
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold dark:text-white">
-              📋 {isZh ? `我的${platformLabel}任务` : `My ${platformLabel} Tasks`}
-            </h2>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              {isZh
-                ? `共 ${tasks.length} 个${platformLabel}任务${runningTaskIds.size > 0 ? `（${runningTaskIds.size} 个运行中）` : ''}，按创建时间排序，运行中置顶`
-                : `${tasks.length} ${platformLabel} task(s)${runningTaskIds.size > 0 ? `, ${runningTaskIds.size} running` : ''}; sorted by created date, running pinned to top`}
-            </p>
-          </div>
+          <h2 className="text-lg font-bold dark:text-white">
+            📋 {isZh ? `我的${platformLabel}任务` : `My ${platformLabel} Tasks`}
+          </h2>
         </div>
 
         {loading && tasks.length === 0 ? (

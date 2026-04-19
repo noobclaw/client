@@ -37,7 +37,7 @@ type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
 type SectionId = 'create' | 'tasks' | 'history';
 
 type ViewState =
-  | { kind: 'main'; section: SectionId; platform: PlatformId }
+  | { kind: 'main'; section: SectionId; platform: PlatformId; filterTaskId?: string | null }
   | { kind: 'task_detail'; task_id: string; from?: SectionId }
   | { kind: 'sensitive_check' };
 
@@ -184,6 +184,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   })();
 
   const setSection = (section: SectionId) => {
+    // Clear any task filter when manually switching sections via the L1 tabs.
     setView({ kind: 'main', section, platform: currentPlatform });
   };
 
@@ -193,6 +194,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
   const openTask = (task_id: string) => {
     setView({ kind: 'task_detail', task_id, from: currentSection });
+  };
+
+  /** Jump from a task's detail page to Run History filtered by that task. */
+  const openHistoryForTask = (task_id: string) => {
+    // Resolve platform from the task so the right L2 sub-tab is active.
+    const t = tasks.find(t => t.id === task_id);
+    const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
+    const p = (s?.platform === 'x' || s?.platform === 'xhs') ? s.platform : currentPlatform;
+    setView({ kind: 'main', section: 'history', platform: p, filterTaskId: task_id });
   };
 
   const openSensitiveCheck = () => {
@@ -299,6 +309,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onBack={goBack}
           onEdit={() => scenario && openWizardEdit(task, scenario)}
           onChanged={refreshAll}
+          onOpenHistory={() => openHistoryForTask(task.id)}
         />
       );
     }
@@ -320,12 +331,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     }
 
     if (currentSection === 'history') {
+      const filterTaskId = view.kind === 'main' ? view.filterTaskId || null : null;
       return (
         <RunHistoryPage
           tasks={tasksForPlatform}
           scenarios={scenarios}
           platformLabel={platformLabel}
           onOpenTask={openTask}
+          filterByTaskId={filterTaskId}
+          onClearFilter={() => setView({ kind: 'main', section: 'history', platform: currentPlatform })}
         />
       );
     }
@@ -422,9 +436,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         </div>
       )}
 
-      {/* L2 — platform sub-tabs (XHS / Twitter). Same hidden rule. */}
+      {/* L2 — platform sub-tabs (XHS / Twitter). Same hidden rule.
+          Larger + bolder text + visible inactive border so users can find
+          the toggles at a glance (previous version was too quiet). */}
       {view.kind === 'main' && (
-        <div className="flex items-center gap-1 px-4 pt-2 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
           {PLATFORM_TABS.map(tab => {
             const active = currentPlatform === tab.id;
             return (
@@ -432,13 +448,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setPlatform(tab.id)}
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap ${
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                   active
-                    ? 'bg-green-500/10 text-green-500 border border-green-500/30'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
+                    ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600'
                 }`}
               >
-                <span>{tab.icon}</span>
+                <span className="text-base">{tab.icon}</span>
                 <span>{i18nService.t(tab.labelKey)}</span>
                 {!tab.enabled && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
