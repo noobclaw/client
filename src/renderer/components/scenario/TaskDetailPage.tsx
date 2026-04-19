@@ -138,6 +138,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // local drafts (replies post directly), so the upload-mode badge and
   // the manual-upload step variant don't apply to them.
   const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
+  // Platform detection — used for badge / step copy on the task detail page.
+  // For Twitter scenarios (x_auto_engage / x_post_creator / x_link_rewrite)
+  // we can't reuse XHS-specific copy like "直接发布到小红书".
+  const isXTask = scenario?.platform === 'x';
+  const platformLabelForTask = isXTask ? 'Twitter' : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   const STEP_NAMES = isAutoReplyTask
     ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
@@ -508,7 +513,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </span>
               ) : (
                 <span className="text-xs px-2.5 py-1 rounded-full border bg-cyan-500/10 text-cyan-500 border-cyan-500/30">
-                  💬 {isZh ? '直接发布到小红书' : 'Posts directly to XHS'}
+                  {isXTask
+                    ? (isZh ? `🐦 直接发布到 ${platformLabelForTask}` : `🐦 Posts directly to ${platformLabelForTask}`)
+                    : (isZh ? `💬 直接发布到 ${platformLabelForTask}` : `💬 Posts directly to ${platformLabelForTask}`)}
                 </span>
               )}
             </div>

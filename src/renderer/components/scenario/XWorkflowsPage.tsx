@@ -165,10 +165,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(autoEngage)}
-          scheduleLabel={scheduleLabel}
           isZh={isZh}
-          ctaZh="配置自动互动"
-          ctaEn="Configure"
+          ctaZh="配置开始互动"
+          ctaEn="Configure & Start"
         />
         {/* 2. Post creator */}
         <ScenarioCard
@@ -185,10 +184,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(postCreator)}
-          scheduleLabel={scheduleLabel}
           isZh={isZh}
-          ctaZh="配置发推"
-          ctaEn="Configure"
+          ctaZh="配置开始发推"
+          ctaEn="Configure & Start"
         />
         {/* 3. Link rewrite */}
         <ScenarioCard
@@ -205,7 +203,6 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(linkRewrite)}
-          scheduleLabel={scheduleLabel}
           isZh={isZh}
           ctaZh="开始仿写"
           ctaEn="Start"
@@ -291,14 +288,13 @@ type ScenarioCardProps = {
   runningTaskIds: Set<string>;
   onOpenTask: (id: string) => void;
   onConfigure: () => void;
-  scheduleLabel: (t: Task) => string;
   isZh: boolean;
 };
 
 const ScenarioCard: React.FC<ScenarioCardProps> = ({
   color, emoji, badge, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
   loading, scenario, existingTasks, runningTaskIds, onOpenTask, onConfigure,
-  scheduleLabel, isZh,
+  isZh,
 }) => {
   const palette: Record<typeof color, { border: string; bg: string; text: string; btn: string; shadow: string }> = {
     emerald: {
@@ -342,28 +338,25 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
           {isZh ? descZh : descEn}
         </p>
 
-        {/* Existing task summary (if any) */}
+        {/* Existing task running indicator (only when active) — drop the
+            "每日随机时间" pill per user feedback. The card already shows the
+            scenario summary, the schedule isn't useful here. */}
+        {firstTask && isRunning && (
+          <div className="text-left rounded-lg border border-green-500/50 bg-green-500/5 p-2 mb-2 text-[11px]">
+            <span className="inline-flex items-center gap-1 text-green-600">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+              {isZh ? '运行中' : 'Running'}
+            </span>
+          </div>
+        )}
+        {/* Allow click to open task details */}
         {firstTask && (
           <button
             type="button"
             onClick={() => onOpenTask(firstTask.id)}
-            className={`text-left rounded-lg border p-2 mb-2 text-[11px] transition-colors ${
-              isRunning
-                ? 'border-green-500/50 bg-green-500/5'
-                : 'border-gray-200 dark:border-gray-700 bg-white/40 dark:bg-gray-800/40 hover:border-gray-300'
-            }`}
+            className="text-left text-[11px] text-gray-500 dark:text-gray-400 underline-offset-2 hover:underline mb-2 self-start"
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="dark:text-white truncate">
-                ⏰ {scheduleLabel(firstTask)}
-              </span>
-              {isRunning && (
-                <span className="inline-flex items-center gap-1 text-[10px] px-1 py-0.5 rounded bg-green-500/10 text-green-600 shrink-0">
-                  <span className="inline-block w-1 h-1 rounded-full bg-green-500 animate-pulse" />
-                  {isZh ? '运行中' : 'Running'}
-                </span>
-              )}
-            </div>
+            {isZh ? '查看任务详情 →' : 'View task details →'}
           </button>
         )}
 
@@ -373,7 +366,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
           disabled={loading || !scenario}
           className={`w-full px-4 py-2.5 text-sm font-bold rounded-xl ${c.btn} disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg ${c.shadow} transition-all active:scale-95`}
         >
-          {emoji} {firstTask ? (isZh ? '管理任务' : 'Manage') : (isZh ? ctaZh : ctaEn)} →
+          {emoji} {isZh ? ctaZh : ctaEn} →
         </button>
       </div>
     </div>

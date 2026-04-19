@@ -28,9 +28,13 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const isX = platform === 'x';
   // Platform-specific labels — single source of truth so all the strings
   // below stay consistent.
+  // Display label inside the modal copy. We use "Twitter (x.com)" inline in
+  // headers / instructions so users know what site we're targeting, but the
+  // submit button uses the shorter `platformShort` to avoid awkward wrapping.
   const platformLabel = isX
     ? (isZh ? 'Twitter (x.com)' : 'Twitter (x.com)')
     : (isZh ? '小红书' : 'Xiaohongshu');
+  const platformShort = isX ? 'Twitter' : (isZh ? '小红书' : 'Xiaohongshu');
   const platformUrl = isX ? 'https://x.com/home' : 'https://www.xiaohongshu.com';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
@@ -201,7 +205,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
           >
             {mode === 'create'
               ? (isZh ? '✅ 我已登录，下一步' : '✅ Logged in, Next')
-              : (isZh ? `✅ 我已登录 ${platformLabel}，开始` : `✅ Logged in to ${platformLabel}, Start`)}
+              : (isZh ? `✅ 我已登录 ${platformShort}，开始` : `✅ Logged in to ${platformShort}, Start`)}
           </button>
           <button type="button" onClick={onCancel}
             className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">

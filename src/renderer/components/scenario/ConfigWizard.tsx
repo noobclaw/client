@@ -773,20 +773,44 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Twitter daily-budget summary card (replaces XHS slider) */}
+              {/* Twitter daily reply count slider (1-10) for x_auto_engage.
+                  Drives task.daily_count which the orchestrator reads as
+                  TOTAL_REPLIES. Each reply slot independently picks
+                  reply_followed vs reply_feed. */}
               {isXAutoEngage && (
-                <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
-                  <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
-                    {isZh ? '🎲 每日动作配额（系统内部随机调度）' : '🎲 Daily action budget (auto-scheduled)'}
+                <>
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '每天评论数量' : 'Replies per day'}
+                    </label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="range" min={1} max={10} value={dailyCount}
+                        onChange={e => setDailyCount(parseInt(e.target.value, 10))}
+                        className="flex-1"
+                      />
+                      <div className="w-12 text-center font-semibold text-sky-500">{dailyCount}</div>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {isZh
+                        ? '1-10 条 / 天。每条独立随机决定是回复已关注 KOL 还是 feed 推。'
+                        : '1-10 per day. Each reply independently chooses between followed-KOL or feed.'}
+                    </div>
                   </div>
-                  <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                    <li>{isZh ? '· 关注 Web3 KOL：0-3 个 / 天（从 KOL 池随机抽未关注的）' : '· Follow web3 KOLs: 0-3/day (random unfollowed picks from KOL pool)'}</li>
-                    <li>{isZh ? '· 评论已关注 KOL 的最新推：0-1 条 / 天' : '· Reply to a followed KOL\'s latest tweet: 0-1/day'}</li>
-                    <li>{isZh ? '· 浏览推荐 feed 挑一条评论：0-1 条 / 天' : '· Scroll For You feed and reply to one: 0-1/day'}</li>
-                    <li>{isZh ? '· 三种动作随机顺序，每个动作之间 8-30 分钟随机间隔' : '· Three action types in random order, 8-30 min random spacing'}</li>
-                    <li>{isZh ? '· 同一 KOL 7 天内不重复 engage' : '· No re-engaging same KOL within 7 days'}</li>
-                  </ul>
-                </div>
+                  <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
+                    <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
+                      {isZh ? '🎲 每日动作配额' : '🎲 Daily action budget'}
+                    </div>
+                    <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
+                      <li>{isZh ? '· 关注 Web3 KOL：0-3 个 / 天（从 KOL 池随机抽未关注的）' : '· Follow web3 KOLs: 0-3/day (random unfollowed picks from KOL pool)'}</li>
+                      <li>{isZh
+                        ? `· 评论：${dailyCount} 条 / 天（已关注 KOL 最新推 + feed 推随机分配）`
+                        : `· Replies: ${dailyCount}/day (split between followed-KOL latest + feed)`}</li>
+                      <li>{isZh ? '· 所有动作随机顺序，每个动作之间 3-10 分钟随机间隔' : '· All actions in random order, 3-10 min random spacing'}</li>
+                      <li>{isZh ? '· 同一 KOL 7 天内不重复 engage' : '· No re-engaging same KOL within 7 days'}</li>
+                    </ul>
+                  </div>
+                </>
               )}
               {isXPostCreator && (
                 <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
@@ -870,8 +894,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
                   {isXAutoEngage ? (
                     <>
-                      <li>{isZh ? '· 每天 3 种动作随机执行：关注 0-3 个 Web3 KOL / 评论已关注 0-1 / 评论 feed 0-1' : '· 3 daily actions in random order: follow 0-3 KOLs / reply followed 0-1 / reply feed 0-1'}</li>
-                      <li>{isZh ? '· 动作之间间隔 8-30 分钟随机，模拟真人节奏' : '· 8-30 min random jitter between actions to mimic human pacing'}</li>
+                      <li>{isZh
+                        ? `· 每天: 关注 0-3 个 Web3 KOL + 评论 ${dailyCount} 条（已关注/feed 随机分配），随机顺序`
+                        : `· Daily: follow 0-3 web3 KOLs + ${dailyCount} replies (split followed/feed), randomized order`}</li>
+                      <li>{isZh ? '· 动作之间间隔 3-10 分钟随机，模拟真人节奏' : '· 3-10 min random jitter between actions to mimic human pacing'}</li>
                       <li>{isZh ? '· 同一 KOL 7 天内不重复 engage，避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone'}</li>
@@ -982,8 +1008,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       )[runInterval] || runInterval;
                       if (isXAutoEngage) {
                         return isZh
-                          ? `⏰ ${intervalLabel} · 关注 0-3 人 + 评论已关注 0-1 + 评论 feed 0-1（随机顺序，动作间隔 8-30 分钟）`
-                          : `⏰ ${intervalLabel} · follow 0-3 + reply followed 0-1 + reply feed 0-1 (random order, 8-30 min between)`;
+                          ? `⏰ ${intervalLabel} · 关注 0-3 人 + 评论 ${dailyCount} 条（随机顺序，动作间隔 3-10 分钟）`
+                          : `⏰ ${intervalLabel} · follow 0-3 + ${dailyCount} replies (random order, 3-10 min between)`;
                       }
                       if (isXPostCreator) {
                         return isZh
