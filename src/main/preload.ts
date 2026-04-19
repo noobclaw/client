@@ -80,6 +80,10 @@ contextBridge.exposeInMainWorld('electron', {
     getConnectedExtensions: () => ipcRenderer.invoke('scenario:getConnectedExtensions'),
     /** Aggregate runs across all tasks for the unified Run History page. */
     getAllRuns: () => ipcRenderer.invoke('scenario:getAllRuns'),
+    /** Rich run records (v2.4.22+) — full step logs + task snapshot. */
+    listRunRecords: (filter?: { task_id?: string; platform?: string }) =>
+      ipcRenderer.invoke('scenario:listRunRecords', filter),
+    getRunRecord: (id: string) => ipcRenderer.invoke('scenario:getRunRecord', id),
     getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
     checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),

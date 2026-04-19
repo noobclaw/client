@@ -88,6 +88,11 @@ export interface RunProgress {
 // that — every task has its own RunProgress + its own abort flag.
 const progressByTaskId: Map<string, RunProgress> = new Map();
 const abortByTaskId: Map<string, boolean> = new Map();
+// Per-task run record id (the row in scenario_run_records.json that we're
+// currently appending step logs to). Set by startTaskRecord() right after
+// initProgress(), read by stepLog/finishProgress to mirror updates into
+// the persistent record. Cleared on task end.
+const recordIdByTaskId: Map<string, string> = new Map();
 
 function now(): string {
   const d = new Date();
@@ -123,7 +128,18 @@ function stepLog(taskId: string, step: number, status: 'done' | 'running' | 'err
   // Always append — UI shows a live timeline of what's happening.
   // Keep max 30 entries to avoid memory bloat on long runs.
   if (logs.length >= 30) logs.shift();
-  logs.push({ time: now(), status, message });
+  const time = now();
+  logs.push({ time, status, message });
+  // Mirror into the persistent run record so historical viewing has the
+  // full step log timeline (the in-memory progress is capped at 30 lines
+  // and gets dropped 30s after task end; runRecords keeps everything).
+  const recordId = recordIdByTaskId.get(taskId);
+  if (recordId) {
+    try {
+      const runRecords = require('./runRecords');
+      runRecords.appendStepLog(recordId, { time, step, status, message });
+    } catch { /* non-fatal */ }
+  }
 }
 
 function stepDone(taskId: string, step: number): void {
@@ -144,6 +160,66 @@ function finishProgress(taskId: string, status: 'done' | 'error', error?: string
   if (!p) return;
   p.status = status;
   if (error) p.error = error;
+  // Mirror into the persistent run record. user_stopped → 'stopped' so
+  // the history page can distinguish "I cancelled it" from "it errored".
+  const recordId = recordIdByTaskId.get(taskId);
+  if (recordId) {
+    try {
+      const runRecords = require('./runRecords');
+      const recStatus = status === 'done'
+        ? 'done'
+        : (error === 'user_stopped' ? 'stopped' : 'error');
+      runRecords.finishRecord(recordId, { status: recStatus, error });
+    } catch { /* non-fatal */ }
+  }
+}
+
+/** Open a new run record entry for this task and remember its id so
+ *  later stepLog/finish calls can mirror into the persistent log.
+ *  Called from runTask AFTER initProgress + pack load. Idempotent —
+ *  safe to call when no scenario yet (just won't record). */
+function startTaskRecord(task: ScenarioTask, scenario: any): void {
+  try {
+    const runRecords = require('./runRecords');
+    const { getTaskOutputDir } = require('./artifactWriter');
+    let outputDir: string | undefined;
+    try { outputDir = getTaskOutputDir(task); } catch { /* ignore */ }
+    const recordId = runRecords.startRecord({
+      task,
+      scenario: scenario ? {
+        id: scenario.id,
+        platform: scenario.platform || '',
+        name_zh: scenario.name_zh,
+        name_en: scenario.name_en,
+        icon: scenario.icon,
+        workflow_type: scenario.workflow_type,
+      } : null,
+      output_dir: outputDir,
+    });
+    if (recordId) recordIdByTaskId.set(task.id, recordId);
+  } catch (e) {
+    coworkLog('WARN', 'scenarioManager', 'startTaskRecord failed', { err: String(e) });
+  }
+}
+
+/** Update the run record's result counts at task end (collected/draft etc.) */
+function updateTaskRecordResult(taskId: string, result: any): void {
+  const recordId = recordIdByTaskId.get(taskId);
+  if (!recordId) return;
+  try {
+    const runRecords = require('./runRecords');
+    runRecords.finishRecord(recordId, {
+      // Don't change status here — finishProgress already set it. We're
+      // just adding the result counts.
+      status: undefined as any,
+      result: {
+        collected_count: result.collected_count,
+        draft_count: result.draft_count,
+        posted: result.posted,
+        ...result,
+      },
+    });
+  } catch { /* non-fatal */ }
 }
 
 /**
@@ -291,6 +367,9 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
   }
   markResourceBusy(resource, task.id);
   initProgress(task.id);
+  // Manual single-draft upload also creates a run record so the user can
+  // review what was uploaded later from the history page.
+  startTaskRecord(task, pack.manifest);
 
   try {
     const script = pack.upload_draft_script;
@@ -364,10 +443,12 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       if (cur?.status === 'running') finishProgress(tid, 'error', result.reason || 'upload_failed');
     }
 
+    updateTaskRecordResult(task.id, result);
     return result;
   } finally {
     releaseResource(resource);
     abortByTaskId.delete(task.id);
+    recordIdByTaskId.delete(task.id);
     setTimeout(() => {
       progressByTaskId.delete(task.id);
     }, 30000);
@@ -391,12 +472,18 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   }
   markResourceBusy(resource, task.id);
   initProgress(task.id);
+  startTaskRecord(task, pack.manifest);
 
   try {
-    return await _runTaskInner(task, manual, pack);
+    const outcome = await _runTaskInner(task, manual, pack);
+    // Patch the run record with result counts now that we have them
+    // (status was already set by finishProgress mirror).
+    updateTaskRecordResult(task.id, outcome);
+    return outcome;
   } finally {
     releaseResource(resource);
     abortByTaskId.delete(task.id);
+    recordIdByTaskId.delete(task.id);
     // Keep progress around for 30s so UI can show final state
     setTimeout(() => {
       progressByTaskId.delete(task.id);

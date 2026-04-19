@@ -178,6 +178,27 @@ class ScenarioService {
     }
   }
 
+  /** Rich run records (v2.4.22+) — full task snapshot + step logs +
+   *  output dir. Replaces getAllRuns for the Run History UI. */
+  async listRunRecords(filter?: { task_id?: string; platform?: string }): Promise<Array<any>> {
+    try {
+      const r = await window.electron.scenario.listRunRecords(filter);
+      return Array.isArray(r?.records) ? r.records : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** Single record lookup, for the read-only detail page. */
+  async getRunRecord(id: string): Promise<any | null> {
+    try {
+      const r = await window.electron.scenario.getRunRecord(id);
+      return r?.record || null;
+    } catch {
+      return null;
+    }
+  }
+
   async getRunProgress(taskId?: string): Promise<ScenarioRunProgress | null> {
     try {
       return await window.electron.scenario.getRunProgress(taskId) || null;

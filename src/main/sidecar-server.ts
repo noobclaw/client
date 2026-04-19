@@ -1597,16 +1597,29 @@ const server = http.createServer(async (req, res) => {
             });
           }
           case 'scenario:getAllRuns': {
-            // All recorded runs across every task (newest-first). Used by
-            // the new "运行记录" page so users have a single timeline of
-            // everything the app has done, regardless of which task it
-            // belonged to.
+            // Legacy lightweight runs from riskGuard (counts only). Kept
+            // for back-compat with v2.4.20-2.4.21. New UI reads
+            // `scenario:listRunRecords` instead which has full snapshots.
             const scenarioRiskGuard = require('./libs/scenario/riskGuard');
             if (!scenarioRiskGuard._loaded) {
               scenarioRiskGuard.initRiskGuard(getUserDataPath());
               scenarioRiskGuard._loaded = true;
             }
             return writeJSON(res, 200, { runs: scenarioRiskGuard.getAllRuns() });
+          }
+          case 'scenario:listRunRecords': {
+            // Rich run records with full step logs + task snapshot.
+            // Optional filter: { task_id?, platform? } to narrow down.
+            const scenarioRunRecords = require('./libs/scenario/runRecords');
+            scenarioRunRecords.initRunRecords(getUserDataPath());
+            const filter = args?.[0] || undefined;
+            return writeJSON(res, 200, { records: scenarioRunRecords.listRecords(filter) });
+          }
+          case 'scenario:getRunRecord': {
+            const scenarioRunRecords = require('./libs/scenario/runRecords');
+            scenarioRunRecords.initRunRecords(getUserDataPath());
+            const recordId = args?.[0];
+            return writeJSON(res, 200, { record: scenarioRunRecords.getRecord(recordId) });
           }
           case 'scenario:pushDraft': {
             const scenarioTaskStore = require('./libs/scenario/taskStore');
@@ -1764,9 +1777,11 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
     const scenarioManager = require('./libs/scenario/scenarioManager');
     const scenarioTaskStore = require('./libs/scenario/taskStore');
     const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+    const scenarioRunRecords = require('./libs/scenario/runRecords');
     const { getUserDataPath } = require('./libs/platformAdapter');
     if (!scenarioTaskStore._loaded) { scenarioTaskStore.initTaskStore(getUserDataPath()); scenarioTaskStore._loaded = true; }
     if (!scenarioRiskGuard._loaded) { scenarioRiskGuard.initRiskGuard(getUserDataPath()); scenarioRiskGuard._loaded = true; }
+    scenarioRunRecords.initRunRecords(getUserDataPath());
     scenarioManager.startScheduler();
     coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');
   } catch (err) {

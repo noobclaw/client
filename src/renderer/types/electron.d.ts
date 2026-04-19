@@ -290,6 +290,22 @@ interface IElectronAPI {
         draft_count?: number;
       }>;
     }>;
+    listRunRecords: (filter?: { task_id?: string; platform?: string }) => Promise<{
+      records: Array<{
+        id: string;
+        task_id: string;
+        task_snapshot: any;
+        scenario_snapshot: { id: string; platform: string; name_zh?: string; name_en?: string; icon?: string; workflow_type?: string };
+        started_at: number;
+        finished_at?: number;
+        status: 'running' | 'done' | 'error' | 'stopped';
+        error?: string;
+        step_logs: Array<{ time: string; step: number; status: 'done' | 'running' | 'error'; message: string }>;
+        result?: { collected_count?: number; draft_count?: number; posted?: number; [k: string]: any };
+        output_dir?: string;
+      }>;
+    }>;
+    getRunRecord: (id: string) => Promise<{ record: any | null }>;
     getTaskDir: (id: string) => Promise<{ dir: string }>;
     getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;

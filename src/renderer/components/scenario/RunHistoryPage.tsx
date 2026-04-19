@@ -1,31 +1,33 @@
 /**
  * RunHistoryPage — unified timeline of every run across every task.
  *
- * Source: scenarioRiskGuard records each run start / success / failure /
- * skipped. We aggregate those across tasks and show them newest-first
- * with platform filter (XHS / Twitter sub-tabs).
+ * v2.4.22+ reads from the new `runRecords` persistent store (full task
+ * snapshot + step logs + output dir + result counts). Older lightweight
+ * "runs" from riskGuard are no longer surfaced — only runs that started
+ * with the new schema show up. (Per user request: 老的 if 没记录就算了.)
  *
- * Each row shows:
- *   - Started timestamp (relative + absolute)
- *   - Task display name (resolved from task list + scenario list)
- *   - Status pill (✅ 成功 / ❌ 失败 / ⏭️ 跳过 / ⏳ 运行中)
- *   - Duration (if finished)
- *   - Result summary (collected_count / draft_count for posting tasks)
- *   - Click → open the task's detail page
+ * Each row links to RunRecordDetailPage which is a READ-ONLY view of
+ * what happened in that single run. Records are immutable — no
+ * edit/run/delete buttons (those operations belong to the Task itself,
+ * which lives separately).
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
-interface RunRow {
+interface RunRecord {
+  id: string;
   task_id: string;
+  task_snapshot: any;
+  scenario_snapshot: { id: string; platform: string; name_zh?: string; name_en?: string; icon?: string; workflow_type?: string };
   started_at: number;
   finished_at?: number;
-  status: 'success' | 'failure' | 'skipped' | 'running';
-  reason?: string;
-  collected_count?: number;
-  draft_count?: number;
+  status: 'running' | 'done' | 'error' | 'stopped';
+  error?: string;
+  step_logs: Array<{ time: string; step: number; status: 'done' | 'running' | 'error'; message: string }>;
+  result?: { collected_count?: number; draft_count?: number; posted?: number; [k: string]: any };
+  output_dir?: string;
 }
 
 interface Props {
@@ -33,15 +35,16 @@ interface Props {
    *  platform sub-tab and re-filters). */
   tasks: Task[];
   scenarios: Scenario[];
+  /** Current platform — used to filter the records list down to
+   *  records whose scenario_snapshot.platform matches. */
+  platformId: string;
   platformLabel: string;
-  onOpenTask: (task_id: string) => void;
-  /** Optional: when present, filters runs to ONLY this task. The page is
-   *  then opened from the task's detail page ("查看历史运行记录"
-   *  button). Header copy adapts to mention "this task" so the user
-   *  knows they're in a filtered view. */
+  /** Click on a record row → opens RunRecordDetailPage. Optional;
+   *  no-op when navigation isn't wired up. */
+  onOpenRecord?: (record_id: string) => void;
+  /** Optional task filter (set when entering history from a specific
+   *  task's "查看历史运行记录" button). */
   filterByTaskId?: string | null;
-  /** Called when user clicks "返回任务详情" on the filtered header.
-   *  Only meaningful when filterByTaskId is set. */
   onClearFilter?: () => void;
 }
 
@@ -65,42 +68,44 @@ function formatTime(ts: number, isZh: boolean): string {
   });
 }
 
-export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabel, onOpenTask, filterByTaskId, onClearFilter }) => {
+export const RunHistoryPage: React.FC<Props> = ({
+  tasks: _tasks,
+  scenarios: _scenarios,
+  platformId,
+  platformLabel,
+  onOpenRecord,
+  filterByTaskId,
+  onClearFilter,
+}) => {
   const isZh = i18nService.currentLanguage === 'zh';
-  const [allRuns, setAllRuns] = useState<RunRow[]>([]);
+  const [records, setRecords] = useState<RunRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
-      const runs = await scenarioService.getAllRuns();
-      if (!cancelled) {
-        setAllRuns(runs as RunRow[]);
-        setLoading(false);
-      }
+      const recs = await scenarioService.listRunRecords({
+        platform: platformId,
+        task_id: filterByTaskId || undefined,
+      });
+      if (cancelled) return;
+      setRecords(recs as RunRecord[]);
+      setLoading(false);
     };
     void tick();
-    // Refresh every 5s — runs can be added at any time by scheduled tasks.
+    // Refresh every 5s — running records will tick their step logs
     const h = setInterval(tick, 5000);
     return () => { cancelled = true; clearInterval(h); };
-  }, []);
+  }, [platformId, filterByTaskId]);
 
-  // Build a quick task lookup. Then filter runs to only those whose task
-  // belongs to this platform. Tasks that have been deleted still show
-  // their runs with a "(已删除)" label — historical record is preserved.
-  const taskById = useMemo(() => new Map(tasks.map(t => [t.id, t])), [tasks]);
-  const scenarioById = useMemo(() => new Map(scenarios.map(s => [s.id, s])), [scenarios]);
-  const platformTaskIds = useMemo(() => new Set(tasks.map(t => t.id)), [tasks]);
-
-  const platformRuns = useMemo(() => {
-    let filtered = allRuns.filter(r => platformTaskIds.has(r.task_id));
-    if (filterByTaskId) {
-      filtered = filtered.filter(r => r.task_id === filterByTaskId);
-    }
-    return filtered;
-  }, [allRuns, platformTaskIds, filterByTaskId]);
-
-  const filteredTask = filterByTaskId ? taskById.get(filterByTaskId) : null;
+  const filteredTaskName = useMemo(() => {
+    if (!filterByTaskId) return null;
+    // Get the snapshot from the most recent record for that task
+    const rec = records.find(r => r.task_id === filterByTaskId);
+    if (!rec) return null;
+    const sc = rec.scenario_snapshot;
+    return (isZh ? sc.name_zh : sc.name_en) || sc.id;
+  }, [filterByTaskId, records, isZh]);
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -118,27 +123,23 @@ export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabe
                 onClick={onClearFilter}
                 className="mt-1 text-xs text-blue-500 hover:underline"
               >
-                ← {isZh ? '查看所有' : 'Show all'}{platformLabel} {isZh ? '运行记录' : 'runs'}
+                ← {isZh ? '查看所有' : 'Show all'}{platformLabel}{isZh ? '运行记录' : 'runs'}
               </button>
             )}
-            {filteredTask && (() => {
-              const sc = scenarioById.get(filteredTask.scenario_id);
-              const dispName = (isZh ? sc?.name_zh : sc?.name_en) || filteredTask.scenario_id;
-              return (
-                <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                  {isZh ? '任务: ' : 'Task: '}{dispName}
-                </div>
-              );
-            })()}
+            {filteredTaskName && (
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                {isZh ? '任务: ' : 'Task: '}{filteredTaskName}
+              </div>
+            )}
           </div>
         </div>
 
-        {loading && platformRuns.length === 0 ? (
+        {loading && records.length === 0 ? (
           <div className="flex items-center gap-2 text-sm text-gray-400 py-6">
             <span className="h-4 w-4 rounded-full border-2 border-green-500 border-t-transparent animate-spin" />
             {isZh ? '加载中...' : 'Loading...'}
           </div>
-        ) : platformRuns.length === 0 ? (
+        ) : records.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
             <div className="text-4xl mb-2">📜</div>
             <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
@@ -150,81 +151,75 @@ export const RunHistoryPage: React.FC<Props> = ({ tasks, scenarios, platformLabe
           </div>
         ) : (
           <div className="space-y-2">
-            {platformRuns.map((run, idx) => {
-              const task = taskById.get(run.task_id);
-              const scenario = task ? scenarioById.get(task.scenario_id) : null;
-              const taskDisplayName = (() => {
-                if (!task) return (isZh ? '已删除任务' : 'Deleted task') + ' #' + run.task_id.slice(0, 8);
-                if (scenario?.name_zh && isZh) return scenario.name_zh;
-                if (scenario?.name_en) return scenario.name_en;
-                return task.scenario_id;
-              })();
-              const duration = run.finished_at
-                ? formatDuration(run.finished_at - run.started_at, isZh)
+            {records.map(rec => {
+              const sc = rec.scenario_snapshot;
+              const taskName = (isZh ? sc.name_zh : sc.name_en) || sc.id;
+              const duration = rec.finished_at
+                ? formatDuration(rec.finished_at - rec.started_at, isZh)
                 : null;
               const statusPill = (() => {
-                switch (run.status) {
-                  case 'success':
-                    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-                  case 'failure':
-                    return { icon: '❌', label: isZh ? '失败' : 'Failed', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
-                  case 'skipped':
-                    return { icon: '⏭️', label: isZh ? '跳过' : 'Skipped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
-                  case 'running':
-                    return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
-                  default:
-                    return { icon: '❓', label: run.status, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
+                switch (rec.status) {
+                  case 'done':    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                  case 'error':   return { icon: '❌', label: isZh ? '失败' : 'Failed',  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                  case 'stopped': return { icon: '⏹️', label: isZh ? '已停止' : 'Stopped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
+                  case 'running': return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                  default:        return { icon: '❓', label: rec.status, color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
                 }
               })();
-              const taskExists = !!task;
 
               return (
                 <button
-                  key={`${run.task_id}-${run.started_at}-${idx}`}
+                  key={rec.id}
                   type="button"
-                  onClick={() => taskExists && onOpenTask(run.task_id)}
-                  disabled={!taskExists}
+                  onClick={() => onOpenRecord && onOpenRecord(rec.id)}
                   className={`w-full text-left rounded-lg border p-3 transition-colors ${
-                    taskExists
-                      ? 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-green-500/50 cursor-pointer'
-                      : 'border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 cursor-not-allowed opacity-70'
-                  }`}
+                    rec.status === 'running'
+                      ? 'border-green-500/50 bg-white dark:bg-gray-900 noobclaw-running-glow hover:border-green-500'
+                      : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-green-500/50'
+                  } cursor-pointer`}
                 >
                   <div className="flex items-center justify-between gap-3 flex-wrap">
                     <div className="flex items-center gap-3 min-w-0 flex-1">
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${statusPill.color}`}>
                         {statusPill.icon} {statusPill.label}
                       </span>
-                      <span className="font-medium dark:text-white truncate">
-                        {taskDisplayName}
-                      </span>
+                      <span className="text-base shrink-0">{sc.icon || '🤖'}</span>
+                      <span className="font-medium dark:text-white truncate">{taskName}</span>
                       <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-                        #{run.task_id.slice(0, 8)}
+                        #{rec.task_id.slice(0, 8)}
                       </span>
                     </div>
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0">
-                      <span>⏱️ {formatTime(run.started_at, isZh)}</span>
+                      <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
                     </div>
                   </div>
-                  {/* Reason / result summary */}
-                  {(run.reason || run.collected_count || run.draft_count) && (
+                  {/* Result summary + error reason */}
+                  {(rec.error || rec.result) && (
                     <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                      {run.reason && (
+                      {rec.error && (
                         <span className="text-amber-600 dark:text-amber-400 mr-2">
-                          {run.reason}
+                          {rec.error.length > 100 ? rec.error.slice(0, 100) + '...' : rec.error}
                         </span>
                       )}
-                      {typeof run.collected_count === 'number' && run.collected_count > 0 && (
+                      {rec.result && typeof rec.result.collected_count === 'number' && rec.result.collected_count > 0 && (
                         <span className="mr-2">
-                          {isZh ? `采集 ${run.collected_count} 条` : `Collected ${run.collected_count}`}
+                          {isZh ? `采集 ${rec.result.collected_count} 条` : `Collected ${rec.result.collected_count}`}
                         </span>
                       )}
-                      {typeof run.draft_count === 'number' && run.draft_count > 0 && (
-                        <span>
-                          {isZh ? `产出 ${run.draft_count} 条` : `Produced ${run.draft_count}`}
+                      {rec.result && typeof rec.result.draft_count === 'number' && rec.result.draft_count > 0 && (
+                        <span className="mr-2">
+                          {isZh ? `产出 ${rec.result.draft_count} 条` : `Produced ${rec.result.draft_count}`}
                         </span>
                       )}
+                      {rec.result && typeof rec.result.posted === 'number' && rec.result.posted > 0 && (
+                        <span className="mr-2">
+                          {isZh ? `发布 ${rec.result.posted} 条` : `Posted ${rec.result.posted}`}
+                        </span>
+                      )}
+                      <span className="text-[10px] text-gray-400">
+                        {isZh ? `· ${rec.step_logs.length} 条日志` : `· ${rec.step_logs.length} log entries`}
+                      </span>
                     </div>
                   )}
                 </button>

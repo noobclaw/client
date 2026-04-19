@@ -23,6 +23,7 @@ import { ConfigWizard } from './ConfigWizard';
 import { SensitiveCheckPage } from './SensitiveCheckPage';
 import { MyTasksPage } from './MyTasksPage';
 import { RunHistoryPage } from './RunHistoryPage';
+import { RunRecordDetailPage } from './RunRecordDetailPage';
 
 type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
 
@@ -39,6 +40,7 @@ type SectionId = 'create' | 'tasks' | 'history';
 type ViewState =
   | { kind: 'main'; section: SectionId; platform: PlatformId; filterTaskId?: string | null }
   | { kind: 'task_detail'; task_id: string; from?: SectionId }
+  | { kind: 'record_detail'; record_id: string; from_platform: PlatformId; filterTaskId?: string | null }
   | { kind: 'sensitive_check' };
 
 interface ScenarioViewProps {
@@ -210,13 +212,25 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   // Go back to the section the user was on before opening a detail page.
-  // task_detail remembers via `view.from`; sensitive_check just goes home.
+  // task_detail remembers via `view.from`; record_detail returns to the
+  // history section it came from (optionally still filtered); sensitive_check
+  // just goes home.
   const goBack = () => {
     if (view.kind === 'task_detail' && view.from) {
       setView({ kind: 'main', section: view.from, platform: currentPlatform });
+    } else if (view.kind === 'record_detail') {
+      setView({ kind: 'main', section: 'history', platform: view.from_platform, filterTaskId: view.filterTaskId });
     } else {
       setView({ kind: 'main', section: 'tasks', platform: currentPlatform });
     }
+  };
+
+  /** Open a run record's read-only detail page. Remembers where we came
+   *  from so the back button takes the user back to the right filtered
+   *  history view. */
+  const openRecord = (record_id: string) => {
+    const currentFilter = view.kind === 'main' ? view.filterTaskId || null : null;
+    setView({ kind: 'record_detail', record_id, from_platform: currentPlatform, filterTaskId: currentFilter });
   };
 
   const openWizardFor = (scenario: Scenario) => {
@@ -292,6 +306,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (view.kind === 'sensitive_check') {
       return <SensitiveCheckPage onBack={goBack} />;
     }
+    if (view.kind === 'record_detail') {
+      return (
+        <RunRecordDetailPage
+          recordId={view.record_id}
+          onBack={goBack}
+          onOpenTask={openTask}
+        />
+      );
+    }
     if (view.kind === 'task_detail') {
       const task = tasks.find(t => t.id === view.task_id);
       if (!task) {
@@ -336,8 +359,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <RunHistoryPage
           tasks={tasksForPlatform}
           scenarios={scenarios}
+          platformId={currentPlatform}
           platformLabel={platformLabel}
-          onOpenTask={openTask}
+          onOpenRecord={openRecord}
           filterByTaskId={filterTaskId}
           onClearFilter={() => setView({ kind: 'main', section: 'history', platform: currentPlatform })}
         />
