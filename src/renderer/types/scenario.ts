@@ -81,6 +81,13 @@ export interface ScenarioTaskIPC {
   user_context?: string;
   /** Twitter v1: tweet URLs for x_link_rewrite scenario. Optional. */
   urls?: string[];
+  /** Twitter v1.x: x_auto_engage daily action ranges. System picks random
+   *  values inside each range. Optional — backwards-compat tasks fall back
+   *  to (0,3) follows + (1, daily_count) replies. */
+  daily_follow_min?: number;
+  daily_follow_max?: number;
+  daily_reply_min?: number;
+  daily_reply_max?: number;
   enabled: boolean;
   /** Only the active task gets auto-run by the scheduler. At most 1 task
    *  can be active at a time. User switches via "设为运行" button. */

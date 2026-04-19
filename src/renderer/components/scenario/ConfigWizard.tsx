@@ -285,13 +285,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //  - no auto_upload toggle (replies are posted directly with jitter)
   //  - safety notice / confirm copy talks about reply jitter, not draft uploads
   const isAutoReply = (scenario.workflow_type as any) === 'auto_reply';
-  // ── Platform / scenario-specific flags ──
+  // ── Platform / scenario-specific flags (declared early so persona init
+  // and other logic below can reference them) ──
   // x_auto_engage shares workflow_type='auto_reply' with XHS auto-reply for
   // wizard scaffolding, but its actual UX is totally different (KOL pool +
   // follow + feed engage rather than article reply). Split the copy so XHS
   // strings don't bleed into the Twitter wizard.
+  const isXPlatform = scenario.platform === 'x';
   const isXAutoEngage = scenario.id === 'x_auto_engage';
   const isXPostCreator = scenario.id === 'x_post_creator';
+  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
@@ -319,13 +322,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     return selectedTrack.keywords.join(' ');
   });
 
-  // Persona — for viral_production, locked to the track's short hint.
-  // For auto_reply, exposed as an editable textarea using the more
-  // detailed reply_persona_hint as default. Either way `persona` is the
-  // current effective value sent to the orchestrator.
+  // Persona — picks the most-detailed available hint per track:
+  //   - XHS auto_reply (isAutoReply, !isXPlatform): reply_persona_hint (long)
+  //   - XHS viral_production (!isAutoReply, !isXPlatform): persona_hint (short)
+  //   - All Twitter scenarios (isXPlatform): reply_persona_hint (long), so all
+  //     three Twitter scenarios on the SAME web3 track share the same persona
+  //     instead of auto_engage getting the long version and post_creator /
+  //     link_rewrite getting the short one.
+  const useDetailedPersona = isAutoReply || isXPlatform;
   const initialPersona = initialTask?.persona && initialTask.persona.trim()
     ? initialTask.persona
-    : (isAutoReply
+    : (useDetailedPersona
         ? (selectedTrack.reply_persona_hint || selectedTrack.persona_hint)
         : selectedTrack.persona_hint);
   const [persona, setPersona] = useState<string>(initialPersona);
@@ -349,8 +356,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   );
 
   // Twitter-specific fields (only rendered when scenario.platform === 'x')
-  const isXPlatform = scenario.platform === 'x';
-  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
+  // (isXPlatform / isLinkRewriteScenario are declared at the top — see comment there)
   const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(() => {
     const initLang = (initialTask as any)?.language;
     if (initLang === 'zh' || initLang === 'en' || initLang === 'mixed') return initLang;
@@ -369,6 +375,52 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     .map(u => u.trim())
     .filter(u => u.length > 0)
     .filter(u => /^https?:\/\/(www\.)?(twitter|x)\.com\/[^/]+\/status\/\d+/.test(u));
+
+  // x_auto_engage daily action ranges. Defaults match the previous hardcoded
+  // behavior so existing tasks don't see surprise changes:
+  //   follows: 0-3 (random in this range)
+  //   replies: 2-2 (always 2 — matches old default daily_count=2)
+  // User-configurable bounds: follows 0-10, replies 1-20. Wider = higher risk.
+  const FOLLOW_HARDCAP = 10;
+  const REPLY_HARDCAP = 20;
+  const [followMin, setFollowMinRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_follow_min === 'number'
+      ? (initialTask as any).daily_follow_min : 0
+  );
+  const [followMax, setFollowMaxRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_follow_max === 'number'
+      ? (initialTask as any).daily_follow_max : 3
+  );
+  const [replyMin, setReplyMinRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_reply_min === 'number'
+      ? (initialTask as any).daily_reply_min : 2
+  );
+  const [replyMax, setReplyMaxRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_reply_max === 'number'
+      ? (initialTask as any).daily_reply_max
+      : (initialTask?.daily_count || 2)
+  );
+  // Setters that auto-clamp to keep min ≤ max.
+  const setFollowMin = (v: number) => {
+    const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v));
+    setFollowMinRaw(n);
+    if (followMax < n) setFollowMaxRaw(n);
+  };
+  const setFollowMax = (v: number) => {
+    const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v));
+    setFollowMaxRaw(n);
+    if (followMin > n) setFollowMinRaw(n);
+  };
+  const setReplyMin = (v: number) => {
+    const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
+    setReplyMinRaw(n);
+    if (replyMax < n) setReplyMaxRaw(n);
+  };
+  const setReplyMax = (v: number) => {
+    const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
+    setReplyMaxRaw(n);
+    if (replyMin > n) setReplyMinRaw(n);
+  };
 
   // Confirm
   const [termsAccepted, setTermsAccepted] = useState([false, false]);
@@ -401,7 +453,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (!preset) return;
     setTrackId(newTrackId);
     setCustomKeywordsText(preset.keywords.join(' '));
-    setPersona(isAutoReply
+    // Same useDetailedPersona rule as initial — Twitter scenarios always
+    // get the long persona so the 3 share one consistent voice per track.
+    setPersona(useDetailedPersona
       ? (preset.reply_persona_hint || preset.persona_hint)
       : preset.persona_hint);
   };
@@ -427,6 +481,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // it does care.
         ...(isXPlatform ? { language, user_context: userContext.trim() || undefined } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
+        ...(isXAutoEngage ? {
+          daily_follow_min: followMin,
+          daily_follow_max: followMax,
+          daily_reply_min: replyMin,
+          daily_reply_max: replyMax,
+        } : {}),
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
@@ -666,10 +726,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
                 </label>
                 <div className="flex gap-2 flex-wrap">
-                  {(isAutoReply
-                    // ⚠️ Auto-reply must NOT pin to a fixed wall-clock hour
-                    // (XHS risk-control flags accounts that comment at the
-                    // same time daily). So only loose intervals + the
+                  {((isAutoReply || isXPlatform)
+                    // ⚠️ Risk-control: comment / Twitter scenarios must NOT pin
+                    // to a fixed wall-clock hour. So only loose intervals + the
                     // random-time daily option are exposed.
                     ? [
                         { value: 'once', label: isZh ? '不重复（手动触发）' : 'Once (manual only)' },
@@ -708,9 +767,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 )}
               </div>
 
-              {/* HH:MM picker only for the legacy fixed-time `daily` (rewrite scenarios) and `once`.
-                  Auto-reply's `daily_random` deliberately has NO time picker. */}
-              {(runInterval === 'daily' || runInterval === 'once') && (
+              {/* HH:MM picker only for the legacy fixed-time `daily` (XHS rewrite
+                  scenarios) and `once`. Auto-reply's `daily_random` deliberately
+                  has NO time picker — and Twitter scenarios never pin a time
+                  (risk-control), so we hide the picker entirely on X. */}
+              {!isXPlatform && (runInterval === 'daily' || runInterval === 'once') && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '触发时间' : 'Trigger Time'}
@@ -779,35 +840,92 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   reply_followed vs reply_feed. */}
               {isXAutoEngage && (
                 <>
+                  {/* Follow range — user picks min/max, system picks random in [min, max] each day */}
                   <div>
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                      {isZh ? '每天评论数量' : 'Replies per day'}
+                      {isZh ? '每天关注数量（随机区间）' : 'Daily follow count (random range)'}
                     </label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="range" min={1} max={8} value={Math.min(8, dailyCount)}
-                        onChange={e => setDailyCount(parseInt(e.target.value, 10))}
-                        className="flex-1"
-                      />
-                      <div className="w-12 text-center font-semibold text-sky-500">{Math.min(8, dailyCount)}</div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{followMin}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={FOLLOW_HARDCAP} value={followMin}
+                          onChange={e => setFollowMin(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{followMax}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={FOLLOW_HARDCAP} value={followMax}
+                          onChange={e => setFollowMax(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
                     </div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
-                        ? '1-8 条 / 天。每条独立随机决定是回复已关注 KOL 还是 feed 推。'
-                        : '1-8 per day. Each reply independently chooses between followed-KOL or feed.'}
+                        ? `每天随机关注 ${followMin}-${followMax} 个 KOL（0-${FOLLOW_HARDCAP}，越大封号风险越高）`
+                        : `Random ${followMin}-${followMax} follows/day (0-${FOLLOW_HARDCAP}, larger = higher ban risk)`}
                     </div>
                   </div>
-                  <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
-                    <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
-                      {isZh ? '🎲 每日动作配额' : '🎲 Daily action budget'}
+
+                  {/* Reply range */}
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '每天评论数量（随机区间）' : 'Daily reply count (random range)'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
+                        </div>
+                        <input
+                          type="range" min={1} max={REPLY_HARDCAP} value={replyMin}
+                          onChange={e => setReplyMin(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
+                        </div>
+                        <input
+                          type="range" min={1} max={REPLY_HARDCAP} value={replyMax}
+                          onChange={e => setReplyMax(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {isZh
+                        ? `每天随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
+                        : `Random ${replyMin}-${replyMax} replies/day (1-${REPLY_HARDCAP}, larger = higher ban risk)`}
+                    </div>
+                  </div>
+
+                  {/* Risk warning + summary */}
+                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+                    <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">
+                      {isZh ? '⚠️ 数值越大封号风险越高' : '⚠️ Higher numbers = higher ban risk'}
                     </div>
                     <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                      <li>{isZh ? '· 关注 Web3 KOL：0-3 个 / 天（从 KOL 池随机抽未关注的）' : '· Follow web3 KOLs: 0-3/day (random unfollowed picks from KOL pool)'}</li>
                       <li>{isZh
-                        ? `· 评论：${dailyCount} 条 / 天（已关注 KOL 最新推 + feed 推随机分配）`
-                        : `· Replies: ${dailyCount}/day (split between followed-KOL latest + feed)`}</li>
+                        ? `· 当前: 关注 ${followMin}-${followMax} / 评论 ${replyMin}-${replyMax} 条 / 天`
+                        : `· Current: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day`}</li>
                       <li>{isZh ? '· 所有动作随机顺序，每个动作之间 3-10 分钟随机间隔' : '· All actions in random order, 3-10 min random spacing'}</li>
                       <li>{isZh ? '· 同一 KOL 7 天内不重复 engage' : '· No re-engaging same KOL within 7 days'}</li>
+                      {(followMax > 5 || replyMax > 8) && (
+                        <li className="text-amber-600 dark:text-amber-400">
+                          {isZh
+                            ? `· ⚠️ 当前配置较激进 (关注 ${followMax} / 评论 ${replyMax})，新号建议先用保守值 (关注 ≤ 3 / 评论 ≤ 5) 跑 1-2 周`
+                            : `· ⚠️ Aggressive config (follows ${followMax} / replies ${replyMax}). New accounts: start ≤ 3 follows + ≤ 5 replies/day for 1-2 weeks`}
+                        </li>
+                      )}
                     </ul>
                   </div>
                 </>
@@ -825,8 +943,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Variants slider only matters for viral_production rewrite scenarios. */}
-              {!isAutoReply && (
+              {/* Variants slider — XHS viral_production only. Twitter scenarios
+                  produce content directly (post_creator: 1/day, link_rewrite:
+                  N URLs → N tweets, auto_engage: replies). Hide on X. */}
+              {!isAutoReply && !isXPlatform && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
@@ -842,8 +962,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Auto-upload toggle is rewrite-only — auto-reply posts directly. */}
-              {!isAutoReply && (
+              {/* Auto-upload toggle — XHS viral_production only. Twitter posts
+                  directly (no draft box concept). Hide on X. */}
+              {!isAutoReply && !isXPlatform && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '生成后的处理' : 'After generation'}

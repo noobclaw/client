@@ -156,6 +156,13 @@ export interface ScenarioTask {
    *  link_rewrite) inject this into rewrite/original prompts so generated
    *  tweets have real substance instead of generic templates. Optional. */
   user_context?: string;
+  /** Twitter v1.x: x_auto_engage daily action ranges (min/max). System
+   *  picks random in [min,max] each day. Optional — old tasks default to
+   *  (0,3) follows / (1,daily_count) replies. */
+  daily_follow_min?: number;
+  daily_follow_max?: number;
+  daily_reply_min?: number;
+  daily_reply_max?: number;
   enabled: boolean;
   /** Only the 'active' task is eligible for scheduled auto-runs.
    *  When multiple tasks exist, user must explicitly pick which one is active.
