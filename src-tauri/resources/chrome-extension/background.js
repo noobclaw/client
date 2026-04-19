@@ -156,12 +156,17 @@ async function getActiveTab() {
 // receives each command (the one whose tabs match the command's
 // tab_url_pattern). Without this, the bridge can only "broadcast" or
 // guess.
+function getExtensionVersion() {
+  try { return chrome.runtime.getManifest().version || ''; } catch { return ''; }
+}
+
 async function sendTabInventory() {
   if (!port) return;
   try {
     const tabs = await chrome.tabs.query({});
     port.postMessage({
       type: 'hello',
+      version: getExtensionVersion(),
       tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
     });
   } catch (e) {
@@ -181,6 +186,7 @@ function pushTabsChangedDebounced() {
       const tabs = await chrome.tabs.query({});
       port.postMessage({
         type: 'tabs_changed',
+        version: getExtensionVersion(),
         tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
       });
     } catch {}
@@ -309,15 +315,14 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
 // group title, or group color. Zero detection surface.
 function platformLabelForPattern(patternStr) {
   if (!patternStr) return null;
-  // All NoobClaw tab groups use the brand green so the user spots them
-  // immediately as "us" regardless of platform. Platform is conveyed by
-  // the emoji + label text instead of color.
+  // Platform name in front (more useful at a glance than brand name).
+  // Color stays brand green for "this is NoobClaw automation" recognition.
   const color = 'green';
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🤖 NoobClaw · 小红书任务', color };
+    return { title: '🤖 小红书任务 · NoobClaw', color };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🤖 NoobClaw · 推特任务', color };
+    return { title: '🤖 推特任务 · NoobClaw', color };
   }
   return { title: '🤖 NoobClaw 任务', color };
 }

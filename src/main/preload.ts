@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld('electron', {
     getRunningTaskId: () => ipcRenderer.invoke('scenario:getRunningTaskId'),
     /** Twitter v1 concurrency: ALL running task ids (legacy returns just the first). */
     getRunningTaskIds: () => ipcRenderer.invoke('scenario:getRunningTaskIds'),
+    /** Connected browser extensions (one per Chrome instance). Used to
+     *  detect outdated extension versions and prompt the user to update. */
+    getConnectedExtensions: () => ipcRenderer.invoke('scenario:getConnectedExtensions'),
     getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
     checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),

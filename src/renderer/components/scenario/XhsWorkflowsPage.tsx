@@ -19,6 +19,7 @@ import React, { useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { ExtensionUpdateBanner } from './ExtensionUpdateBanner';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
@@ -295,6 +296,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <ExtensionUpdateBanner />
       {/* Four-card grid — all XHS tools grouped together at the top:
           批量仿写 · 指定链接 · 敏感词检测 · 自动回复 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -515,7 +517,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         ) : (
           <div className="space-y-3">
-            {tasks.map(task => {
+            {/* Sort: running tasks first so user sees what's actively going
+                without scrolling. Stable sort — non-running keep their order. */}
+            {tasks
+              .map((t, i) => ({ task: t, i, running: runningTaskIds.has(t.id) }))
+              .sort((a, b) => {
+                if (a.running !== b.running) return a.running ? -1 : 1;
+                return a.i - b.i;
+              })
+              .map(({ task }) => {
               const scenario = scenarioById.get(task.scenario_id);
               const taskDrafts = draftsByTask.get(task.id) || [];
               // "已生成" 用 drafts 总数统计（包括 pending 和已上传的），反映 AI 产出量
@@ -524,6 +534,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
               const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
               const taskUrls: string[] = (task as any).urls || [];
+              const isRunning = runningTaskIds.has(task.id);
               // Task type label so users can tell three workflow types apart at a glance
               const typeLabel = isLinkMode
                 ? { icon: '🔗', zh: '指定链接改写', en: 'Pick-your-links Rewrite', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' }
@@ -538,7 +549,11 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                   key={task.id}
                   type="button"
                   onClick={() => onOpenTask(task.id)}
-                  className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900 p-4 transition-colors"
+                  className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
+                    isRunning
+                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900'
+                  }`}
                 >
                   {/* Top row: type badge + track/subtitle + ID + status badge */}
                   <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">

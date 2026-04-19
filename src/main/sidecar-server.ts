@@ -1553,6 +1553,12 @@ const server = http.createServer(async (req, res) => {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             return writeJSON(res, 200, { runningTaskIds: scenarioManager.getRunningTaskIds() });
           }
+          case 'scenario:getConnectedExtensions': {
+            // Used by the renderer to detect outdated extensions and prompt
+            // the user to update. Returns [{id, version, tabCount}, ...].
+            const { getConnectedExtensions } = require('./libs/browserBridge');
+            return writeJSON(res, 200, { extensions: getConnectedExtensions() });
+          }
           case 'scenario:getRunProgress': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
             // Optional taskId — when provided we return that specific task's

@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { ExtensionUpdateBanner } from './ExtensionUpdateBanner';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // web3 KOL track preset 的简表（用于任务卡片显示图标+名称）
@@ -191,6 +192,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <ExtensionUpdateBanner />
       {/* Scenario cards — match XHS layout: jump straight to the cards,
           no platform hero / intro paragraph / mainland-VPN warning above.
           The three Twitter scenarios speak for themselves; the bottom
@@ -297,7 +299,16 @@ export const XWorkflowsPage: React.FC<Props> = ({
             </span>
           </div>
           <div className="space-y-3">
-            {tasks.map(t => {
+            {/* Sort: running tasks first (so user immediately sees what's
+                actively going), then everything else in original order.
+                Stable sort — non-running tasks keep their relative order. */}
+            {tasks
+              .map((t, i) => ({ t, i, running: runningTaskIds.has(t.id) }))
+              .sort((a, b) => {
+                if (a.running !== b.running) return a.running ? -1 : 1;
+                return a.i - b.i;
+              })
+              .map(({ t }) => {
               const isRunning = runningTaskIds.has(t.id);
               const track = WEB3_TRACK_ICONS[t.track] || { icon: '🐦', name_zh: t.track };
               const scenarioId = t.scenario_id;
@@ -318,9 +329,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
                   key={t.id}
                   type="button"
                   onClick={() => onOpenTask(t.id)}
-                  className={`w-full text-left rounded-xl border p-4 transition-colors ${
+                  className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
                     isRunning
-                      ? 'border-green-500/50 ring-1 ring-green-500/20 bg-white dark:bg-gray-900'
+                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
                       : 'border-gray-200 dark:border-gray-700 hover:border-sky-500/50 dark:hover:border-sky-500/50 bg-white dark:bg-gray-900'
                   }`}
                 >

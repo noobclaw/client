@@ -146,6 +146,19 @@ class ScenarioService {
     }
   }
 
+  /** Connected browser extensions, with their reported versions. Used
+   *  to detect outdated extensions and prompt the user to update. An
+   *  extension that pre-dates the version-reporting protocol (< 1.2.0)
+   *  shows up with version === '' (treat as outdated). */
+  async getConnectedExtensions(): Promise<Array<{ id: string; version: string; tabCount: number }>> {
+    try {
+      const r = await window.electron.scenario.getConnectedExtensions();
+      return Array.isArray(r?.extensions) ? r.extensions : [];
+    } catch {
+      return [];
+    }
+  }
+
   async getRunProgress(taskId?: string): Promise<ScenarioRunProgress | null> {
     try {
       return await window.electron.scenario.getRunProgress(taskId) || null;

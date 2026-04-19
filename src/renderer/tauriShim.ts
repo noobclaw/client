@@ -258,6 +258,7 @@ export function createTauriElectronShim(): typeof window.electron {
       getActiveTask: () => ipcInvoke('scenario:getActiveTask'),
       getRunningTaskId: () => ipcInvoke('scenario:getRunningTaskId').then(r => r ?? { runningTaskId: null }),
       getRunningTaskIds: () => ipcInvoke('scenario:getRunningTaskIds').then(r => r ?? { runningTaskIds: [] }),
+      getConnectedExtensions: () => ipcInvoke('scenario:getConnectedExtensions').then(r => r ?? { extensions: [] }),
       getTaskDir: (id: string) => ipcInvoke('scenario:getTaskDir', id).then(r => r ?? { dir: '' }),
       getRunProgress: (taskId?: string) => ipcInvoke('scenario:getRunProgress', { taskId }),
       requestAbort: (taskId?: string) => ipcInvoke('scenario:requestAbort', { taskId }).then(r => r ?? { ok: true }),

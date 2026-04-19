@@ -116,6 +116,9 @@ interface BrowserConn {
   id: string;
   socket: net.Socket;
   tabs: Array<{ id: number; url: string }>;
+  /** Extension version reported in the `hello` message. Empty until the
+   *  extension side rolls out v1.2.0+ (older versions don't send it). */
+  extensionVersion: string;
   lastActivityAt: number;
 }
 const browserConns = new Map<string, BrowserConn>();
@@ -126,6 +129,27 @@ function isAnyBrowserConnected(): boolean {
     if (!c.socket.destroyed) return true;
   }
   return false;
+}
+
+/** Snapshot of every connected browser extension (for the renderer to
+ *  detect outdated versions and prompt the user to update). */
+export function getConnectedExtensions(): Array<{
+  id: string;
+  version: string;
+  tabCount: number;
+}> {
+  const out: Array<{ id: string; version: string; tabCount: number }> = [];
+  for (const c of browserConns.values()) {
+    if (c.socket.destroyed) continue;
+    out.push({
+      id: c.id,
+      // Empty string means the extension is so old it pre-dates the
+      // hello-with-version protocol (i.e. < 1.2.0).
+      version: c.extensionVersion || '',
+      tabCount: c.tabs.length,
+    });
+  }
+  return out;
 }
 
 const pendingRequests = new Map<string, {
@@ -594,6 +618,7 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
         id: connId,
         socket,
         tabs: [],
+        extensionVersion: '',
         lastActivityAt: Date.now(),
       };
       browserConns.set(connId, conn);
@@ -620,6 +645,9 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
             // create / update / remove. We use these to route subsequent
             // commands by tabPattern without round-tripping a query first.
             if (msg.type === 'hello' || msg.type === 'tabs_changed') {
+              if (typeof msg.version === 'string' && msg.version) {
+                conn.extensionVersion = msg.version;
+              }
               if (Array.isArray(msg.tabs)) {
                 conn.tabs = msg.tabs.map((t: any) => ({
                   id: Number(t.id),

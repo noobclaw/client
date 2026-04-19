@@ -276,6 +276,9 @@ interface IElectronAPI {
     getActiveTask: () => Promise<ScenarioTaskIPC | null>;
     getRunningTaskId: () => Promise<{ runningTaskId: string | null }>;
     getRunningTaskIds: () => Promise<{ runningTaskIds: string[] }>;
+    getConnectedExtensions: () => Promise<{
+      extensions: Array<{ id: string; version: string; tabCount: number }>;
+    }>;
     getTaskDir: (id: string) => Promise<{ dir: string }>;
     getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
