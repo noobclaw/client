@@ -261,6 +261,14 @@ interface Props {
     daily_count: number;
     variants_per_post: number;
     daily_time: string;
+    /** Twitter v1: content language mode. zh/en/mixed. Only shown on
+     *  Twitter scenarios; XHS implicitly 'zh'. */
+    language?: 'zh' | 'en' | 'mixed';
+    /** Twitter v1: user_context is the "my real experience" pool used by
+     *  post_creator rewrite/original/quote mechanisms. Optional free-form. */
+    user_context?: string;
+    /** Twitter v1: URL list for x_link_rewrite (1-5 tweet URLs). */
+    urls?: string[];
   }) => Promise<void> | void;
 }
 
@@ -333,12 +341,45 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     (initialTask as any)?.auto_upload !== undefined ? !!(initialTask as any).auto_upload : true
   );
 
+  // Twitter-specific fields (only rendered when scenario.platform === 'x')
+  const isXPlatform = scenario.platform === 'x';
+  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
+  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(() => {
+    const initLang = (initialTask as any)?.language;
+    if (initLang === 'zh' || initLang === 'en' || initLang === 'mixed') return initLang;
+    return 'mixed'; // default for Twitter — most NoobClaw users are zh-en bilingual
+  });
+  const [userContext, setUserContext] = useState<string>(
+    (initialTask as any)?.user_context || ''
+  );
+  // For x_link_rewrite: list of tweet URLs (newline-separated in textarea)
+  const [urlsText, setUrlsText] = useState<string>(() => {
+    const urls = (initialTask as any)?.urls;
+    return Array.isArray(urls) ? urls.join('\n') : '';
+  });
+  const parsedUrls = urlsText
+    .split('\n')
+    .map(u => u.trim())
+    .filter(u => u.length > 0)
+    .filter(u => /^https?:\/\/(www\.)?(twitter|x)\.com\/[^/]+\/status\/\d+/.test(u));
+
   // Confirm
   const [termsAccepted, setTermsAccepted] = useState([false, false]);
 
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
-  const canFinish = allTermsAccepted && keywordList.length > 0 && persona.trim().length > 0 && trackId;
+  // canFinish — different scenarios have different "minimum input":
+  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 5). Keywords
+  //                      auto-populated from preset, persona auto-populated.
+  //   - other XHS / X  : needs ≥1 keyword + non-empty persona + a track
+  // Always: terms accepted + a track selected.
+  const canFinish = (() => {
+    if (!allTermsAccepted || !trackId) return false;
+    if (isLinkRewriteScenario) {
+      return parsedUrls.length >= 1 && parsedUrls.length <= 5;
+    }
+    return keywordList.length > 0 && persona.trim().length > 0;
+  })();
   // Auto-reply scenario allows up to 6 articles/day (each with 1 note + 2
   // user-comment replies). Other scenarios still cap at 3 to keep XHS happy.
   const dailyHardCap = ((scenario.risk_caps as any)?.daily_count_cap)
@@ -370,6 +411,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         daily_time: dailyTime,
         run_interval: runInterval,
         auto_upload: autoUpload,
+        // Twitter v1 fields. Sent only when relevant; XHS scenarios don't
+        // care about these and ignore them, but we always include the
+        // typed fields so the orchestrator on the backend has them when
+        // it does care.
+        ...(isXPlatform ? { language, user_context: userContext.trim() || undefined } : {}),
+        ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
@@ -477,6 +524,117 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '此人设会被注入到每次 AI 生成回复的 prompt 里' : 'Injected into every reply-generation prompt'}
                   </div>
                 </div>
+              )}
+
+              {/* ── Twitter-only fields ── */}
+              {isXPlatform && (
+                <>
+                  {/* Persona for Twitter (always shown — all 3 X scenarios use it) */}
+                  {!isAutoReply && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-700 dark:text-sky-400 leading-relaxed">
+                        {isZh
+                          ? <>💡 已根据所选 web3 赛道预填详细人设。<strong>越具体（年龄/链/仓位/风格/口头禅）越像真人</strong>。</>
+                          : <>💡 Pre-filled with a detailed web3 persona. <strong>The more specific, the less AI-like.</strong></>}
+                      </div>
+                      <textarea
+                        value={persona}
+                        onChange={e => setPersona(e.target.value)}
+                        rows={6}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 leading-relaxed"
+                      />
+                    </div>
+                  )}
+
+                  {/* Language mode */}
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '🌐 内容语言' : '🌐 Content language'}
+                    </label>
+                    <div className="flex gap-2">
+                      {([
+                        { v: 'zh' as const, label: isZh ? '中文' : 'Chinese' },
+                        { v: 'en' as const, label: isZh ? '英文' : 'English' },
+                        { v: 'mixed' as const, label: isZh ? '中英混合（推荐）' : 'Mixed (recommended)' },
+                      ]).map(opt => (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          onClick={() => setLanguage(opt.v)}
+                          className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                            language === opt.v
+                              ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                      {isZh
+                        ? '中英混合 = 回复语言跟原推匹配（中文推回中文 / 英文推回英文）'
+                        : 'Mixed = reply language matches the original tweet (zh→zh, en→en).'}
+                    </p>
+                  </div>
+
+                  {/* user_context — optional free-form notes (used by post_creator + link_rewrite) */}
+                  {!isAutoReply && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '📝 你的真实素材池（选填）' : '📝 Your real-experience notes (optional)'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
+                        {isZh
+                          ? <>💡 写下你最近真实在做的事 / 持仓 / 看到的有趣现象 / 想表达的观点。AI 在「仿写 / 原创发推」时会从这里挑素材填进去，让推文有具体内容而不是空洞模板。</>
+                          : <>💡 Real things you're doing / positions / observations / opinions. AI uses these in rewrite/original posts so they have substance instead of being template-y.</>}
+                      </div>
+                      <textarea
+                        value={userContext}
+                        onChange={e => setUserContext(e.target.value)}
+                        placeholder={isZh
+                          ? '例：最近重仓 SOL（30%）+ ETH（40%），做了 Hyperliquid 30 天交互拿了 100 个 HYPE，觉得 RWA 赛道还在炒概念，看不上 AI agent 板块的 90%项目...'
+                          : 'e.g. Heavy on SOL (30%) and ETH (40%) right now. Did 30 days of Hyperliquid trading + got 100 HYPE airdrop. RWA narrative still feels speculative imo. Skeptical of 90% of AI agent projects.'}
+                        rows={5}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 leading-relaxed"
+                      />
+                    </div>
+                  )}
+
+                  {/* URL list mode — only for x_link_rewrite */}
+                  {isLinkRewriteScenario && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '🔗 推文链接（每行 1 个，最多 5 条）' : '🔗 Tweet URLs (1 per line, max 5)'}
+                      </label>
+                      <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
+                        {isZh
+                          ? <>✍️ 粘贴你想仿写的推文链接（要是高赞 / 写得好的）。AI 会解构每条的钩子结构，再用你的人设 + 真实素材池仿写一条新推（不抄袭原文）。</>
+                          : <>✍️ Paste tweet URLs you'd like to rewrite (preferably high-engagement). AI deconstructs each one's hook + structure, then rewrites a fresh tweet in your voice + with your context (no copying).</>}
+                      </div>
+                      <textarea
+                        value={urlsText}
+                        onChange={e => setUrlsText(e.target.value)}
+                        placeholder={'https://x.com/cz_binance/status/1234567890\nhttps://x.com/elonmusk/status/9876543210'}
+                        rows={5}
+                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 font-mono leading-relaxed"
+                      />
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 flex items-center justify-between">
+                        <span>
+                          {isZh
+                            ? '只接受 x.com / twitter.com 完整推文链接，其他自动忽略'
+                            : 'Only x.com / twitter.com tweet URLs accepted; others ignored.'}
+                        </span>
+                        <span className={parsedUrls.length > 5 ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                          {isZh ? '识别到' : 'Parsed'}: {parsedUrls.length}/5
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           )}
