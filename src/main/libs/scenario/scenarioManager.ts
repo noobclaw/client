@@ -167,9 +167,18 @@ export function getRunProgress(taskId?: string): RunProgress | null {
 export function requestAbort(taskId?: string): void {
   if (taskId) {
     abortByTaskId.set(taskId, true);
+    coworkLog('INFO', 'scenarioManager', `requestAbort scoped to ONE task`, {
+      taskId,
+      otherRunningTasks: Array.from(abortByTaskId.keys()).filter(k => k !== taskId),
+    });
     return;
   }
-  // Back-compat path: if no taskId given, abort all running tasks
+  // Back-compat path (caller didn't pass taskId — should be rare now,
+  // every UI path passes task.id). We log loudly because aborting all
+  // tasks is a much bigger deal than aborting one.
+  coworkLog('WARN', 'scenarioManager', `requestAbort with NO taskId — aborting ALL ${abortByTaskId.size} running tasks`, {
+    affectedTaskIds: Array.from(abortByTaskId.keys()),
+  });
   for (const id of abortByTaskId.keys()) abortByTaskId.set(id, true);
 }
 
@@ -286,7 +295,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
   try {
     const script = pack.upload_draft_script;
     if (!script) {
-      finishProgress('error', 'no_upload_script');
+      finishProgress(task.id, 'error', 'no_upload_script');
       return { status: 'failed', reason: 'no_upload_script' };
     }
 
@@ -400,7 +409,7 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
   // the resource key for concurrency gating. If supplied, reuse it.
   const pack = prefetchedPack || await loadPack(task.scenario_id);
   if (!pack) {
-    finishProgress('error', 'scenario_pack_not_found');
+    finishProgress(task.id, 'error', 'scenario_pack_not_found');
     return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
 
@@ -410,7 +419,7 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
     const gate = riskGuard.canRunNow(task, pack.manifest.risk_caps);
     if (!gate.allowed) {
       riskGuard.markRunSkipped(task.id, gate.reason || 'gate');
-      finishProgress('error', gate.reason);
+      finishProgress(task.id, 'error', gate.reason);
       return { status: 'skipped', reason: gate.reason };
     }
   }
