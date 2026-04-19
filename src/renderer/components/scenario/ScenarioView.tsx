@@ -16,6 +16,7 @@ import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { XhsWorkflowsPage } from './XhsWorkflowsPage';
+import { XWorkflowsPage } from './XWorkflowsPage';
 import { TaskDetailPage } from './TaskDetailPage';
 import { PlatformPlaceholder } from './PlatformPlaceholder';
 import { ConfigWizard } from './ConfigWizard';
@@ -37,7 +38,7 @@ interface ScenarioViewProps {
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
-  { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: false },
+  { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
 ];
 
 export const ScenarioView: React.FC<ScenarioViewProps> = ({
@@ -217,7 +218,21 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
-    // Other platforms — placeholder only
+    if (currentPlatform === 'x') {
+      return (
+        <XWorkflowsPage
+          scenarios={scenarios.filter(s => s.platform === 'x')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+        />
+      );
+    }
+
+    // Other platforms (douyin / tiktok / youtube) — placeholder only
     return <PlatformPlaceholder platform={currentPlatform} />;
   })();
 
