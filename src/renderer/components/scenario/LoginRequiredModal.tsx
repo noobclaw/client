@@ -43,11 +43,15 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const runCheck = useCallback(async () => {
     setChecking(true);
     try {
-      const status = await scenarioService.checkXhsLogin();
+      const status = await scenarioService.checkXhsLogin(platform);
       if (status.reason === 'browser_not_connected') {
         setExtensionStatus('fail');
         setXhsTabStatus('waiting');
-      } else if (status.reason === 'xhs_tab_not_reachable') {
+      } else if (
+        status.reason === 'xhs_tab_not_reachable' ||
+        status.reason === 'x_tab_not_reachable' ||
+        status.reason === 'tab_not_reachable'
+      ) {
         setExtensionStatus('pass');
         setXhsTabStatus('fail');
       } else {
@@ -60,25 +64,18 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
     } finally {
       setChecking(false);
     }
-  }, []);
+  }, [platform]);
 
   useEffect(() => { void runCheck(); }, []); // eslint-disable-line
 
   const handleOpenXhs = async () => {
     setOpening(true);
     try {
-      // For Twitter we don't have a dedicated openXLogin IPC yet — just open
-      // x.com via the browser. checkXhsLogin's xhs-specific probe will return
-      // a "tab not reachable" reason when the user lands on x.com, but that's
-      // actually OK because the multi-tab routing in background.js auto-opens
-      // the right tab when a Twitter task runs. The check here is just a
-      // smoke test that *some* browser tab is open and the extension is alive.
-      if (isX) {
-        try { window.open(platformUrl, '_blank'); } catch {}
-      } else {
-        const res = await scenarioService.openXhsLogin();
-        if (!res.ok) { try { window.open(platformUrl, '_blank'); } catch {} }
-      }
+      // platform-aware: opens xiaohongshu.com or x.com based on prop. The
+      // sidecar's xhsDriver now respects the platform arg and tells the
+      // extension to open the right URL.
+      const res = await scenarioService.openXhsLogin(platform);
+      if (!res.ok) { try { window.open(platformUrl, '_blank'); } catch {} }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);

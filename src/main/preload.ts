@@ -77,8 +77,8 @@ contextBridge.exposeInMainWorld('electron', {
     getRunningTaskIds: () => ipcRenderer.invoke('scenario:getRunningTaskIds'),
     getRunProgress: () => ipcRenderer.invoke('scenario:getRunProgress'),
     requestAbort: () => ipcRenderer.invoke('scenario:requestAbort'),
-    checkXhsLogin: () => ipcRenderer.invoke('scenario:checkXhsLogin'),
-    openXhsLogin: () => ipcRenderer.invoke('scenario:openXhsLogin'),
+    checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
+    openXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
   },
   api: {
     // Regular API request (non-streaming)

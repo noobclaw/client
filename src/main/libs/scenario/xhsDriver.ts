@@ -27,7 +27,20 @@ export interface XhsLoginStatus {
   reason?: string;
 }
 
-export async function checkXhsLogin(): Promise<XhsLoginStatus> {
+// Platform-aware tab matchers. Twitter v1: when the wizard / login modal
+// targets x_*, it passes platform='x' so we look for x.com / twitter.com
+// tabs instead of xiaohongshu.com.
+const TAB_PATTERNS: Record<'xhs' | 'x', RegExp> = {
+  xhs: /xiaohongshu\.com/i,
+  x: /(?:^|\.)(?:twitter|x)\.com\b/i,
+};
+
+const NOT_REACHABLE_REASON: Record<'xhs' | 'x', string> = {
+  xhs: 'xhs_tab_not_reachable',
+  x: 'x_tab_not_reachable',
+};
+
+export async function checkXhsLogin(platform: 'xhs' | 'x' = 'xhs'): Promise<XhsLoginStatus> {
   // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];
   try {
@@ -42,18 +55,24 @@ export async function checkXhsLogin(): Promise<XhsLoginStatus> {
     return { loggedIn: false, reason: 'browser_not_connected' };
   }
 
-  const xhsTab = tabs.find(
-    (t: any) => typeof t.url === 'string' && /xiaohongshu\.com/i.test(t.url)
+  const pattern = TAB_PATTERNS[platform] || TAB_PATTERNS.xhs;
+  const matchTab = tabs.find(
+    (t: any) => typeof t.url === 'string' && pattern.test(t.url)
   );
-  if (!xhsTab || typeof xhsTab.id !== 'number') {
-    return { loggedIn: false, reason: 'xhs_tab_not_reachable' };
+  if (!matchTab || typeof matchTab.id !== 'number') {
+    return { loggedIn: false, reason: NOT_REACHABLE_REASON[platform] || 'tab_not_reachable' };
   }
 
   return { loggedIn: true };
 }
 
-export async function openXhsLogin(): Promise<{ ok: boolean; reason?: string }> {
-  const url = 'https://www.xiaohongshu.com';
+const PLATFORM_LOGIN_URL: Record<'xhs' | 'x', string> = {
+  xhs: 'https://www.xiaohongshu.com',
+  x: 'https://x.com/home',
+};
+
+export async function openXhsLogin(platform: 'xhs' | 'x' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
+  const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
   try {
     await sendBrowserCommand('tab_create', { url }, 8000);
     return { ok: true };

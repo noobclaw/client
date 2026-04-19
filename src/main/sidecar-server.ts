@@ -1604,7 +1604,8 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:checkXhsLogin': {
             try {
               const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
-              return writeJSON(res, 200, await checkXhsLogin());
+              const platform = (args && args[0]) as ('xhs' | 'x' | undefined);
+              return writeJSON(res, 200, await checkXhsLogin(platform));
             } catch (e: any) {
               return writeJSON(res, 200, { loggedIn: false, reason: 'sidecar_error: ' + e.message });
             }
@@ -1612,7 +1613,8 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:openXhsLogin': {
             try {
               const { openXhsLogin } = require('./libs/scenario/xhsDriver');
-              return writeJSON(res, 200, await openXhsLogin());
+              const platform = (args && args[0]) as ('xhs' | 'x' | undefined);
+              return writeJSON(res, 200, await openXhsLogin(platform));
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, reason: e.message });
             }

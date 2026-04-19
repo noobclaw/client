@@ -261,8 +261,10 @@ export function createTauriElectronShim(): typeof window.electron {
       getTaskDir: (id: string) => ipcInvoke('scenario:getTaskDir', id).then(r => r ?? { dir: '' }),
       getRunProgress: () => ipcInvoke('scenario:getRunProgress'),
       requestAbort: () => ipcInvoke('scenario:requestAbort').then(r => r ?? { ok: true }),
-      checkXhsLogin: () => ipcInvoke('scenario:checkXhsLogin').then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
-      openXhsLogin: () => ipcInvoke('scenario:openXhsLogin').then(r => r ?? { ok: false }),
+      checkXhsLogin: (platform?: 'xhs' | 'x') =>
+        ipcInvoke('scenario:checkXhsLogin', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
+      openXhsLogin: (platform?: 'xhs' | 'x') =>
+        ipcInvoke('scenario:openXhsLogin', platform).then(r => r ?? { ok: false }),
     },
 
     // ── API proxy (for Settings provider validation) ──
