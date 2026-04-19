@@ -1059,7 +1059,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: '对比',
 
     // Quick-start banner (XhsWorkflowsPage)
-    scenarioQuickStartTitle: '一键开始 · 小红书爆款批量仿写',
+    scenarioQuickStartTitle: '自动批量 · 小红书爆款批量仿写',
     scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里通过关键词自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
     scenarioQuickStartBtn: '立即开始',
     scenarioQuickStartContinueBtn: '开始仿写',
@@ -2300,7 +2300,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: 'Comparison',
 
     // Quick-start banner
-    scenarioQuickStartTitle: 'One-click start · Batch viral rewrite',
+    scenarioQuickStartTitle: 'Auto Batch · Xiaohongshu viral rewrite',
     scenarioQuickStartDesc: 'NoobClaw auto-discovers viral posts via keywords in your logged-in Xiaohongshu session, extracts them with AI, rewrites in your persona, and drops them into the creator-center draft box.',
     scenarioQuickStartBtn: 'Start now',
     scenarioQuickStartContinueBtn: 'Continue',

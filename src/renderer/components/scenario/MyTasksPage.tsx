@@ -188,13 +188,16 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const isLinkRewriteTwitter = sid === 'x_link_rewrite';
               const isXhsLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0 && platformId === 'xhs');
               const taskUrls: string[] = (task as any).urls || [];
+              // Type labels per user spec (v2.4.24):
+              // Twitter: 推特自动互动 / 推特发推 / 指定推文仿写
+              // XHS:     自动批量 · 小红书爆款批量仿写 / 指定链接 · 小红书爆款仿写 / 小红书自动回复
               const typeLabel = (() => {
-                if (sid === 'x_auto_engage') return { icon: '🐦', zh: '自动互动', en: 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-                if (sid === 'x_post_creator') return { icon: '📝', zh: '每日发推', en: 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'x_auto_engage') return { icon: '🐦', zh: '推特自动互动', en: 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+                if (sid === 'x_post_creator') return { icon: '📝', zh: '推特发推', en: 'Twitter Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'x_link_rewrite') return { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-                if (isXhsLinkMode) return { icon: '🔗', zh: '指定链接改写', en: 'Pick-your-links', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-                if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', zh: '自动回复', en: 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-                return { icon: '🔥', zh: '批量爆款改写', en: 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if (isXhsLinkMode) return { icon: '🔗', zh: '指定链接 · 小红书爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+                if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', zh: '小红书自动回复', en: 'XHS Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                return { icon: '🔥', zh: '自动批量 · 小红书爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name
               const track = TRACK_ICONS[task.track];

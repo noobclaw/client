@@ -404,12 +404,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
   const typeBadge = (() => {
     const sid = task.scenario_id;
-    if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '自动互动' : 'Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '每日发推' : 'Daily Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特发推' : 'Twitter Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (isLinkModeForBadge && !isXTask) return { icon: '🔗', label: isZh ? '指定链接改写' : 'Pick-your-links', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-    if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', label: isZh ? '自动回复' : 'Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    return { icon: '🔥', label: isZh ? '批量爆款改写' : 'Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if (isLinkModeForBadge && !isXTask) return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', label: isZh ? '小红书自动回复' : 'XHS Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 
   return (
