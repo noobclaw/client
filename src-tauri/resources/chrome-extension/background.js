@@ -7,6 +7,16 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
+// Auto-connect on browser startup, install, and periodic keepalive
+chrome.runtime.onStartup.addListener(() => { connect(); });
+chrome.runtime.onInstalled.addListener(() => { connect(); });
+// Keepalive: reconnect every 30s if disconnected (MV3 service worker may sleep)
+chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepalive' && !connected) { connect(); }
+});
+
+
 // Resize image to reduce token usage
 async function resizeImage(dataUrl, maxWidth) {
   try {
@@ -48,6 +58,11 @@ function connect() {
           connected = true;
           reconnectDelay = 1000;
           updateStatus('connected');
+          // Multi-browser routing (v1.2.0): announce ourselves to the
+          // desktop bridge with our current tab inventory so it can route
+          // commands to the right browser. Without this, the bridge can
+          // only guess by "most recent activity".
+          await sendTabInventory();
         } else {
           connected = false;
           updateStatus('disconnected');
@@ -134,6 +149,105 @@ async function getActiveTab() {
   throw new Error('No active tab. Please open a tab in Chrome.');
 }
 
+// ── Tab-inventory protocol (multi-browser routing, v1.2.0) ────────────────
+// On every browser start, we tell the desktop bridge which tabs we have
+// open. After that we push updates whenever a tab is created, removed, or
+// changes URL. The bridge uses this to pick which connected browser
+// receives each command (the one whose tabs match the command's
+// tab_url_pattern). Without this, the bridge can only "broadcast" or
+// guess.
+async function sendTabInventory() {
+  if (!port) return;
+  try {
+    const tabs = await chrome.tabs.query({});
+    port.postMessage({
+      type: 'hello',
+      tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
+    });
+  } catch (e) {
+    console.warn('[NoobClaw] sendTabInventory failed:', e?.message || e);
+  }
+}
+
+// Debounced "tabs_changed" push. Tab events fire in bursts (e.g. opening
+// 3 tabs at once = 3 events); we only want to push the final state once.
+let tabsChangedTimer = null;
+function pushTabsChangedDebounced() {
+  if (tabsChangedTimer) clearTimeout(tabsChangedTimer);
+  tabsChangedTimer = setTimeout(async () => {
+    tabsChangedTimer = null;
+    if (!port || !connected) return;
+    try {
+      const tabs = await chrome.tabs.query({});
+      port.postMessage({
+        type: 'tabs_changed',
+        tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
+      });
+    } catch {}
+  }, 500);
+}
+
+// Wire tab events. We don't filter — any change to the tab universe might
+// affect routing decisions, so push the whole list on any event.
+chrome.tabs.onCreated.addListener(pushTabsChangedDebounced);
+chrome.tabs.onRemoved.addListener(pushTabsChangedDebounced);
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  // Only care about URL changes (status/title changes are noise).
+  if (changeInfo.url) pushTabsChangedDebounced();
+});
+
+// ── Multi-tab routing (Twitter v1) ─────────────────────────────────────────
+// When NoobClaw sends a command with a `tabPattern` (regex string), we route
+// it to the first tab whose URL matches. If no tab matches, we auto-open one
+// at the platform's anchor URL. This lets XHS tasks and Twitter tasks run
+// concurrently in different tabs without stepping on each other.
+//
+// Backward compatible: if the message has no tabPattern field (= old
+// scenarios), we fall back to getActiveTab() exactly as before.
+
+function anchorUrlFor(patternStr) {
+  // Map known platform regexes to their canonical landing URL. Adding a
+  // new platform = add one branch here. We don't try to reverse-engineer
+  // arbitrary regexes — keep this explicit.
+  if (/xiaohongshu/.test(patternStr)) return 'https://www.xiaohongshu.com';
+  if (/twitter|x\\\.com|x\.com/.test(patternStr)) return 'https://x.com/home';
+  return null;
+}
+
+function waitForTabLoad(tabId, timeoutMs = 12000) {
+  return new Promise(resolve => {
+    const listener = (id, info) => {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        resolve();
+      }
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => { chrome.tabs.onUpdated.removeListener(listener); resolve(); }, timeoutMs);
+  });
+}
+
+async function findOrOpenTabByPattern(patternStr) {
+  let pattern;
+  try { pattern = new RegExp(patternStr); }
+  catch (e) { throw new Error('Invalid tabPattern regex: ' + patternStr); }
+
+  // Scan all tabs across all windows for a URL match.
+  const tabs = await chrome.tabs.query({});
+  const match = tabs.find(t => pattern.test(t.url || ''));
+  if (match) return match;
+
+  // No matching tab — open a new one at the platform's anchor URL.
+  const anchorUrl = anchorUrlFor(patternStr);
+  if (!anchorUrl) {
+    throw new Error('No tab matching ' + patternStr + ' and no anchor URL known for that pattern');
+  }
+  // Open in background (active: false) so we don't steal focus from the user.
+  const created = await chrome.tabs.create({ url: anchorUrl, active: false });
+  await waitForTabLoad(created.id);
+  return await chrome.tabs.get(created.id);
+}
+
 async function injectContentScript(tabId) {
   try {
     // Check if already injected
@@ -169,7 +283,22 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
 }
 
 async function executeCommand(msg) {
-  const { id, command, params } = msg;
+  const { id, command, params, tabPattern } = msg;
+  // Per-message tab resolution. If the envelope carries a tabPattern (new
+  // multi-tab routing introduced in Twitter v1), we resolve it ONCE and
+  // alias it as `getActiveTab` inside this function so all downstream
+  // code paths transparently target the matched tab. The cached resolve
+  // means a single command doesn't pay the lookup cost twice.
+  let _resolvedTab = null;
+  const _outerGetActiveTab = getActiveTab; // legacy "active tab" resolver
+  // eslint-disable-next-line no-shadow
+  const getActiveTab = async () => {
+    if (_resolvedTab) return _resolvedTab;
+    _resolvedTab = tabPattern
+      ? await findOrOpenTabByPattern(tabPattern)
+      : await _outerGetActiveTab();
+    return _resolvedTab;
+  };
   try {
     let data;
 
@@ -245,6 +374,38 @@ async function executeCommand(msg) {
     } else if (command === 'get_tab_info') {
       const tab = await getActiveTab();
       data = { id: tab.id, title: tab.title, url: tab.url, status: tab.status };
+    } else if (command === 'main_world_click') {
+      // Click in MAIN world — works on React apps where isolated world click fails
+      const tab = await getActiveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (sel) => {
+          const el = document.querySelector(sel);
+          if (!el) return { error: 'not found: ' + sel };
+          // Only scroll if element is outside viewport
+          const r = el.getBoundingClientRect();
+          if (r.top < 0 || r.bottom > window.innerHeight) {
+            el.scrollIntoView({ behavior: 'instant', block: 'center' });
+          }
+          // Full mouse event sequence (same as content.js fireMouseSequence)
+          const rect = el.getBoundingClientRect();
+          const cx = rect.left + rect.width / 2;
+          const cy = rect.top + rect.height / 2;
+          const init = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+          el.dispatchEvent(new MouseEvent('mouseover', init));
+          el.dispatchEvent(new MouseEvent('mouseenter', Object.assign({}, init, { bubbles: false })));
+          el.dispatchEvent(new MouseEvent('mousemove', init));
+          el.dispatchEvent(new MouseEvent('mousedown', init));
+          if (el.focus) el.focus({ preventScroll: true });
+          el.dispatchEvent(new MouseEvent('mouseup', init));
+          el.dispatchEvent(new MouseEvent('click', init));
+          el.click();
+          return { message: 'Clicked ' + el.tagName.toLowerCase(), tag: el.tagName, w: Math.round(rect.width), h: Math.round(rect.height) };
+        },
+        args: [params.selector],
+      });
+      data = results[0]?.result || { error: 'executeScript failed' };
     } else {
       // Forward to content script
       const tab = await getActiveTab();

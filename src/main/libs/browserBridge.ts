@@ -102,8 +102,31 @@ function detectBrowsers(): DetectedBrowser[] {
 }
 
 let tcpServer: net.Server | null = null;
-let clientSocket: net.Socket | null = null;
 let bridgePort: number | null = null;
+
+// Multi-browser support (v2.4.9): each connected browser instance owns its
+// own socket + cached open-tab URL list. Pre-2.4.9 we kept ONE clientSocket
+// global and `if (clientSocket) clientSocket.destroy()` on each new connect
+// — which meant logging into XHS in browser A and Twitter in browser B
+// killed whichever connected first. Now we keep them all in a Map and
+// route each command to the connection whose tabs match the requested
+// `tabPattern`. Commands without a pattern fall back to whichever
+// connection saw the most recent activity.
+interface BrowserConn {
+  id: string;
+  socket: net.Socket;
+  tabs: Array<{ id: number; url: string }>;
+  lastActivityAt: number;
+}
+const browserConns = new Map<string, BrowserConn>();
+let connSeq = 0;
+
+function isAnyBrowserConnected(): boolean {
+  for (const c of browserConns.values()) {
+    if (!c.socket.destroyed) return true;
+  }
+  return false;
+}
 
 const pendingRequests = new Map<string, {
   resolve: (value: any) => void;
@@ -122,7 +145,7 @@ export function getBrowserBridgeStatus(): {
   return {
     running: tcpServer !== null,
     port: bridgePort,
-    connected: clientSocket !== null && !clientSocket.destroyed,
+    connected: isAnyBrowserConnected(),
     extensionInstalled: isNativeHostRegistered(),
   };
 }
@@ -563,15 +586,19 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
 
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
-      console.log('[BrowserBridge] Native messaging host connected');
+      // Multi-browser: every native-host connection becomes its own entry
+      // in browserConns. We learn what tabs the browser has via the new
+      // `hello` / `tabs_changed` protocol from background.js.
+      const connId = `conn_${++connSeq}`;
+      const conn: BrowserConn = {
+        id: connId,
+        socket,
+        tabs: [],
+        lastActivityAt: Date.now(),
+      };
+      browserConns.set(connId, conn);
+      console.log(`[BrowserBridge] Browser ${connId} connected (total: ${browserConns.size})`);
 
-      // Replace any existing connection
-      if (clientSocket && !clientSocket.destroyed) {
-        clientSocket.destroy();
-      }
-      clientSocket = socket;
-
-      // Notify renderer
       notifyBridgeStatus(true);
       fireConnectionListeners();
 
@@ -588,11 +615,29 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
 
             if (msg.type === 'pong') return;
 
-            // Response to a command
+            // Tab inventory updates from the extension. The extension sends
+            // `hello` once on connect, then `tabs_changed` on every tab
+            // create / update / remove. We use these to route subsequent
+            // commands by tabPattern without round-tripping a query first.
+            if (msg.type === 'hello' || msg.type === 'tabs_changed') {
+              if (Array.isArray(msg.tabs)) {
+                conn.tabs = msg.tabs.map((t: any) => ({
+                  id: Number(t.id),
+                  url: String(t.url || ''),
+                }));
+                conn.lastActivityAt = Date.now();
+              }
+              return;
+            }
+
+            // Response to a command — could come from ANY connection. The
+            // pendingRequests map is keyed by command id which is unique
+            // across browsers, so no de-dup needed.
             if (msg.id && pendingRequests.has(msg.id)) {
               const pending = pendingRequests.get(msg.id)!;
               clearTimeout(pending.timer);
               pendingRequests.delete(msg.id);
+              conn.lastActivityAt = Date.now();
               if (msg.success) {
                 pending.resolve(msg.data);
               } else {
@@ -606,21 +651,25 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
       });
 
       socket.on('close', () => {
-        console.log('[BrowserBridge] Native messaging host disconnected');
-        if (clientSocket === socket) {
-          clientSocket = null;
-          notifyBridgeStatus(false);
-        }
-        // Reject all pending
-        for (const [id, pending] of pendingRequests) {
-          clearTimeout(pending.timer);
-          pending.reject(new Error('Extension disconnected'));
-          pendingRequests.delete(id);
+        console.log(`[BrowserBridge] Browser ${connId} disconnected (remaining: ${browserConns.size - 1})`);
+        browserConns.delete(connId);
+        if (!isAnyBrowserConnected()) notifyBridgeStatus(false);
+        // Reject any pending requests that were definitely targeted at this
+        // connection. We can't tell from pending entries which conn they
+        // were sent to, so on FULL disconnect (no browsers left) we reject
+        // all. Otherwise we let them ride — another browser might respond,
+        // or they'll time out naturally.
+        if (browserConns.size === 0) {
+          for (const [id, pending] of pendingRequests) {
+            clearTimeout(pending.timer);
+            pending.reject(new Error('Extension disconnected'));
+            pendingRequests.delete(id);
+          }
         }
       });
 
       socket.on('error', (err) => {
-        console.error('[BrowserBridge] Socket error:', err.message);
+        console.error(`[BrowserBridge] Socket error on ${connId}:`, err.message);
       });
     });
 
@@ -653,10 +702,11 @@ export async function stopBrowserBridge(): Promise<void> {
     pendingRequests.delete(id);
   }
 
-  if (clientSocket && !clientSocket.destroyed) {
-    clientSocket.destroy();
-    clientSocket = null;
+  // Tear down every browser connection (multi-browser).
+  for (const conn of browserConns.values()) {
+    if (!conn.socket.destroyed) conn.socket.destroy();
   }
+  browserConns.clear();
 
   return new Promise((resolve) => {
     if (tcpServer) {
@@ -705,16 +755,42 @@ function fireConnectionListeners() {
 // --- Send command to extension ---
 
 /**
- * Routing options for a command (multi-tab support, Twitter v1).
- *   tabPattern: regex string. background.js routes the command to the first
- *               tab whose URL matches. If no tab matches, it auto-opens one
- *               by navigating to the regex's "anchor" URL (extracted from
- *               the pattern, see resolveAnchorUrl in background.js).
- *   When omitted: status quo — extension routes to its current "active" tab,
- *   which is what every pre-Twitter-v1 scenario relied on. Backward compat.
+ * Routing options for a command (multi-tab + multi-browser support).
+ *   tabPattern: regex string. The bridge picks the connected browser whose
+ *               cached open-tab list contains a URL matching the pattern.
+ *               If multiple browsers match, the one with the most-recent
+ *               activity wins. If none match, falls back to whichever
+ *               browser saw the most recent activity (which then
+ *               findOrOpenTabByPattern in that browser will auto-open the
+ *               anchor URL).
+ *   When omitted: pre-multi-browser fallback — most-recently-active conn.
  */
 export interface SendBrowserCommandOptions {
   tabPattern?: string;
+}
+
+/** Pick the browser connection that should receive a command. */
+function pickConnForPattern(tabPattern: string | undefined): BrowserConn | null {
+  const conns = Array.from(browserConns.values()).filter(c => !c.socket.destroyed);
+  if (conns.length === 0) return null;
+  if (conns.length === 1) return conns[0];
+
+  if (tabPattern) {
+    let pattern: RegExp;
+    try { pattern = new RegExp(tabPattern); }
+    catch { return conns.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0]; }
+    // Prefer a connection that already has a matching tab open.
+    const matching = conns.filter(c => c.tabs.some(t => pattern.test(t.url || '')));
+    if (matching.length > 0) {
+      return matching.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
+    }
+    // No browser has the right tab — fall through to "most-recent" so the
+    // extension can auto-open the anchor URL in that browser. (This means
+    // Twitter task tries to open x.com in browser A even if user prefers
+    // browser B; can revisit if it's annoying. For now: predictable.)
+  }
+
+  return conns.sort((a, b) => b.lastActivityAt - a.lastActivityAt)[0];
 }
 
 export function sendBrowserCommand(
@@ -724,7 +800,8 @@ export function sendBrowserCommand(
   options: SendBrowserCommandOptions = {}
 ): Promise<any> {
   return new Promise((resolve, reject) => {
-    if (!clientSocket || clientSocket.destroyed) {
+    const conn = pickConnForPattern(options.tabPattern);
+    if (!conn) {
       reject(new Error('BROWSER_NOT_CONNECTED'));
       return;
     }
@@ -742,6 +819,7 @@ export function sendBrowserCommand(
     const envelope: Record<string, any> = { id, command, params };
     if (options.tabPattern) envelope.tabPattern = options.tabPattern;
 
-    clientSocket.write(JSON.stringify(envelope) + '\n');
+    conn.lastActivityAt = Date.now();
+    conn.socket.write(JSON.stringify(envelope) + '\n');
   });
 }

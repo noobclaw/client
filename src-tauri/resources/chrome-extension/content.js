@@ -80,6 +80,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'triple_click':
           result = tripleClickElement(params);
           break;
+        // ── Generic DOM query ──
+        case 'query_selector':
+          result = querySelectorCmd(params);
+          break;
         default:
           result = { error: `Unknown command: ${command}` };
       }
@@ -256,12 +260,13 @@ function scrollPage(params) {
 function findElements(params) {
   const query = params.query.toLowerCase();
   const results = [];
-  const allElements = document.querySelectorAll('a, button, input, textarea, select, [role="button"], [role="link"], [role="textbox"], [onclick], [tabindex], h1, h2, h3, h4, h5, h6, label, img');
+  const allElements = document.querySelectorAll('a, button, input, textarea, select, div, span, li, [role="button"], [role="link"], [role="textbox"], [role="tab"], [onclick], [tabindex], h1, h2, h3, h4, h5, h6, label, img');
 
   for (const el of allElements) {
-    if (results.length >= 20) break;
+    if (results.length >= 100) break;
 
-    const text = (el.textContent || '').trim().toLowerCase();
+    const rawText = (el.textContent || '').trim();
+    const text = rawText.toLowerCase();
     const ariaLabel = (el.getAttribute('aria-label') || '').toLowerCase();
     const placeholder = (el.getAttribute('placeholder') || '').toLowerCase();
     const title = (el.getAttribute('title') || '').toLowerCase();
@@ -275,7 +280,7 @@ function findElements(params) {
       if (rect.width === 0 && rect.height === 0) continue;
       results.push({
         tag: el.tagName.toLowerCase(),
-        text: text.slice(0, 100),
+        text: rawText.slice(0, 200),
         selector: getSelector(el),
         ariaLabel: el.getAttribute('aria-label') || undefined,
         bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
@@ -589,4 +594,36 @@ function tripleClickElement(params) {
   fireMouseSequence(el, { detail: 3 });
   return { message: `Triple-clicked ${el.tagName.toLowerCase()}` };
 }
+// ── Generic DOM query (atomic capability) ──
+
+function querySelectorCmd(params) {
+  const selector = params.selector;
+  if (!selector) return { error: 'selector is required' };
+  const limit = params.limit || 50;
+  const attrNames = params.attrs ? params.attrs.split(',') : [];
+
+  const els = document.querySelectorAll(selector);
+  const results = [];
+  for (let i = 0; i < els.length && results.length < limit; i++) {
+    const el = els[i];
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) continue;
+
+    const item = {
+      text: (el.textContent || '').trim().slice(0, 200),
+      href: el.getAttribute('href') || undefined,
+      src: el.getAttribute('src') || undefined,
+      className: (el.className || '').toString().slice(0, 100),
+      tagName: el.tagName.toLowerCase(),
+      bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
+    };
+    for (const attr of attrNames) {
+      item[attr] = el.getAttribute(attr.trim()) || undefined;
+    }
+    Object.keys(item).forEach(k => item[k] === undefined && delete item[k]);
+    results.push(item);
+  }
+  return { elements: results };
+}
+
 } // end __noobclaw_injected guard

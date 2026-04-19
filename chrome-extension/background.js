@@ -58,6 +58,11 @@ function connect() {
           connected = true;
           reconnectDelay = 1000;
           updateStatus('connected');
+          // Multi-browser routing (v1.2.0): announce ourselves to the
+          // desktop bridge with our current tab inventory so it can route
+          // commands to the right browser. Without this, the bridge can
+          // only guess by "most recent activity".
+          await sendTabInventory();
         } else {
           connected = false;
           updateStatus('disconnected');
@@ -143,6 +148,53 @@ async function getActiveTab() {
   if (tab?.id) return tab;
   throw new Error('No active tab. Please open a tab in Chrome.');
 }
+
+// ── Tab-inventory protocol (multi-browser routing, v1.2.0) ────────────────
+// On every browser start, we tell the desktop bridge which tabs we have
+// open. After that we push updates whenever a tab is created, removed, or
+// changes URL. The bridge uses this to pick which connected browser
+// receives each command (the one whose tabs match the command's
+// tab_url_pattern). Without this, the bridge can only "broadcast" or
+// guess.
+async function sendTabInventory() {
+  if (!port) return;
+  try {
+    const tabs = await chrome.tabs.query({});
+    port.postMessage({
+      type: 'hello',
+      tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
+    });
+  } catch (e) {
+    console.warn('[NoobClaw] sendTabInventory failed:', e?.message || e);
+  }
+}
+
+// Debounced "tabs_changed" push. Tab events fire in bursts (e.g. opening
+// 3 tabs at once = 3 events); we only want to push the final state once.
+let tabsChangedTimer = null;
+function pushTabsChangedDebounced() {
+  if (tabsChangedTimer) clearTimeout(tabsChangedTimer);
+  tabsChangedTimer = setTimeout(async () => {
+    tabsChangedTimer = null;
+    if (!port || !connected) return;
+    try {
+      const tabs = await chrome.tabs.query({});
+      port.postMessage({
+        type: 'tabs_changed',
+        tabs: tabs.map(t => ({ id: t.id, url: t.url || '' })),
+      });
+    } catch {}
+  }, 500);
+}
+
+// Wire tab events. We don't filter — any change to the tab universe might
+// affect routing decisions, so push the whole list on any event.
+chrome.tabs.onCreated.addListener(pushTabsChangedDebounced);
+chrome.tabs.onRemoved.addListener(pushTabsChangedDebounced);
+chrome.tabs.onUpdated.addListener((_tabId, changeInfo) => {
+  // Only care about URL changes (status/title changes are noise).
+  if (changeInfo.url) pushTabsChangedDebounced();
+});
 
 // ── Multi-tab routing (Twitter v1) ─────────────────────────────────────────
 // When NoobClaw sends a command with a `tabPattern` (regex string), we route
