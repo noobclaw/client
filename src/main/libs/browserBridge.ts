@@ -704,10 +704,24 @@ function fireConnectionListeners() {
 
 // --- Send command to extension ---
 
+/**
+ * Routing options for a command (multi-tab support, Twitter v1).
+ *   tabPattern: regex string. background.js routes the command to the first
+ *               tab whose URL matches. If no tab matches, it auto-opens one
+ *               by navigating to the regex's "anchor" URL (extracted from
+ *               the pattern, see resolveAnchorUrl in background.js).
+ *   When omitted: status quo — extension routes to its current "active" tab,
+ *   which is what every pre-Twitter-v1 scenario relied on. Backward compat.
+ */
+export interface SendBrowserCommandOptions {
+  tabPattern?: string;
+}
+
 export function sendBrowserCommand(
   command: string,
   params: Record<string, any> = {},
-  timeoutMs = 30000
+  timeoutMs = 30000,
+  options: SendBrowserCommandOptions = {}
 ): Promise<any> {
   return new Promise((resolve, reject) => {
     if (!clientSocket || clientSocket.destroyed) {
@@ -723,6 +737,11 @@ export function sendBrowserCommand(
 
     pendingRequests.set(id, { resolve, reject, timer });
 
-    clientSocket.write(JSON.stringify({ id, command, params }) + '\n');
+    // Wire envelope. tabPattern is optional — old extensions that don't
+    // know about it simply ignore the field. New extensions route via it.
+    const envelope: Record<string, any> = { id, command, params };
+    if (options.tabPattern) envelope.tabPattern = options.tabPattern;
+
+    clientSocket.write(JSON.stringify(envelope) + '\n');
   });
 }
