@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "NoobClaw Browser Assistant",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAtWD8jFFgwfezssxSqDHmDXDfBTBcL8gY6c8Jl15NqJr9Q7HR1IVroWmKbIFEGLxphtRUuTOCG7rj+bYWIVQFwUE8Bx1K7wioTPwerxXMeg62n7jyv/sEb5rJ7/0y9qCG7o43xdQopql5+UsoXJt4vNKWwki0O0zpOpBMpBAYAh2LN2H1cYkS0xg3KayCUwr3/kGEx8n245qugkRUXx6Bb74mSB2TPRhcdSCQhSaBO/+FRfX85a74OCPalV7WIYSIZ6OjIuPmUNk6ThT4pJDH1lgk6nsO3t6u2vv9V+IuppFEIhox37sBogovqBHOrh5fKbPZEEB1Qr43hOr7W+kJlQIDAQAB",
   "description": "Connects Chrome to NoobClaw AI for browser automation",
   "permissions": ["activeTab", "scripting", "tabs", "storage", "nativeMessaging", "alarms"],

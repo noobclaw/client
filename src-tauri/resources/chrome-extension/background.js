@@ -237,15 +237,31 @@ async function findOrOpenTabByPattern(patternStr) {
   const match = tabs.find(t => pattern.test(t.url || ''));
   if (match) return match;
 
-  // No matching tab — open a new one at the platform's anchor URL.
+  // No matching tab — open a NEW WINDOW at the platform's anchor URL.
+  // We open a window (not a tab in the current window) per user request:
+  // visually more obvious which platform each task is running on, and
+  // less likely the user accidentally clicks something on the wrong
+  // surface. focused: false keeps the new window in the background so
+  // we don't steal focus from whatever the user is doing.
+  //
+  // chrome.windows.create returns a Window with a `tabs` array containing
+  // the initial tab — we return that tab so all downstream code paths
+  // (which expect a tab object) keep working unchanged.
   const anchorUrl = anchorUrlFor(patternStr);
   if (!anchorUrl) {
     throw new Error('No tab matching ' + patternStr + ' and no anchor URL known for that pattern');
   }
-  // Open in background (active: false) so we don't steal focus from the user.
-  const created = await chrome.tabs.create({ url: anchorUrl, active: false });
-  await waitForTabLoad(created.id);
-  return await chrome.tabs.get(created.id);
+  const win = await chrome.windows.create({
+    url: anchorUrl,
+    focused: false,
+    type: 'normal',
+  });
+  const initialTab = win.tabs && win.tabs[0];
+  if (!initialTab || !initialTab.id) {
+    throw new Error('chrome.windows.create returned no initial tab');
+  }
+  await waitForTabLoad(initialTab.id);
+  return await chrome.tabs.get(initialTab.id);
 }
 
 async function injectContentScript(tabId) {
