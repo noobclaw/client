@@ -7,14 +7,27 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
-// Auto-connect on browser startup, install, and periodic keepalive
+// Auto-connect on browser startup, install, and periodic keepalive.
+// MV3 service workers can be killed any time; relying ONLY on onStartup
+// loses the connection until the next alarm fire. Hence three triggers:
+//   1. onStartup / onInstalled — first-load events
+//   2. Top-level connect() — runs on EVERY service-worker wake (alarm,
+//      tab event, message arrival, install). The guard inside connect()
+//      makes redundant calls cheap.
+//   3. Keepalive alarm every 30s — last-resort retry.
 chrome.runtime.onStartup.addListener(() => { connect(); });
 chrome.runtime.onInstalled.addListener(() => { connect(); });
-// Keepalive: reconnect every 30s if disconnected (MV3 service worker may sleep)
 chrome.alarms.create('keepalive', { periodInMinutes: 0.5 });
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'keepalive' && !connected) { connect(); }
+  if (alarm.name === 'keepalive') { connect(); }  // always try, connect() is idempotent
 });
+// Top-level kick — fires on every SW wake. v1.1.0 didn't need this because
+// it had fewer event listeners and the SW stayed alive longer; v1.2.x adds
+// tab/group listeners that paradoxically made the SW more eager to die
+// (more listeners → Chrome optimizes more aggressively). This line restores
+// "open browser → instantly connected" UX without requiring the user to
+// click the extension icon to wake things up.
+connect();
 
 
 // Resize image to reduce token usage
@@ -334,23 +347,42 @@ const platformGroupByWindow = new Map(); // key: `${windowId}|${title}` → grou
 async function ensureTabInPlatformGroup(tab, patternStr) {
   // chrome.tabGroups requires the tabGroups permission. Skip pinned/
   // incognito tabs (Chrome refuses to group them).
-  if (!tab || !tab.id || tab.incognito || tab.pinned) return;
-  if (!chrome.tabGroups || !chrome.tabs.group) return; // very old Chrome
+  if (!tab || !tab.id) {
+    console.log('[NoobClaw] tab group skip: no tab id');
+    return;
+  }
+  if (tab.incognito) {
+    console.log('[NoobClaw] tab group skip: incognito tab');
+    return;
+  }
+  if (tab.pinned) {
+    console.log('[NoobClaw] tab group skip: pinned tab');
+    return;
+  }
+  if (!chrome.tabGroups || !chrome.tabs.group) {
+    console.log('[NoobClaw] tab group skip: chrome.tabGroups API unavailable (old Chrome or missing permission)');
+    return;
+  }
 
   const info = platformLabelForPattern(patternStr);
-  if (!info) return;
+  if (!info) {
+    console.log('[NoobClaw] tab group skip: no platform label for pattern', patternStr);
+    return;
+  }
 
   const cacheKey = `${tab.windowId}|${info.title}`;
   const cachedGroupId = platformGroupByWindow.get(cacheKey);
 
   // Fast path: already in the right group.
-  if (cachedGroupId && tab.groupId === cachedGroupId) return;
+  if (cachedGroupId && tab.groupId === cachedGroupId) {
+    console.log('[NoobClaw] tab group: already in', info.title);
+    return;
+  }
 
   try {
     let groupId;
     if (cachedGroupId) {
       try {
-        // Confirm the cached group still exists (user could have closed it).
         await chrome.tabGroups.get(cachedGroupId);
         groupId = await chrome.tabs.group({ groupId: cachedGroupId, tabIds: [tab.id] });
       } catch {
@@ -369,11 +401,15 @@ async function ensureTabInPlatformGroup(tab, patternStr) {
         collapsed: false,
       });
       platformGroupByWindow.set(cacheKey, groupId);
+      console.log('[NoobClaw] tab group created:', info.title, 'groupId=', groupId);
+    } else {
+      console.log('[NoobClaw] tab group: tab joined existing', info.title);
     }
   } catch (e) {
     // Non-fatal — automation continues even if grouping fails (e.g. user
-    // manually moved the tab to another window mid-flight).
-    console.warn('[NoobClaw] tab group failed:', e?.message || e);
+    // manually moved the tab to another window mid-flight). Log loudly so
+    // we can diagnose "tab group not visible" complaints.
+    console.warn('[NoobClaw] tab group FAILED:', e?.message || e, '\n  tab=', tab, '\n  pattern=', patternStr);
   }
 }
 

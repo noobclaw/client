@@ -19,7 +19,6 @@ import React, { useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
-import { ExtensionUpdateBanner } from './ExtensionUpdateBanner';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
@@ -296,7 +295,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <ExtensionUpdateBanner />
       {/* Four-card grid — all XHS tools grouped together at the top:
           批量仿写 · 指定链接 · 敏感词检测 · 自动回复 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">

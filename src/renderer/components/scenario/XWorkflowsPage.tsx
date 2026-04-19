@@ -16,7 +16,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
-import { ExtensionUpdateBanner } from './ExtensionUpdateBanner';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // web3 KOL track preset 的简表（用于任务卡片显示图标+名称）
@@ -192,7 +191,6 @@ export const XWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <ExtensionUpdateBanner />
       {/* Scenario cards — match XHS layout: jump straight to the cards,
           no platform hero / intro paragraph / mainland-VPN warning above.
           The three Twitter scenarios speak for themselves; the bottom

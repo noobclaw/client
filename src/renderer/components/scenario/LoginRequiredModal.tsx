@@ -40,9 +40,27 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
+  // Outdated extension warning — shown inline in step ② when an extension
+  // is connected but reports a version below MIN_EXTENSION_VERSION. We
+  // ignore extensions with empty version+empty tabs since that means
+  // "still in mid-handshake, hello not received yet" — avoids the false
+  // positive the user reported on a freshly-loaded 1.2.4 extension.
+  const MIN_EXTENSION_VERSION = '1.2.0';
+  const [outdatedExts, setOutdatedExts] = useState<Array<{ version: string }>>([]);
   // Secondary modal: step-by-step guide for loading the unpacked extension
   const [localInstallOpen, setLocalInstallOpen] = useState(false);
   const [localInstallMsg, setLocalInstallMsg] = useState<string | null>(null);
+
+  const compareVersion = (a: string, b: string): number => {
+    const pa = a.split('.').map(n => parseInt(n, 10) || 0);
+    const pb = b.split('.').map(n => parseInt(n, 10) || 0);
+    const len = Math.max(pa.length, pb.length);
+    for (let i = 0; i < len; i++) {
+      const da = pa[i] || 0; const db = pb[i] || 0;
+      if (da !== db) return da - db;
+    }
+    return 0;
+  };
 
   const runCheck = useCallback(async () => {
     setChecking(true);
@@ -61,6 +79,24 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
       } else {
         setExtensionStatus('pass');
         setXhsTabStatus('pass');
+      }
+      // Version check piggy-backs on the same poll. If any connected
+      // extension is below the floor, surface it inline. Skip "still
+      // handshaking" connections (empty version + zero tabs reported).
+      try {
+        const exts = await scenarioService.getConnectedExtensions();
+        const old = exts.filter(e => {
+          if (!e.version) {
+            // No version yet — only flag as outdated if the extension HAS
+            // reported tabs (which means hello/tabs_changed arrived but
+            // version was missing). Otherwise it's mid-handshake.
+            return e.tabCount > 0;
+          }
+          return compareVersion(e.version, MIN_EXTENSION_VERSION) < 0;
+        });
+        setOutdatedExts(old.map(o => ({ version: o.version || '< 1.2.0' })));
+      } catch {
+        setOutdatedExts([]);
       }
     } catch {
       setExtensionStatus('fail');
@@ -164,8 +200,32 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                   </button>
                 </div>
               )}
-              {extensionStatus === 'pass' && (
+              {extensionStatus === 'pass' && outdatedExts.length === 0 && (
                 <div className="text-xs text-green-500 mt-1">{isZh ? '已连接' : 'Connected'}</div>
+              )}
+              {/* Outdated-version warning, inline. Shown ONLY when at least
+                  one connected extension is below the required floor. The
+                  pre-run check is the right place for this — it's the
+                  natural gate before a run, and the user can click straight
+                  through to the right store to update. */}
+              {extensionStatus === 'pass' && outdatedExts.length > 0 && (
+                <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
+                  <div className="font-semibold mb-1">
+                    ⚠️ {isZh
+                      ? `检测到旧版插件（${outdatedExts.map(o => o.version).join(', ')}）— 多浏览器并行任务可能不工作，建议立即更新到 v${MIN_EXTENSION_VERSION}+`
+                      : `Outdated extension detected (${outdatedExts.map(o => o.version).join(', ')}). Multi-browser tasks may not work — update to v${MIN_EXTENSION_VERSION}+`}
+                  </div>
+                  <div className="flex flex-col gap-1 mt-1.5">
+                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
+                      className="text-left underline decoration-dotted hover:text-amber-900 dark:hover:text-amber-200">
+                      🌐 {isZh ? 'Chrome 应用商店更新' : 'Update from Chrome Web Store'}
+                    </button>
+                    <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
+                      className="text-left underline decoration-dotted hover:text-amber-900 dark:hover:text-amber-200">
+                      🔷 {isZh ? 'Edge 应用商店更新' : 'Update from Edge Add-ons'}
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
           </div>
