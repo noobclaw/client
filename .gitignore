@@ -54,4 +54,5 @@ Desktop.ini
 # IDE
 .idea/
 *.swp
-*.swochrome-extension.zip
+*.swo
+chrome-extension.zip
