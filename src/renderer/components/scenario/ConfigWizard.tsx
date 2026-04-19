@@ -608,8 +608,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* ── Twitter-only fields ── */}
               {isXPlatform && (
                 <>
-                  {/* Persona for Twitter (always shown — all 3 X scenarios use it) */}
-                  {!isAutoReply && (
+                  {/* Persona — for x_auto_engage / x_post_creator only.
+                      x_link_rewrite is "literal rewrite of provided URLs" —
+                      AI follows the original tweet's content + language,
+                      no persona injection needed. */}
+                  {!isAutoReply && !isLinkRewriteScenario && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
@@ -628,48 +631,52 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* Language mode */}
-                  <div>
-                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                      {isZh ? '🌐 内容语言' : '🌐 Content language'}
-                    </label>
-                    <div className="flex gap-2">
-                      {([
-                        { v: 'zh' as const, label: isZh ? '中文' : 'Chinese' },
-                        { v: 'en' as const, label: isZh ? '英文' : 'English' },
-                        { v: 'mixed' as const, label: isZh ? '中英混合（推荐）' : 'Mixed (recommended)' },
-                      ]).map(opt => (
-                        <button
-                          key={opt.v}
-                          type="button"
-                          onClick={() => setLanguage(opt.v)}
-                          className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
-                            language === opt.v
-                              ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
-                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
-                          }`}
-                        >
-                          {opt.label}
-                        </button>
-                      ))}
+                  {/* Language mode — also skipped for x_link_rewrite. The AI
+                      auto-matches the original tweet's language. */}
+                  {!isLinkRewriteScenario && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '🌐 内容语言' : '🌐 Content language'}
+                      </label>
+                      <div className="flex gap-2">
+                        {([
+                          { v: 'zh' as const, label: isZh ? '中文' : 'Chinese' },
+                          { v: 'en' as const, label: isZh ? '英文' : 'English' },
+                          { v: 'mixed' as const, label: isZh ? '中英混合（推荐）' : 'Mixed (recommended)' },
+                        ]).map(opt => (
+                          <button
+                            key={opt.v}
+                            type="button"
+                            onClick={() => setLanguage(opt.v)}
+                            className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                              language === opt.v
+                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                        {isZh
+                          ? '中英混合 = 回复语言跟原推匹配（中文推回中文 / 英文推回英文）'
+                          : 'Mixed = reply language matches the original tweet (zh→zh, en→en).'}
+                      </p>
                     </div>
-                    <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                      {isZh
-                        ? '中英混合 = 回复语言跟原推匹配（中文推回中文 / 英文推回英文）'
-                        : 'Mixed = reply language matches the original tweet (zh→zh, en→en).'}
-                    </p>
-                  </div>
+                  )}
 
-                  {/* user_context — optional free-form notes (used by post_creator + link_rewrite) */}
-                  {!isAutoReply && (
+                  {/* user_context — for post_creator only. link_rewrite doesn't
+                      need it (AI rewrites whatever the source tweet says). */}
+                  {!isAutoReply && !isLinkRewriteScenario && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '📝 你的真实素材池（选填）' : '📝 Your real-experience notes (optional)'}
                       </label>
                       <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
                         {isZh
-                          ? <>💡 写下你最近真实在做的事 / 持仓 / 看到的有趣现象 / 想表达的观点。AI 在「仿写 / 原创发推」时会从这里挑素材填进去，让推文有具体内容而不是空洞模板。</>
-                          : <>💡 Real things you're doing / positions / observations / opinions. AI uses these in rewrite/original posts so they have substance instead of being template-y.</>}
+                          ? <>💡 写下你最近真实在做的事 / 持仓 / 看到的有趣现象 / 想表达的观点。AI 在「原创发推」时会从这里挑素材填进去，让推文有具体内容而不是空洞模板。</>
+                          : <>💡 Real things you're doing / positions / observations / opinions. AI uses these in original posts so they have substance instead of being template-y.</>}
                       </div>
                       <textarea
                         value={userContext}
@@ -683,7 +690,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* URL list mode — only for x_link_rewrite */}
+                  {/* URL list — x_link_rewrite. Only thing the user needs to provide. */}
                   {isLinkRewriteScenario && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
@@ -691,8 +698,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </label>
                       <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
                         {isZh
-                          ? <>✍️ 粘贴你想仿写的推文链接（要是高赞 / 写得好的）。AI 会解构每条的钩子结构，再用你的人设 + 真实素材池仿写一条新推（不抄袭原文）。</>
-                          : <>✍️ Paste tweet URLs you'd like to rewrite (preferably high-engagement). AI deconstructs each one's hook + structure, then rewrites a fresh tweet in your voice + with your context (no copying).</>}
+                          ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 解构钩子+结构 → <strong>用原推的同种语言、同种风格</strong>仿写一条新推（不抄袭原文）。<br/>不需要填人设 / 素材 / 语言 — 一切跟原推走。</>
+                          : <>✍️ Paste tweet URLs to rewrite. AI reads each → deconstructs hook + structure → rewrites in the <strong>same language and style</strong> as the original (no copying).<br/>No persona / context / language config needed — it follows the source.</>}
                       </div>
                       <textarea
                         value={urlsText}
