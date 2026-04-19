@@ -54,6 +54,9 @@ export interface ScenarioManifestIPC {
   entry_urls: Record<string, string>;
   creator_urls?: Record<string, string>;
   skills: Record<string, string>;
+  /** Tab URL regex for multi-tab concurrency. Optional — see main-process
+   *  ScenarioManifest docstring. */
+  tab_url_pattern?: string;
 }
 
 export interface ScenarioTaskIPC {

@@ -36,6 +36,21 @@ export interface ScenarioManifest {
   entry_urls: Record<string, string>;
   creator_urls?: Record<string, string>;
   skills: Record<string, any>;      // key → filename or nested object
+  /**
+   * Optional URL pattern (regex string) identifying which Chrome tab this
+   * scenario's commands should be routed to. Introduced for multi-tab
+   * concurrency (Twitter v1) so XHS tasks talk to xiaohongshu.com tabs
+   * and Twitter tasks talk to x.com tabs without stepping on each other.
+   *
+   * Examples:
+   *   '^https?://(www\\.)?xiaohongshu\\.com/'       — XHS scenarios
+   *   '^https?://(www\\.)?(twitter|x)\\.com/'       — Twitter scenarios
+   *
+   * When omitted (legacy XHS scenarios pre-v4.18.5), commands route to
+   * whichever tab the extension considers active — same behavior as before
+   * this field existed. Backward compatible.
+   */
+  tab_url_pattern?: string;
 }
 
 export interface ScenarioDefaultConfig {
