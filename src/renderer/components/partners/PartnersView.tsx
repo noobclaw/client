@@ -161,8 +161,8 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="✨"
-        titleZh="一键使用一次自动化运营任务"
-        titleEn="Run any automation task once"
+        titleZh="使用一次自动化运营任务"
+        titleEn="Run an automation task once"
         descZh="点击进入自动化运营任意创建一个任务并跑一次，领取奖励"
         descEn="Open Automation, create any task and run it once to earn your reward"
         ctaZh="✨ 去创建任务"
