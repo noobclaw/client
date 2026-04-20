@@ -147,6 +147,19 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
 
   useEffect(() => { void runCheck(); }, []); // eslint-disable-line
 
+  // Periodic auto-poll while the modal is open. Catches:
+  //   - User opens modal first, then opens browser → extension connects
+  //   - User updates extension from store → old conn disconnects, new
+  //     conn connects with the higher version → outdated warning clears
+  //   - User logs in to XHS / Twitter mid-check → tab now reachable
+  // 3s strikes a balance between responsiveness and cost (the check
+  // round-trips to sidecar; doing it every 1s would feel snappy but
+  // hammer the bridge unnecessarily).
+  useEffect(() => {
+    const h = setInterval(() => { void runCheck(); }, 3000);
+    return () => clearInterval(h);
+  }, [runCheck]);
+
   const handleOpenXhs = async () => {
     setOpening(true);
     try {
@@ -163,6 +176,40 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
 
   const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass';
   const ICON: Record<StepStatus, string> = { pass: '✅', fail: '❌', checking: '⏳', waiting: '⏳' };
+
+  // Shared install/update action block — used by BOTH "extension not
+  // connected" (red) and "extension outdated" (yellow) states. Logically
+  // they're the same problem (need to install a new build), so the
+  // buttons should be identical; only the surrounding header copy differs.
+  // Pre-2.4.29 the outdated branch had only Chrome + Edge store links and
+  // was missing the "📁 本地安装" path that the not-connected branch had,
+  // which left users with locally-developed installs no way to update
+  // without knowing chrome://extensions by heart.
+  const installActionButtons = (
+    <>
+      <div className="flex flex-col gap-1.5">
+        <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
+          className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
+          {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
+        </button>
+        <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
+          className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
+          {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
+        </button>
+        <button type="button" onClick={() => {
+          setLocalInstallOpen(true);
+          setLocalInstallMsg(null);
+        }}
+          className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
+          {isZh ? '📁 本地安装' : '📁 Local Install'}
+        </button>
+      </div>
+      <button type="button" onClick={runCheck} disabled={checking}
+        className="text-xs text-blue-500 hover:underline mt-1">
+        {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
+      </button>
+    </>
+  );
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -216,27 +263,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
               {extensionStatus === 'fail' && (
                 <div className="mt-2 space-y-2">
                   <div className="text-xs text-red-500">{isZh ? '插件未连接，请选择安装方式：' : 'Extension not connected. Choose install method:'}</div>
-                  <div className="flex flex-col gap-1.5">
-                    <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
-                      {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
-                    </button>
-                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
-                      {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
-                    </button>
-                    <button type="button" onClick={() => {
-                      setLocalInstallOpen(true);
-                      setLocalInstallMsg(null);
-                    }}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
-                      {isZh ? '📁 本地安装' : '📁 Local Install'}
-                    </button>
-                  </div>
-                  <button type="button" onClick={runCheck} disabled={checking}
-                    className="text-xs text-blue-500 hover:underline mt-1">
-                    {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
-                  </button>
+                  {installActionButtons}
                 </div>
               )}
               {extensionStatus === 'pass' && outdatedExts.length === 0 && !handshakePending && (
@@ -252,9 +279,15 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                   this label will flip to either ✅ Connected or ⚠️ outdated
                   on its own — no user action needed. */}
               {extensionStatus === 'pass' && outdatedExts.length === 0 && handshakePending && (
-                <div className="text-xs text-amber-500 mt-1 flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
-                  {isZh ? '正在握手，确认插件版本中...' : 'Handshaking, verifying extension version...'}
+                <div className="mt-1">
+                  <div className="text-xs text-amber-500 flex items-center gap-1.5">
+                    <span className="inline-block h-3 w-3 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+                    {isZh ? '正在握手，确认插件版本中...' : 'Handshaking, verifying extension version...'}
+                  </div>
+                  <button type="button" onClick={runCheck} disabled={checking}
+                    className="text-xs text-blue-500 hover:underline mt-1.5">
+                    {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
+                  </button>
                 </div>
               )}
               {/* Outdated-version warning, inline. Shown ONLY when at least
@@ -269,15 +302,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                       ? `检测到旧版插件（${outdatedExts.map(o => o.version).join(', ')}）— 多浏览器并行任务可能不工作，建议立即更新到 v${MIN_EXTENSION_VERSION}+`
                       : `Outdated extension detected (${outdatedExts.map(o => o.version).join(', ')}). Multi-browser tasks may not work — update to v${MIN_EXTENSION_VERSION}+`}
                   </div>
-                  <div className="flex flex-col gap-1 mt-1.5">
-                    <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
-                      className="text-left underline decoration-dotted hover:text-amber-900 dark:hover:text-amber-200">
-                      🌐 {isZh ? 'Chrome 应用商店更新' : 'Update from Chrome Web Store'}
-                    </button>
-                    <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
-                      className="text-left underline decoration-dotted hover:text-amber-900 dark:hover:text-amber-200">
-                      🔷 {isZh ? 'Edge 应用商店更新' : 'Update from Edge Add-ons'}
-                    </button>
+                  <div className="mt-2 space-y-2">
+                    {installActionButtons}
                   </div>
                 </div>
               )}
