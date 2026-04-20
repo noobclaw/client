@@ -146,8 +146,11 @@ export const RunHistoryPage: React.FC<Props> = ({
       setLoading(false);
     };
     void tick();
-    // Refresh every 5s — picks up new finished records as tasks complete.
-    const h = setInterval(tick, 5000);
+    // Refresh every 2s (was 5s pre-2.4.34) — combined with backend
+    // debounced-persist fix this gives near-instant "刚跑完的任务出现
+    // 在历史" UX. listRunRecords IPC reads in-memory only so polling
+    // faster is cheap (no extra disk I/O).
+    const h = setInterval(tick, 2000);
     return () => { cancelled = true; clearInterval(h); };
   }, [platformId, filterByTaskId]);
 

@@ -115,10 +115,52 @@ function persist(): void {
       _records = _records.slice(0, MAX_RECORDS);
     }
     fs.writeFileSync(_filePath, JSON.stringify(_records, null, 2), 'utf-8');
+    _dirty = false;
   } catch (e) {
     // Non-fatal: failing to persist a record shouldn't break the run.
     console.error('[runRecords] persist failed:', e);
   }
+}
+
+// ── Debounced persist for step logs ──
+//
+// v2.4.34 perf fix: appendStepLog used to call persist() on EVERY single
+// step log entry. With a multi-MB JSON file (500 records × hundreds of
+// logs each = several MB) and synchronous fs.writeFileSync, that's
+// 50ms+ per call × dozens of step logs per minute = the sidecar event
+// loop got blocked enough that listRunRecords IPC responses lagged 30s+,
+// making the History page look "stuck not refreshing" even though the
+// data WAS in memory.
+//
+// New strategy:
+//   - startRecord / finishRecord  → persist immediately (terminal events
+//                                    we don't want to lose to a crash)
+//   - appendStepLog               → mark dirty, schedule a debounced
+//                                    flush 2s later (cheap; if many
+//                                    logs land back-to-back we coalesce
+//                                    into one disk write)
+//   - finishRecord                → also force-flushes any pending
+//                                    debounce so the terminal status is
+//                                    on disk before we return
+let _dirty = false;
+let _flushTimer: ReturnType<typeof setTimeout> | null = null;
+const FLUSH_DEBOUNCE_MS = 2000;
+
+function scheduleDebouncedPersist(): void {
+  _dirty = true;
+  if (_flushTimer) return; // already scheduled
+  _flushTimer = setTimeout(() => {
+    _flushTimer = null;
+    if (_dirty) persist();
+  }, FLUSH_DEBOUNCE_MS);
+}
+
+function flushPending(): void {
+  if (_flushTimer) {
+    clearTimeout(_flushTimer);
+    _flushTimer = null;
+  }
+  if (_dirty) persist();
 }
 
 let _initOnce = false;
@@ -182,7 +224,9 @@ export function startRecord(args: {
   return id;
 }
 
-/** Append a step log entry to a running record. */
+/** Append a step log entry to a running record. v2.4.34: persist is
+ *  debounced (2s coalesced flush) to avoid blocking the sidecar event
+ *  loop with synchronous multi-MB JSON writes on every log entry. */
 export function appendStepLog(recordId: string, entry: StepLogEntry): void {
   if (!_loaded || !recordId) return;
   const rec = _records.find(r => r.id === recordId);
@@ -190,7 +234,7 @@ export function appendStepLog(recordId: string, entry: StepLogEntry): void {
   rec.step_logs.push(entry);
   // Cap step_logs per record so a chatty run doesn't blow up the file
   if (rec.step_logs.length > 500) rec.step_logs.splice(0, rec.step_logs.length - 500);
-  persist();
+  scheduleDebouncedPersist();
 }
 
 /**
@@ -216,6 +260,10 @@ export function finishRecord(recordId: string, args: {
   if (args.error) rec.error = args.error;
   if (args.result) rec.result = { ...rec.result, ...args.result };
   if (args.output_dir) rec.output_dir = args.output_dir;
+  // Force-flush any pending debounced step-log writes too, so the
+  // terminal status hits disk in a single atomic write together with
+  // any in-flight log entries.
+  flushPending();
   persist();
 }
 
