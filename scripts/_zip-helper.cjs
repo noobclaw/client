@@ -1,5 +1,13 @@
 // Zip a folder into a .zip file using Node.js built-in zlib + archiver-like approach
-// Usage: node _zip-helper.cjs <sourceDir> <outputZip>
+// Usage: node _zip-helper.cjs <sourceDir> <outputZip> [--strip-manifest-key]
+//
+// --strip-manifest-key: when zipping a chrome-extension folder, remove the
+// `"key"` field from manifest.json before adding it to the zip. Required
+// when uploading to Chrome Web Store — CWS rejects packages whose manifest
+// "key" doesn't match the public key it has on file for the listing
+// (Chinese error: "清单中"key"字段的值与当前内容不符"). Sideload / unpacked
+// installs that need the legacy fixed ID should keep the key — use the
+// regular `npm run package:extension` (no flag).
 
 const fs = require('fs');
 const path = require('path');
@@ -7,9 +15,10 @@ const { createDeflateRaw } = require('zlib');
 
 const sourceDir = process.argv[2];
 const outputZip = process.argv[3];
+const stripManifestKey = process.argv.includes('--strip-manifest-key');
 
 if (!sourceDir || !outputZip) {
-  console.error('Usage: node _zip-helper.cjs <sourceDir> <outputZip>');
+  console.error('Usage: node _zip-helper.cjs <sourceDir> <outputZip> [--strip-manifest-key]');
   process.exit(1);
 }
 
@@ -28,7 +37,26 @@ class ZipWriter {
 
   async addFile(relativePath, fullPath) {
     const stat = fs.statSync(fullPath);
-    const data = fs.readFileSync(fullPath);
+    let data = fs.readFileSync(fullPath);
+
+    // CWS-targeted variant: strip the "key" field from the top-level
+    // manifest.json before zipping. Doing it here (not on disk) keeps
+    // the source file with the key for sideload installs while the
+    // CWS upload zip ships without it.
+    const isManifest = relativePath.replace(/\\/g, '/').toLowerCase() === 'manifest.json';
+    if (stripManifestKey && isManifest) {
+      try {
+        const json = JSON.parse(data.toString('utf-8'));
+        if ('key' in json) {
+          delete json.key;
+          // Preserve 2-space indent + trailing newline so diffs stay sane
+          data = Buffer.from(JSON.stringify(json, null, 2) + '\n', 'utf-8');
+          console.log('  [strip-manifest-key] removed "key" from manifest.json (CWS-compatible)');
+        }
+      } catch (e) {
+        console.warn('  [strip-manifest-key] failed to parse manifest.json — leaving as-is:', e.message);
+      }
+    }
 
     // Compress
     const compressed = await new Promise((resolve, reject) => {
