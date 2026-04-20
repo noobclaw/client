@@ -47,6 +47,12 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   // Both XHS and Twitter pre-run modals run this check.
   const MIN_EXTENSION_VERSION = '1.2.7';
   const [outdatedExts, setOutdatedExts] = useState<Array<{ version: string }>>([]);
+  // True when an extension is connected but hasn't reported its version yet
+  // AND we're still inside the handshake grace window. The UI shows a
+  // yellow "正在握手" label instead of green "已连接" so the user knows the
+  // version check hasn't completed yet — and we auto-recheck after the
+  // grace expires so the outdated warning surfaces without a manual click.
+  const [handshakePending, setHandshakePending] = useState(false);
   // Secondary modal: step-by-step guide for loading the unpacked extension
   const [localInstallOpen, setLocalInstallOpen] = useState(false);
   const [localInstallMsg, setLocalInstallMsg] = useState<string | null>(null);
@@ -94,18 +100,42 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
         const exts = await scenarioService.getConnectedExtensions();
         const HANDSHAKE_GRACE_MS = 5000;
         const now = Date.now();
+        let stillHandshaking = false;
+        let earliestGraceExpiresAt = Infinity;
         const old = exts.filter(e => {
           if (!e.version) {
             // Old extensions that don't send version at all — flag
             // after grace period. Without this, 1.1.0 stays "connected"
             // but never reports anything and we never warn.
-            return now - (e.connectedAt || 0) > HANDSHAKE_GRACE_MS;
+            const elapsed = now - (e.connectedAt || 0);
+            if (elapsed <= HANDSHAKE_GRACE_MS) {
+              // Still inside grace — defer judgment, but remember to
+              // re-check the moment grace expires so a real old extension
+              // surfaces its warning even if the user never clicks
+              // "重新检测" again. Without this, scenario "client-first
+              // then browser → user clicks recheck within 2s" leaves the
+              // version check stuck in a permanent "in grace, looks fine"
+              // state with no warning ever shown.
+              stillHandshaking = true;
+              const expiresAt = (e.connectedAt || 0) + HANDSHAKE_GRACE_MS + 200;
+              if (expiresAt < earliestGraceExpiresAt) earliestGraceExpiresAt = expiresAt;
+              return false;
+            }
+            return true;
           }
           return compareVersion(e.version, MIN_EXTENSION_VERSION) < 0;
         });
+        setHandshakePending(stillHandshaking && old.length === 0);
         setOutdatedExts(old.map(o => ({ version: o.version || '< 1.2.0 (no version reported)' })));
+        // Auto-recheck after the earliest grace window expires so the
+        // outdated warning shows up without requiring a manual re-click.
+        if (stillHandshaking && earliestGraceExpiresAt !== Infinity) {
+          const wait = Math.max(500, earliestGraceExpiresAt - now);
+          setTimeout(() => { void runCheck(); }, wait);
+        }
       } catch {
         setOutdatedExts([]);
+        setHandshakePending(false);
       }
     } catch {
       setExtensionStatus('fail');
@@ -209,8 +239,23 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                   </button>
                 </div>
               )}
-              {extensionStatus === 'pass' && outdatedExts.length === 0 && (
+              {extensionStatus === 'pass' && outdatedExts.length === 0 && !handshakePending && (
                 <div className="text-xs text-green-500 mt-1">{isZh ? '已连接' : 'Connected'}</div>
+              )}
+              {/* Handshake-in-progress: extension just connected (TCP open)
+                  but its version-bearing `hello` message hasn't arrived yet
+                  AND we're still inside the 5s grace window. Show a yellow
+                  intermediate state so the user doesn't see misleading
+                  green "Connected" while we're actually still waiting to
+                  judge whether it's an outdated build. The runCheck above
+                  schedules an auto re-poll right after grace expires, so
+                  this label will flip to either ✅ Connected or ⚠️ outdated
+                  on its own — no user action needed. */}
+              {extensionStatus === 'pass' && outdatedExts.length === 0 && handshakePending && (
+                <div className="text-xs text-amber-500 mt-1 flex items-center gap-1.5">
+                  <span className="inline-block h-3 w-3 rounded-full border-2 border-amber-500 border-t-transparent animate-spin" />
+                  {isZh ? '正在握手，确认插件版本中...' : 'Handshaking, verifying extension version...'}
+                </div>
               )}
               {/* Outdated-version warning, inline. Shown ONLY when at least
                   one connected extension is below the required floor. The
