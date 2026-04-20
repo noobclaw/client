@@ -8,6 +8,14 @@
 // (Chinese error: "清单中"key"字段的值与当前内容不符"). Sideload / unpacked
 // installs that need the legacy fixed ID should keep the key — use the
 // regular `npm run package:extension` (no flag).
+//
+// --add-firefox-background: inject `background.scripts: ["background.js"]`
+// alongside the existing `service_worker` so Firefox AMO accepts the
+// archive. Firefox MV3 hard-rejects with:
+//   "/background/service_worker manifest property must be paired with
+//    use of /background/scripts property for Firefox compatibility"
+// Chrome only warns if scripts is present, so we only add it for the
+// Firefox-targeted zip.
 
 const fs = require('fs');
 const path = require('path');
@@ -16,6 +24,7 @@ const { createDeflateRaw } = require('zlib');
 const sourceDir = process.argv[2];
 const outputZip = process.argv[3];
 const stripManifestKey = process.argv.includes('--strip-manifest-key');
+const addFirefoxBackground = process.argv.includes('--add-firefox-background');
 
 if (!sourceDir || !outputZip) {
   console.error('Usage: node _zip-helper.cjs <sourceDir> <outputZip> [--strip-manifest-key]');
@@ -38,23 +47,51 @@ class ZipWriter {
   async addFile(relativePath, fullPath) {
     const stat = fs.statSync(fullPath);
     let data = fs.readFileSync(fullPath);
+    // ⛔ Hard-fail on any backslash / leading slash / drive letter that
+    // somehow survives normalization. Firefox AMO + Edge Add-ons rejects
+    // archives whose entry names contain "\" with the exact error
+    //   "Invalid file name in archive: icons\icon128.png"
+    // and the failure mode is silent if we just normalize-and-continue
+    // (Chrome ignores it, Firefox doesn't). Better to crash the build.
+    {
+      const normalized = relativePath.replace(/\\/g, '/');
+      if (/^([a-z]:)?\//i.test(normalized)) {
+        throw new Error('zip entry must be RELATIVE, got: ' + JSON.stringify(relativePath));
+      }
+    }
 
     // CWS-targeted variant: strip the "key" field from the top-level
     // manifest.json before zipping. Doing it here (not on disk) keeps
     // the source file with the key for sideload installs while the
     // CWS upload zip ships without it.
     const isManifest = relativePath.replace(/\\/g, '/').toLowerCase() === 'manifest.json';
-    if (stripManifestKey && isManifest) {
+    if ((stripManifestKey || addFirefoxBackground) && isManifest) {
       try {
         const json = JSON.parse(data.toString('utf-8'));
-        if ('key' in json) {
+        let touched = false;
+        if (stripManifestKey && 'key' in json) {
           delete json.key;
-          // Preserve 2-space indent + trailing newline so diffs stay sane
-          data = Buffer.from(JSON.stringify(json, null, 2) + '\n', 'utf-8');
+          touched = true;
           console.log('  [strip-manifest-key] removed "key" from manifest.json (CWS-compatible)');
         }
+        if (addFirefoxBackground && json.background && json.background.service_worker) {
+          // Firefox MV3 requires `scripts` paired with `service_worker`.
+          // Chrome reads service_worker (per MV3 spec) and ignores scripts;
+          // Firefox reads scripts and ignores service_worker. Each is a
+          // no-op on the other side, so injecting scripts here makes the
+          // archive accepted by AMO without affecting Chrome runtime.
+          if (!Array.isArray(json.background.scripts) || json.background.scripts.length === 0) {
+            json.background.scripts = [json.background.service_worker];
+            touched = true;
+            console.log('  [add-firefox-background] injected background.scripts ['
+              + json.background.service_worker + '] for Firefox MV3 compatibility');
+          }
+        }
+        if (touched) {
+          data = Buffer.from(JSON.stringify(json, null, 2) + '\n', 'utf-8');
+        }
       } catch (e) {
-        console.warn('  [strip-manifest-key] failed to parse manifest.json — leaving as-is:', e.message);
+        console.warn('  [manifest-rewrite] failed to parse manifest.json — leaving as-is:', e.message);
       }
     }
 
