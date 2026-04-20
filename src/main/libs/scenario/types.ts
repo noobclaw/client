@@ -141,6 +141,13 @@ export interface ScenarioTask {
   /** Run interval. `daily_random` = once per day at a random hour (no fixed time);
    *  used by auto-reply scenarios where pinning to the same hour would trip XHS risk-control. */
   run_interval: '30min' | '1h' | '3h' | '6h' | 'daily' | 'daily_random' | 'once';
+  /** Pre-picked timestamp (ms epoch) of when the scheduler should fire
+   *  this task next. Computed AFTER each successful run (or on the first
+   *  scheduler tick if no last run yet) using the interval + jitter, then
+   *  stored so the user can SEE the exact wall-clock time the next run
+   *  will happen — without it daily_random just shows "in ~24-27h".
+   *  The scheduler uses this as the authoritative fire time. */
+  next_planned_run_at?: number;
   /** 任务末步是否自动上传到 XHS 草稿箱。
    *  true（默认）= 跑完改写+生图后自动调上传 orchestrator；
    *  false = 停在 step 3，草稿留本地待用户人工上传，降低封号风险。

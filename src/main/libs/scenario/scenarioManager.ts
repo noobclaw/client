@@ -481,6 +481,12 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     // Patch the run record with result counts now that we have them
     // (status was already set by finishProgress mirror).
     updateTaskRecordResult(task.id, outcome);
+    // Pre-pick the NEXT scheduled run wall-clock time so the UI can
+    // show it (e.g. "明天 11:23" instead of "约 24-27 小时后") AND so
+    // the scheduler honors a deterministic fire time across app
+    // restarts. Always set, regardless of run outcome — even a failed
+    // run still wants a follow-up scheduled.
+    setNextPlannedRun(task, Date.now());
     return outcome;
   } finally {
     releaseResource(resource);
@@ -566,17 +572,72 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
 }
 
 // ── Scheduler: check every 60s if any task should auto-run ──
+// (INTERVAL_MS lookup table removed in v2.4.25 — replaced by
+//  computeNextPlannedRun which encodes the per-interval base + jitter
+//  and stores the resulting wall-clock fire time on the task itself.)
 
-const INTERVAL_MS: Record<string, number> = {
-  '30min': 30 * 60 * 1000,
-  '1h': 60 * 60 * 1000,
-  '3h': 3 * 60 * 60 * 1000,
-  '6h': 6 * 60 * 60 * 1000,
-  'daily': 24 * 60 * 60 * 1000,
-  // daily_random = 24h elapsed but no fixed-hour pin; XHS auto-reply uses
-  // this so the comment burst hits a different wall-clock time each day.
-  'daily_random': 24 * 60 * 60 * 1000,
-};
+/**
+ * Pre-pick the next-run wall-clock timestamp for a task, applying the
+ * appropriate per-interval random jitter UPFRONT (instead of rolling
+ * dice every scheduler tick after the threshold). Two reasons we want
+ * pre-picking:
+ *
+ *   1. The user can SEE exactly when the next run will fire — the
+ *      task detail page shows "下次运行: 明天 11:23" instead of "约
+ *      24-27h 后".
+ *   2. The fire time is stable across app restarts. With per-tick dice,
+ *      restarting the app reset the random state and the actual fire
+ *      time drifted unpredictably.
+ *
+ * Jitter rules per interval (matches the OLD per-tick probability so
+ * statistically the cadence is unchanged):
+ *   30min/1h/3h/6h  base + 0..10 min
+ *   daily           today/tomorrow's HH:MM ± 15 min
+ *   daily_random    24h after lastRun + 0..3h
+ *   once            never (Number.MAX_SAFE_INTEGER)
+ */
+export function computeNextPlannedRun(
+  interval: string,
+  daily_time: string,
+  fromTs: number,
+): number {
+  const day = 24 * 60 * 60 * 1000;
+  if (interval === 'once') return Number.MAX_SAFE_INTEGER;
+  if (interval === 'daily_random') {
+    return fromTs + day + Math.floor(Math.random() * 3 * 60 * 60 * 1000);
+  }
+  if (interval === 'daily') {
+    const [hh, mm] = (daily_time || '08:00').split(':').map(Number);
+    const next = new Date(fromTs);
+    next.setHours(hh, mm, 0, 0);
+    if (next.getTime() <= fromTs) next.setTime(next.getTime() + day);
+    // ±15 min jitter
+    const jitter = Math.floor((Math.random() - 0.5) * 30 * 60 * 1000);
+    return next.getTime() + jitter;
+  }
+  const intervals: Record<string, number> = {
+    '30min': 30 * 60 * 1000,
+    '1h':    60 * 60 * 1000,
+    '3h': 3 * 60 * 60 * 1000,
+    '6h': 6 * 60 * 60 * 1000,
+  };
+  const base = intervals[interval] || day;
+  return fromTs + base + Math.floor(Math.random() * 10 * 60 * 1000);
+}
+
+/** Persist the next planned run for a task, computed off the given
+ *  reference timestamp. Called in runTask's finally and from the
+ *  scheduler when a task hasn't been planned yet. Failure to persist
+ *  is non-fatal (scheduler will recompute next tick). */
+function setNextPlannedRun(task: ScenarioTask, fromTs: number): void {
+  try {
+    const interval = (task as any).run_interval || 'daily';
+    const planned = computeNextPlannedRun(interval, task.daily_time, fromTs);
+    taskStore.updateTask(task.id, { next_planned_run_at: planned } as any);
+  } catch (e) {
+    coworkLog('WARN', 'scenarioManager', 'setNextPlannedRun failed', { err: String(e) });
+  }
+}
 
 let schedulerStarted = false;
 
@@ -602,47 +663,32 @@ export function startScheduler(): void {
 
         const interval = (task as any).run_interval || 'daily';
         if (interval === 'once') continue; // 不重复：仅手动触发
-        const ms = INTERVAL_MS[interval] || INTERVAL_MS.daily;
 
-        // Check last run time
-        const runs = riskGuard.getRuns(task.id);
-        const lastRun = runs.length > 0 ? Math.max(...runs.map((r: any) => r.started_at || 0)) : 0;
-        const elapsed = Date.now() - lastRun;
-
-        // For daily: also check if current time is near daily_time
-        if (interval === 'daily') {
-          const [hh, mm] = (task.daily_time || '08:00').split(':').map(Number);
-          const now = new Date();
-          const targetMin = hh * 60 + mm;
-          const currentMin = now.getHours() * 60 + now.getMinutes();
-          // Run if within ±15 min window and hasn't run today
-          if (Math.abs(currentMin - targetMin) > 15) continue;
-          if (elapsed < 20 * 60 * 60 * 1000) continue; // Already ran in last 20h
-        } else if (interval === 'daily_random') {
-          // Wait at least 24h since last run, then trigger with a small per-tick
-          // probability so the actual hour of day drifts each day. With p=1/180
-          // and tick=60s, after the 24h mark we expect to fire within ~3h on
-          // average — enough randomness to avoid a fixed-hour pattern. (Anti
-          // risk-control: XHS flags accounts that comment at the same wall-clock
-          // hour every day.)
-          if (elapsed < ms) continue;
-          if (Math.random() > 1 / 180) continue;
-        } else {
-          // For interval-based (30min / 1h / 3h / 6h):
-          // Wait at least `ms` since last run, then add an additional 0-10
-          // minute random jitter so consecutive runs don't fire on a perfect
-          // clock. Implementation: once the threshold is crossed, fire on
-          // each 60s tick with probability 1/10 → average ~5 min extra delay,
-          // bounded ~10 min. (Anti risk-control: a task firing exactly every
-          // 60.0 minutes is a giveaway bot pattern.)
-          //
-          // Daily picker (above) already has its own ±15 min jitter so it
-          // doesn't need this branch.
-          if (elapsed < ms) continue;
-          if (Math.random() > 1 / 10) continue;
+        // v2.4.25+ scheduler: every active task has a pre-picked
+        // next_planned_run_at on disk. The pre-picking applies the
+        // jitter UPFRONT (see computeNextPlannedRun) so:
+        //   1. UI can show the exact wall-clock fire time
+        //   2. Restarting the app doesn't reroll the random offset
+        //   3. Scheduler is just "if now >= planned, fire" — no per-tick
+        //      probability rolls in this loop
+        let planned = (task as any).next_planned_run_at as number | undefined;
+        if (!planned) {
+          // First scheduler tick after the task was created (or after
+          // upgrading from an older app version that didn't track this).
+          // Backfill based on the last run if any, else from now.
+          const runs = riskGuard.getRuns(task.id);
+          const lastRun = runs.length > 0
+            ? Math.max(...runs.map((r: any) => r.started_at || 0))
+            : Date.now();
+          setNextPlannedRun(task, lastRun);
+          // Re-fetch to get the freshly-stored value
+          const refreshed = taskStore.getTask(task.id);
+          planned = (refreshed as any)?.next_planned_run_at;
+          if (!planned) continue;
         }
+        if (Date.now() < planned) continue;
 
-        coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval})`);
+        coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval}, planned: ${new Date(planned).toISOString()})`);
         runTask(task, false).catch(err => {
           coworkLog('ERROR', 'scheduler', `Auto-run failed: ${err}`);
         });

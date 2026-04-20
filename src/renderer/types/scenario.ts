@@ -92,6 +92,10 @@ export interface ScenarioTaskIPC {
   /** Only the active task gets auto-run by the scheduler. At most 1 task
    *  can be active at a time. User switches via "设为运行" button. */
   active: boolean;
+  /** Pre-picked next-run timestamp (ms epoch). Set after each run by the
+   *  main process; rendered as an absolute time in TaskDetailPage so
+   *  daily_random tasks show e.g. "明天 11:23" instead of "in ~24-27h". */
+  next_planned_run_at?: number;
   created_at: number;
   updated_at: number;
 }

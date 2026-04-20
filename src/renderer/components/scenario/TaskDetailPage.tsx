@@ -624,20 +624,55 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           actionLabel={isZh ? '查看历史运行记录 →' : 'View run history →'}
         />
         {!isLinkModeForStats && (
-          <StatCard label={isZh ? '下次运行' : 'Next Run'} value={(() => {
-            if (!task.active) return isZh ? '待命' : 'Standby';
-            const interval = (task as any).run_interval || 'daily';
-            const lastRun = stats?.last_run_at;
-            if (!lastRun) return isZh ? '即将' : 'Soon';
-            const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '3h': 3*60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000, 'daily_random': 24*60*60*1000 };
-            const ms = intervals[interval] || 24*60*60*1000;
-            const next = lastRun + ms;
-            if (next <= Date.now()) return isZh ? '即将' : 'Soon';
-            const diff = next - Date.now();
-            const mins = Math.round(diff / 60000);
-            if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
-            return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
-          })()} small />
+          <StatCard
+            label={isZh ? '下次运行' : 'Next Run'}
+            value={(() => {
+              if (!task.active) return isZh ? '待命' : 'Standby';
+              // Prefer the pre-picked timestamp from the scheduler (set
+              // after each run + on the first scheduler tick). With
+              // daily_random the random offset is already baked in, so
+              // we can show the exact wall-clock time. Fallback to the
+              // old "elapsed since last_run" estimate if missing
+              // (older tasks pre-v2.4.25 might not have it yet).
+              const planned = (task as any).next_planned_run_at as number | undefined;
+              if (planned && planned > Date.now()) {
+                const diff = planned - Date.now();
+                const mins = Math.round(diff / 60000);
+                let rel: string;
+                if (mins < 60) rel = mins + (isZh ? ' 分钟后' : 'm');
+                else if (mins < 24 * 60) rel = Math.round(mins / 60) + (isZh ? ' 小时后' : 'h');
+                else rel = Math.round(mins / (60 * 24)) + (isZh ? ' 天后' : 'd');
+                // Absolute time formatting:
+                //   today    "今天 11:23"
+                //   tomorrow "明天 11:23"
+                //   else     "MM/DD 11:23"
+                const d = new Date(planned);
+                const sameDay = (a: Date, b: Date) =>
+                  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+                const now = new Date();
+                const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                const datePart = sameDay(d, now)      ? (isZh ? '今天' : 'today')
+                              : sameDay(d, tomorrow)  ? (isZh ? '明天' : 'tmrw')
+                              : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+                return `${rel} · ${datePart} ${hh}:${mm}`;
+              }
+              // Fallback: old heuristic for tasks without next_planned_run_at yet
+              const interval = (task as any).run_interval || 'daily';
+              const lastRun = stats?.last_run_at;
+              if (!lastRun) return isZh ? '即将（计算中）' : 'Soon (calc)';
+              const intervals: Record<string, number> = { '30min': 30*60*1000, '1h': 60*60*1000, '3h': 3*60*60*1000, '6h': 6*60*60*1000, 'daily': 24*60*60*1000, 'daily_random': 24*60*60*1000 };
+              const ms = intervals[interval] || 24*60*60*1000;
+              const next = lastRun + ms;
+              if (next <= Date.now()) return isZh ? '即将' : 'Soon';
+              const diff = next - Date.now();
+              const mins = Math.round(diff / 60000);
+              if (mins < 60) return mins + (isZh ? ' 分钟后' : ' min');
+              return Math.round(mins / 60) + (isZh ? ' 小时后' : ' hr');
+            })()}
+            small
+          />
         )}
       </div>
 
