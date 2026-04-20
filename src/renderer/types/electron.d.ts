@@ -277,7 +277,7 @@ interface IElectronAPI {
     getRunningTaskId: () => Promise<{ runningTaskId: string | null }>;
     getRunningTaskIds: () => Promise<{ runningTaskIds: string[] }>;
     getConnectedExtensions: () => Promise<{
-      extensions: Array<{ id: string; version: string; tabCount: number }>;
+      extensions: Array<{ id: string; version: string; tabCount: number; connectedAt: number }>;
     }>;
     getAllRuns: () => Promise<{
       runs: Array<{

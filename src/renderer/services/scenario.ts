@@ -146,11 +146,13 @@ class ScenarioService {
     }
   }
 
-  /** Connected browser extensions, with their reported versions. Used
-   *  to detect outdated extensions and prompt the user to update. An
-   *  extension that pre-dates the version-reporting protocol (< 1.2.0)
-   *  shows up with version === '' (treat as outdated). */
-  async getConnectedExtensions(): Promise<Array<{ id: string; version: string; tabCount: number }>> {
+  /** Connected browser extensions, with their reported versions + when
+   *  the bridge accepted the connection. Used to detect outdated
+   *  extensions: an extension that pre-dates the version-reporting
+   *  protocol (< 1.2.0) shows up with version === '' AND has been
+   *  connected for > 5s without sending hello (older versions don't
+   *  send it at all). */
+  async getConnectedExtensions(): Promise<Array<{ id: string; version: string; tabCount: number; connectedAt: number }>> {
     try {
       const r = await window.electron.scenario.getConnectedExtensions();
       return Array.isArray(r?.extensions) ? r.extensions : [];

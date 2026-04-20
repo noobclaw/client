@@ -41,11 +41,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
   // Outdated extension warning — shown inline in step ② when an extension
-  // is connected but reports a version below MIN_EXTENSION_VERSION. We
-  // ignore extensions with empty version+empty tabs since that means
-  // "still in mid-handshake, hello not received yet" — avoids the false
-  // positive the user reported on a freshly-loaded 1.2.4 extension.
-  const MIN_EXTENSION_VERSION = '1.2.0';
+  // is connected but reports a version below MIN_EXTENSION_VERSION. The
+  // floor is bumped each release that ships a behavior-affecting
+  // extension change (see chrome-extension/manifest.json version).
+  // Both XHS and Twitter pre-run modals run this check.
+  const MIN_EXTENSION_VERSION = '1.2.7';
   const [outdatedExts, setOutdatedExts] = useState<Array<{ version: string }>>([]);
   // Secondary modal: step-by-step guide for loading the unpacked extension
   const [localInstallOpen, setLocalInstallOpen] = useState(false);
@@ -81,20 +81,29 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
         setXhsTabStatus('pass');
       }
       // Version check piggy-backs on the same poll. If any connected
-      // extension is below the floor, surface it inline. Skip "still
-      // handshaking" connections (empty version + zero tabs reported).
+      // extension is below the floor, surface it inline. The "empty
+      // version" case is tricky:
+      //   - 1.2.0+ extensions send hello with version within ~1s of
+      //     connecting → if version is still empty after 5s, the
+      //     extension is OLDER than 1.2.0 (1.1.0 etc., which never
+      //     sends hello at all) → flag as outdated.
+      //   - During the first 5s of a fresh connection, version may
+      //     still be legitimately empty (handshake in flight) → don't
+      //     flag yet to avoid false positives.
       try {
         const exts = await scenarioService.getConnectedExtensions();
+        const HANDSHAKE_GRACE_MS = 5000;
+        const now = Date.now();
         const old = exts.filter(e => {
           if (!e.version) {
-            // No version yet — only flag as outdated if the extension HAS
-            // reported tabs (which means hello/tabs_changed arrived but
-            // version was missing). Otherwise it's mid-handshake.
-            return e.tabCount > 0;
+            // Old extensions that don't send version at all — flag
+            // after grace period. Without this, 1.1.0 stays "connected"
+            // but never reports anything and we never warn.
+            return now - (e.connectedAt || 0) > HANDSHAKE_GRACE_MS;
           }
           return compareVersion(e.version, MIN_EXTENSION_VERSION) < 0;
         });
-        setOutdatedExts(old.map(o => ({ version: o.version || '< 1.2.0' })));
+        setOutdatedExts(old.map(o => ({ version: o.version || '< 1.2.0 (no version reported)' })));
       } catch {
         setOutdatedExts([]);
       }

@@ -119,6 +119,13 @@ interface BrowserConn {
   /** Extension version reported in the `hello` message. Empty until the
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
   extensionVersion: string;
+  /** When this connection was accepted by the bridge. The renderer uses
+   *  this to distinguish "extension still mid-handshake (just connected,
+   *  hello not arrived yet)" from "extension is genuinely too old to send
+   *  hello at all" — if connectedAt is more than ~5s ago and version is
+   *  still empty, the extension predates the v1.2.0 hello protocol and
+   *  the user must update. */
+  connectedAt: number;
   lastActivityAt: number;
   /** Consecutive sendBrowserCommand timeouts on this conn. After 2 in a
    *  row the socket is considered dead and force-destroyed (the close
@@ -137,13 +144,16 @@ function isAnyBrowserConnected(): boolean {
 }
 
 /** Snapshot of every connected browser extension (for the renderer to
- *  detect outdated versions and prompt the user to update). */
+ *  detect outdated versions and prompt the user to update). Includes
+ *  connectedAt so the renderer can distinguish "still handshaking" from
+ *  "definitely too old to send hello at all" (1.1.0 etc.). */
 export function getConnectedExtensions(): Array<{
   id: string;
   version: string;
   tabCount: number;
+  connectedAt: number;
 }> {
-  const out: Array<{ id: string; version: string; tabCount: number }> = [];
+  const out: Array<{ id: string; version: string; tabCount: number; connectedAt: number }> = [];
   for (const c of browserConns.values()) {
     if (c.socket.destroyed) continue;
     out.push({
@@ -152,6 +162,7 @@ export function getConnectedExtensions(): Array<{
       // hello-with-version protocol (i.e. < 1.2.0).
       version: c.extensionVersion || '',
       tabCount: c.tabs.length,
+      connectedAt: c.connectedAt,
     });
   }
   return out;
@@ -624,6 +635,7 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
         socket,
         tabs: [],
         extensionVersion: '',
+        connectedAt: Date.now(),
         lastActivityAt: Date.now(),
         consecutiveTimeouts: 0,
       };
