@@ -1459,11 +1459,15 @@ const server = http.createServer(async (req, res) => {
                 // away instead of "即将（计算中）". Without this, the
                 // value stays empty until the next scheduler tick (up to
                 // 60s later) does the backfill.
+                // v2.4.32: pass isFirstRun=true → first fire happens
+                // INSIDE the first time bucket (e.g. 30min task → fire
+                // within 0-30min, not 30-40min). For daily_random, fires
+                // sometime today instead of tomorrow.
                 try {
                   const sm = require('./libs/scenario/scenarioManager');
                   const interval = (newTask as any).run_interval || 'daily';
                   if (interval !== 'once') {
-                    const planned = sm.computeNextPlannedRun(interval, newTask.daily_time, Date.now());
+                    const planned = sm.computeNextPlannedRun(interval, newTask.daily_time, Date.now(), true);
                     const updated = scenarioTaskStore.updateTask(newTask.id, { next_planned_run_at: planned } as any);
                     if (updated) return writeJSON(res, 200, updated);
                   }
@@ -1497,7 +1501,10 @@ const server = http.createServer(async (req, res) => {
                       const sm = require('./libs/scenario/scenarioManager');
                       const interval = (updated as any).run_interval || 'daily';
                       if (interval !== 'once') {
-                        const planned = sm.computeNextPlannedRun(interval, updated.daily_time, Date.now());
+                        // isFirstRun=true on interval change — treat as
+                        // a fresh schedule under the new interval, so
+                        // first fire happens inside the first new bucket.
+                        const planned = sm.computeNextPlannedRun(interval, updated.daily_time, Date.now(), true);
                         const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: planned } as any);
                         if (reUpdated) return writeJSON(res, 200, reUpdated);
                       } else {

@@ -612,23 +612,55 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
  *      restarting the app reset the random state and the actual fire
  *      time drifted unpredictably.
  *
- * Jitter rules per interval (matches the OLD per-tick probability so
- * statistically the cadence is unchanged):
- *   30min/1h/3h/6h  base + 0..10 min
- *   daily           today/tomorrow's HH:MM ± 15 min
- *   daily_random    24h after lastRun + 0..3h
- *   once            never (Number.MAX_SAFE_INTEGER)
+ * v2.4.32 — `isFirstRun` flag distinguishes:
+ *   - true:  task just created OR interval just edited → first fire
+ *            should happen INSIDE the FIRST time bucket (else "我刚
+ *            建好的 30min 任务为啥要等 30 分钟才跑第一次？")
+ *   - false: regular post-run reschedule → fromTs + base + jitter
+ *
+ * Jitter rules per interval:
+ *   30min/1h/3h/6h:
+ *     isFirstRun=true   → fromTs + rand(0..base)             (first bucket)
+ *     isFirstRun=false  → fromTs + base + rand(0..10 min)    (steady-state)
+ *   daily (HH:MM fixed):
+ *     today HH:MM if not yet passed, else tomorrow ± 15 min  (no special case)
+ *   daily_random:
+ *     isFirstRun=true   → random in (now, today 23:59:59)    (today's slot)
+ *     isFirstRun=false  → random in (next-day 00:00, next-day 23:59:59)
+ *                         (full natural-day window, 凌晨 2 点也可能跑 — 用户确认 OK)
+ *   once:
+ *     never (Number.MAX_SAFE_INTEGER)
  */
 export function computeNextPlannedRun(
   interval: string,
   daily_time: string,
   fromTs: number,
+  isFirstRun: boolean = false,
 ): number {
   const day = 24 * 60 * 60 * 1000;
   if (interval === 'once') return Number.MAX_SAFE_INTEGER;
+
   if (interval === 'daily_random') {
-    return fromTs + day + Math.floor(Math.random() * 3 * 60 * 60 * 1000);
+    if (isFirstRun) {
+      // First fire: random in (fromTs, today 23:59:59).
+      const todayEnd = new Date(fromTs);
+      todayEnd.setHours(23, 59, 59, 999);
+      const remainingMs = todayEnd.getTime() - fromTs;
+      if (remainingMs <= 0) {
+        // Edge: created right at midnight — fall through to "next day"
+        // computation so we don't pick a time in the past.
+      } else {
+        return fromTs + Math.floor(Math.random() * remainingMs);
+      }
+    }
+    // Subsequent fire (or first-fire when created at 23:59:59+): pick
+    // a random time anywhere in the NEXT calendar day's full 00:00~23:59.
+    const tomorrow = new Date(fromTs);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(0, 0, 0, 0);
+    return tomorrow.getTime() + Math.floor(Math.random() * day);
   }
+
   if (interval === 'daily') {
     const [hh, mm] = (daily_time || '08:00').split(':').map(Number);
     const next = new Date(fromTs);
@@ -638,6 +670,7 @@ export function computeNextPlannedRun(
     const jitter = Math.floor((Math.random() - 0.5) * 30 * 60 * 1000);
     return next.getTime() + jitter;
   }
+
   const intervals: Record<string, number> = {
     '30min': 30 * 60 * 1000,
     '1h':    60 * 60 * 1000,
@@ -645,6 +678,11 @@ export function computeNextPlannedRun(
     '6h': 6 * 60 * 60 * 1000,
   };
   const base = intervals[interval] || day;
+  if (isFirstRun) {
+    // First fire: random anywhere within the first bucket — could be
+    // seconds from now, could be near the end of the bucket.
+    return fromTs + Math.floor(Math.random() * base);
+  }
   return fromTs + base + Math.floor(Math.random() * 10 * 60 * 1000);
 }
 
@@ -652,10 +690,10 @@ export function computeNextPlannedRun(
  *  reference timestamp. Called in runTask's finally and from the
  *  scheduler when a task hasn't been planned yet. Failure to persist
  *  is non-fatal (scheduler will recompute next tick). */
-function setNextPlannedRun(task: ScenarioTask, fromTs: number): void {
+function setNextPlannedRun(task: ScenarioTask, fromTs: number, isFirstRun: boolean = false): void {
   try {
     const interval = (task as any).run_interval || 'daily';
-    const planned = computeNextPlannedRun(interval, task.daily_time, fromTs);
+    const planned = computeNextPlannedRun(interval, task.daily_time, fromTs, isFirstRun);
     taskStore.updateTask(task.id, { next_planned_run_at: planned } as any);
   } catch (e) {
     coworkLog('WARN', 'scenarioManager', 'setNextPlannedRun failed', { err: String(e) });
@@ -700,10 +738,14 @@ export function startScheduler(): void {
           // upgrading from an older app version that didn't track this).
           // Backfill based on the last run if any, else from now.
           const runs = riskGuard.getRuns(task.id);
-          const lastRun = runs.length > 0
+          const hasRealRuns = runs.length > 0;
+          const fromTs = hasRealRuns
             ? Math.max(...runs.map((r: any) => r.started_at || 0))
             : Date.now();
-          setNextPlannedRun(task, lastRun);
+          // hasRealRuns=false means this is the first-ever schedule for
+          // this task → use the "first bucket" / "today's slot" picks
+          // so the task fires soon, not 一个完整周期后.
+          setNextPlannedRun(task, fromTs, !hasRealRuns);
           // Re-fetch to get the freshly-stored value
           const refreshed = taskStore.getTask(task.id);
           planned = (refreshed as any)?.next_planned_run_at;

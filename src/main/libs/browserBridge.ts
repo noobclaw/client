@@ -380,7 +380,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: 'NoobClaw Browser Assistant requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
     btnDownloadChrome: 'Download Chrome',
     guideMsg: 'Install Browser Extension',
-    guideDetail: 'The extension path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Open Chrome browser, type chrome://extensions/ in the address bar and press Enter\n2. Turn on "Developer mode" (top right corner)\n3. Click "Load unpacked"\n4. Paste the path (already copied) and confirm\n\nPath: {path}',
+    guideDetail: 'The NoobClaw resources folder path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Open Chrome browser, type chrome://extensions/ in the address bar and press Enter\n2. Turn on "Developer mode" (top right corner)\n3. Click "Load unpacked"\n4. Paste the copied path into the file dialog\'s address bar and press Enter\n5. Click into the chrome-extension folder, then click "Select Folder"\n\nPath: {path}',
   },
   zh: {
     title: 'NoobClaw 浏览器助手',
@@ -394,7 +394,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: 'NoobClaw 浏览器助手需要 Chrome、Edge 或 Firefox。请先下载安装 Google Chrome。',
     btnDownloadChrome: '下载 Chrome',
     guideMsg: '安装浏览器扩展',
-    guideDetail: '扩展路径已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开 Chrome 浏览器，在地址栏输入 chrome://extensions/ 并回车\n2. 打开右上角「开发者模式」开关\n3. 点击「加载已解压的扩展程序」\n4. 在路径栏粘贴（已复制到剪贴板）并确认\n\n路径：{path}',
+    guideDetail: 'NoobClaw 资源目录已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开 Chrome 浏览器，在地址栏输入 chrome://extensions/ 并回车\n2. 打开右上角「开发者模式」开关\n3. 点击「加载已解压的扩展程序」\n4. 在弹出的文件选择框地址栏粘贴刚复制的路径并回车\n5. 点进 chrome-extension 文件夹，点「选择文件夹」\n\n路径：{path}',
   },
   'zh-TW': {
     title: 'NoobClaw 瀏覽器助手',
@@ -408,7 +408,7 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     noBrowserDetail: '請先下載安裝 Google Chrome。',
     btnDownloadChrome: '下載 Chrome',
     guideMsg: '擴充功能頁面已開啟',
-    guideDetail: '擴展路徑已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 打開 Chrome 瀏覽器，在地址欄輸入 chrome://extensions/ 並按 Enter\n2. 開啟右上角「開發人員模式」\n3. 點擊「載入未封裝項目」\n4. 貼上路徑（已複製到剪貼簿）並確認\n\n路徑：{path}',
+    guideDetail: 'NoobClaw 資源目錄已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 打開 Chrome 瀏覽器，在地址欄輸入 chrome://extensions/ 並按 Enter\n2. 開啟右上角「開發人員模式」\n3. 點擊「載入未封裝項目」\n4. 在彈出的檔案選擇框地址欄貼上剛複製的路徑並按 Enter\n5. 點進 chrome-extension 資料夾，點「選擇資料夾」\n\n路徑：{path}',
   },
   ja: {
     title: 'NoobClaw ブラウザアシスタント',
@@ -558,7 +558,19 @@ export async function installLocalExtension(): Promise<{ extensionPath: string; 
   // inside a Tauri sidecar (where require('electron') isn't available and
   // the old clipboard write silently no-op'd — this was the root of
   // '已复制' being a lie for Tauri users).
-  const extensionPath = path.join(getResourcesPath(), 'chrome-extension');
+  //
+  // ⭐ v2.4.31 — return the PARENT folder (resources/), not the
+  // chrome-extension folder itself. Reason: when the user pastes this
+  // path into Chrome's "加载已解压的扩展程序" / "Load unpacked" file
+  // dialog, the picker navigates INTO that folder and shows its
+  // contents. If we put `.../resources/chrome-extension` on the
+  // clipboard, the dialog opens INSIDE chrome-extension (showing
+  // background.js / content.js / etc.) and the user has to click "Up"
+  // before they can select chrome-extension itself — confusing. By
+  // putting `.../resources` on the clipboard, the dialog opens at the
+  // parent → user sees `chrome-extension` folder visible → clicks it
+  // once → "Select Folder". Cleaner one-click selection.
+  const extensionPath = getResourcesPath();
 
   if (browsers.length === 0) {
     if (win) {

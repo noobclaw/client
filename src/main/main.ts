@@ -2740,10 +2740,12 @@ if (!gotTheLock) {
       // v2.4.31: pre-compute next_planned_run_at on create — same as
       // sidecar-server path (see comment there). Without this, freshly
       // created tasks show "下次运行: 即将（计算中）" until next tick.
+      // v2.4.32: isFirstRun=true → first fire in first bucket / today's
+      // remaining slot (not a full interval later).
       try {
         const interval = (newTask as any).run_interval || 'daily';
         if (interval !== 'once') {
-          const planned = scenarioManager.computeNextPlannedRun(interval, newTask.daily_time, Date.now());
+          const planned = scenarioManager.computeNextPlannedRun(interval, newTask.daily_time, Date.now(), true);
           const updated = scenarioTaskStore.updateTask(newTask.id, { next_planned_run_at: planned } as any);
           if (updated) return updated;
         }
@@ -2764,7 +2766,8 @@ if (!gotTheLock) {
           try {
             const interval = (updated as any).run_interval || 'daily';
             if (interval !== 'once') {
-              const planned = scenarioManager.computeNextPlannedRun(interval, updated.daily_time, Date.now());
+              // isFirstRun=true on interval edit — fresh schedule.
+              const planned = scenarioManager.computeNextPlannedRun(interval, updated.daily_time, Date.now(), true);
               const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: planned } as any);
               if (reUpdated) return reUpdated;
             } else {
