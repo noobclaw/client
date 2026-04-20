@@ -1454,6 +1454,23 @@ const server = http.createServer(async (req, res) => {
                   const { ensureTaskOutputDir } = require('./libs/scenario/artifactWriter');
                   ensureTaskOutputDir(newTask);
                 } catch {}
+                // ⭐ v2.4.31: pre-compute next_planned_run_at IMMEDIATELY
+                // on create so the UI shows "下次运行: 今天 13:46" right
+                // away instead of "即将（计算中）". Without this, the
+                // value stays empty until the next scheduler tick (up to
+                // 60s later) does the backfill.
+                try {
+                  const sm = require('./libs/scenario/scenarioManager');
+                  const interval = (newTask as any).run_interval || 'daily';
+                  if (interval !== 'once') {
+                    const planned = sm.computeNextPlannedRun(interval, newTask.daily_time, Date.now());
+                    const updated = scenarioTaskStore.updateTask(newTask.id, { next_planned_run_at: planned } as any);
+                    if (updated) return writeJSON(res, 200, updated);
+                  }
+                } catch (e) {
+                  // Non-fatal — scheduler will backfill on its next tick.
+                  console.warn('[scenario:createTask] pre-compute next run failed:', e);
+                }
                 return writeJSON(res, 200, newTask);
               }
               case 'scenario:getTaskDir': {
@@ -1464,7 +1481,38 @@ const server = http.createServer(async (req, res) => {
                   return writeJSON(res, 200, { dir: getTaskDirPath(task) });
                 } catch { return writeJSON(res, 200, { dir: '' }); }
               }
-              case 'scenario:updateTask': return writeJSON(res, 200, scenarioTaskStore.updateTask(args[0], args[1]));
+              case 'scenario:updateTask': {
+                const patch = args[1] || {};
+                const before = scenarioTaskStore.getTask(args[0]);
+                const updated = scenarioTaskStore.updateTask(args[0], patch);
+                // ⭐ v2.4.31: if the user changed run_interval or
+                // daily_time, recompute next_planned_run_at right away
+                // so the UI reflects the new schedule instead of showing
+                // the stale value picked under the old interval.
+                if (updated && before) {
+                  const intervalChanged = patch.run_interval !== undefined && patch.run_interval !== (before as any).run_interval;
+                  const dailyTimeChanged = patch.daily_time !== undefined && patch.daily_time !== before.daily_time;
+                  if (intervalChanged || dailyTimeChanged) {
+                    try {
+                      const sm = require('./libs/scenario/scenarioManager');
+                      const interval = (updated as any).run_interval || 'daily';
+                      if (interval !== 'once') {
+                        const planned = sm.computeNextPlannedRun(interval, updated.daily_time, Date.now());
+                        const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: planned } as any);
+                        if (reUpdated) return writeJSON(res, 200, reUpdated);
+                      } else {
+                        // 'once' — clear any stale next_planned_run_at so
+                        // the UI doesn't show a misleading future time.
+                        const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: undefined } as any);
+                        if (reUpdated) return writeJSON(res, 200, reUpdated);
+                      }
+                    } catch (e) {
+                      console.warn('[scenario:updateTask] reschedule failed:', e);
+                    }
+                  }
+                }
+                return writeJSON(res, 200, updated);
+              }
               case 'scenario:deleteTask': return writeJSON(res, 200, scenarioTaskStore.deleteTask(args[0]));
               case 'scenario:setActiveTask': return writeJSON(res, 200, scenarioTaskStore.setActiveTask(args[0]));
               case 'scenario:getActiveTask': return writeJSON(res, 200, scenarioTaskStore.getActiveTask());

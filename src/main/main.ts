@@ -2735,10 +2735,49 @@ if (!gotTheLock) {
 
     ipcMain.handle('scenario:listTasks', () => scenarioTaskStore.listTasks());
     ipcMain.handle('scenario:getTask', (_e, id: string) => scenarioTaskStore.getTask(id));
-    ipcMain.handle('scenario:createTask', (_e, input: unknown) => scenarioTaskStore.createTask(input as any));
-    ipcMain.handle('scenario:updateTask', (_e, id: string, patch: unknown) =>
-      scenarioTaskStore.updateTask(id, patch as any),
-    );
+    ipcMain.handle('scenario:createTask', (_e, input: unknown) => {
+      const newTask = scenarioTaskStore.createTask(input as any);
+      // v2.4.31: pre-compute next_planned_run_at on create — same as
+      // sidecar-server path (see comment there). Without this, freshly
+      // created tasks show "下次运行: 即将（计算中）" until next tick.
+      try {
+        const interval = (newTask as any).run_interval || 'daily';
+        if (interval !== 'once') {
+          const planned = scenarioManager.computeNextPlannedRun(interval, newTask.daily_time, Date.now());
+          const updated = scenarioTaskStore.updateTask(newTask.id, { next_planned_run_at: planned } as any);
+          if (updated) return updated;
+        }
+      } catch (e) {
+        console.warn('[scenario:createTask] pre-compute next run failed:', e);
+      }
+      return newTask;
+    });
+    ipcMain.handle('scenario:updateTask', (_e, id: string, patch: unknown) => {
+      const p = (patch || {}) as any;
+      const before = scenarioTaskStore.getTask(id);
+      const updated = scenarioTaskStore.updateTask(id, p);
+      // v2.4.31: reschedule on interval / daily_time change
+      if (updated && before) {
+        const intervalChanged = p.run_interval !== undefined && p.run_interval !== (before as any).run_interval;
+        const dailyTimeChanged = p.daily_time !== undefined && p.daily_time !== before.daily_time;
+        if (intervalChanged || dailyTimeChanged) {
+          try {
+            const interval = (updated as any).run_interval || 'daily';
+            if (interval !== 'once') {
+              const planned = scenarioManager.computeNextPlannedRun(interval, updated.daily_time, Date.now());
+              const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: planned } as any);
+              if (reUpdated) return reUpdated;
+            } else {
+              const reUpdated = scenarioTaskStore.updateTask(updated.id, { next_planned_run_at: undefined } as any);
+              if (reUpdated) return reUpdated;
+            }
+          } catch (e) {
+            console.warn('[scenario:updateTask] reschedule failed:', e);
+          }
+        }
+      }
+      return updated;
+    });
     ipcMain.handle('scenario:deleteTask', (_e, id: string) => scenarioTaskStore.deleteTask(id));
 
     ipcMain.handle('scenario:runTaskNow', async (_e, id: string) => {

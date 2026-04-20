@@ -153,16 +153,20 @@ const ActivitiesTab: React.FC<{
         onClaim={() => claim('checkin')}
       />
 
-      {/* Card B: XHS Auto-Rewrite */}
+      {/* Card B: Run any automation task once. v2.4.31 — was previously
+          locked to "小红书自动仿写爆款" but we now support 5 scenarios
+          (XHS batch / XHS link rewrite / XHS auto engage / Twitter post
+          creator / Twitter auto engage / Twitter link rewrite). The
+          reward is unlocked by running ANY of them, not just XHS rewrite. */}
       <ActivityCard
         isZh={isZh}
-        icon="📝"
-        titleZh="小红书自动仿写爆款"
-        titleEn="XHS Auto-Rewrite Viral Post"
-        descZh="点击完成小红书仿写任务，领取奖励"
-        descEn="Complete an XHS rewrite task to earn your reward"
-        ctaZh="📝 去做任务"
-        ctaEn="📝 Do task"
+        icon="✨"
+        titleZh="一键使用一次自动化运营任务"
+        titleEn="Run any automation task once"
+        descZh="点击进入自动化运营任意创建一个任务并跑一次，领取奖励"
+        descEn="Open Automation, create any task and run it once to earn your reward"
+        ctaZh="✨ 去创建任务"
+        ctaEn="✨ Create a task"
         claimed={isClaimed('xhs_rewrite')}
         enabled={isEnabled('xhs_rewrite')}
         exhausted={exhausted}
