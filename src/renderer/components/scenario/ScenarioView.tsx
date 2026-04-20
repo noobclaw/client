@@ -318,9 +318,52 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (view.kind === 'task_detail') {
       const task = tasks.find(t => t.id === view.task_id);
       if (!task) {
+        // Empty state for "task was deleted" — common path now that the
+        // History page deep-links by task id (the underlying task may
+        // have been deleted since the run finished). Pre-2.4.27 we just
+        // showed "暂无任务。从下面选一个场景开始。" which had no buttons,
+        // so the user was stuck and had to click L1 nav manually. Now
+        // we offer one-click jumps to the create page for either platform.
+        const isZh = i18nService.currentLanguage === 'zh';
+        const goCreate = (platform: PlatformId) => {
+          setView({ kind: 'main', section: 'create', platform });
+        };
         return (
-          <div className="p-6 text-center text-gray-500 dark:text-gray-400">
-            {i18nService.t('scenarioSectionNoTasks')}
+          <div className="p-10 max-w-xl mx-auto">
+            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
+              <div className="text-5xl mb-3">🗑️</div>
+              <div className="text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
+                {isZh ? '该任务已被删除' : 'This task has been deleted'}
+              </div>
+              <div className="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                {isZh
+                  ? '从下面选一个场景新建任务开始'
+                  : 'Pick a platform below to create a new task'}
+              </div>
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => goCreate('xhs')}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-green-500 text-white text-sm font-semibold hover:bg-green-600 shadow-sm shadow-green-500/25 transition-all active:scale-95"
+                >
+                  📕 {isZh ? '新建小红书任务' : 'New Xiaohongshu task'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goCreate('x')}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-sky-500 text-white text-sm font-semibold hover:bg-sky-600 shadow-sm shadow-sky-500/25 transition-all active:scale-95"
+                >
+                  🐦 {isZh ? '新建推特任务' : 'New Twitter task'}
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={goBack}
+                className="mt-5 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white"
+              >
+                ← {isZh ? '返回上一页' : 'Back'}
+              </button>
+            </div>
           </div>
         );
       }

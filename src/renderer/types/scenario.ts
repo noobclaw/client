@@ -88,6 +88,9 @@ export interface ScenarioTaskIPC {
   daily_follow_max?: number;
   daily_reply_min?: number;
   daily_reply_max?: number;
+  /** Twitter v2.4.27: Blue V flag — see main types.ts for full notes.
+   *  false (default) = ≤140 char cap, true = AI free pick. */
+  is_blue_v?: boolean;
   enabled: boolean;
   /** Only the active task gets auto-run by the scheduler. At most 1 task
    *  can be active at a time. User switches via "设为运行" button. */

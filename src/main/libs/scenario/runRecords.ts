@@ -16,8 +16,13 @@
  *   - scenario_snap minimal scenario info (id, platform, name, icon)
  *   - started_at    ms epoch
  *   - finished_at   ms epoch (undefined while running)
- *   - status        running | done | error | stopped
- *   - error         error message if status === 'error' | 'stopped'
+ *   - status        running | done | partial | error | stopped
+ *                   ('partial' = ran to completion but only some of the
+ *                    intended items succeeded — e.g. 2/5 tweets posted,
+ *                    3/5 解构失败. Distinct from 'done' so users can
+ *                    spot half-broken runs in the history list at a
+ *                    glance instead of trusting the green checkmark.)
+ *   - error         error message if status === 'error' | 'stopped' | 'partial'
  *   - step_logs     [{step, status, message, time}] — deep-cloned from
  *                   the live progress at finish time
  *   - result        { collected_count, draft_count, ... }
@@ -63,7 +68,7 @@ export interface RunRecord {
   };
   started_at: number;
   finished_at?: number;
-  status: 'running' | 'done' | 'error' | 'stopped';
+  status: 'running' | 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
   step_logs: StepLogEntry[];
   result?: {
@@ -196,7 +201,7 @@ export function appendStepLog(recordId: string, entry: StepLogEntry): void {
 export function finishRecord(recordId: string, args: {
   /** Pass undefined to leave existing status untouched (used when only
    *  patching result counts after the status was already finalized). */
-  status?: 'done' | 'error' | 'stopped';
+  status?: 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
   result?: RunRecord['result'];
   output_dir?: string;

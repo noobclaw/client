@@ -23,7 +23,7 @@ interface RunRecord {
   scenario_snapshot: { id: string; platform: string; name_zh?: string; name_en?: string; icon?: string; workflow_type?: string };
   started_at: number;
   finished_at?: number;
-  status: 'running' | 'done' | 'error' | 'stopped';
+  status: 'running' | 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
   step_logs: Array<{ time: string; step: number; status: 'done' | 'running' | 'error'; message: string }>;
   result?: { collected_count?: number; draft_count?: number; posted?: number; [k: string]: any };
@@ -61,10 +61,10 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
     || (Array.isArray(taskUrls) && taskUrls.length > 0 && rec.scenario_snapshot.platform === 'xhs');
   if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-  if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特发推' : 'Twitter Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+  if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
   if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-  if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '小红书自动回复' : 'XHS Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
 }
 
@@ -118,6 +118,17 @@ export const RunHistoryPage: React.FC<Props> = ({
   const isZh = i18nService.currentLanguage === 'zh';
   const [records, setRecords] = useState<RunRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  // ── Pagination (v2.4.27) ──
+  // Run records max out at 500 server-side. With one heavy user
+  // (multiple daily tasks × weeks of history) the unpaginated list
+  // got long enough to scroll forever — added 20-per-page client-side
+  // pagination. Reset to page 1 whenever filter / platform changes.
+  const PAGE_SIZE = 20;
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+  }, [platformId, filterByTaskId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,6 +150,15 @@ export const RunHistoryPage: React.FC<Props> = ({
     const h = setInterval(tick, 5000);
     return () => { cancelled = true; clearInterval(h); };
   }, [platformId, filterByTaskId]);
+
+  const totalPages = Math.max(1, Math.ceil(records.length / PAGE_SIZE));
+  // Clamp page in case the records list shrank below the current page
+  // (e.g. user switched to a less-active platform).
+  const safePage = Math.min(page, totalPages);
+  const pagedRecords = useMemo(() => {
+    const start = (safePage - 1) * PAGE_SIZE;
+    return records.slice(start, start + PAGE_SIZE);
+  }, [records, safePage]);
 
   const filteredTaskName = useMemo(() => {
     if (!filterByTaskId) return null;
@@ -193,7 +213,7 @@ export const RunHistoryPage: React.FC<Props> = ({
           </div>
         ) : (
           <div className="space-y-2">
-            {records.map(rec => {
+            {pagedRecords.map(rec => {
               const sc = rec.scenario_snapshot;
               const trackId = (rec.task_snapshot && rec.task_snapshot.track) || '';
               const trackInfo = TRACK_ICONS[trackId];
@@ -210,6 +230,7 @@ export const RunHistoryPage: React.FC<Props> = ({
               const statusPill = (() => {
                 switch (rec.status) {
                   case 'done':    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                  case 'partial': return { icon: '⚠️', label: isZh ? '部分成功' : 'Partial', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                   case 'error':   return { icon: '❌', label: isZh ? '失败' : 'Failed',  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                   case 'stopped': return { icon: '⏹️', label: isZh ? '已停止' : 'Stopped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
                   case 'running': return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
@@ -282,6 +303,33 @@ export const RunHistoryPage: React.FC<Props> = ({
                 </button>
               );
             })}
+            {/* Pagination controls — only show when there's > 1 page.
+                Shows: « 上一页 · "第 N / 总 页 (共 M 条)" · 下一页 » */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-center gap-2 pt-4 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={safePage === 1}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-green-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  « {isZh ? '上一页' : 'Prev'}
+                </button>
+                <span className="text-gray-500 dark:text-gray-400 min-w-[120px] text-center">
+                  {isZh
+                    ? `第 ${safePage} / ${totalPages} 页（共 ${records.length} 条）`
+                    : `Page ${safePage} / ${totalPages} (${records.length} total)`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                  disabled={safePage === totalPages}
+                  className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-green-500/50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isZh ? '下一页' : 'Next'} »
+                </button>
+              </div>
+            )}
           </div>
         )}
       </section>

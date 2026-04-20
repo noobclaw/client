@@ -34,7 +34,7 @@ export interface ProgressFns {
   stepLog: (step: number, status: 'done' | 'running' | 'error', message: string) => void;
   stepDone: (step: number) => void;
   stepError: (step: number, error: string) => void;
-  finishProgress: (status: 'done' | 'error', error?: string) => void;
+  finishProgress: (status: 'done' | 'error' | 'partial', error?: string) => void;
   isAbortRequested: () => boolean;
 }
 

@@ -383,6 +383,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const [userContext, setUserContext] = useState<string>(
     (initialTask as any)?.user_context || ''
   );
+  // Blue V flag — drives the AI length cap (140 chars for non-Blue, free
+  // for Blue). Default false (most users aren't Blue subscribers).
+  const [isBlueV, setIsBlueV] = useState<boolean>(
+    !!(initialTask as any)?.is_blue_v
+  );
   // For x_link_rewrite: list of tweet URLs (newline-separated in textarea)
   const [urlsText, setUrlsText] = useState<string>(() => {
     const urls = (initialTask as any)?.urls;
@@ -497,7 +502,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // care about these and ignore them, but we always include the
         // typed fields so the orchestrator on the backend has them when
         // it does care.
-        ...(isXPlatform ? { language, user_context: userContext.trim() || undefined } : {}),
+        ...(isXPlatform ? {
+          language,
+          user_context: userContext.trim() || undefined,
+          // Blue V flag is Twitter-only — drives per-tweet length cap.
+          is_blue_v: isBlueV,
+        } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         ...(isXAutoEngage ? {
           daily_follow_min: followMin,
@@ -688,6 +698,51 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
+                  {/* Blue V flag — applies to all Twitter scenarios. Drives
+                      the per-tweet length cap injected into AI prompts:
+                        ☐ 非蓝V (default) → AI must keep ≤ 140 chars
+                        ☑ 蓝V             → AI free pick short / mid / long
+                      Twitter actually allows 280 chars for non-Blue today,
+                      but the user explicitly asked for 140 (the historic
+                      tweet limit, conservative for non-Blue safety). */}
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '🔵 推特账号类型' : '🔵 Twitter account type'}
+                    </label>
+                    <div
+                      className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+                        isBlueV
+                          ? 'border-blue-500 bg-blue-500/10'
+                          : 'border-gray-300 dark:border-gray-700 hover:border-blue-500/50'
+                      }`}
+                      onClick={() => setIsBlueV(!isBlueV)}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isBlueV}
+                        onChange={e => setIsBlueV(e.target.checked)}
+                        onClick={e => e.stopPropagation()}
+                        className="mt-0.5 h-4 w-4 accent-blue-500 cursor-pointer"
+                      />
+                      <div className="flex-1 text-sm">
+                        <div className="font-medium dark:text-white">
+                          {isZh ? '我的推特账号是蓝V（已订阅 X Premium）' : 'My X account is verified (Blue / Premium)'}
+                        </div>
+                        <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                          {isZh
+                            ? <>
+                                <strong className="text-blue-500">勾选</strong> = 蓝V 账号，AI 可自由决定篇幅（短 / 中 / 长），不受 140 字硬限<br/>
+                                <strong className="text-gray-500">不勾</strong>（默认）= 普通账号，AI <strong>强制</strong>把每条推文 / 回复控制在 <strong>≤ 140 字符</strong>
+                              </>
+                            : <>
+                                <strong className="text-blue-500">Checked</strong>: Blue/Premium account — AI may pick short / mid / long freely (no 140-char cap).<br/>
+                                <strong className="text-gray-500">Unchecked</strong> (default): non-Blue — AI is <strong>forced</strong> to keep every tweet / reply <strong>≤ 140 chars</strong>.
+                              </>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* user_context — for post_creator only. link_rewrite doesn't
                       need it (AI rewrites whatever the source tweet says). */}
                   {!isAutoReply && !isLinkRewriteScenario && (
@@ -823,11 +878,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 )}
               </div>
 
-              {/* HH:MM picker only for the legacy fixed-time `daily` (XHS rewrite
-                  scenarios) and `once`. Auto-reply's `daily_random` deliberately
-                  has NO time picker — and Twitter scenarios never pin a time
-                  (risk-control), so we hide the picker entirely on X. */}
-              {!isXPlatform && (runInterval === 'daily' || runInterval === 'once') && (
+              {/* HH:MM picker ONLY for the legacy fixed-time `daily` (XHS
+                  rewrite scenarios). v2.4.27 — `once` (不重复 / 手动触发) no
+                  longer shows a time picker since the user is the trigger,
+                  there's nothing to schedule. Auto-reply's `daily_random`
+                  deliberately has NO time picker either — and Twitter scenarios
+                  never pin a time (risk-control), so we hide the picker
+                  entirely on X. */}
+              {!isXPlatform && runInterval === 'daily' && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '触发时间' : 'Trigger Time'}
@@ -1180,7 +1238,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {(() => {
                       const intervalLabel = (isZh
                         ? {
-                            'once': '不重复 ' + dailyTime,
+                            'once': '不重复（手动触发）',
                             '30min': '每30分钟',
                             '1h': '每小时',
                             '3h': '每3小时',
@@ -1189,7 +1247,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             'daily_random': '每日随机时间一次',
                           }
                         : {
-                            'once': 'Once ' + dailyTime,
+                            'once': 'Once (manual only)',
                             '30min': 'Every 30min',
                             '1h': 'Hourly',
                             '3h': 'Every 3h',

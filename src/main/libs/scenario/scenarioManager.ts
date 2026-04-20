@@ -155,10 +155,31 @@ function stepError(taskId: string, step: number, error: string): void {
   stepLog(taskId, step, 'error', error);
 }
 
-function finishProgress(taskId: string, status: 'done' | 'error', error?: string): void {
+/**
+ * Finalize the in-memory progress + mirror to persistent run record.
+ *
+ * `status` from the orchestrator can be:
+ *   'done'    — everything the task tried to do succeeded
+ *   'partial' — task ran to completion but some sub-items failed (e.g.
+ *               2/5 tweets posted, 3/5 hit AI_PARSE_FAIL). Pre-v2.4.26
+ *               this case was bucketed as 'done' and the user couldn't
+ *               tell a half-broken run from a fully-successful one in
+ *               the history list.
+ *   'error'   — task aborted before producing anything useful, or a
+ *               hard infra error (no_urls / anomaly / scenario_not_found
+ *               / user_stopped — the latter remaps to 'stopped').
+ *
+ * The in-memory RunProgress only has 'done'/'error' (UI uses a green
+ * check vs red X badge for the live progress panel). 'partial' is
+ * recorded as 'done' there but as 'partial' in the persistent record,
+ * which is what the History page reads.
+ */
+function finishProgress(taskId: string, status: 'done' | 'error' | 'partial', error?: string): void {
   const p = progressByTaskId.get(taskId);
   if (!p) return;
-  p.status = status;
+  // Map 'partial' → 'done' for the live progress panel (it only knows
+  // happy/sad). The history record below preserves the distinction.
+  p.status = status === 'error' ? 'error' : 'done';
   if (error) p.error = error;
   // Mirror into the persistent run record. user_stopped → 'stopped' so
   // the history page can distinguish "I cancelled it" from "it errored".
@@ -166,9 +187,11 @@ function finishProgress(taskId: string, status: 'done' | 'error', error?: string
   if (recordId) {
     try {
       const runRecords = require('./runRecords');
-      const recStatus = status === 'done'
-        ? 'done'
-        : (error === 'user_stopped' ? 'stopped' : 'error');
+      let recStatus: 'done' | 'partial' | 'error' | 'stopped';
+      if (status === 'done') recStatus = 'done';
+      else if (status === 'partial') recStatus = 'partial';
+      else if (error === 'user_stopped') recStatus = 'stopped';
+      else recStatus = 'error';
       runRecords.finishRecord(recordId, { status: recStatus, error });
     } catch { /* non-fatal */ }
   }

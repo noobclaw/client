@@ -62,6 +62,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
   const [linksText, setLinksText] = useState('');
   const [linkSubmitting, setLinkSubmitting] = useState(false);
   const [linkAutoUpload, setLinkAutoUpload] = useState(true);
+  // Blue V flag for the link-rewrite quick modal — same toggle as the
+  // wizard for the other two Twitter scenarios. Default false.
+  const [linkIsBlueV, setLinkIsBlueV] = useState(false);
 
   const validateTweetLinks = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -160,6 +163,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
         enabled: true,
         active: true,
         auto_upload: linkAutoUpload,
+        is_blue_v: linkIsBlueV,
       } as any);
       setLinkModalOpen(false);
       setLinksText('');
@@ -175,7 +179,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
       setLinkSubmitting(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [linksText, linkAutoUpload, linkSubmitting, linkRewrite, isZh]);
+  }, [linksText, linkAutoUpload, linkIsBlueV, linkSubmitting, linkRewrite, isZh]);
 
   // (scheduleLabel helper used to live here for the bottom task list.
   //  Tasks moved to MyTasksPage which has its own implementation.)
@@ -205,16 +209,16 @@ export const XWorkflowsPage: React.FC<Props> = ({
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(autoEngage)}
           isZh={isZh}
-          ctaZh="配置开始互动"
-          ctaEn="Configure & Start"
+          ctaZh="开始互动"
+          ctaEn="Start"
         />
         {/* 2. Post creator */}
         <ScenarioCard
           color="sky"
           emoji="📝"
           badge={isZh ? '每日发推' : 'Daily post'}
-          titleZh="推特发推"
-          titleEn="X Post Creator"
+          titleZh="推特自动发推"
+          titleEn="X Auto Post"
           descZh="每天自动发 1 条推，40% feed 仿写（字数≥100、浏览≥1万）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
           descEn="Posts 1 tweet/day: 40% feed-rewrite (≥100 chars, ≥10K views) / 40% original / 20% quote-tweet, randomized for variety."
           loading={loading}
@@ -224,8 +228,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(postCreator)}
           isZh={isZh}
-          ctaZh="配置开始发推"
-          ctaEn="Configure & Start"
+          ctaZh="开始发推"
+          ctaEn="Start"
         />
         {/* 3. Link rewrite */}
         <ScenarioCard
@@ -243,8 +247,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(linkRewrite)}
           isZh={isZh}
-          ctaZh="开始仿写"
-          ctaEn="Start"
+          ctaZh="粘贴链接开始"
+          ctaEn="Paste links to start"
         />
       </section>
 
@@ -311,6 +315,37 @@ export const XWorkflowsPage: React.FC<Props> = ({
               className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/50 resize-y min-h-[180px] break-all"
               disabled={linkSubmitting}
             />
+
+            {/* Blue V flag — same control as the wizard for the other 2
+                Twitter scenarios. Drives the per-tweet length cap. */}
+            <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
+              {isZh ? '🔵 推特账号类型' : '🔵 Twitter account type'}
+            </label>
+            <div
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+                linkIsBlueV ? 'border-blue-500 bg-blue-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-500/50'
+              }`}
+              onClick={() => !linkSubmitting && setLinkIsBlueV(!linkIsBlueV)}
+            >
+              <input
+                type="checkbox"
+                checked={linkIsBlueV}
+                onChange={e => setLinkIsBlueV(e.target.checked)}
+                onClick={e => e.stopPropagation()}
+                disabled={linkSubmitting}
+                className="mt-0.5 h-4 w-4 accent-blue-500 cursor-pointer"
+              />
+              <div className="flex-1 text-xs leading-relaxed">
+                <div className="font-semibold dark:text-white mb-0.5">
+                  {isZh ? '我的推特账号是蓝V（已订阅 X Premium）' : 'My X account is verified (Blue / Premium)'}
+                </div>
+                <div className="text-gray-500 dark:text-gray-400">
+                  {isZh
+                    ? <>勾选 = 蓝V，AI 自由短/中/长。不勾（默认）= 普通账号，AI <strong>强制</strong>把每条新推 ≤ <strong>140 字符</strong>。</>
+                    : <>Checked = Blue V — AI may pick short/mid/long. Unchecked (default) = AI is <strong>forced</strong> to keep every tweet ≤ <strong>140 chars</strong>.</>}
+                </div>
+              </div>
+            </div>
 
             <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
               {isZh ? '生成后的处理' : 'After rewriting'}

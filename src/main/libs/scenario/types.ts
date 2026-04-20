@@ -170,6 +170,13 @@ export interface ScenarioTask {
   daily_follow_max?: number;
   daily_reply_min?: number;
   daily_reply_max?: number;
+  /** Twitter v2.4.27: is the user's X account a Blue V (subscribed)?
+   *  Default false. Drives the per-tweet length cap that orchestrators
+   *  inject into AI generation prompts:
+   *    false → AI must keep generated tweets ≤ 140 chars (non-Blue cap)
+   *    true  → AI free to pick short / medium / long (Blue gets 25k chars)
+   *  Affects post_creator, link_rewrite, and auto_engage reply lengths. */
+  is_blue_v?: boolean;
   enabled: boolean;
   /** Only the 'active' task is eligible for scheduled auto-runs.
    *  When multiple tasks exist, user must explicitly pick which one is active.

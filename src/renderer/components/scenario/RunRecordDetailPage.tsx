@@ -33,7 +33,7 @@ interface RunRecord {
   scenario_snapshot: { id: string; platform: string; name_zh?: string; name_en?: string; icon?: string; workflow_type?: string };
   started_at: number;
   finished_at?: number;
-  status: 'running' | 'done' | 'error' | 'stopped';
+  status: 'running' | 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
   step_logs: Array<{ time: string; step: number; status: 'done' | 'running' | 'error'; message: string }>;
   result?: { collected_count?: number; draft_count?: number; posted?: number; [k: string]: any };
@@ -166,16 +166,17 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     const isXhsLinkMode = (rec.task_snapshot && rec.task_snapshot.track === 'link_mode')
       || (Array.isArray(taskUrls) && taskUrls.length > 0 && sc.platform === 'xhs');
     if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特发推' : 'Twitter Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-    if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '小红书自动回复' : 'XHS Auto Reply', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 
   const statusPill = (() => {
     switch (rec.status) {
       case 'done':    return { icon: '✅', label: isZh ? '成功' : 'Success', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+      case 'partial': return { icon: '⚠️', label: isZh ? '部分成功' : 'Partial', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
       case 'error':   return { icon: '❌', label: isZh ? '失败' : 'Failed',  color: 'text-red-500 bg-red-500/10 border-red-500/30' };
       case 'stopped': return { icon: '⏹️', label: isZh ? '已停止' : 'Stopped', color: 'text-gray-500 bg-gray-500/10 border-gray-500/30' };
       case 'running': return { icon: '⏳', label: isZh ? '运行中' : 'Running', color: 'text-green-500 bg-green-500/10 border-green-500/30' };

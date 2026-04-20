@@ -144,10 +144,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_auto_reply_universal',
     workflow_type: 'auto_reply' as any,
-    name_zh: '小红书自动回复',
-    name_en: 'XHS Auto Reply',
-    description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。',
-    description_en: 'Find articles by keyword, AI-generate replies, post on a safe jitter.',
+    name_zh: '小红书自动互动',
+    name_en: 'XHS Auto Engage',
+    description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。每次还会按 0~30% 概率关注作者。',
+    description_en: 'Find articles by keyword, AI-reply + reply to comments, post on safe jitter. Optionally follow the author (0-30% chance).',
     icon: '💬',
     default_config: {
       keywords: ['副业', '兼职', '下班赚钱'],
@@ -159,7 +159,9 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const autoReplyScenario = scenarios.find(
     s => s.platform === 'xhs' && (s.workflow_type as any) === 'auto_reply'
   ) || AUTO_REPLY_FALLBACK;
-  const autoReplyTask = tasks.find(t => t.scenario_id === autoReplyScenario.id);
+  // (autoReplyTask lookup removed v2.4.27 — card always opens wizard for
+  //  a NEW task instead of resuming an existing one. Kept the scenario
+  //  lookup above since the wizard still needs the scenario reference.)
 
   const MAX_TASKS = 5;
 
@@ -248,12 +250,12 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    if (autoReplyTask) {
-      onOpenTask(autoReplyTask.id);
-      return;
-    }
-    // Reuse the same login-gate modal — once cleared, route to the
-    // wizard for the auto-reply scenario.
+    // v2.4.27: card always opens the wizard for a NEW task — even if the
+    // user already has an auto-reply task. Pre-2.4.27 we shortcut to the
+    // existing task ("继续任务") which made it impossible to create a
+    // second / third auto-reply task with different keywords or a
+    // different track from this entry point. Multi-task support already
+    // exists everywhere else; this card was the only blocker.
     setLoginModalReason('autoreply');
   };
 
@@ -375,21 +377,19 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动回复' : 'XHS Auto Reply'}
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动互动' : 'XHS Auto Engage'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '选择赛道关键词，自动找最近一周高评论文章，AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。'
-                : 'Pick a track. We find this week\'s most-commented articles, generate human-style replies in one LLM call, post with 30-80s between replies and 60-200s between articles.'}
+                ? '每日自动找最近一周高评论文章（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
+                : 'Daily: 0-6 random high-comment articles, AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
             </p>
             <button
               type="button"
               onClick={handleAutoReplyClick}
               className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
             >
-              💬 {autoReplyTask
-                ? (i18nService.currentLanguage === 'zh' ? '继续任务' : 'Continue task')
-                : (i18nService.currentLanguage === 'zh' ? '配置回复' : 'Configure')} →
+              💬 {i18nService.currentLanguage === 'zh' ? '开始互动' : 'Start'} →
             </button>
           </div>
         </div>
