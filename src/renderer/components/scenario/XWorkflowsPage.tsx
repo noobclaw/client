@@ -35,7 +35,7 @@ interface Props {
   tasks: Task[];
   draftsByTask: Map<string, Draft[]>;
   loading: boolean;
-  onOpenTask: (task_id: string) => void;
+  onOpenTask: (task_id: string, fromOverride?: 'create' | 'tasks' | 'history') => void;
   onConfigure: (scenario: Scenario) => void;
   onChanged?: () => void | Promise<void>;
 }
@@ -169,7 +169,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
       setLinksText('');
       // Refresh parent tasks[] before jumping so detail page can find it
       if (onChanged) { await onChanged(); }
-      onOpenTask(newTask.id);
+      // Land on the task detail page; back button takes user to My Tasks
+      // (not back into the just-submitted quick-create modal).
+      onOpenTask(newTask.id, 'tasks');
       scenarioService.runTaskNow(newTask.id).catch((e: any) => {
         console.error('[XLinkMode] runTaskNow failed:', e);
       });

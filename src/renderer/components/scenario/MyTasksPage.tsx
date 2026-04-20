@@ -35,6 +35,15 @@ interface Props {
    *  page → comes back to My Tasks → list reflects the new track without
    *  needing the user to wait for the next periodic poll). */
   onRefresh?: () => void | Promise<void>;
+  /** Jump to the Create section for the same platform sub-tab. Used by
+   *  the empty state — instead of telling the user "click the L1 tab
+   *  above", we give them a one-click button. */
+  onGoCreate?: () => void;
+  /** Internal id ('xhs' | 'x') of the current platform sub-tab — used
+   *  to pick the right icon + label on the empty-state CTA button. The
+   *  parent already filters tasks by this; we just need to know which
+   *  one for display. */
+  platformId?: 'xhs' | 'x';
 }
 
 // Platform pill label is locale-aware: Chinese when zh, English when en.
@@ -108,7 +117,7 @@ function scheduleLabel(task: Task, isZh: boolean): string {
   return map[interval] || interval;
 }
 
-export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh }) => {
+export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
 
@@ -168,12 +177,28 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
         ) : tasks.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
             <div className="text-4xl mb-2">📭</div>
-            <div className="text-sm text-gray-500 dark:text-gray-400 mb-1">
-              {isZh ? '还没有任务' : 'No tasks yet'}
+            <div className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {isZh ? `还没有${platformLabel}任务` : `No ${platformLabel} tasks yet`}
             </div>
-            <div className="text-xs text-gray-400 dark:text-gray-500">
-              {isZh ? '点上面的「✨ 创建自动化运营任务」开始' : 'Click "Create Task" above to start'}
-            </div>
+            {/* v2.4.30: skip the "click the L1 tab above" hint — give the
+                user a direct CTA button that jumps straight to Create
+                section for the same platform sub-tab they're on. The
+                button color matches the platform brand (green for XHS,
+                sky for Twitter) so the visual cue ties back to the L2
+                tab they came from. */}
+            {onGoCreate && (
+              <button
+                type="button"
+                onClick={onGoCreate}
+                className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all active:scale-95 shadow-sm ${
+                  platformId === 'x'
+                    ? 'bg-sky-500 hover:bg-sky-600 shadow-sky-500/25'
+                    : 'bg-green-500 hover:bg-green-600 shadow-green-500/25'
+                }`}
+              >
+                {platformId === 'x' ? '🐦' : '📕'} {isZh ? `新建${platformLabel}任务` : `New ${platformLabel} task`}
+              </button>
+            )}
           </div>
         ) : (
           <div className="space-y-3">

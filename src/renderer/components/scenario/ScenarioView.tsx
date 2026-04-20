@@ -194,8 +194,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     setView({ kind: 'main', section: currentSection, platform });
   };
 
-  const openTask = (task_id: string) => {
-    setView({ kind: 'task_detail', task_id, from: currentSection });
+  const openTask = (task_id: string, fromOverride?: SectionId) => {
+    // `fromOverride` lets callers (e.g. link-mode quick-create flows in
+    // XhsWorkflowsPage / XWorkflowsPage) say "treat this as if user came
+    // from My Tasks" so the back button doesn't dump them back into the
+    // creation form they just submitted. Defaults to currentSection.
+    setView({ kind: 'task_detail', task_id, from: fromOverride || currentSection });
   };
 
   /** Jump from a task's detail page to Run History filtered by that task. */
@@ -273,14 +277,27 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     user_context?: string;
     urls?: string[];
   }) => {
+    let landingTaskId: string | null = null;
     if (wizardEditingTask) {
       // Edit → always activate as scheduled task
       await scenarioService.updateTask(wizardEditingTask.id, { ...input, active: true, enabled: true });
+      landingTaskId = wizardEditingTask.id;
     } else {
-      await scenarioService.createTask({ ...input, enabled: true, active: true });
+      // Create → land on the new task's detail page (v2.4.30+) so the
+      // user immediately sees the task they just configured instead of
+      // staring at the empty Create page wondering "did it work?".
+      // createTask returns the persisted Task with its assigned id.
+      const created = await scenarioService.createTask({ ...input, enabled: true, active: true });
+      landingTaskId = created?.id || null;
     }
     closeWizard();
+    // Refresh BEFORE navigating so TaskDetailPage can find the new task
+    // in the freshly-loaded tasks[] (otherwise it would render the
+    // "task deleted" empty state for a split second).
     await refreshAll();
+    if (landingTaskId) {
+      setView({ kind: 'task_detail', task_id: landingTaskId, from: 'tasks' });
+    }
   };
 
   const tasksForPlatform = useMemo(() => {
@@ -396,8 +413,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenarios={scenarios}
           loading={loading}
           platformLabel={platformLabel}
+          platformId={currentPlatform === 'x' ? 'x' : 'xhs'}
           onOpenTask={openTask}
           onRefresh={refreshAll}
+          onGoCreate={() => setView({ kind: 'main', section: 'create', platform: currentPlatform })}
         />
       );
     }

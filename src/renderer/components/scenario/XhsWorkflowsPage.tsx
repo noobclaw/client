@@ -69,7 +69,7 @@ interface Props {
   draftsByTask: Map<string, Draft[]>;
   loading: boolean;
   // onOpenWorkflow removed — no intermediate workflow detail page
-  onOpenTask: (task_id: string) => void;
+  onOpenTask: (task_id: string, fromOverride?: 'create' | 'tasks' | 'history') => void;
   onConfigure: (scenario: Scenario) => void;
   /** Called after a new task is created (e.g. link-mode submit)
    *  so parent can refresh its tasks[] list before routing to detail. */
@@ -215,8 +215,9 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       setLinksText('');
       // 先 refresh 父组件 tasks[]，否则跳转后 TaskDetailPage.tasks.find() 找不到新任务显示"无任务"
       if (onChanged) { await onChanged(); }
-      // 然后跳转详情 + 异步触发运行
-      onOpenTask(task.id);
+      // 然后跳转详情 + 异步触发运行。fromOverride='tasks' 让用户点返回时
+      // 回到「我的自动化运营任务」列表，而不是回到刚交完的快速创建 modal。
+      onOpenTask(task.id, 'tasks');
       scenarioService.runTaskNow(task.id).catch((e) => {
         console.error('[LinkMode] runTaskNow failed:', e);
       });

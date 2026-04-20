@@ -283,42 +283,49 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const handleRunNow = async () => {
     if (running) return;
 
-    // 1. Wallet check
+    // 1. Wallet check (sync — fast, no perceived lag).
     if (!noobClawAuth.getState().isAuthenticated) {
       noobClawAuth.openWebsiteLogin();
       return;
     }
 
-    // 2. Per-platform concurrency: a Twitter task and an XHS task can run
-    //    in parallel (different browser tabs), but two tasks on the SAME
-    //    platform compete for the same tab and must serialize. Block only
-    //    if a different task on the SAME platform is already running.
+    // 2. Open the pre-run modal IMMEDIATELY so the user sees instant
+    //    visual feedback. Pre-2.4.30 we awaited getRunningTaskIds +
+    //    listTasks + listScenarios BEFORE setLoginModalOpen, which on a
+    //    slow IPC round-trip felt like "click did nothing" — users
+    //    learned they had to double-click. The modal is the right place
+    //    to be while these async checks resolve, since the user has to
+    //    read it + click confirm anyway (plenty of time).
+    setLoginModalOpen(true);
+
+    // 3. Per-platform concurrency check, in the background. If we find
+    //    another task on the same platform is already running, close the
+    //    modal and surface the toast. Otherwise the user proceeds
+    //    normally — no extra wait.
     try {
       const runningIds: string[] = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
       const otherRunning = runningIds.filter((id: string) => id !== task.id);
-      if (otherRunning.length > 0) {
-        const [allTasks, allScenarios] = await Promise.all([
-          scenarioService.listTasks().catch(() => [] as Task[]),
-          scenarioService.listScenarios().catch(() => [] as Scenario[]),
-        ]);
-        const scenarioById = new Map(allScenarios.map(s => [s.id, s]));
-        const myPlatform = scenario?.platform;
-        const samePlatformBusy = otherRunning.some(rid => {
-          const otherTask = allTasks.find(t => t.id === rid);
-          if (!otherTask) return false;
-          const otherPlatform = scenarioById.get(otherTask.scenario_id)?.platform;
-          return otherPlatform === myPlatform;
-        });
-        if (samePlatformBusy) {
-          const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : '该平台';
-          showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
-          return;
-        }
+      if (otherRunning.length === 0) return; // nothing else running
+      const [allTasks, allScenarios] = await Promise.all([
+        scenarioService.listTasks().catch(() => [] as Task[]),
+        scenarioService.listScenarios().catch(() => [] as Scenario[]),
+      ]);
+      if (!mountedRef.current) return;
+      const scenarioById = new Map(allScenarios.map(s => [s.id, s]));
+      const myPlatform = scenario?.platform;
+      const samePlatformBusy = otherRunning.some(rid => {
+        const otherTask = allTasks.find(t => t.id === rid);
+        if (!otherTask) return false;
+        const otherPlatform = scenarioById.get(otherTask.scenario_id)?.platform;
+        return otherPlatform === myPlatform;
+      });
+      if (samePlatformBusy) {
+        const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : '该平台';
+        // Close the just-opened modal — the user can't proceed anyway.
+        setLoginModalOpen(false);
+        showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
       }
     } catch {}
-
-    // 3. Show login check modal
-    setLoginModalOpen(true);
   };
 
   const handleLoginConfirmed = () => {
