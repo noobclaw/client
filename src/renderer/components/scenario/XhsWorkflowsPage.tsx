@@ -395,16 +395,19 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* Advantage pills (moved out of banner, cross both cards) */}
+      {/* Advantage pills (moved out of banner, cross both cards). Note:
+          "✨ 原创质量高" leads since it's the most user-meaningful claim;
+          the rest are operational properties of the bot. */}
       <section className="mb-6 flex flex-wrap items-center gap-2">
         {[
+          { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
           { icon: '🛡️', zh: '不封号', en: 'Safe' },
           { icon: '🤖', zh: '全自动', en: 'Auto' },
           { icon: '🚀', zh: '自动上传', en: 'Auto Upload' },
           { icon: '💰', zh: '省Token', en: 'Save Tokens' },
           { icon: '🌊', zh: '爆款池', en: 'Viral Pool' },
         ].map((p, i) => (
-          <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full bg-white/10 dark:bg-white/5 text-gray-300">
+          <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-green-500/20 bg-green-500/5 text-gray-700 dark:text-gray-300">
             {p.icon} {i18nService.currentLanguage === 'zh' ? p.zh : p.en}
           </span>
         ))}

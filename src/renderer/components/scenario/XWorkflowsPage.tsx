@@ -248,22 +248,19 @@ export const XWorkflowsPage: React.FC<Props> = ({
         />
       </section>
 
-      {/* Twitter features row — replaces the old hero. Per-platform notes
-          users actually need: risk-control posture, randomization, language,
-          KOL pool, mainland-VPN reminder. Compact pill design so it doesn't
-          steal attention from the cards above. */}
+      {/* Twitter features row — compact pill design so it doesn't steal
+          attention from the cards above. No section title (the pills
+          self-describe). User feedback: dropped the VPN warning and the
+          random-image pill (signal-to-noise too low for the hero spot)
+          and the "几个特点" header (redundant). */}
       <section className="mb-6">
-        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">
-          {isZh ? '🐦 推特自动化 · 几个特点' : '🐦 Twitter Automation · Highlights'}
-        </div>
         <div className="flex flex-wrap gap-2">
           {[
+            { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
             { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
             { icon: '🌐', zh: '中英混合（自动跟随原推语言）', en: 'zh/en/mixed (follows source language)' },
             { icon: '🤝', zh: '500+ web3 KOL 池', en: '500+ Web3 KOL pool' },
-            { icon: '🎨', zh: '随机配图（约 30% 概率，AI 生图）', en: 'Random images (~30%, AI-generated)' },
-            { icon: '⚠️', zh: '大陆需 VPN / 代理访问 x.com', en: 'Mainland China: VPN required for x.com' },
           ].map((p, i) => (
             <span
               key={i}
@@ -393,7 +390,7 @@ type ScenarioCardProps = {
 
 const ScenarioCard: React.FC<ScenarioCardProps> = ({
   color, emoji, badge, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
-  loading, scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask, onConfigure,
+  loading, scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask: _onOpenTask, onConfigure,
   isZh,
 }) => {
   const palette: Record<typeof color, { border: string; bg: string; text: string; btn: string; shadow: string }> = {
@@ -420,10 +417,11 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
     },
   };
   const c = palette[color];
-  const firstTask = existingTasks[0];
-  // (Per-card running indicator removed in v2.4.21 — these cards are TEMPLATES
-  //  for creating tasks. Live status of actual running tasks lives on the
-  //  "我的任务" page, where the green pulse glow makes it impossible to miss.)
+  // (existingTasks intentionally unused inside the card now — cards are
+  //  pure templates / launchers. Per-card running indicator removed in
+  //  v2.4.21; "查看已配置的任务" link removed in v2.4.25 — both lived on
+  //  My Tasks page now.)
+  void existingTasks;
 
   return (
     <div className={`relative rounded-2xl border ${c.border} bg-gradient-to-br ${c.bg} to-transparent p-5 overflow-hidden flex flex-col`}>
@@ -440,18 +438,9 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
           {isZh ? descZh : descEn}
         </p>
 
-        {/* Convenience link: if user already created a task for this
-            scenario, let them jump straight to it. No live status here —
-            cards are templates, status lives on "我的任务" page. */}
-        {firstTask && (
-          <button
-            type="button"
-            onClick={() => onOpenTask(firstTask.id)}
-            className="text-left text-[11px] text-gray-500 dark:text-gray-400 underline-offset-2 hover:underline mb-2 self-start"
-          >
-            {isZh ? '查看已配置的任务 →' : 'View configured task →'}
-          </button>
-        )}
+        {/* (Removed in v2.4.25 per user feedback: the "查看已配置的任务 →"
+            link was redundant — users find their tasks under the "我的任务"
+            section now. Card stays purely a template / launcher.) */}
 
         <button
           type="button"
