@@ -94,18 +94,17 @@ const abortByTaskId: Map<string, boolean> = new Map();
 // the persistent record. Cleared on task end.
 const recordIdByTaskId: Map<string, string> = new Map();
 
-// v2.4.35: accumulated AI token usage per task. phaseRunner's aiCall
-// reports usage.total_tokens after each successful call; we sum up and
-// write the total into the run record at task end so the history page
-// can show "Tokens 12,345 · ≈ $0.025".
+// v2.4.35+: accumulated AI usage per task. phaseRunner's aiCall reports
+// per-call tokens + server-precomputed USD cost after each successful
+// call; we sum both and write into the run record at task end so the
+// history page can show "Tokens 12,345 · ≈ $0.025".
+//
+// Both values come from the real backend: tokens = usage.total_tokens,
+// cost = _noobclaw.costUsd (backend multiplies billable_tokens by
+// system_config.token_price_per_million — authoritative, no client-side
+// hardcoded rate).
 const tokensByTaskId: Map<string, number> = new Map();
-
-// Price constant used to compute USD cost shown in the run history. This
-// is the noobclawai-chat proxy's approximate per-million blended rate.
-// Kept client-side (not server-fetched) for simplicity — if pricing
-// changes we bump this and rebuild. TODO: move to a backend config
-// endpoint when pricing becomes dynamic.
-export const AI_PRICE_USD_PER_MILLION = 2.0;
+const costUsdByTaskId: Map<string, number> = new Map();
 
 function now(): string {
   const d = new Date();
@@ -246,11 +245,11 @@ function updateTaskRecordResult(taskId: string, result: any): void {
   if (!recordId) return;
   try {
     const runRecords = require('./runRecords');
-    // v2.4.35: attach accumulated token usage + precomputed USD cost.
-    // Done once at task end so the history page can render without
-    // doing per-row math (and without hardcoding the price in the UI).
+    // v2.4.35+: attach accumulated token usage + USD cost. Both summed
+    // from per-call values the backend reports (cost uses real
+    // system_config price — no hardcoded rate on the client).
     const tokens = tokensByTaskId.get(taskId) || 0;
-    const costUsd = tokens > 0 ? (tokens / 1_000_000) * AI_PRICE_USD_PER_MILLION : 0;
+    const costUsd = costUsdByTaskId.get(taskId) || 0;
     runRecords.finishRecord(recordId, {
       // Don't change status here — finishProgress already set it. We're
       // just adding the result counts.
@@ -477,8 +476,9 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       stepError: (step, error) => stepError(tid, step, error),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
-      addTokensUsed: (delta) => {
-        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + delta);
+      addTokensUsed: (tokensDelta, costDeltaUsd) => {
+        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
+        costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
       },
     }, { scriptOverride: script, targetDraft });
 
@@ -498,6 +498,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
     tokensByTaskId.delete(task.id);
+    costUsdByTaskId.delete(task.id);
     setTimeout(() => {
       progressByTaskId.delete(task.id);
     }, 30000);
@@ -593,8 +594,9 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
       stepError: (step, error) => stepError(tid, step, error),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
-      addTokensUsed: (delta) => {
-        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + delta);
+      addTokensUsed: (tokensDelta, costDeltaUsd) => {
+        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
+        costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
       },
     });
 

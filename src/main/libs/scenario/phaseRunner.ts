@@ -36,10 +36,14 @@ export interface ProgressFns {
   stepError: (step: number, error: string) => void;
   finishProgress: (status: 'done' | 'error' | 'partial', error?: string) => void;
   isAbortRequested: () => boolean;
-  /** v2.4.35: accumulate AI token usage per task so the run record
-   *  can surface cost. Called after every successful aiCall with the
-   *  delta from that single call's usage.total_tokens. */
-  addTokensUsed?: (delta: number) => void;
+  /** v2.4.35+: accumulate AI token usage per task so the run record
+   *  can surface cost. Called after every successful aiCall with:
+   *    - tokensDelta: raw total_tokens from this single call
+   *    - costDeltaUsd: server-precomputed USD cost for this call (from
+   *      _noobclaw.costUsd, i.e. billable_tokens × system_config's
+   *      token_price_per_million). Precomputed server-side so the
+   *      client doesn't hardcode a rate. */
+  addTokensUsed?: (tokensDelta: number, costDeltaUsd: number) => void;
 }
 
 export interface RunResult {
@@ -326,13 +330,22 @@ function buildContext(
           coworkLog('WARN', 'phaseRunner', 'AI returned empty content', { json });
           throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
         }
-        // v2.4.35: capture token usage if server reports it (OpenAI-compat
-        // shape: { usage: { prompt_tokens, completion_tokens, total_tokens } }).
-        // Accumulate into scenarioManager's per-task counter via the
-        // progress callback — shown in history as "Tokens 12,345 · ≈ $0.025".
+        // v2.4.36: capture token usage + server-authoritative USD cost.
+        // Backend's /api/ai/chat/completions now returns:
+        //   response._noobclaw = {
+        //     remainingTokens, tokensUsed,
+        //     priceUsdPerMillion, costUsd   ← new in v4.20.1 backend
+        //   }
+        // costUsd is precomputed server-side from system_config.token_price_
+        // per_million × billableTokens (after cache-hit discount), so the
+        // client never hardcodes a rate. Falls back to raw total_tokens
+        // only when the server doesn't include the NoobClaw extension
+        // (backward compat with old backends).
         try {
+          const nb = json?._noobclaw;
           const total = Number(json?.usage?.total_tokens) || 0;
-          if (total > 0 && progress.addTokensUsed) progress.addTokensUsed(total);
+          const cost = Number(nb?.costUsd) || 0;
+          if (total > 0 && progress.addTokensUsed) progress.addTokensUsed(total, cost);
         } catch { /* non-fatal */ }
         // Parse the JSON rewrite payload. Retry parse once if it fails —
         // cheap and catches the occasional 'almost-JSON' response.
