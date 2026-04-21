@@ -227,14 +227,29 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
         <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+      {/* Stats — 5 columns on wide screens to accommodate the cost card.
+          耗时 → 运行成本 → 日志条目 order per user spec: 运行成本 sits
+          immediately after 耗时 as a first-class stat. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
         <Stat label={isZh ? '开始' : 'Started'} value={fullTime(rec.started_at, isZh)} />
         <Stat label={isZh ? '结束' : 'Finished'} value={rec.finished_at ? fullTime(rec.finished_at, isZh) : (isZh ? '运行中' : 'Running')} />
         <Stat
           label={isZh ? '耗时' : 'Duration'}
           value={rec.finished_at ? formatDuration(rec.finished_at - rec.started_at, isZh) : '-'}
         />
+        {/* v2.4.37: 运行成本 卡 — always visible. 0-token runs just show
+            "🪙 0 / ≈ $0.0000" (user preference: prefer literal 0 over
+            "—" placeholder). */}
+        {(() => {
+          const tokens = Number((rec.result as any)?.tokens_used) || 0;
+          const cost = Number((rec.result as any)?.cost_usd) || 0;
+          return (
+            <Stat
+              label={isZh ? '运行成本' : 'AI cost'}
+              value={<span>🪙 {tokens.toLocaleString()}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
+            />
+          );
+        })()}
         <Stat label={isZh ? '日志条目' : 'Log entries'} value={rec.step_logs.length} />
       </div>
 
@@ -342,9 +357,9 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
   );
 };
 
-const Stat: React.FC<{ label: string; value: string | number }> = ({ label, value }) => (
+const Stat: React.FC<{ label: string; value: string | number | React.ReactNode }> = ({ label, value }) => (
   <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2">
     <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">{label}</div>
-    <div className="text-sm font-semibold dark:text-white truncate" title={String(value)}>{value}</div>
+    <div className="text-sm font-semibold dark:text-white truncate">{value}</div>
   </div>
 );

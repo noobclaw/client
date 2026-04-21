@@ -271,16 +271,21 @@ export const RunHistoryPage: React.FC<Props> = ({
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
-                      {/* v2.4.35: AI cost per run — total_tokens * $/M.
-                          Only shown when the orchestrator actually called
-                          an AI endpoint (tokens_used > 0). Non-AI runs
-                          (e.g. upload-only, pure browser automation) just
-                          skip this column. */}
-                      {rec.result && typeof rec.result.tokens_used === 'number' && rec.result.tokens_used > 0 && (
-                        <span title={isZh ? 'AI Token 使用量 × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
-                          · 🪙 {rec.result.tokens_used.toLocaleString()} tokens ≈ ${(rec.result.cost_usd || 0).toFixed(4)}
-                        </span>
-                      )}
+                      {/* v2.4.37: AI cost per run — ALWAYS show (was
+                          gated on tokens_used > 0, which meant runs that
+                          failed before calling AI had no cost column and
+                          users thought the feature wasn't working).
+                          Failed / no-AI runs now show "🪙 —" with a
+                          tooltip explaining no AI was called. */}
+                      {(() => {
+                        const tokens = Number(rec.result?.tokens_used) || 0;
+                        const cost = Number((rec.result as any)?.cost_usd) || 0;
+                        return (
+                          <span title={isZh ? 'AI Token × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
+                            · 🪙 {tokens.toLocaleString()} ≈ ${cost.toFixed(4)}
+                          </span>
+                        );
+                      })()}
                     </div>
                   </div>
                   {/* IDs row — both task id and record id so users can
