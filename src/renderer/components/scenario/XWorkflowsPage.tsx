@@ -263,6 +263,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <div className="flex flex-wrap gap-2">
           {[
             { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
+            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
             { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
             { icon: '🌐', zh: '中英混合（自动跟随原推语言）', en: 'zh/en/mixed (follows source language)' },

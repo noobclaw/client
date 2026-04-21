@@ -263,6 +263,11 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
                   {isZh ? '已发布' : 'Posted'}: <strong>{rec.result.posted}</strong>
                 </span>
               )}
+              {typeof (rec.result as any).tokens_used === 'number' && (rec.result as any).tokens_used > 0 && (
+                <span className="text-gray-600 dark:text-gray-300" title={isZh ? 'tokens × $/M ≈ USD' : ''}>
+                  🪙 Tokens: <strong>{((rec.result as any).tokens_used).toLocaleString()}</strong>
+                  {' '}· <strong>≈ ${((rec.result as any).cost_usd || 0).toFixed(4)}</strong></span>
+              )}
             </div>
           )}
           {rec.output_dir && (

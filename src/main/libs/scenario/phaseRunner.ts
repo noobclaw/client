@@ -36,6 +36,10 @@ export interface ProgressFns {
   stepError: (step: number, error: string) => void;
   finishProgress: (status: 'done' | 'error' | 'partial', error?: string) => void;
   isAbortRequested: () => boolean;
+  /** v2.4.35: accumulate AI token usage per task so the run record
+   *  can surface cost. Called after every successful aiCall with the
+   *  delta from that single call's usage.total_tokens. */
+  addTokensUsed?: (delta: number) => void;
 }
 
 export interface RunResult {
@@ -322,6 +326,14 @@ function buildContext(
           coworkLog('WARN', 'phaseRunner', 'AI returned empty content', { json });
           throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
         }
+        // v2.4.35: capture token usage if server reports it (OpenAI-compat
+        // shape: { usage: { prompt_tokens, completion_tokens, total_tokens } }).
+        // Accumulate into scenarioManager's per-task counter via the
+        // progress callback — shown in history as "Tokens 12,345 · ≈ $0.025".
+        try {
+          const total = Number(json?.usage?.total_tokens) || 0;
+          if (total > 0 && progress.addTokensUsed) progress.addTokensUsed(total);
+        } catch { /* non-fatal */ }
         // Parse the JSON rewrite payload. Retry parse once if it fails —
         // cheap and catches the occasional 'almost-JSON' response.
         const parsed = parseJsonSafe(raw);

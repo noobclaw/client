@@ -182,7 +182,7 @@ class ScenarioService {
 
   /** Rich run records (v2.4.22+) — full task snapshot + step logs +
    *  output dir. Replaces getAllRuns for the Run History UI. */
-  async listRunRecords(filter?: { task_id?: string; platform?: string }): Promise<Array<any>> {
+  async listRunRecords(filter?: { task_id?: string; platform?: string; light?: boolean }): Promise<Array<any>> {
     try {
       const r = await window.electron.scenario.listRunRecords(filter);
       return Array.isArray(r?.records) ? r.records : [];

@@ -267,13 +267,45 @@ export function finishRecord(recordId: string, args: {
   persist();
 }
 
-/** All records, newest-first. Used by the Run History page. */
-export function listRecords(filter?: { task_id?: string; platform?: string }): RunRecord[] {
+/** All records, newest-first. Used by the Run History page.
+ *
+ *  v2.4.35 — `light: true` strips the heavy fields (step_logs, full
+ *  task_snapshot) so the list-view payload stays tiny. Without this,
+ *  a user with 50+ rich records was transferring multiple MB every
+ *  2-second poll → UI felt sluggish, "刚跑完的记录很久才出现". The
+ *  detail page still fetches the full record via getRecord(id). */
+export function listRecords(filter?: {
+  task_id?: string;
+  platform?: string;
+  light?: boolean;
+}): RunRecord[] {
   if (!_loaded) return [];
   let out = [..._records];
   if (filter?.task_id) out = out.filter(r => r.task_id === filter.task_id);
   if (filter?.platform) out = out.filter(r => r.scenario_snapshot.platform === filter.platform);
   out.sort((a, b) => b.started_at - a.started_at);
+  if (filter?.light) {
+    // Return only what the list page renders. RunHistoryPage.tsx
+    // consumes: id, task_id, scenario_snapshot, started_at, finished_at,
+    // status, error, result, output_dir, task_snapshot.{track, urls},
+    // step_logs.length (just the count, not the entries).
+    return out.map(r => ({
+      id: r.id,
+      task_id: r.task_id,
+      task_snapshot: {
+        track: (r.task_snapshot as any)?.track,
+        urls: (r.task_snapshot as any)?.urls,
+      } as any,
+      scenario_snapshot: r.scenario_snapshot,
+      started_at: r.started_at,
+      finished_at: r.finished_at,
+      status: r.status,
+      error: r.error,
+      step_logs: { length: r.step_logs.length } as any, // fake array for .length access
+      result: r.result,
+      output_dir: r.output_dir,
+    } as RunRecord));
+  }
   return out;
 }
 

@@ -402,10 +402,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6 flex flex-wrap items-center gap-2">
         {[
           { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
+          { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
           { icon: '🛡️', zh: '不封号', en: 'Safe' },
           { icon: '🤖', zh: '全自动', en: 'Auto' },
           { icon: '🚀', zh: '自动上传', en: 'Auto Upload' },
-          { icon: '💰', zh: '省Token', en: 'Save Tokens' },
           { icon: '🌊', zh: '爆款池', en: 'Viral Pool' },
         ].map((p, i) => (
           <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-green-500/20 bg-green-500/5 text-gray-700 dark:text-gray-300">

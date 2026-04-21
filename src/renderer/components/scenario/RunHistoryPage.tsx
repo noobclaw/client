@@ -136,6 +136,11 @@ export const RunHistoryPage: React.FC<Props> = ({
       const recs = await scenarioService.listRunRecords({
         platform: platformId,
         task_id: filterByTaskId || undefined,
+        // v2.4.35: ask for the lightweight payload — list page only
+        // needs summary fields; full step_logs fetched by detail page.
+        // Without this, 50+ records × 500 step_logs made each 2s poll
+        // transfer multi-MB, which felt like "记录很久才出现".
+        light: true,
       });
       if (cancelled) return;
       // History page shows ONLY completed records — per user request:
@@ -263,9 +268,19 @@ export const RunHistoryPage: React.FC<Props> = ({
                       <span className="text-base shrink-0">{displayIcon}</span>
                       <span className="font-medium dark:text-white truncate">{displayName}</span>
                     </div>
-                    <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0">
+                    <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
+                      {/* v2.4.35: AI cost per run — total_tokens * $/M.
+                          Only shown when the orchestrator actually called
+                          an AI endpoint (tokens_used > 0). Non-AI runs
+                          (e.g. upload-only, pure browser automation) just
+                          skip this column. */}
+                      {rec.result && typeof rec.result.tokens_used === 'number' && rec.result.tokens_used > 0 && (
+                        <span title={isZh ? 'AI Token 使用量 × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
+                          · 🪙 {rec.result.tokens_used.toLocaleString()} tokens ≈ ${(rec.result.cost_usd || 0).toFixed(4)}
+                        </span>
+                      )}
                     </div>
                   </div>
                   {/* IDs row — both task id and record id so users can

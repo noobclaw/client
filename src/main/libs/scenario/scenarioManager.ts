@@ -94,6 +94,19 @@ const abortByTaskId: Map<string, boolean> = new Map();
 // the persistent record. Cleared on task end.
 const recordIdByTaskId: Map<string, string> = new Map();
 
+// v2.4.35: accumulated AI token usage per task. phaseRunner's aiCall
+// reports usage.total_tokens after each successful call; we sum up and
+// write the total into the run record at task end so the history page
+// can show "Tokens 12,345 · ≈ $0.025".
+const tokensByTaskId: Map<string, number> = new Map();
+
+// Price constant used to compute USD cost shown in the run history. This
+// is the noobclawai-chat proxy's approximate per-million blended rate.
+// Kept client-side (not server-fetched) for simplicity — if pricing
+// changes we bump this and rebuild. TODO: move to a backend config
+// endpoint when pricing becomes dynamic.
+export const AI_PRICE_USD_PER_MILLION = 2.0;
+
 function now(): string {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
@@ -233,6 +246,11 @@ function updateTaskRecordResult(taskId: string, result: any): void {
   if (!recordId) return;
   try {
     const runRecords = require('./runRecords');
+    // v2.4.35: attach accumulated token usage + precomputed USD cost.
+    // Done once at task end so the history page can render without
+    // doing per-row math (and without hardcoding the price in the UI).
+    const tokens = tokensByTaskId.get(taskId) || 0;
+    const costUsd = tokens > 0 ? (tokens / 1_000_000) * AI_PRICE_USD_PER_MILLION : 0;
     runRecords.finishRecord(recordId, {
       // Don't change status here — finishProgress already set it. We're
       // just adding the result counts.
@@ -241,6 +259,8 @@ function updateTaskRecordResult(taskId: string, result: any): void {
         collected_count: result.collected_count,
         draft_count: result.draft_count,
         posted: result.posted,
+        tokens_used: tokens,
+        cost_usd: costUsd,
         ...result,
       },
     });
@@ -457,6 +477,9 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       stepError: (step, error) => stepError(tid, step, error),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
+      addTokensUsed: (delta) => {
+        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + delta);
+      },
     }, { scriptOverride: script, targetDraft });
 
     // Update draft status on successful upload
@@ -474,6 +497,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     releaseResource(resource);
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
+    tokensByTaskId.delete(task.id);
     setTimeout(() => {
       progressByTaskId.delete(task.id);
     }, 30000);
@@ -569,6 +593,9 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
       stepError: (step, error) => stepError(tid, step, error),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
+      addTokensUsed: (delta) => {
+        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + delta);
+      },
     });
 
     const cur = progressByTaskId.get(tid);
