@@ -223,25 +223,41 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   }, [task.id]);
 
   // ── Check running state on mount (ONE TIME) ──
+  // v2.4.38: fetch progress DIRECTLY instead of going through
+  // getRunningTaskIds → setRunning → poll-effect → 2s wait → first
+  // progress fetch. That chain had a ~2-3s blind window where users
+  // landing on the detail page mid-run saw "等待前一步" and thought
+  // progress didn't load. Now we populate `progress` on mount so the
+  // step panel has real data before the user blinks.
   useEffect(() => {
     void refreshData();
-    // Check if THIS task is already running. Use the plural getter so a
-    // different concurrent task doesn't shadow ours (singleton returns
-    // whichever map entry iterates first — could be the wrong one).
-    scenarioService.getRunningTaskIds().then(ids => {
-      if (mountedRef.current && ids.includes(task.id)) setRunning(true);
+    scenarioService.getRunProgress(task.id).then(prog => {
+      if (!mountedRef.current) return;
+      if (prog && prog.taskId === task.id) {
+        setProgress(prog);
+        if (prog.status === 'running') setRunning(true);
+      }
     }).catch(() => {});
   }, [refreshData, task.id]);
 
   // ── Poll progress logs every 2s (display only, NOT for running state) ──
+  //
+  // v2.4.38: also fires an IMMEDIATE fetch right when `running` flips to
+  // true, not just on the first setInterval tick 2s later. Without this,
+  // users entering a task detail page mid-run saw "等待前一步" in the
+  // step panel for ~2 seconds before the first poll landed — looked like
+  // the progress wasn't loading at all. Retry-and-reenter was their
+  // workaround. Now progress shows up within ~50ms of `running=true`.
   useEffect(() => {
     if (!running) return;
-    const timer = setInterval(async () => {
+    let cancelled = false;
+    const doFetch = async () => {
       try {
         // Pass task.id so the main process returns THIS task's progress
         // even when another task (different platform) is also running.
         const prog = await scenarioService.getRunProgress(task.id).catch(() => null);
-        if (mountedRef.current && prog && prog.taskId === task.id) {
+        if (cancelled || !mountedRef.current) return;
+        if (prog && prog.taskId === task.id) {
           setProgress(prog);
           // If progress says "done" or "error", task has finished
           if (prog.status === 'done') {
@@ -275,8 +291,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           }
         }
       } catch {}
-    }, 2000);
-    return () => clearInterval(timer);
+    };
+    // Immediate first fetch (don't wait 2s for setInterval to fire).
+    void doFetch();
+    const timer = setInterval(doFetch, 2000);
+    return () => { cancelled = true; clearInterval(timer); };
   }, [running, task.id, refreshData]);
 
   // ── Actions ──
