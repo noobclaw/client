@@ -238,7 +238,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           value={rec.finished_at ? formatDuration(rec.finished_at - rec.started_at, isZh) : '-'}
         />
         {/* v2.4.37: 运行成本 卡 — always visible. 0-token runs just show
-            "🪙 0 / ≈ $0.0000" (user preference: prefer literal 0 over
+            "💎 0 / ≈ $0.0000" (user preference: prefer literal 0 over
             "—" placeholder). */}
         {(() => {
           const tokens = Number((rec.result as any)?.tokens_used) || 0;
@@ -246,7 +246,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           return (
             <Stat
               label={isZh ? '运行成本' : 'AI cost'}
-              value={<span>🪙 {tokens.toLocaleString()}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
+              value={<span>💎 {tokens.toLocaleString()}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
             />
           );
         })()}
@@ -280,7 +280,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               )}
               {typeof (rec.result as any).tokens_used === 'number' && (rec.result as any).tokens_used > 0 && (
                 <span className="text-gray-600 dark:text-gray-300" title={isZh ? 'tokens × $/M ≈ USD' : ''}>
-                  🪙 Tokens: <strong>{((rec.result as any).tokens_used).toLocaleString()}</strong>
+                  💎 Tokens: <strong>{((rec.result as any).tokens_used).toLocaleString()}</strong>
                   {' '}· <strong>≈ ${((rec.result as any).cost_usd || 0).toFixed(4)}</strong></span>
               )}
             </div>

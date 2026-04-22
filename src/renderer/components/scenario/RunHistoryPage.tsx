@@ -275,14 +275,14 @@ export const RunHistoryPage: React.FC<Props> = ({
                           gated on tokens_used > 0, which meant runs that
                           failed before calling AI had no cost column and
                           users thought the feature wasn't working).
-                          Failed / no-AI runs now show "🪙 —" with a
+                          Failed / no-AI runs now show "💎 —" with a
                           tooltip explaining no AI was called. */}
                       {(() => {
                         const tokens = Number(rec.result?.tokens_used) || 0;
                         const cost = Number((rec.result as any)?.cost_usd) || 0;
                         return (
                           <span title={isZh ? 'AI Token × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
-                            · 🪙 {tokens.toLocaleString()} ≈ ${cost.toFixed(4)}
+                            · 💎 {tokens.toLocaleString()} ≈ ${cost.toFixed(4)}
                           </span>
                         );
                       })()}
