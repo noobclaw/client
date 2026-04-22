@@ -56,22 +56,46 @@ if (packageBlockRegex.test(cargo)) {
   process.exit(1);
 }
 
-// 3. sidecar-server.ts — /api/version handler
-//    if (pathname === '/api/version') {
-//      return writeJSON(res, 200, { version: '1.0.0', mode: 'tauri-sidecar' });
-//    }
+// 3. sidecar-server.ts — two hardcoded strings
+//    a) /api/version HTTP handler:
+//       if (pathname === '/api/version') {
+//         return writeJSON(res, 200, { version: '2.2.7', mode: 'tauri-sidecar' });
+//       }
+//    b) app:getVersion IPC case:
+//       case 'app:getVersion': return writeJSON(res, 200, '1.0.0');
+//    Both are read by window.electron.appInfo.getVersion() via tauriShim;
+//    keeping them in sync prevents the update-check from comparing against
+//    a stale string and falsely reporting "already on latest".
 const sidecarPath = path.join(ROOT, 'src', 'main', 'sidecar-server.ts');
 let sidecar = fs.readFileSync(sidecarPath, 'utf8');
-const sidecarRegex = /(\/api\/version[^{]*\{\s*return writeJSON\(res, 200, \{ version: ')[^']+(' *, *mode)/;
-if (sidecarRegex.test(sidecar)) {
-  const next = sidecar.replace(sidecarRegex, `$1${version}$2`);
-  if (next !== sidecar) {
-    fs.writeFileSync(sidecarPath, next);
-    console.log(`[sync-version] sidecar-server.ts /api/version → ${version}`);
-    changed++;
+
+const sidecarRegexes = [
+  {
+    label: '/api/version',
+    re: /(\/api\/version[^{]*\{\s*return writeJSON\(res, 200, \{ version: ')[^']+(' *, *mode)/,
+  },
+  {
+    label: 'app:getVersion',
+    re: /(case 'app:getVersion': return writeJSON\(res, 200, ')[^']+(' *\))/,
+  },
+];
+
+let sidecarChanged = false;
+for (const { label, re } of sidecarRegexes) {
+  if (re.test(sidecar)) {
+    const next = sidecar.replace(re, `$1${version}$2`);
+    if (next !== sidecar) {
+      sidecar = next;
+      sidecarChanged = true;
+      console.log(`[sync-version] sidecar-server.ts ${label} → ${version}`);
+    }
+  } else {
+    console.warn(`[sync-version] sidecar-server.ts: could not find ${label} hardcoded string, skipping`);
   }
-} else {
-  console.warn(`[sync-version] sidecar-server.ts: could not find /api/version hardcoded string, skipping`);
+}
+if (sidecarChanged) {
+  fs.writeFileSync(sidecarPath, sidecar);
+  changed++;
 }
 
 if (changed === 0) {

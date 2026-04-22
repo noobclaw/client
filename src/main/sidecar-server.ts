@@ -977,6 +977,9 @@ const server = http.createServer(async (req, res) => {
           }
 
           // ── API fetch proxy ──
+          // Contract must match Electron's ipcMain.handle('api:fetch') in main.ts:
+          // returns { ok, status, statusText, headers, data } where data is a parsed
+          // object when the response content-type is JSON, otherwise the raw text.
           case 'api:fetch': {
             const opts = args[0];
             try {
@@ -985,10 +988,25 @@ const server = http.createServer(async (req, res) => {
                 headers: opts.headers || {},
                 body: opts.body || undefined,
               });
-              const bodyText = await fetchRes.text();
-              return writeJSON(res, 200, { ok: fetchRes.ok, status: fetchRes.status, body: bodyText });
+              const contentType = fetchRes.headers.get('content-type') || '';
+              const headersObj: Record<string, string> = {};
+              fetchRes.headers.forEach((v, k) => { headersObj[k] = v; });
+              let data: unknown;
+              if (contentType.includes('application/json')) {
+                try { data = await fetchRes.json(); }
+                catch { data = await fetchRes.text(); }
+              } else {
+                data = await fetchRes.text();
+              }
+              return writeJSON(res, 200, {
+                ok: fetchRes.ok,
+                status: fetchRes.status,
+                statusText: fetchRes.statusText,
+                headers: headersObj,
+                data,
+              });
             } catch (e: any) {
-              return writeJSON(res, 200, { ok: false, status: 0, body: '', error: e.message });
+              return writeJSON(res, 200, { ok: false, status: 0, statusText: '', headers: {}, data: null, error: e.message });
             }
           }
 
@@ -1173,7 +1191,7 @@ const server = http.createServer(async (req, res) => {
           }
 
           // ── App info ──
-          case 'app:getVersion': return writeJSON(res, 200, '1.0.0');
+          case 'app:getVersion': return writeJSON(res, 200, '2.4.44');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
 
           // ── Session title ──
@@ -1812,7 +1830,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Version ──
     if (pathname === '/api/version') {
-      return writeJSON(res, 200, { version: '2.2.7', mode: 'tauri-sidecar' });
+      return writeJSON(res, 200, { version: '2.4.44', mode: 'tauri-sidecar' });
     }
 
     // ── 404 ──

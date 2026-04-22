@@ -274,7 +274,7 @@ export function createTauriElectronShim(): typeof window.electron {
 
     // ── API proxy (for Settings provider validation) ──
     api: {
-      fetch: (opts: any) => ipcInvoke('api:fetch', opts).then(r => r ?? { ok: false, status: 0, body: '' }),
+      fetch: (opts: any) => ipcInvoke('api:fetch', opts).then(r => r ?? { ok: false, status: 0, statusText: '', headers: {}, data: null }),
       stream: (opts: any) => ipcInvoke('api:stream', opts),
       cancelStream: (id: string) => ipcInvoke('api:stream:cancel', id),
       onStreamData: (id: string, cb: (chunk: string) => void) => onSSE(`api:stream:${id}:data`, cb),
