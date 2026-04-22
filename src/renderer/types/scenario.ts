@@ -88,6 +88,9 @@ export interface ScenarioTaskIPC {
   daily_follow_max?: number;
   daily_reply_min?: number;
   daily_reply_max?: number;
+  /** v4.22.x: XHS auto-reply random article-count range. */
+  daily_count_min?: number;
+  daily_count_max?: number;
   /** Twitter v2.4.27: Blue V flag — see main types.ts for full notes.
    *  false (default) = ≤140 char cap, true = AI free pick. */
   is_blue_v?: boolean;

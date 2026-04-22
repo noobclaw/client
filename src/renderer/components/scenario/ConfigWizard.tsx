@@ -406,6 +406,32 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // User-configurable bounds: follows 0-10, replies 1-20. Wider = higher risk.
   const FOLLOW_HARDCAP = 10;
   const REPLY_HARDCAP = 20;
+  // ⭐ XHS auto-reply daily article count range (v4.22.x). Same min/max
+  // pattern as x_auto_engage so user can pick "every day random 3-10
+  // articles" instead of always exactly 6. Hard cap 20.
+  const XHS_REPLY_HARDCAP = 20;
+  // Defaults: min=3 / max=6 per user spec ("最少为1（默认为3），
+  // 最多可选20（默认为6）"). Slider lower bound is 1 — user can't
+  // pick 0 (no rest-day mode). Upper bound is XHS_REPLY_HARDCAP=20.
+  const [xhsReplyMin, setXhsReplyMinRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_count_min === 'number'
+      ? (initialTask as any).daily_count_min : 3
+  );
+  const [xhsReplyMax, setXhsReplyMaxRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_count_max === 'number'
+      ? (initialTask as any).daily_count_max
+      : (initialTask?.daily_count || 6)
+  );
+  const setXhsReplyMin = (v: number) => {
+    const n = Math.max(1, Math.min(XHS_REPLY_HARDCAP, v));
+    setXhsReplyMinRaw(n);
+    if (xhsReplyMax < n) setXhsReplyMaxRaw(n);
+  };
+  const setXhsReplyMax = (v: number) => {
+    const n = Math.max(1, Math.min(XHS_REPLY_HARDCAP, v));
+    setXhsReplyMaxRaw(n);
+    if (xhsReplyMin > n) setXhsReplyMinRaw(n);
+  };
   const [followMin, setFollowMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_follow_min === 'number'
       ? (initialTask as any).daily_follow_min : 0
@@ -488,16 +514,29 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     setSaving(true);
     setSaveError(null);
     try {
+      // For XHS auto-reply, daily_count semantics changed (v4.22.x) to a
+      // min/max range — store the MAX as legacy daily_count for back-
+      // compat with anything still reading task.daily_count, and ALSO
+      // send min/max as the authoritative source.
+      const effectiveDailyCount = isAutoReply
+        ? xhsReplyMax
+        : Math.min(dailyCount, dailyHardCap);
       await onSave({
         scenario_id: scenario.id,
         track: trackId,
         keywords: keywordList,
         persona: persona.trim(),
-        daily_count: Math.min(dailyCount, dailyHardCap),
+        daily_count: effectiveDailyCount,
         variants_per_post: variants,
         daily_time: dailyTime,
         run_interval: runInterval,
         auto_upload: autoUpload,
+        // XHS auto-reply min/max (sent for auto_reply only — other
+        // scenarios ignore these fields).
+        ...(isAutoReply ? {
+          daily_count_min: xhsReplyMin,
+          daily_count_max: xhsReplyMax,
+        } : {}),
         // Twitter v1 fields. Sent only when relevant; XHS scenarios don't
         // care about these and ignore them, but we always include the
         // typed fields so the orchestrator on the backend has them when
@@ -923,12 +962,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   0-3 follows + 0-1 reply followed + 0-1 reply feed; post_creator =
                   1 tweet/day) so the user-facing slider doesn't apply.
                   link_rewrite is one-shot — the URL list is the count. */}
-              {!isXPlatform && (
+              {!isXPlatform && !isAutoReply && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isAutoReply
-                      ? (isZh ? '每次运行回复文章数' : 'Articles per scheduled run')
-                      : (isZh ? '每次运行采集爆款数量' : 'Articles per scheduled run')}
+                    {isZh ? '每次运行采集爆款数量' : 'Articles per scheduled run'}
                   </label>
                   <div className="flex items-center gap-3">
                     <input
@@ -938,13 +975,44 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     />
                     <div className="w-12 text-center font-semibold text-green-500">{dailyCount}</div>
                   </div>
-                  {isAutoReply && (
-                    <div className="text-[11px] text-gray-400 mt-1">
-                      {isZh
-                        ? `每篇 1 文章评论 + 0~1 用户回复（50% 几率回复 Top1 高赞评论，翻面则跳过）。评论间隔 30-80 秒，文章间隔 60-200 秒`
-                        : `Per article: 1 article comment + 0–1 user-comment reply (50% chance to reply to the top-liked comment, otherwise skip it). Reply jitter 30-80s, article jitter 60-200s`}
+                </div>
+              )}
+              {/* ⭐ XHS auto-reply uses min/max range (v4.22.x): each
+                  scheduled run picks a random count in [min, max] to
+                  vary cadence and look less bot-like. Same UX pattern
+                  as x_auto_engage's follow / reply ranges. */}
+              {isAutoReply && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '每次运行回复文章数（随机区间）' : 'Articles per run (random range)'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                        {isZh ? '最少' : 'Min'}: <span className="font-semibold text-cyan-500">{xhsReplyMin}</span>
+                      </div>
+                      <input
+                        type="range" min={1} max={XHS_REPLY_HARDCAP} value={xhsReplyMin}
+                        onChange={e => setXhsReplyMin(parseInt(e.target.value, 10))}
+                        className="w-full"
+                      />
                     </div>
-                  )}
+                    <div>
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                        {isZh ? '最多' : 'Max'}: <span className="font-semibold text-cyan-500">{xhsReplyMax}</span>
+                      </div>
+                      <input
+                        type="range" min={1} max={XHS_REPLY_HARDCAP} value={xhsReplyMax}
+                        onChange={e => setXhsReplyMax(parseInt(e.target.value, 10))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-2 leading-relaxed">
+                    {isZh
+                      ? `每次运行随机回复 ${xhsReplyMin}-${xhsReplyMax} 篇文章（1-${XHS_REPLY_HARDCAP}）。每篇 1 文章评论 + 0~1 用户回复（50% 几率回复 Top1 高赞评论）。评论间隔 30-80 秒，文章间隔 60-200 秒。`
+                      : `Random ${xhsReplyMin}-${xhsReplyMax} articles per run (1-${XHS_REPLY_HARDCAP}). Per article: 1 article comment + 0-1 user-comment reply (50% chance for Top1). Reply jitter 30-80s, article jitter 60-200s.`}
+                  </div>
                 </div>
               )}
 

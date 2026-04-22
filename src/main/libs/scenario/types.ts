@@ -170,6 +170,12 @@ export interface ScenarioTask {
   daily_follow_max?: number;
   daily_reply_min?: number;
   daily_reply_max?: number;
+  /** v4.22.x: XHS auto-reply article-count range. Each scheduled run
+   *  picks random in [min, max]. Defaults: 1-6 if absent. Authoritative
+   *  for auto_reply scenarios — when set, supersedes the legacy single
+   *  daily_count field. */
+  daily_count_min?: number;
+  daily_count_max?: number;
   /** Twitter v2.4.27: is the user's X account a Blue V (subscribed)?
    *  Default false. Drives the per-tweet length cap that orchestrators
    *  inject into AI generation prompts:
