@@ -404,12 +404,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //   follows: 0-3 (random in this range)
   //   replies: 2-2 (always 2 — matches old default daily_count=2)
   // User-configurable bounds: follows 0-10, replies 1-20. Wider = higher risk.
-  const FOLLOW_HARDCAP = 10;
-  const REPLY_HARDCAP = 20;
+  const FOLLOW_HARDCAP = 20;   // v4.22.x: was 10, bumped per user request
+  const REPLY_HARDCAP = 50;    // v4.22.x: was 20, bumped per user request
   // ⭐ XHS auto-reply daily article count range (v4.22.x). Same min/max
   // pattern as x_auto_engage so user can pick "every day random 3-10
   // articles" instead of always exactly 6. Hard cap 20.
-  const XHS_REPLY_HARDCAP = 20;
+  const XHS_REPLY_HARDCAP = 50;   // v4.22.x: was 20, bumped per user request
   // Defaults: min=3 / max=6 per user spec ("最少为1（默认为3），
   // 最多可选20（默认为6）"). Slider lower bound is 1 — user can't
   // pick 0 (no rest-day mode). Upper bound is XHS_REPLY_HARDCAP=20.
