@@ -42,6 +42,14 @@ const EXTENSION_IDS = [
   // Legacy fixed ID (extensions with manifest.key) — kept so users who
   // still have the dev/sideload build keep working.
   'dhmjehcfpjjliiknpahbnflgljinjdeo',
+  // Microsoft Edge Add-ons listing ID. Edge re-signs the CRX with
+  // its own private key when accepting a submission without "key" in
+  // manifest, so the runtime extension id is DIFFERENT from the
+  // Chrome Web Store one even though the source code is identical.
+  // Without this entry, Edge users' extensions can connect over TCP
+  // but the native messaging host manifest's allowed_origins doesn't
+  // accept their chrome-extension:// origin.
+  'laphnggbfbalnemcgjcgmdjaaehldkbd',
 ];
 
 type BrowserType = 'chrome' | 'edge' | 'firefox';
