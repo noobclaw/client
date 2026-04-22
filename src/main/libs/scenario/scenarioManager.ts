@@ -217,6 +217,24 @@ function startTaskRecord(task: ScenarioTask, scenario: any): void {
   try {
     const runRecords = require('./runRecords');
     const { getTaskOutputDir } = require('./artifactWriter');
+    const { getUserDataPath } = require('../platformAdapter');
+    // ⭐ v4.22.x defensive init. Bug from user 2026-04-22: a freshly-
+    // created task's runs hit riskGuard (累计采集 visible) but never
+    // appeared in runRecords history. Root cause hypothesis: the
+    // sidecar bootstrap path that calls scenarioRunRecords.initRunRecords
+    // hadn't run yet (e.g. another runTask started concurrently before
+    // bootstrap finished, or the user's app session was a hot-reload
+    // that skipped bootstrap). startRecord then no-ops because _loaded
+    // is false → silent data loss.
+    //
+    // Defense: ALWAYS call initRunRecords() here. It's idempotent
+    // (gated by _initOnce internally) — second call is a no-op except
+    // for setting _loaded=true if it slipped through.
+    try {
+      runRecords.initRunRecords(getUserDataPath());
+    } catch (initErr) {
+      coworkLog('WARN', 'scenarioManager', 'startTaskRecord: init failed', { err: String(initErr) });
+    }
     let outputDir: string | undefined;
     // Pass platform so Twitter tasks land in 推特/, not 小红书/.
     const platform = scenario?.platform || 'xhs';
@@ -233,7 +251,18 @@ function startTaskRecord(task: ScenarioTask, scenario: any): void {
       } : null,
       output_dir: outputDir,
     });
-    if (recordId) recordIdByTaskId.set(task.id, recordId);
+    if (recordId) {
+      recordIdByTaskId.set(task.id, recordId);
+      coworkLog('INFO', 'scenarioManager', 'runRecord created', {
+        taskId: task.id, recordId, platform, scenarioId: scenario?.id,
+      });
+    } else {
+      // recordId === '' means runRecords._loaded was false → data loss.
+      // Loud warning so this stops being silent.
+      coworkLog('ERROR', 'scenarioManager', 'startTaskRecord: startRecord returned EMPTY id — runRecords not loaded? Task run will NOT appear in history.', {
+        taskId: task.id, platform, scenarioId: scenario?.id,
+      });
+    }
   } catch (e) {
     coworkLog('WARN', 'scenarioManager', 'startTaskRecord failed', { err: String(e) });
   }
