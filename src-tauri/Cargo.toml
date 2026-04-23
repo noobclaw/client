@@ -1,6 +1,6 @@
 [package]
 name = "noobclaw"
-version = "2.4.46"
+version = "2.4.47"
 description = "NoobClaw - AI Desktop Assistant"
 authors = ["NoobClaw"]
 edition = "2021"
@@ -13,7 +13,14 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["devtools", "tray-icon", "image-png"] }
+# devtools is intentionally NOT in this base feature list — it gets added
+# back below ONLY for debug builds. In release the WebView ships without
+# the devtools backend, which makes F12 / Ctrl+Shift+I / right-click →
+# Inspect / programmatic open_devtools() all silent no-ops on user
+# machines. Renderer-side hotkey blocking (main.tsx) is layered on top
+# as belt-and-suspenders so even if a future tauri update accidentally
+# re-enables devtools, end users still can't pop it open.
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-shell = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -40,6 +47,14 @@ keyring = "3"
 # already vendors tokio internally, we're just opting into its public
 # API so the features are there at link time.
 tokio = { version = "1", features = ["sync", "time"] }
+
+# Cargo merges feature flags from multiple [dependencies] declarations
+# referencing the same crate, so this just appends `devtools` to the
+# tauri feature list above when (and only when) the build is debug
+# (`cargo build` without --release / `cargo run`). Release builds via
+# `cargo build --release` (what `tauri build` uses) skip this entirely.
+[target.'cfg(debug_assertions)'.dependencies]
+tauri = { version = "2", features = ["devtools"] }
 
 # objc2 is only pulled in on macOS for dock-tile badge access. Behind a
 # target-specific dep so Windows/Linux builds never link Apple frameworks.

@@ -2913,7 +2913,13 @@ if (!gotTheLock) {
         webSecurity: true,
         preload: getPreloadPath(),
         backgroundThrottling: false,
-        devTools: true,
+        // DevTools off in packaged builds so end users can't pop the
+        // inspector via F12, the menu, or `webContents.openDevTools()`
+        // calls leaking from third-party code. Dev mode (electron .)
+        // keeps it on for debugging. Renderer also blocks F12 / Ctrl+R
+        // hotkeys (see src/renderer/main.tsx) — this is the runtime
+        // backstop in case the keyboard handler is bypassed.
+        devTools: !app.isPackaged,
         spellcheck: false,
         enableWebSQL: false,
         autoplayPolicy: 'document-user-activation-required',
