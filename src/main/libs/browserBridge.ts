@@ -237,12 +237,26 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
 }
 
 function getNativeHostScriptPath(): string {
-  const resourcesPath = getResourcesPath();
+  // The wrapper script (.bat / .sh) MUST live in a user-writable location.
+  // registerNativeMessagingHost rewrites it on every startup so the
+  // embedded process.execPath stays in sync with the current install
+  // location (which changes whenever the user upgrades to a build at a
+  // different install root — e.g. moving from D:\noobclaw to
+  // C:\Program Files\NoobClaw on Windows). Putting it under
+  // resourcesPath puts it under %ProgramFiles% on per-machine NSIS
+  // installs, where the standard user has read+execute but NOT write,
+  // so fs.writeFileSync throws EPERM and the entire register flow
+  // aborts before Firefox / chrome / edge manifests get a chance to
+  // land — see [BrowserBridge] EPERM in sidecar.log for the failure
+  // signature. %APPDATA% (Windows) and ~/Library/Application Support
+  // (macOS) / ~/.config (Linux) are always writable because that's
+  // where Tauri/Electron store user data anyway.
+  const userData = getUserDataPath();
   if (process.platform === 'win32') {
-    return path.join(resourcesPath, 'native-messaging-host.bat');
+    return path.join(userData, 'native-messaging-host.bat');
   }
   // macOS/Linux: use shell wrapper script
-  return path.join(resourcesPath, 'native-messaging-host.sh');
+  return path.join(userData, 'native-messaging-host.sh');
 }
 
 export function registerNativeMessagingHost(): void {
