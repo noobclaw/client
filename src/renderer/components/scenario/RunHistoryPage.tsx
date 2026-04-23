@@ -66,7 +66,15 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (sid === 'binance_square_auto_engage')  return { icon: '🤝', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
   if (sid === 'binance_square_post_creator') return { icon: '📊', label: isZh ? '币安广场自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
   if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-  if (wf === 'auto_reply')       return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  // workflow_type fallback — check platform first so Binance auto_reply
+  // doesn't get mis-labeled as XHS auto_reply.
+  const plat = rec.scenario_snapshot.platform;
+  if (wf === 'auto_reply') {
+    if (plat === 'binance') return { icon: '💬', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  }
+  if (plat === 'binance') return { icon: '📊', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+  if (plat === 'x')       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
   return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
 }
 

@@ -220,11 +220,23 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // Twitter: 推特自动互动 / 推特自动发推 / 指定推文仿写
               // XHS:     自动批量 · 小红书爆款批量仿写 / 指定链接 · 小红书爆款仿写 / 小红书自动互动
               const typeLabel = (() => {
-                if (sid === 'x_auto_engage') return { icon: '🐦', zh: '推特自动互动', en: 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-                if (sid === 'x_post_creator') return { icon: '📝', zh: '推特自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'x_link_rewrite') return { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-                if (isXhsLinkMode) return { icon: '🔗', zh: '指定链接 · 小红书爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-                if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', zh: '小红书自动互动', en: 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'x_auto_engage')                  return { icon: '🐦', zh: '推特自动互动', en: 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+                if (sid === 'x_post_creator')                 return { icon: '📝', zh: '推特自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'x_link_rewrite')                 return { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+                if (sid === 'binance_square_auto_engage')     return { icon: '🤝', zh: '币安广场自动互动', en: 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+                if (sid === 'binance_square_post_creator')    return { icon: '📊', zh: '币安广场自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (isXhsLinkMode)                            return { icon: '🔗', zh: '指定链接 · 小红书爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+                // workflow_type fallbacks — MUST check platform BEFORE labeling,
+                // otherwise Binance scenarios with workflow_type='auto_reply' fall
+                // into the XHS branch and get tagged 小红书自动互动 (bug observed
+                // in 2.4.56). Platform-first guard fixes it.
+                const plat = scenario?.platform;
+                if ((scenario?.workflow_type as any) === 'auto_reply') {
+                  if (plat === 'binance') return { icon: '💬', zh: '币安广场自动互动', en: 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+                  return { icon: '💬', zh: '小红书自动互动', en: 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                }
+                if (plat === 'binance') return { icon: '📊', zh: '币安广场发帖', en: 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+                if (plat === 'x')       return { icon: '🐦', zh: '推特任务', en: 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 return { icon: '🔥', zh: '自动批量 · 小红书爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name

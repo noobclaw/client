@@ -13,9 +13,9 @@
  * Card order 按用户要求: 自动互动/回复 放前面,发帖 放后面。
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
-import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
+import { type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
@@ -35,14 +35,13 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   tasks,
   draftsByTask: _draftsByTask,
   loading,
-  onOpenTask,
+  onOpenTask: _onOpenTask,
   onConfigure,
   onChanged: _onChanged,
   onGoToMyTasks,
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
-  const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
   const [maxTasksModalOpen, setMaxTasksModalOpen] = useState(false);
   const [pendingScenario, setPendingScenario] = useState<Scenario | null>(null);
 
@@ -88,18 +87,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   // auto_engage doesn't have a backend scenario yet — placeholder for now
   const autoEngage = scenarios.find(s => s.id === 'binance_square_auto_engage') || null;
 
-  useEffect(() => {
-    let cancelled = false;
-    const pull = async () => {
-      try {
-        const ids = await scenarioService.getRunningTaskIds();
-        if (!cancelled) setRunningTaskIds(new Set(ids));
-      } catch {}
-    };
-    void pull();
-    const h = setInterval(pull, 5000);
-    return () => { cancelled = true; clearInterval(h); };
-  }, []);
+  // (previously we polled running task ids to drive the inline running-glow
+  //  on the "已有任务" list. That list was removed — MyTasksPage is the
+  //  single source of truth for running state now. No polling needed here.)
 
   const handleStart = (scenario: Scenario) => {
     if (tasks.length >= MAX_TASKS) {
@@ -208,48 +198,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* "已有任务" 提示 — grouped across both scenarios.
-          Running tasks get the same green glow + ring treatment that
-          MyTasksPage uses (.noobclaw-running-glow in index.css),
-          so "运行中" is obvious at a glance — same as XHS / Twitter. */}
-      {tasks.length > 0 && (
-        <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 p-4">
-          <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            {isZh ? `你已经有 ${tasks.length} 个币安广场任务：` : `You have ${tasks.length} Binance Square task(s):`}
-          </div>
-          <div className="space-y-2">
-            {tasks.slice(0, 3).map(task => {
-              const isRunning = runningTaskIds.has(task.id);
-              return (
-                <button
-                  key={task.id}
-                  type="button"
-                  onClick={() => onOpenTask(task.id, 'create')}
-                  className={`w-full text-left rounded-lg border px-3 py-2 transition-colors relative ${
-                    isRunning
-                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-                      : 'border-gray-200 dark:border-gray-700 hover:bg-yellow-500/5'
-                  }`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="text-base">📊</span>
-                      <span className="text-sm font-medium dark:text-white truncate">
-                        {(task.keywords || []).slice(0, 4).map(k => '$' + String(k).replace(/^\$/, '')).join(' ') || (isZh ? '币安广场任务' : 'Binance Square task')}
-                      </span>
-                    </div>
-                    {isRunning && (
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/30 shrink-0 inline-flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        {isZh ? '运行中' : 'Running'}
-                      </span>
-                    )}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      )}
+      {/* "已有任务" 区块去掉 — 用户反馈底部冗余,我的任务 tab 已经有完整列表。
+          Per X/XHS pages 也都没有这个区块,统一掉。 */}
 
       {/* Login gate — binance platform opens binance.com/zh-CN/square */}
       {loginModalReason && (
