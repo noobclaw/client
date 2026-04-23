@@ -206,9 +206,18 @@ function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: str
 
   if (process.platform === 'win32') {
     const basePath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.json`);
+    // Firefox MUST use a separate manifest file on Windows: Chrome/Edge use
+    // `allowed_origins` (CRX-id list), Firefox uses `allowed_extensions`
+    // (gecko id list). If we point all three at the same file, the last
+    // iteration in the registration loop (line ~295) overwrites it with
+    // only the firefox-shaped fields and Chrome/Edge silently lose their
+    // allowed_origins → connectNative starts failing for the other browsers
+    // with no obvious cause. Separate files, separate registry keys.
+    const firefoxPath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.firefox.json`);
     results.push(
       { browser: 'chrome', manifestPath: basePath, regKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
       { browser: 'edge', manifestPath: basePath, regKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
+      { browser: 'firefox', manifestPath: firefoxPath, regKey: `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
     );
   } else if (process.platform === 'darwin') {
     results.push(
@@ -302,7 +311,22 @@ export function registerNativeMessagingHost(): void {
           type: 'stdio',
         };
         if (browser === 'firefox') {
-          manifest.allowed_extensions = ['noobclaw-browser-assistant@noobclaw.com'];
+          // Firefox identifies extensions by the gecko id in
+          // browser_specific_settings, NOT a CRX-style hash like Chrome.
+          // The published AMO listing uses `hi@noobclaw.com` (see
+          // chrome-extension/manifest.json browser_specific_settings.gecko.id);
+          // keep `noobclaw-browser-assistant@noobclaw.com` as a fallback
+          // so any sideloaded dev build (or an older AMO listing under the
+          // longer name) still passes the allowed_extensions check.
+          // Mismatch here is silent on Firefox's side — the extension
+          // simply gets `Error: An unexpected error occurred` from
+          // browser.runtime.connectNative without telling the user the
+          // host manifest blocked it, which manifests as the red
+          // exclamation badge on the toolbar icon.
+          manifest.allowed_extensions = [
+            'hi@noobclaw.com',
+            'noobclaw-browser-assistant@noobclaw.com',
+          ];
         } else {
           manifest.allowed_origins = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
         }
