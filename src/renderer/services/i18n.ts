@@ -1013,6 +1013,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // ── Scenario Automation (XHS first) ──
     scenarioPlatformXhs: '小红书',
     scenarioPlatformX: '推特',
+    scenarioPlatformBinance: '币安广场',
     scenarioPlatformDouyin: '抖音',
     scenarioPlatformTiktok: 'TikTok',
     scenarioPlatformYoutube: 'YouTube',
@@ -2256,6 +2257,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // ── Scenario Automation (XHS first) ──
     scenarioPlatformXhs: 'Xiaohongshu',
     scenarioPlatformX: 'X (Twitter)',
+    scenarioPlatformBinance: 'Binance Square',
     scenarioPlatformDouyin: 'Douyin',
     scenarioPlatformTiktok: 'TikTok',
     scenarioPlatformYoutube: 'YouTube',

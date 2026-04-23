@@ -358,9 +358,13 @@ export function isAbortRequested(taskId?: string): boolean {
 //                                          concurrently.
 //
 // MAX_CONCURRENT_TASKS bounds the total — even with N different patterns,
-// we won't melt the user's machine. Default 2 keeps headroom.
+// we won't melt the user's machine. v4.23.x bumps this from 2 → 3 so
+// users can run XHS + X + Binance Square in parallel (one task per
+// platform), since each platform has a distinct tab_url_pattern and
+// therefore its own resource lane. If we add a 4th text-content
+// platform in the future, bump again.
 
-const MAX_CONCURRENT_TASKS = 2;
+const MAX_CONCURRENT_TASKS = 3;
 
 /** resource key → taskId currently occupying it */
 const runningByResource = new Map<string, string>();

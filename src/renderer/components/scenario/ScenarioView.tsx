@@ -24,8 +24,9 @@ import { SensitiveCheckPage } from './SensitiveCheckPage';
 import { MyTasksPage } from './MyTasksPage';
 import { RunHistoryPage } from './RunHistoryPage';
 import { RunRecordDetailPage } from './RunRecordDetailPage';
+import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
 
-type PlatformId = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
+type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -51,8 +52,9 @@ interface ScenarioViewProps {
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
-  { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
+  { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '📊', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
+  { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
 ];
 
 const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
@@ -68,7 +70,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   updateBadge,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: 'xhs' });
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: 'binance' });
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -404,6 +406,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const isZh = i18nService.currentLanguage === 'zh';
     const platformLabel = currentPlatform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
       : currentPlatform === 'x' ? (isZh ? '推特' : 'Twitter')
+      : currentPlatform === 'binance' ? (isZh ? '币安广场' : 'Binance Square')
       : currentPlatform;
 
     if (currentSection === 'tasks') {
@@ -463,6 +466,21 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onOpenTask={openTask}
           onConfigure={openWizardFor}
           onChanged={refreshAll}
+        />
+      );
+    }
+
+    if (currentPlatform === 'binance') {
+      return (
+        <BinanceWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'binance')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'binance' })}
         />
       );
     }

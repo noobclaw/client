@@ -7,7 +7,7 @@
  * components/scenario/.
  */
 
-export type ScenarioPlatform = 'xhs' | 'x' | 'douyin' | 'tiktok' | 'youtube';
+export type ScenarioPlatform = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
 
 export type ScenarioWorkflowType =
   | 'viral_production'
