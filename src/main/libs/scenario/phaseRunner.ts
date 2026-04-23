@@ -250,7 +250,12 @@ function buildContext(
     // AI call — sends prompt as-is, no extra system prompt added, saves tokens
     // promptNameOrRaw: prompt name from pack.prompts, or '__raw__' for direct prompt string
     // When __raw__: promptOrInput = the complete prompt, rawInput = user message
-    aiCall: async (promptNameOrRaw: string, promptOrInput: any, rawInput?: string) => {
+    aiCall: async (
+      promptNameOrRaw: string,
+      promptOrInput: any,
+      rawInput?: string,
+      opts?: { model?: 'noobclawai-chat' | 'noobclawai-reasoner' }
+    ) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
 
       let prompt: string;
@@ -265,6 +270,15 @@ function buildContext(
         prompt = promptText.trim();
         userMessage = typeof promptOrInput === 'string' ? promptOrInput : JSON.stringify(promptOrInput);
       }
+
+      // Model selection (v2.4.56+):
+      //   - noobclawai-chat      (default) — reply / engagement / parsing,
+      //                            optimized for speed + JSON obedience.
+      //   - noobclawai-reasoner  — post composition (original / rewrite)
+      //                            where we want deeper reasoning to craft
+      //                            high-quality content with hook + structure.
+      // Orchestrator picks via `opts.model`. Reply scenarios just omit it.
+      const chosenModel = (opts && opts.model) || 'noobclawai-chat';
 
       // Scenario rewrite must ALWAYS go through our NoobClaw proxy with
       // model=noobclawai-chat, regardless of the user's current default
@@ -308,7 +322,7 @@ function buildContext(
             'Authorization': `Bearer ${nbAuthToken}`,
           },
           body: JSON.stringify({
-            model: 'noobclawai-chat',
+            model: chosenModel,
             messages: [
               { role: 'system', content: prompt },
               { role: 'user', content: userMessage },

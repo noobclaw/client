@@ -337,6 +337,9 @@ function platformLabelForPattern(patternStr) {
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
     return { title: '🤖 推特任务 · NoobClaw', color };
   }
+  if (/binance\.com/i.test(patternStr)) {
+    return { title: '🤖 币安广场任务 · NoobClaw', color };
+  }
   return { title: '🤖 NoobClaw 任务', color };
 }
 
@@ -566,6 +569,59 @@ async function executeCommand(msg) {
         args: [params.selector],
       });
       data = results[0]?.result || { error: 'executeScript failed' };
+    } else if (command === 'fetch_image') {
+      // ── fetch_image (v1.2.8+) ──
+      // Fetch an image URL through the browser's own network stack so it
+      // uses the user's real IP / UA / cookies / referer — indistinguishable
+      // from the user viewing the image in their tab. Used by scenarios
+      // that "re-upload" imagery from source posts (e.g. Binance Square
+      // rewrite mechanism reusing editorial illustrations from the original
+      // post). Sidecar fetch would leak a different UA / empty cookie jar
+      // and risk tripping CDN fingerprinting — this avoids that.
+      //
+      // Returns { base64, contentType, size } or { error }. Caller is
+      // expected to pipe base64 straight into an upload_file command.
+      const url = params.url;
+      const maxBytes = params.maxBytes || 3 * 1024 * 1024; // 3 MB ceiling
+      if (!url || !/^https?:\/\//i.test(url)) {
+        data = { error: 'invalid_url' };
+      } else {
+        try {
+          const resp = await fetch(url, {
+            credentials: 'include',
+            referrer: params.referrer || 'https://www.binance.com/',
+          });
+          if (!resp.ok) {
+            data = { error: 'http_' + resp.status };
+          } else {
+            const ct = resp.headers.get('content-type') || '';
+            if (!ct.startsWith('image/')) {
+              data = { error: 'not_image', contentType: ct };
+            } else {
+              const blob = await resp.blob();
+              if (blob.size > maxBytes) {
+                data = { error: 'too_large', size: blob.size };
+              } else {
+                const buf = await blob.arrayBuffer();
+                const bytes = new Uint8Array(buf);
+                // Chunked to avoid call-stack blowup on very large images
+                let binary = '';
+                const CHUNK = 0x8000;
+                for (let i = 0; i < bytes.length; i += CHUNK) {
+                  binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+                }
+                data = {
+                  base64: btoa(binary),
+                  contentType: ct,
+                  size: blob.size,
+                };
+              }
+            }
+          }
+        } catch (e) {
+          data = { error: String((e && e.message) || e).slice(0, 200) };
+        }
+      }
     } else {
       // Forward to content script
       const tab = await resolveTab();

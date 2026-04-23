@@ -479,6 +479,30 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (replyMin > n) setReplyMinRaw(n);
   };
 
+  // ── Daily post count range (post_creator scenarios on X + Binance) ──
+  // Both x_post_creator and binance_square_post_creator now support a
+  // per-day post quota picked randomly from [min, max] (range 1-20).
+  // Default 1/1 keeps backward compat with pre-v2.4.56 "1 post/day" hard-code.
+  const POST_COUNT_HARDCAP = 20;
+  const [postCountMin, setPostCountMinRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_post_min === 'number'
+      ? (initialTask as any).daily_post_min : 1
+  );
+  const [postCountMax, setPostCountMaxRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_post_max === 'number'
+      ? (initialTask as any).daily_post_max : 1
+  );
+  const setPostCountMin = (v: number) => {
+    const n = Math.max(1, Math.min(POST_COUNT_HARDCAP, v));
+    setPostCountMinRaw(n);
+    if (postCountMax < n) setPostCountMaxRaw(n);
+  };
+  const setPostCountMax = (v: number) => {
+    const n = Math.max(1, Math.min(POST_COUNT_HARDCAP, v));
+    setPostCountMaxRaw(n);
+    if (postCountMin > n) setPostCountMinRaw(n);
+  };
+
   // Confirm
   const [termsAccepted, setTermsAccepted] = useState([false, false]);
 
@@ -564,6 +588,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // observations/positions), but no language toggle or Blue V flag.
         ...(isBinancePlatform ? {
           user_context: userContext.trim() || undefined,
+        } : {}),
+        // daily_post_min/max — orchestrator loops N times per run where
+        // N = randInt(min, max). Only relevant for post_creator scenarios;
+        // other scenarios (auto_engage / link_rewrite / auto_reply) ignore
+        // these fields, but sending them is cheap and keeps the payload
+        // uniform across scenario types.
+        ...(isBinancePostCreator ? {
+          daily_post_min: postCountMin,
+          daily_post_max: postCountMax,
         } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         ...(isXAutoEngage ? {
@@ -993,10 +1026,49 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Twitter scenarios manage daily count internally (auto_engage =
-                  0-3 follows + 0-1 reply followed + 0-1 reply feed; post_creator =
-                  1 tweet/day) so the user-facing slider doesn't apply.
-                  link_rewrite is one-shot — the URL list is the count. */}
+              {/* ── Post count range (binance_square_post_creator only for v2.4.56) ──
+                  Each scheduled run posts a random N ∈ [min, max] with 5-15 min
+                  jitter between. Default 1/1 = backward-compatible "1 post per
+                  run". Twitter orchestrator loop scheduled for next iteration —
+                  until then, keep the slider hidden for x_post_creator so the
+                  user doesn't set a value Twitter ignores.  TODO(v2.4.57):
+                  restore `isXPostCreator || isBinancePostCreator` once the
+                  x_post_creator orchestrator has the same loop wrapper. */}
+              {isBinancePostCreator && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? `每次运行发布条数（随机 1-${POST_COUNT_HARDCAP}）` : `Posts per scheduled run (random 1-${POST_COUNT_HARDCAP})`}
+                  </label>
+                  <div className="space-y-3">
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{postCountMin}</span>
+                      </div>
+                      <input
+                        type="range" min={1} max={POST_COUNT_HARDCAP} value={postCountMin}
+                        onChange={e => setPostCountMin(parseInt(e.target.value, 10))}
+                        className="w-full"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{postCountMax}</span>
+                      </div>
+                      <input
+                        type="range" min={1} max={POST_COUNT_HARDCAP} value={postCountMax}
+                        onChange={e => setPostCountMax(parseInt(e.target.value, 10))}
+                        className="w-full"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                    {isZh
+                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-2 起步。`
+                      : `Each run posts ${postCountMin}-${postCountMax} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-2.`}
+                  </p>
+                </div>
+              )}
+
               {!isXOrBinance && !isAutoReply && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">

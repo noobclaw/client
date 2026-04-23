@@ -208,34 +208,45 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* "已有任务" 提示 — grouped across both scenarios */}
+      {/* "已有任务" 提示 — grouped across both scenarios.
+          Running tasks get the same green glow + ring treatment that
+          MyTasksPage uses (.noobclaw-running-glow in index.css),
+          so "运行中" is obvious at a glance — same as XHS / Twitter. */}
       {tasks.length > 0 && (
         <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 p-4">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
             {isZh ? `你已经有 ${tasks.length} 个币安广场任务：` : `You have ${tasks.length} Binance Square task(s):`}
           </div>
           <div className="space-y-2">
-            {tasks.slice(0, 3).map(task => (
-              <button
-                key={task.id}
-                type="button"
-                onClick={() => onOpenTask(task.id, 'create')}
-                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 hover:bg-yellow-500/5 transition-colors">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-base">📊</span>
-                    <span className="text-sm font-medium dark:text-white truncate">
-                      {(task.keywords || []).slice(0, 4).map(k => '$' + String(k).replace(/^\$/, '')).join(' ') || (isZh ? '币安广场任务' : 'Binance Square task')}
-                    </span>
+            {tasks.slice(0, 3).map(task => {
+              const isRunning = runningTaskIds.has(task.id);
+              return (
+                <button
+                  key={task.id}
+                  type="button"
+                  onClick={() => onOpenTask(task.id, 'create')}
+                  className={`w-full text-left rounded-lg border px-3 py-2 transition-colors relative ${
+                    isRunning
+                      ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
+                      : 'border-gray-200 dark:border-gray-700 hover:bg-yellow-500/5'
+                  }`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-base">📊</span>
+                      <span className="text-sm font-medium dark:text-white truncate">
+                        {(task.keywords || []).slice(0, 4).map(k => '$' + String(k).replace(/^\$/, '')).join(' ') || (isZh ? '币安广场任务' : 'Binance Square task')}
+                      </span>
+                    </div>
+                    {isRunning && (
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/30 shrink-0 inline-flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        {isZh ? '运行中' : 'Running'}
+                      </span>
+                    )}
                   </div>
-                  {runningTaskIds.has(task.id) && (
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-500 border border-green-500/30 shrink-0">
-                      {isZh ? '运行中' : 'Running'}
-                    </span>
-                  )}
-                </div>
-              </button>
-            ))}
+                </button>
+              );
+            })}
           </div>
         </section>
       )}
