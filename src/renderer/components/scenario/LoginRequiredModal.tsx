@@ -196,6 +196,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
           className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
           {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
         </button>
+        <button type="button" onClick={() => window.open('https://addons.mozilla.org/firefox/addon/noobclaw-browser-assistant/', '_blank')}
+          className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors text-left">
+          {isZh ? '🦊 安装 Firefox 浏览器插件' : '🦊 Install Firefox Extension'}
+        </button>
         <button type="button" onClick={() => {
           setLocalInstallOpen(true);
           setLocalInstallMsg(null);
