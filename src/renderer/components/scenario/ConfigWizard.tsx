@@ -292,8 +292,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // follow + feed engage rather than article reply). Split the copy so XHS
   // strings don't bleed into the Twitter wizard.
   const isXPlatform = scenario.platform === 'x';
+  const isBinancePlatform = scenario.platform === 'binance';
+  // Binance Square flow mirrors Twitter's simple post-creator shape
+  // (no XHS draft model, direct publishing, no "auto_upload" toggle).
+  // Use this broader flag in flow-gating branches; keep `isXPlatform`
+  // only for X-specific copy so we don't surface "推特" strings on the
+  // Binance wizard.
+  const isXOrBinance = isXPlatform || isBinancePlatform;
   const isXAutoEngage = scenario.id === 'x_auto_engage';
   const isXPostCreator = scenario.id === 'x_post_creator';
+  const isBinancePostCreator = scenario.id === 'binance_square_post_creator';
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
@@ -302,9 +310,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const [saveError, setSaveError] = useState<string | null>(null);
 
   // Track — filter by scenario platform. XHS scenarios see lifestyle tracks;
-  // Twitter (x) scenarios see only web3 tracks. Legacy presets with no
-  // explicit `platform` field default to 'xhs' to preserve current behavior.
-  const platformForTracks: 'xhs' | 'x' = (scenario.platform === 'x' ? 'x' : 'xhs');
+  // Twitter (x) and Binance Square scenarios see only web3 / crypto tracks.
+  // Legacy presets with no explicit `platform` field default to 'xhs'.
+  const platformForTracks: 'xhs' | 'x' = (scenario.platform === 'x' || scenario.platform === 'binance' ? 'x' : 'xhs');
   const VISIBLE_TRACKS = TRACK_PRESETS.filter(t => {
     const presetPlatform = t.platform || 'xhs';
     return presetPlatform === platformForTracks;
@@ -339,7 +347,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (idx < 0) return text;
     return text.slice(0, idx).trimEnd();
   };
-  const useDetailedPersona = isAutoReply || isXPlatform;
+  const useDetailedPersona = isAutoReply || isXOrBinance;
   const computeDefaultPersona = (preset: TrackPreset): string => {
     if (!useDetailedPersona) return preset.persona_hint;
     const base = preset.reply_persona_hint || preset.persona_hint;
@@ -486,7 +494,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (isLinkRewriteScenario) {
       return parsedUrls.length >= 1 && parsedUrls.length <= 5;
     }
-    if (isXPlatform) {
+    if (isXOrBinance) {
+      // Binance Square requires at least 1 token (keywords=tokens), persona
+      // alone is not enough. Twitter accepts persona-only (keywords optional).
+      if (isBinancePlatform) {
+        return persona.trim().length > 0 && keywordList.length > 0;
+      }
       return persona.trim().length > 0;
     }
     return keywordList.length > 0 && persona.trim().length > 0;
@@ -547,6 +560,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           // Blue V flag is Twitter-only — drives per-tweet length cap.
           is_blue_v: isBlueV,
         } : {}),
+        // Binance Square uses user_context too (AI picks from user's real
+        // observations/positions), but no language toggle or Blue V flag.
+        ...(isBinancePlatform ? {
+          user_context: userContext.trim() || undefined,
+        } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         ...(isXAutoEngage ? {
           daily_follow_min: followMin,
@@ -573,9 +591,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               ? (isZh ? '配置 Twitter 自动互动' : 'Configure X Auto Engagement')
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
-                : isAutoReply
-                  ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
-                  : (isZh ? '配置赛道' : 'Configure Track')}
+                : isBinancePostCreator
+                  ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
+                  : isAutoReply
+                    ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
+                    : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
             {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
@@ -609,38 +629,54 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Keywords — only for XHS scenarios.
+              {/* Keywords — for XHS scenarios AND Binance (as tokens).
                   Twitter scenarios don't use keyword search (auto_engage uses
                   the KOL pool + Home feed; post_creator uses topic_context;
-                  link_rewrite uses URL list). Hide entirely on X. */}
-              {!isXPlatform && (
+                  link_rewrite uses URL list). Hide entirely on X only. */}
+              {(!isXPlatform || isBinancePlatform) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? '关键词' : 'Keywords'} <span className="text-xs text-gray-400 font-normal">
-                      {isAutoReply
-                        ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
-                        : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
+                    {isBinancePlatform
+                      ? (isZh ? 'Token 列表' : 'Token list')
+                      : (isZh ? '关键词' : 'Keywords')} <span className="text-xs text-gray-400 font-normal">
+                      {isBinancePlatform
+                        ? (isZh ? '（每次运行随机挑 1 个作为帖子主题,自动带 cashtag）' : '(1 random token per run as post topic, auto $ cashtag)')
+                        : isAutoReply
+                          ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
+                          : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
                     </span>
                   </label>
                   {/* Pre-fill hint, scenario-aware */}
-                  <div className="mb-2 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-[11px] text-green-700 dark:text-green-400 leading-relaxed">
-                    {isAutoReply
+                  <div className={`mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
+                    isBinancePlatform
+                      ? 'border-yellow-500/30 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400'
+                      : 'border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400'
+                  }`}>
+                    {isBinancePlatform
                       ? (isZh
-                          ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
-                          : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
-                      : (isZh
-                          ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
-                          : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
+                          ? <>💰 输入你关注的 token symbol (不用加 $,空格分隔),例:<code className="font-mono">BTC ETH SOL BNB</code>。AI 每次挑 1 个写短评,发帖时自动带 <code className="font-mono">$BTC</code> 这样的 cashtag 触发 token 页流量。</>
+                          : <>💰 Type token symbols (no $ prefix, space-separated), e.g. <code className="font-mono">BTC ETH SOL BNB</code>. AI picks one per run, auto-adds <code className="font-mono">$BTC</code>-style cashtags to surface on token-page traffic feeds.</>)
+                      : isAutoReply
+                        ? (isZh
+                            ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
+                            : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
+                        : (isZh
+                            ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
+                            : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
                   </div>
                   <textarea
                     value={customKeywordsText}
                     onChange={e => setCustomKeywordsText(e.target.value)}
-                    placeholder={isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated'}
-                    rows={6}
+                    placeholder={isBinancePlatform
+                      ? (isZh ? '例：BTC ETH SOL BNB DOGE' : 'e.g. BTC ETH SOL BNB DOGE')
+                      : (isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated')}
+                    rows={isBinancePlatform ? 3 : 6}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   />
                   <div className="text-[11px] text-gray-400 mt-1">
-                    {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
+                    {isBinancePlatform
+                      ? (isZh ? 'Token 越多越丰富,每次发帖内容主题不重复,也避免被判定为单币种喊单' : 'More tokens = more varied topics; avoids looking like a single-coin shill')
+                      : (isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk')}
                   </div>
                 </div>
               )}
@@ -676,10 +712,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* ── Twitter-only fields ── */}
-              {isXPlatform && (
+              {/* ── Twitter + Binance simple-post fields ── */}
+              {isXOrBinance && (
                 <>
-                  {/* Persona — for x_auto_engage / x_post_creator only.
+                  {/* Persona — for x_auto_engage / x_post_creator / binance_square_post_creator.
                       x_link_rewrite is "literal rewrite of provided URLs" —
                       AI follows the original tweet's content + language,
                       no persona injection needed. */}
@@ -702,9 +738,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* Language mode — also skipped for x_link_rewrite. The AI
-                      auto-matches the original tweet's language. */}
-                  {!isLinkRewriteScenario && (
+                  {/* Language mode — Twitter-only, also skipped for x_link_rewrite.
+                      Binance Square users typically compose in Chinese or follow
+                      persona language, no explicit toggle needed. */}
+                  {!isLinkRewriteScenario && isXPlatform && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '🌐 内容语言' : '🌐 Content language'}
@@ -737,13 +774,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* Blue V flag — applies to all Twitter scenarios. Drives
-                      the per-tweet length cap injected into AI prompts:
-                        ☐ 非蓝V (default) → AI must keep ≤ 140 chars
-                        ☑ 蓝V             → AI free pick short / mid / long
-                      Twitter actually allows 280 chars for non-Blue today,
-                      but the user explicitly asked for 140 (the historic
-                      tweet limit, conservative for non-Blue safety). */}
+                  {/* Blue V flag — Twitter-only. Drives per-tweet length cap.
+                      Binance Square has no equivalent concept (no verified tier
+                      that unlocks character limits), so hide for Binance. */}
+                  {isXPlatform && (
                   <div>
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                       {isZh ? '🔵 推特账号类型' : '🔵 Twitter account type'}
@@ -781,9 +815,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </div>
                     </div>
                   </div>
+                  )}
 
-                  {/* user_context — for post_creator only. link_rewrite doesn't
-                      need it (AI rewrites whatever the source tweet says). */}
+                  {/* user_context — for post_creator only (Twitter + Binance).
+                      link_rewrite doesn't need it (AI rewrites source tweet). */}
                   {!isAutoReply && !isLinkRewriteScenario && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
@@ -924,7 +959,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   deliberately has NO time picker either — and Twitter scenarios
                   never pin a time (risk-control), so we hide the picker
                   entirely on X. */}
-              {!isXPlatform && runInterval === 'daily' && (
+              {!isXOrBinance && runInterval === 'daily' && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '触发时间' : 'Trigger Time'}
@@ -962,7 +997,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   0-3 follows + 0-1 reply followed + 0-1 reply feed; post_creator =
                   1 tweet/day) so the user-facing slider doesn't apply.
                   link_rewrite is one-shot — the URL list is the count. */}
-              {!isXPlatform && !isAutoReply && (
+              {!isXOrBinance && !isAutoReply && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '每次运行采集爆款数量' : 'Articles per scheduled run'}
@@ -1125,10 +1160,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Variants slider — XHS viral_production only. Twitter scenarios
-                  produce content directly (post_creator: 1/day, link_rewrite:
-                  N URLs → N tweets, auto_engage: replies). Hide on X. */}
-              {!isAutoReply && !isXPlatform && (
+              {/* Variants slider — XHS viral_production only. Twitter and
+                  Binance scenarios produce content directly (post_creator:
+                  1/day). Hide on both. */}
+              {!isAutoReply && !isXOrBinance && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '每条生成仿写版本数' : 'Rewrites per article'}
@@ -1147,10 +1182,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Auto-upload toggle — exposed for:
                   · XHS viral_production (post to draft box vs save local)
                   · x_post_creator   (post to Twitter vs save local)
+                  · binance_square_post_creator (post to Binance Square vs save local)
                   Hidden for reply scenarios (replies always post live —
                   no "save draft" concept) and x_link_rewrite (its own
                   modal in XWorkflowsPage already has this toggle). */}
-              {!isAutoReply && (!isXPlatform || isXPostCreator) && (
+              {!isAutoReply && (!isXOrBinance || isXPostCreator || isBinancePostCreator) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '生成后的处理' : 'After generation'}
@@ -1168,7 +1204,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         <div className="font-semibold dark:text-white mb-0.5">
                           {isXPostCreator
                             ? (isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter')
-                            : (isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts')}
+                            : isBinancePostCreator
+                              ? (isZh ? '🚀 自动发布到币安广场' : '🚀 Auto-post to Binance Square')
+                              : (isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts')}
                         </div>
                         <div className="text-gray-500 dark:text-gray-400">
                           {isXPostCreator
@@ -1192,7 +1230,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         <div className="text-gray-500 dark:text-gray-400">
                           {isXPostCreator
                             ? (isZh ? '生成的推文存盘，你人工审核挑选后再手动发布。封号风险最低。' : 'Generated tweets saved locally; you review and post manually.')
-                            : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
+                            : isBinancePostCreator
+                              ? (isZh ? '生成的短评存盘，你人工审核挑选后再手动发布到币安广场。' : 'Generated notes saved locally; you review and post to Binance Square manually.')
+                              : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
                         </div>
                       </div>
                     </label>
@@ -1233,6 +1273,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <li>{isZh ? '· 推文发布后无法撤回，建议先用 1-2 条试运行' : '· Tweets cannot be unposted — start with 1-2 URLs to test'}</li>
                       <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
                     </>
+                  ) : isBinancePostCreator ? (
+                    <>
+                      <li>{isZh ? '· 每日 1 条加密快评 (100-300 字),AI 从你的 token 列表随机挑一个主题' : '· 1 crypto note/day (100-300 chars). AI picks a token from your watchlist as the topic.'}</li>
+                      <li>{isZh ? '· 带 $BTC / $ETH 等 cashtag 触发 token 页流量入口' : '· Includes $BTC / $ETH etc. cashtags to surface on token-page traffic feeds.'}</li>
+                      <li>{isZh ? '· 在「真实素材池」里写得越具体,AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output.'}</li>
+                      <li>{isZh ? '· 运行期间请保持浏览器打开,不要关闭 binance.com 标签页' : '· Keep the browser open during the run; don\'t close the binance.com tab.'}</li>
+                      <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查生成风格' : '· Posts cannot be unposted — review AI output after first run to confirm tone.'}</li>
+                    </>
                   ) : isAutoReply ? (
                     <>
                       <li>{isZh ? '· 筛选「最多评论 + 一周内」的文章，随机抽取评论数 ≥ 20 的文章' : '· Filters by "most comments + last week", randomly picks articles with ≥ 20 comments'}</li>
@@ -1263,11 +1311,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ? (isZh ? '确认并启用 Twitter 自动互动' : 'Confirm & Enable X Auto Engagement')
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
-                    : isLinkRewriteScenario
-                      ? (isZh ? '确认并开始仿写' : 'Confirm & Start Rewriting')
-                      : isAutoReply
-                        ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
-                        : (isZh ? '确认并启用' : 'Confirm & Enable')}
+                    : isBinancePostCreator
+                      ? (isZh ? '确认并启用币安广场发帖' : 'Confirm & Enable Binance Square Post')
+                      : isLinkRewriteScenario
+                        ? (isZh ? '确认并开始仿写' : 'Confirm & Start Rewriting')
+                        : isAutoReply
+                          ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
+                          : (isZh ? '确认并启用' : 'Confirm & Enable')}
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
@@ -1278,10 +1328,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
                   </div>
                 )}
-                {!isXPlatform && (
+                {(!isXPlatform || isBinancePlatform) && (
                   <div>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '关键词:' : 'Keywords:'}</span>
-                    <div className="dark:text-white">{keywordList.join(' · ')}</div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {isBinancePlatform ? (isZh ? 'Token:' : 'Tokens:') : (isZh ? '关键词:' : 'Keywords:')}
+                    </span>
+                    <div className="dark:text-white">
+                      {isBinancePlatform
+                        ? keywordList.map(k => '$' + k.replace(/^\$/, '')).join(' · ')
+                        : keywordList.join(' · ')}
+                    </div>
                   </div>
                 )}
                 {isXPlatform && (
@@ -1334,6 +1390,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           ? `⏰ ${intervalLabel} · 每日 1 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
                           : `⏰ ${intervalLabel} · 1 tweet/day (30% rewrite / 30% original / 40% quote, randomized)`;
                       }
+                      if (isBinancePostCreator) {
+                        return isZh
+                          ? `⏰ ${intervalLabel} · 每日 1 条币安广场短评 (100-300 字 + cashtag)`
+                          : `⏰ ${intervalLabel} · 1 Binance Square note/day (100-300 chars + cashtag)`;
+                      }
                       if (isLinkRewriteScenario) {
                         return isZh
                           ? `🔗 一次性手动 · 处理 ${parsedUrls.length} 条推文链接（间隔 10-30 分钟）`
@@ -1362,6 +1423,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     ? (isZh
                         ? <>推文一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 x.com 标签页或退出登录。⚠️ <strong>大陆用户需开启 VPN / 代理</strong>确保 x.com 可访问。建议第一次运行后人工检查 AI 生成内容的风格。</>
                         : <>Tweets <strong>cannot be unposted</strong>. Keep the browser open and don't close the x.com tab or log out. ⚠️ <strong>Mainland China users must use a VPN / proxy</strong> for x.com access. Review AI output after first run to confirm voice.</>)
+                    : isBinancePlatform
+                      ? (isZh
+                          ? <>帖子一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 binance.com 标签页或退出登录。建议第一次运行后人工检查 AI 生成内容的风格与 cashtag 是否合适。</>
+                          : <>Posts <strong>cannot be unposted</strong>. Keep the browser open and don't close the binance.com tab or log out. Review AI output after first run to confirm voice and cashtag usage.</>)
                     : isAutoReply
                       ? (isZh
                           ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
@@ -1383,7 +1448,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     ? (isZh
                         ? '我理解 NoobClaw 会在我本地浏览器代我浏览 x.com，所有行为使用我自己的 IP 和账号'
                         : 'I understand NoobClaw browses x.com inside my own browser using my IP and my account.')
-                    : i18nService.t('scenarioWizardConfirmTerm1'),
+                    : isBinancePlatform
+                      ? (isZh
+                          ? '我理解 NoobClaw 会在我本地浏览器代我浏览 binance.com/square,所有行为使用我自己的 IP 和账号'
+                          : 'I understand NoobClaw browses binance.com/square inside my own browser using my IP and my account.')
+                      : i18nService.t('scenarioWizardConfirmTerm1'),
                   i18nService.t('scenarioWizardConfirmTerm3'),
                 ].map((term, i) => (
                   <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">

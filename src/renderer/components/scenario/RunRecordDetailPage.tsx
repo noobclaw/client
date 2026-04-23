@@ -129,6 +129,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
   const sc = rec.scenario_snapshot;
   const platform = sc.platform === 'x' ? (isZh ? '推特' : 'Twitter')
     : sc.platform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
+    : sc.platform === 'binance' ? (isZh ? '币安广场' : 'Binance Square')
     : (sc.platform || '');
   // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
   // the detail page header matches the row the user clicked on. Inlined
@@ -208,7 +209,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       {/* Header badges */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-          {sc.platform === 'x' ? '🐦' : '📕'} {platform}
+          {sc.platform === 'x' ? '🐦' : sc.platform === 'binance' ? '📊' : '📕'} {platform}
         </span>
         <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border ${typeBadge.color}`}>
           {typeBadge.icon} {typeBadge.label}

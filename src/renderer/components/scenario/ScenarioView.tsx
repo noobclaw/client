@@ -138,7 +138,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           const t = tasks.find(t => t.id === id);
           if (!t) continue;
           const s = scenarioById.get(t.scenario_id);
-          const platform = s?.platform === 'x' ? '推特' : s?.platform === 'xhs' ? '小红书' : (s?.platform || '');
+          const platform = s?.platform === 'x' ? '推特' : s?.platform === 'xhs' ? '小红书' : s?.platform === 'binance' ? '币安广场' : (s?.platform || '');
           // Get this task's progress to know which step it's in
           const prog = await scenarioService.getRunProgress(id).catch(() => null);
           if (prog && prog.status === 'running' && prog.currentStep > 0) {
@@ -209,7 +209,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // Resolve platform from the task so the right L2 sub-tab is active.
     const t = tasks.find(t => t.id === task_id);
     const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
-    const p = (s?.platform === 'x' || s?.platform === 'xhs') ? s.platform : currentPlatform;
+    const p = (s?.platform === 'x' || s?.platform === 'xhs' || s?.platform === 'binance') ? s.platform : currentPlatform;
     setView({ kind: 'main', section: 'history', platform: p, filterTaskId: task_id });
   };
 
@@ -416,7 +416,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           scenarios={scenarios}
           loading={loading}
           platformLabel={platformLabel}
-          platformId={currentPlatform === 'x' ? 'x' : 'xhs'}
+          platformId={currentPlatform === 'x' ? 'x' : currentPlatform === 'binance' ? 'binance' : 'xhs'}
           onOpenTask={openTask}
           onRefresh={refreshAll}
           onGoCreate={() => setView({ kind: 'main', section: 'create', platform: currentPlatform })}

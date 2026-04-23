@@ -309,8 +309,8 @@ interface IElectronAPI {
     getTaskDir: (id: string) => Promise<{ dir: string }>;
     getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
-    checkXhsLogin: (platform?: 'xhs' | 'x') => Promise<XhsLoginStatus>;
-    openXhsLogin: (platform?: 'xhs' | 'x') => Promise<{ ok: boolean; reason?: string }>;
+    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<XhsLoginStatus>;
+    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<{ ok: boolean; reason?: string }>;
   };
   mcp: {
     list: () => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;

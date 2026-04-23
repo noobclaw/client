@@ -38,17 +38,22 @@ export interface XhsLoginStatus {
 // `https://www.x.com` has `.` before `x` which is also a boundary; meanwhile
 // `https://mybox.com` doesn't get a false-positive because there's no word
 // boundary between `o` and `x`.
-const TAB_PATTERNS: Record<'xhs' | 'x', RegExp> = {
+const TAB_PATTERNS: Record<'xhs' | 'x' | 'binance', RegExp> = {
   xhs: /xiaohongshu\.com/i,
   x: /\b(?:twitter|x)\.com\b/i,
+  // Binance Square lives under binance.com/*/square (locale prefix like
+  // /zh-CN/square, /en/square). Match the path segment to avoid false
+  // positives from other binance.com subsites (spot trading, futures etc.).
+  binance: /binance\.com\/[a-z-]+\/square/i,
 };
 
-const NOT_REACHABLE_REASON: Record<'xhs' | 'x', string> = {
+const NOT_REACHABLE_REASON: Record<'xhs' | 'x' | 'binance', string> = {
   xhs: 'xhs_tab_not_reachable',
   x: 'x_tab_not_reachable',
+  binance: 'binance_tab_not_reachable',
 };
 
-export async function checkXhsLogin(platform: 'xhs' | 'x' = 'xhs'): Promise<XhsLoginStatus> {
+export async function checkXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): Promise<XhsLoginStatus> {
   // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];
   try {
@@ -74,12 +79,13 @@ export async function checkXhsLogin(platform: 'xhs' | 'x' = 'xhs'): Promise<XhsL
   return { loggedIn: true };
 }
 
-const PLATFORM_LOGIN_URL: Record<'xhs' | 'x', string> = {
+const PLATFORM_LOGIN_URL: Record<'xhs' | 'x' | 'binance', string> = {
   xhs: 'https://www.xiaohongshu.com',
   x: 'https://x.com/home',
+  binance: 'https://www.binance.com/zh-CN/square',
 };
 
-export async function openXhsLogin(platform: 'xhs' | 'x' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
+export async function openXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
   const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
   try {
     await sendBrowserCommand('tab_create', { url }, 8000);

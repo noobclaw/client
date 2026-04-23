@@ -1191,7 +1191,7 @@ const server = http.createServer(async (req, res) => {
           }
 
           // ── App info ──
-          case 'app:getVersion': return writeJSON(res, 200, '2.4.53');
+          case 'app:getVersion': return writeJSON(res, 200, '2.4.54');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
 
           // ── Session title ──
@@ -1725,7 +1725,7 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:checkXhsLogin': {
             try {
               const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
-              const platform = (args && args[0]) as ('xhs' | 'x' | undefined);
+              const platform = (args && args[0]) as ('xhs' | 'x' | 'binance' | undefined);
               return writeJSON(res, 200, await checkXhsLogin(platform));
             } catch (e: any) {
               return writeJSON(res, 200, { loggedIn: false, reason: 'sidecar_error: ' + e.message });
@@ -1734,7 +1734,7 @@ const server = http.createServer(async (req, res) => {
           case 'scenario:openXhsLogin': {
             try {
               const { openXhsLogin } = require('./libs/scenario/xhsDriver');
-              const platform = (args && args[0]) as ('xhs' | 'x' | undefined);
+              const platform = (args && args[0]) as ('xhs' | 'x' | 'binance' | undefined);
               return writeJSON(res, 200, await openXhsLogin(platform));
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, reason: e.message });
@@ -1830,7 +1830,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Version ──
     if (pathname === '/api/version') {
-      return writeJSON(res, 200, { version: '2.4.53', mode: 'tauri-sidecar' });
+      return writeJSON(res, 200, { version: '2.4.54', mode: 'tauri-sidecar' });
     }
 
     // ── 404 ──

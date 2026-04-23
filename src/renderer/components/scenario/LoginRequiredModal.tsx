@@ -14,9 +14,9 @@ import { i18nService } from '../../services/i18n';
 interface Props {
   mode: 'create' | 'run';
   /** Which platform's login state we're checking. Default 'xhs' for
-   *  back-compat. 'x' (Twitter) shows different copy + opens x.com +
-   *  surfaces a VPN reminder for mainland China users. */
-  platform?: 'xhs' | 'x';
+   *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
+   *  mainland China users. 'binance' opens binance.com/zh-CN/square. */
+  platform?: 'xhs' | 'x' | 'binance';
   onCancel: () => void;
   onConfirmed: () => void;
 }
@@ -26,16 +26,24 @@ type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const isX = platform === 'x';
+  const isBinance = platform === 'binance';
   // Platform-specific labels — single source of truth so all the strings
   // below stay consistent.
-  // Display label inside the modal copy. We use "Twitter (x.com)" inline in
-  // headers / instructions so users know what site we're targeting, but the
-  // submit button uses the shorter `platformShort` to avoid awkward wrapping.
   const platformLabel = isX
-    ? (isZh ? 'Twitter (x.com)' : 'Twitter (x.com)')
-    : (isZh ? '小红书' : 'Xiaohongshu');
-  const platformShort = isX ? 'Twitter' : (isZh ? '小红书' : 'Xiaohongshu');
-  const platformUrl = isX ? 'https://x.com/home' : 'https://www.xiaohongshu.com';
+    ? 'Twitter (x.com)'
+    : isBinance
+      ? (isZh ? '币安广场 (binance.com)' : 'Binance Square (binance.com)')
+      : (isZh ? '小红书' : 'Xiaohongshu');
+  const platformShort = isX
+    ? 'Twitter'
+    : isBinance
+      ? (isZh ? '币安广场' : 'Binance Square')
+      : (isZh ? '小红书' : 'Xiaohongshu');
+  const platformUrl = isX
+    ? 'https://x.com/home'
+    : isBinance
+      ? 'https://www.binance.com/zh-CN/square'
+      : 'https://www.xiaohongshu.com';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [checking, setChecking] = useState(false);
@@ -78,6 +86,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
       } else if (
         status.reason === 'xhs_tab_not_reachable' ||
         status.reason === 'x_tab_not_reachable' ||
+        status.reason === 'binance_tab_not_reachable' ||
         status.reason === 'tab_not_reachable'
       ) {
         setExtensionStatus('pass');

@@ -43,14 +43,15 @@ interface Props {
    *  to pick the right icon + label on the empty-state CTA button. The
    *  parent already filters tasks by this; we just need to know which
    *  one for display. */
-  platformId?: 'xhs' | 'x';
+  platformId?: 'xhs' | 'x' | 'binance';
 }
 
 // Platform pill label is locale-aware: Chinese when zh, English when en.
 // Returns { icon, label } for whichever locale is active right now.
 function platformMeta(platformId: string, isZh: boolean): { icon: string; label: string } {
-  if (platformId === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'Xiaohongshu' };
-  if (platformId === 'x')   return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
+  if (platformId === 'xhs')     return { icon: '📕', label: isZh ? '小红书' : 'Xiaohongshu' };
+  if (platformId === 'x')       return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
+  if (platformId === 'binance') return { icon: '📊', label: isZh ? '币安广场' : 'Binance Square' };
   return { icon: '🤖', label: platformId };
 }
 
@@ -193,10 +194,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 className={`inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold transition-all active:scale-95 shadow-sm ${
                   platformId === 'x'
                     ? 'bg-sky-500 hover:bg-sky-600 shadow-sky-500/25'
-                    : 'bg-green-500 hover:bg-green-600 shadow-green-500/25'
+                    : platformId === 'binance'
+                      ? 'bg-yellow-500 hover:bg-yellow-600 shadow-yellow-500/25'
+                      : 'bg-green-500 hover:bg-green-600 shadow-green-500/25'
                 }`}
               >
-                {platformId === 'x' ? '🐦' : '📕'} {isZh ? `新建${platformLabel}任务` : `New ${platformLabel} task`}
+                {platformId === 'x' ? '🐦' : platformId === 'binance' ? '📊' : '📕'} {isZh ? `新建${platformLabel}任务` : `New ${platformLabel} task`}
               </button>
             )}
           </div>

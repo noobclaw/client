@@ -2836,12 +2836,12 @@ if (!gotTheLock) {
       cooldown_ends_at: scenarioRiskGuard.getCooldown(task_id),
     }));
 
-    ipcMain.handle('scenario:checkXhsLogin', async (_e, platform?: 'xhs' | 'x') => {
+    ipcMain.handle('scenario:checkXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance') => {
       const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
       return await checkXhsLogin(platform);
     });
 
-    ipcMain.handle('scenario:openXhsLogin', async (_e, platform?: 'xhs' | 'x') => {
+    ipcMain.handle('scenario:openXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance') => {
       const { openXhsLogin } = require('./libs/scenario/xhsDriver');
       return await openXhsLogin(platform);
     });

@@ -1,14 +1,16 @@
 /**
  * BinanceWorkflowsPage — 币安广场 (Binance Square) 平台工作流页面.
  *
- * v1 只有一个 scenario：binance_square_post_creator
- *   - 每日 1 条原创短帖（100-300 字）
- *   - 用户提供 token 列表 + persona + 语言模式
- *   - AI 按抽中的钩子写文 → 自动写入 ProseMirror 编辑器 → 点击发文
+ * 结构镜像 XWorkflowsPage:
+ *   - 卡片 grid (目前 2 张: 自动互动 + 自动发帖)
+ *   - 底部特色 pills 条
+ *   - 无 hero 介绍 (之前版本有,用户反馈冗余,与 X/XHS 页面对齐后去掉)
  *
- * 形态最像 x_post_creator（参见 XWorkflowsPage 中段）：纯文本、单帖、
- * 不依赖 feed 抓取。Binance Square 的发帖入口是 /square 主页内嵌的
- * ProseMirror 弹窗，所以不需要"指定链接"那种 quick-link 模式。
+ * v1 scenarios:
+ *   binance_square_auto_engage   — 关注 KOL + 热门帖互动 (敬请期待)
+ *   binance_square_post_creator  — 每日 1 条加密快评带 cashtag
+ *
+ * Card order 按用户要求: 自动互动/回复 放前面,发帖 放后面。
  */
 
 import React, { useEffect, useState } from 'react';
@@ -32,7 +34,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   scenarios,
   tasks,
   draftsByTask: _draftsByTask,
-  loading: _loading,
+  loading,
   onOpenTask,
   onConfigure,
   onChanged: _onChanged,
@@ -42,12 +44,12 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
   const [maxTasksModalOpen, setMaxTasksModalOpen] = useState(false);
+  const [pendingScenario, setPendingScenario] = useState<Scenario | null>(null);
 
   const MAX_TASKS = 5;
 
   // Fallback so the card opens the wizard before backend list arrives.
-  // Same shape used by XhsWorkflowsPage / XWorkflowsPage.
-  const FALLBACK: Scenario = {
+  const POST_CREATOR_FALLBACK: Scenario = {
     id: 'binance_square_post_creator',
     version: '1.0.0',
     platform: 'binance' as any,
@@ -55,12 +57,12 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场自动发帖',
     name_en: 'Binance Square Auto Post',
-    description_zh: '每日 AI 写一条 100-300 字加密快评，自动带 $TOKEN cashtag，发到币安广场。',
+    description_zh: '每日 AI 写一条 100-300 字加密快评,自动带 $TOKEN cashtag,发到币安广场。',
     description_en: 'Daily AI-drafted 100-300 char crypto market note, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
     icon: '📊',
     default_config: {
       keywords: ['BTC', 'ETH', 'SOL'],
-      persona: '中文 web3 KOL，分享市场观察 / 链上数据 / 行业 alpha，语气克制、不喊单',
+      persona: '中文 web3 KOL,分享市场观察 / 链上数据 / 行业 alpha,语气克制、不喊单',
       daily_count: 1,
       variants_per_post: 1,
       schedule_window: '09:00-23:00',
@@ -81,10 +83,11 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   const postCreator =
     scenarios.find(s => s.id === 'binance_square_post_creator')
     || scenarios.find(s => (s.platform as any) === 'binance' && s.workflow_type === 'viral_production')
-    || FALLBACK;
+    || POST_CREATOR_FALLBACK;
 
-  // Poll running task ids — same UX as X/XHS pages so the "运行中..." pill
-  // stays accurate across the whole tab.
+  // auto_engage doesn't have a backend scenario yet — placeholder for now
+  const autoEngage = scenarios.find(s => s.id === 'binance_square_auto_engage') || null;
+
   useEffect(() => {
     let cancelled = false;
     const pull = async () => {
@@ -98,7 +101,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     return () => { cancelled = true; clearInterval(h); };
   }, []);
 
-  const handleStart = () => {
+  const handleStart = (scenario: Scenario) => {
     if (tasks.length >= MAX_TASKS) {
       setMaxTasksModalOpen(true);
       return;
@@ -107,165 +110,112 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    setLoginModalReason('post_creator');
+    setPendingScenario(scenario);
+    setLoginModalReason(scenario.id);
   };
 
   const handleLoginConfirmed = () => {
     setLoginModalReason(null);
-    onConfigure(postCreator);
+    if (pendingScenario) {
+      onConfigure(pendingScenario);
+      setPendingScenario(null);
+    }
   };
 
-  const myPostCreatorTasks = tasks.filter(t => t.scenario_id === postCreator.id);
+  const tasksByScenario: Record<string, Task[]> = {};
+  for (const t of tasks) {
+    const key = t.scenario_id;
+    if (!tasksByScenario[key]) tasksByScenario[key] = [];
+    tasksByScenario[key].push(t);
+  }
 
-  // Binance brand colors hard-coded so we don't rely on Tailwind to match
-  // the exact gold tone used on binance.com (their gold is #F0B90B; the
-  // closest Tailwind yellow-500 is #EAB308 which reads slightly green next
-  // to the real brand). Dark card surface mirrors Binance's #181A20.
+  // Binance brand colors
   const binanceGold = '#F0B90B';
   const binanceGoldLight = '#FCD535';
   const binanceDark = '#181A20';
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Hero — Binance-style: dark surface, gold diamond mark, gold rule */}
-      <section className="mb-6">
-        <div
-          className="rounded-2xl p-6 overflow-hidden relative border"
-          style={{
-            background: `linear-gradient(135deg, ${binanceDark} 0%, #1E2026 100%)`,
-            borderColor: `${binanceGold}40`,
-            boxShadow: `0 0 40px -20px ${binanceGold}40`,
-          }}>
-          <div
-            className="absolute -top-20 -right-20 w-48 h-48 rounded-full pointer-events-none"
-            style={{ background: `radial-gradient(circle, ${binanceGold}20 0%, transparent 70%)` }}
-          />
-          <div className="relative flex items-center gap-3">
-            {/* Binance lattice diamond mark — pure CSS to avoid shipping a logo */}
-            <div
-              className="shrink-0 w-12 h-12 flex items-center justify-center rounded-lg"
-              style={{ background: `${binanceGold}15`, border: `1px solid ${binanceGold}40` }}>
-              <svg viewBox="0 0 32 32" className="w-7 h-7" fill={binanceGold}>
-                <path d="M9.6 12.4L16 6l6.4 6.4L26 8.8 16 -1.2 6 8.8l3.6 3.6zM2 16l3.6-3.6L9.2 16l-3.6 3.6L2 16zm7.6 3.6L16 26l6.4-6.4 3.6 3.6L16 33.2 6 23.2l3.6-3.6zM22.8 16l3.6-3.6L30 16l-3.6 3.6-3.6-3.6zM19.6 16L16 12.4 12.4 16 16 19.6 19.6 16z"/>
-              </svg>
-            </div>
-            <div className="flex-1">
-              <h2 className="text-xl font-bold text-white mb-1 flex items-center gap-2">
-                {isZh ? '币安广场自动化运营' : 'Binance Square Automation'}
-                <span
-                  className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                  style={{ background: binanceGold, color: binanceDark }}>
-                  BETA
-                </span>
-              </h2>
-              <p className="text-sm text-gray-400">
-                {isZh
-                  ? '让 AI 用你的口吻每天在币安广场发一条加密快评，自动带 cashtag 触发 token 页流量。'
-                  : 'AI posts one daily crypto note in your voice on Binance Square, auto-tagged with cashtags to surface on token pages.'}
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Single scenario card — Binance-style dark with gold accents */}
+      {/* Scenario cards — same layout as X: jump straight to cards, no hero */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div
-          className="relative rounded-2xl p-6 overflow-hidden border transition-all hover:shadow-2xl"
-          style={{
-            background: `linear-gradient(135deg, ${binanceDark} 0%, #1E2026 100%)`,
-            borderColor: `${binanceGold}30`,
-          }}>
-          <div
-            className="absolute -top-12 -right-12 w-36 h-36 rounded-full pointer-events-none"
-            style={{ background: `radial-gradient(circle, ${binanceGold}15 0%, transparent 70%)` }}
-          />
-          <div className="relative flex flex-col h-full">
-            <div className="flex items-start gap-3 mb-3">
-              <div className="text-3xl shrink-0">📊</div>
-              <div>
-                <h3 className="text-lg font-bold text-white">
-                  {isZh ? '每日自动发帖' : 'Daily Auto Post'}
-                </h3>
-                <p className="text-xs mt-0.5" style={{ color: binanceGoldLight }}>
-                  {isZh ? '1 条 / 天 · 100-300 字 · 自动 cashtag' : '1 post/day · 100-300 chars · auto cashtag'}
-                </p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-400 mb-4 flex-1">
-              {isZh
-                ? 'AI 从你的 token 列表里随机挑一个，按你的人设写一条短评，发到 Binance Square。带 $BTC 等 cashtag 自动触发 token 页流量入口。'
-                : 'AI picks a token from your watchlist, drafts a short note in your persona, posts to Binance Square. $TICKER cashtags trigger token-page traffic.'}
-            </p>
-            <div className="flex flex-wrap gap-1.5 mb-4">
-              {(['BTC', 'ETH', 'SOL', 'BNB'] as const).map(tag => (
-                <span
-                  key={tag}
-                  className="text-xs px-2 py-0.5 rounded-full font-mono font-semibold"
-                  style={{
-                    background: `${binanceGold}15`,
-                    color: binanceGold,
-                    border: `1px solid ${binanceGold}30`,
-                  }}>
-                  ${tag}
-                </span>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={handleStart}
-              className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl transition-all hover:brightness-110 active:brightness-95 shadow-md"
-              style={{
-                background: `linear-gradient(135deg, ${binanceGold} 0%, ${binanceGoldLight} 100%)`,
-                color: binanceDark,
-              }}>
-              {isZh ? '⚡ 立即开始' : '⚡ Get Started'}
-            </button>
-          </div>
-        </div>
+        {/* 1. Auto engage (coming soon — backend scenario not yet built) */}
+        <BinanceCard
+          emoji="🤝"
+          badgeZh="每日互动"
+          badgeEn="Daily engagement"
+          titleZh="币安广场自动互动"
+          titleEn="Binance Square Auto Engagement"
+          descZh="关注加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 8-30 分钟。"
+          descEn="Follow crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 8-30 min spacing."
+          tagsLine={isZh ? '关注 · 回复 · 随机节奏' : 'Follow · Reply · Randomized pacing'}
+          ctaZh={autoEngage ? '开始互动' : '敬请期待'}
+          ctaEn={autoEngage ? 'Start' : 'Coming Soon'}
+          enabled={!!autoEngage}
+          loading={loading}
+          scenario={autoEngage}
+          onStart={() => autoEngage && handleStart(autoEngage)}
+          isZh={isZh}
+          binanceGold={binanceGold}
+          binanceGoldLight={binanceGoldLight}
+          binanceDark={binanceDark}
+        />
 
-        {/* Placeholder card for future scenarios — same dark Binance look but dim */}
-        <div
-          className="relative rounded-2xl p-6 overflow-hidden border"
-          style={{
-            background: `linear-gradient(135deg, ${binanceDark}80 0%, #1E202680 100%)`,
-            borderColor: '#2B3139',
-          }}>
-          <div className="relative flex flex-col h-full opacity-50">
-            <div className="flex items-start gap-3 mb-3">
-              <div className="text-3xl shrink-0">🔥</div>
-              <div>
-                <h3 className="text-lg font-bold text-white">
-                  {isZh ? '热点引用回应' : 'Hot Topic Quote Reply'}
-                </h3>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {isZh ? '即将上线' : 'Coming soon'}
-                </p>
-              </div>
-            </div>
-            <p className="text-sm text-gray-400 mb-4 flex-1">
-              {isZh
-                ? '抓 Square 热门帖，AI 生成有观点的引用回应。'
-                : 'Scan trending posts, AI drafts opinionated quote replies.'}
-            </p>
-            <button
-              type="button"
-              disabled
-              className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl bg-gray-700/50 text-gray-500 cursor-not-allowed">
-              {isZh ? '敬请期待' : 'Coming Soon'}
-            </button>
-          </div>
+        {/* 2. Post creator */}
+        <BinanceCard
+          emoji="📊"
+          badgeZh="每日发帖"
+          badgeEn="Daily post"
+          titleZh="币安广场自动发帖"
+          titleEn="Binance Square Auto Post"
+          descZh="AI 从你的 token 列表里随机挑一个,按你的人设写一条 100-300 字短评,自动带 $BTC 等 cashtag 触发 token 页流量。"
+          descEn="AI picks a token from your watchlist, drafts a 100-300 char note in your persona, posts with $TICKER cashtags to trigger token-page traffic."
+          tagsLine="$BTC · $ETH · $SOL · $BNB"
+          ctaZh="立即开始"
+          ctaEn="Get Started"
+          enabled={true}
+          loading={loading}
+          scenario={postCreator}
+          onStart={() => handleStart(postCreator)}
+          isZh={isZh}
+          binanceGold={binanceGold}
+          binanceGoldLight={binanceGoldLight}
+          binanceDark={binanceDark}
+        />
+      </section>
+
+      {/* Features pills — same compact design as X page */}
+      <section className="mb-6">
+        <div className="flex flex-wrap gap-2">
+          {[
+            { icon: '💎', zh: '原生 cashtag 导流', en: 'Native cashtag → token page traffic' },
+            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
+            { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
+            { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
+            { icon: '🌐', zh: '中英混合（自动跟随原帖语言）', en: 'zh/en/mixed (follows source language)' },
+            { icon: '🤝', zh: '加密 KOL 池', en: 'Crypto KOL pool' },
+          ].map((p, i) => (
+            <span
+              key={i}
+              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border text-gray-700 dark:text-gray-300"
+              style={{
+                borderColor: `${binanceGold}30`,
+                background: `${binanceGold}10`,
+              }}
+            >
+              {p.icon} {isZh ? p.zh : p.en}
+            </span>
+          ))}
         </div>
       </section>
 
-      {/* "已有任务" 提示 */}
-      {myPostCreatorTasks.length > 0 && (
+      {/* "已有任务" 提示 — grouped across both scenarios */}
+      {tasks.length > 0 && (
         <section className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 p-4">
           <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">
-            {isZh ? '你已经有 ' + myPostCreatorTasks.length + ' 个币安广场任务在跑：' : 'You have ' + myPostCreatorTasks.length + ' Binance Square task(s):'}
+            {isZh ? `你已经有 ${tasks.length} 个币安广场任务：` : `You have ${tasks.length} Binance Square task(s):`}
           </div>
           <div className="space-y-2">
-            {myPostCreatorTasks.slice(0, 3).map(task => (
+            {tasks.slice(0, 3).map(task => (
               <button
                 key={task.id}
                 type="button"
@@ -290,16 +240,17 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         </section>
       )}
 
-      {/* Login gate */}
+      {/* Login gate — binance platform opens binance.com/zh-CN/square */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
-          onCancel={() => setLoginModalReason(null)}
+          platform="binance"
+          onCancel={() => { setLoginModalReason(null); setPendingScenario(null); }}
           onConfirmed={handleLoginConfirmed}
         />
       )}
 
-      {/* Max-tasks modal — same pattern as XHS */}
+      {/* Max-tasks modal */}
       {maxTasksModalOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
           onClick={() => setMaxTasksModalOpen(false)}>
@@ -316,7 +267,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
                   : `You already have ${tasks.length} Binance Square tasks (max ${MAX_TASKS}).`}
                 <br />
                 {isZh
-                  ? '可以先去看看现有任务，停用一些不需要的，再创建新的。'
+                  ? '可以先去看看现有任务,停用一些不需要的,再创建新的。'
                   : 'Open My Tasks to disable any you no longer need before creating a new one.'}
               </p>
             </div>
@@ -340,6 +291,84 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+
+// ── Binance scenario card sub-component ──
+
+interface BinanceCardProps {
+  emoji: string;
+  badgeZh: string;
+  badgeEn: string;
+  titleZh: string;
+  titleEn: string;
+  descZh: string;
+  descEn: string;
+  tagsLine: string;
+  ctaZh: string;
+  ctaEn: string;
+  enabled: boolean;
+  loading: boolean;
+  scenario: Scenario | null;
+  onStart: () => void;
+  isZh: boolean;
+  binanceGold: string;
+  binanceGoldLight: string;
+  binanceDark: string;
+}
+
+const BinanceCard: React.FC<BinanceCardProps> = ({
+  emoji, badgeZh, badgeEn, titleZh, titleEn, descZh, descEn, tagsLine,
+  ctaZh, ctaEn, enabled, loading, scenario, onStart, isZh,
+  binanceGold, binanceGoldLight, binanceDark,
+}) => {
+  const dim = !enabled;
+  return (
+    <div
+      className="relative rounded-2xl p-6 overflow-hidden border transition-all hover:shadow-2xl"
+      style={{
+        background: dim
+          ? `linear-gradient(135deg, ${binanceDark}80 0%, #1E202680 100%)`
+          : `linear-gradient(135deg, ${binanceDark} 0%, #1E2026 100%)`,
+        borderColor: dim ? '#2B3139' : `${binanceGold}30`,
+      }}>
+      <div
+        className="absolute -top-12 -right-12 w-36 h-36 rounded-full pointer-events-none"
+        style={{ background: `radial-gradient(circle, ${binanceGold}${dim ? '08' : '15'} 0%, transparent 70%)` }}
+      />
+      <div className={`relative flex flex-col h-full ${dim ? 'opacity-60' : ''}`}>
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium mb-2" style={{ color: binanceGoldLight }}>
+          <span className="inline-block w-1.5 h-1.5 rounded-full animate-pulse" style={{ background: binanceGoldLight }} />
+          {isZh ? badgeZh : badgeEn}
+        </div>
+        <h3 className="text-lg font-bold text-white mb-1.5">
+          {emoji} {isZh ? titleZh : titleEn}
+        </h3>
+        <p className="text-sm text-gray-400 leading-relaxed mb-3 flex-1">
+          {isZh ? descZh : descEn}
+        </p>
+        <div className="text-xs font-mono mb-4" style={{ color: binanceGold }}>
+          {tagsLine}
+        </div>
+        <button
+          type="button"
+          onClick={onStart}
+          disabled={!enabled || loading || !scenario}
+          className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl transition-all hover:brightness-110 active:brightness-95 shadow-md disabled:cursor-not-allowed disabled:hover:brightness-100"
+          style={enabled
+            ? {
+                background: `linear-gradient(135deg, ${binanceGold} 0%, ${binanceGoldLight} 100%)`,
+                color: binanceDark,
+              }
+            : {
+                background: '#2B3139',
+                color: '#6B7280',
+              }}>
+          {emoji} {isZh ? ctaZh : ctaEn} {enabled ? '→' : ''}
+        </button>
+      </div>
     </div>
   );
 };

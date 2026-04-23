@@ -86,8 +86,8 @@ contextBridge.exposeInMainWorld('electron', {
     getRunRecord: (id: string) => ipcRenderer.invoke('scenario:getRunRecord', id),
     getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
-    checkXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
-    openXhsLogin: (platform?: 'xhs' | 'x') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
+    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
+    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
   },
   api: {
     // Regular API request (non-streaming)

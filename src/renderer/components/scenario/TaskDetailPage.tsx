@@ -180,7 +180,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // For Twitter scenarios (x_auto_engage / x_post_creator / x_link_rewrite)
   // we can't reuse XHS-specific copy like "直接发布到小红书".
   const isXTask = scenario?.platform === 'x';
-  const platformLabelForTask = isXTask ? 'Twitter' : (isZh ? '小红书' : 'Xiaohongshu');
+  const isBinanceTask = scenario?.platform === 'binance';
+  const platformLabelForTask = isXTask
+    ? 'Twitter'
+    : isBinanceTask
+      ? (isZh ? '币安广场' : 'Binance Square')
+      : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
@@ -339,7 +344,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         return otherPlatform === myPlatform;
       });
       if (samePlatformBusy) {
-        const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : '该平台';
+        const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : myPlatform === 'binance' ? '币安广场' : '该平台';
         // Close the just-opened modal — the user can't proceed anyway.
         setLoginModalOpen(false);
         showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
@@ -425,14 +430,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const platformBadge = (() => {
     if (scenario?.platform === 'x') return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
     if (scenario?.platform === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'XHS' };
+    if (scenario?.platform === 'binance') return { icon: '📊', label: isZh ? '币安广场' : 'Binance Square' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
   const typeBadge = (() => {
     const sid = task.scenario_id;
-    if (sid === 'x_auto_engage')   return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
-    if (sid === 'x_post_creator')  return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-    if (sid === 'x_link_rewrite')  return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_post_creator')                 return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    if (sid === 'binance_square_post_creator')    return { icon: '📊', label: isZh ? '币安广场自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isLinkModeForBadge && !isXTask) return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     if ((scenario?.workflow_type as any) === 'auto_reply') return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
@@ -850,7 +858,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       {loginModalOpen && (
         <LoginRequiredModal
           mode="run"
-          platform={(scenario?.platform === 'x' ? 'x' : 'xhs') as 'x' | 'xhs'}
+          platform={(scenario?.platform === 'x' ? 'x' : scenario?.platform === 'binance' ? 'binance' : 'xhs') as 'x' | 'xhs' | 'binance'}
           onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}
         />
