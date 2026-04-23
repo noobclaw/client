@@ -76,6 +76,11 @@ interface Props {
   onChanged?: () => void | Promise<void>;
   /** Open the standalone sensitive-word check page (no scenario, no task). */
   onOpenSensitiveCheck?: () => void;
+  /** Jump to the "我的任务" page filtered to this same platform.
+   *  Wired by ScenarioView via setView({section:'tasks', platform:'xhs'}).
+   *  Used by the "已达任务上限" modal's CTA so users can audit existing
+   *  tasks instead of bumping into a dead-end alert. */
+  onGoToMyTasks?: () => void;
 }
 
 export const XhsWorkflowsPage: React.FC<Props> = ({
@@ -88,6 +93,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   onConfigure,
   onChanged,
   onOpenSensitiveCheck,
+  onGoToMyTasks,
 }) => {
   // @ts-ignore — Pre-create-only refactor used scenarioById to look up
   // each task's scenario when rendering the task list. Tasks moved out
@@ -164,6 +170,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   //  lookup above since the wizard still needs the scenario reference.)
 
   const MAX_TASKS = 5;
+  const isZh = i18nService.currentLanguage === 'zh';
+
+  // Soft-cap modal — replaces the old window.alert() that was technically
+  // working but felt like a system error to users (especially on Tauri
+  // where the native dialog has a generic "NoobClaw" header). Shown when
+  // the user tries to create another task past MAX_TASKS; CTA jumps to
+  // "我的任务" so they can review/disable an existing one instead of
+  // hitting a dead end.
+  const [maxTasksModalOpen, setMaxTasksModalOpen] = useState(false);
 
   // Link-mode state
   const [linkModalOpen, setLinkModalOpen] = useState(false);
@@ -230,7 +245,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   const handleLinkModeClick = () => {
     if (tasks.length >= MAX_TASKS) {
-      alert(i18nService.currentLanguage === 'zh' ? '最多创建 ' + MAX_TASKS + ' 个任务' : 'Max ' + MAX_TASKS + ' tasks allowed');
+      setMaxTasksModalOpen(true);
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
@@ -244,7 +259,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   const handleAutoReplyClick = () => {
     if (tasks.length >= MAX_TASKS) {
-      alert(i18nService.currentLanguage === 'zh' ? '最多创建 ' + MAX_TASKS + ' 个任务' : 'Max ' + MAX_TASKS + ' tasks allowed');
+      setMaxTasksModalOpen(true);
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
@@ -263,7 +278,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const handleQuickStart = () => {
     // Gate: max 5 tasks
     if (tasks.length >= MAX_TASKS) {
-      alert(i18nService.currentLanguage === 'zh' ? '最多创建 ' + MAX_TASKS + ' 个任务' : 'Max ' + MAX_TASKS + ' tasks allowed');
+      setMaxTasksModalOpen(true);
       return;
     }
     // Gate: must be logged in with wallet
@@ -496,6 +511,47 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />
+      )}
+
+      {maxTasksModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMaxTasksModalOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="text-4xl mb-3">📋</div>
+              <h3 className="text-lg font-bold dark:text-white mb-1.5">
+                {isZh ? '已达任务上限' : 'Task Limit Reached'}
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                {isZh
+                  ? `小红书已经有 ${tasks.length} 个任务了，最多支持 ${MAX_TASKS} 个`
+                  : `You already have ${tasks.length} Xiaohongshu tasks (max ${MAX_TASKS}).`}
+                <br />
+                {isZh
+                  ? '可以先去看看现有任务，停用一些不需要的，再创建新的。'
+                  : 'Open My Tasks to disable any you no longer need before creating a new one.'}
+              </p>
+            </div>
+            <div className="px-6 py-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMaxTasksModalOpen(false)}
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                {isZh ? '知道了' : 'Got it'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMaxTasksModalOpen(false);
+                  if (onGoToMyTasks) onGoToMyTasks();
+                }}
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:opacity-90 transition-opacity shadow-sm">
+                {isZh ? '去看看现有任务 →' : 'View My Tasks →'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

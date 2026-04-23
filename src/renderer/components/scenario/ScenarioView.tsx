@@ -448,6 +448,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onConfigure={openWizardFor}
           onChanged={refreshAll}
           onOpenSensitiveCheck={openSensitiveCheck}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'xhs' })}
         />
       );
     }
