@@ -817,10 +817,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* Language mode — Twitter-only, also skipped for x_link_rewrite.
-                      Binance Square users typically compose in Chinese or follow
-                      persona language, no explicit toggle needed. */}
-                  {!isLinkRewriteScenario && isXPlatform && (
+                  {/* Language mode — Twitter-only, also skipped for x_link_rewrite
+                      AND x_auto_engage (per user request 2026-04: 互动场景一律
+                      follow 原推语言,跟币安互动一致,不需要显式 toggle)。
+                      Binance Square 同理无需 toggle。
+                      → 实际只在 x_post_creator 显示。 */}
+                  {!isLinkRewriteScenario && !isXAutoEngage && isXPlatform && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '🌐 内容语言' : '🌐 Content language'}
@@ -1513,7 +1515,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   </div>
                 )}
-                {isXPlatform && (
+                {isXPlatform && !isXAutoEngage && !isLinkRewriteScenario && (
                   <div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '语言:' : 'Language:'}</span>
                     <div className="dark:text-white">
@@ -1521,6 +1523,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         : language === 'en' ? (isZh ? '英文' : 'English')
                         : (isZh ? '中英混合' : 'Mixed')}
                     </div>
+                  </div>
+                )}
+                {isXAutoEngage && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '语言:' : 'Language:'}</span>
+                    <div className="dark:text-white">{isZh ? '跟随原推(中文推回中文 / 英文推回英文)' : 'Follow source tweet language'}</div>
                   </div>
                 )}
                 {isLinkRewriteScenario && parsedUrls.length > 0 && (
