@@ -646,7 +646,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // other scenarios (auto_engage / link_rewrite / auto_reply) ignore
         // these fields, but sending them is cheap and keeps the payload
         // uniform across scenario types.
-        ...(isBinancePostCreator ? {
+        ...((isBinancePostCreator || isXPostCreator) ? {
           daily_post_min: postCountMin,
           daily_post_max: postCountMax,
         } : {}),
@@ -1087,18 +1087,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* ── Post count range (binance_square_post_creator only for v2.4.56) ──
+              {/* ── Post count range (post_creator scenarios on X + Binance) ──
                   Each scheduled run posts a random N ∈ [min, max] with 5-15 min
                   jitter between. Default 1/1 = backward-compatible "1 post per
-                  run". Twitter orchestrator loop scheduled for next iteration —
-                  until then, keep the slider hidden for x_post_creator so the
-                  user doesn't set a value Twitter ignores.  TODO(v2.4.57):
-                  restore `isXPostCreator || isBinancePostCreator` once the
-                  x_post_creator orchestrator has the same loop wrapper. */}
-              {isBinancePostCreator && (
+                  run". Both x_post_creator and binance_square_post_creator
+                  orchestrators wrap their main loop around `todayCount =
+                  randInt(DAILY_POST_MIN, DAILY_POST_MAX)`. */}
+              {(isBinancePostCreator || isXPostCreator) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? `每次运行发布条数（随机 1-${POST_COUNT_HARDCAP}）` : `Posts per scheduled run (random 1-${POST_COUNT_HARDCAP})`}
+                    {isZh
+                      ? `每次运行${isXPostCreator ? '发推' : '发帖'}条数（随机 1-${POST_COUNT_HARDCAP}）`
+                      : `${isXPostCreator ? 'Tweets' : 'Posts'} per scheduled run (random 1-${POST_COUNT_HARDCAP})`}
                   </label>
                   <div className="space-y-3">
                     <div>
@@ -1124,8 +1124,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-2 起步。`
-                      : `Each run posts ${postCountMin}-${postCountMax} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-2.`}
+                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条${isXPostCreator ? '推' : '帖'}发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-2 起步。`
+                      : `Each run posts ${postCountMin}-${postCountMax} ${isXPostCreator ? 'tweets' : 'posts'} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-2.`}
                   </p>
                 </div>
               )}
@@ -1445,7 +1445,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </>
                   ) : isXPostCreator ? (
                     <>
-                      <li>{isZh ? '· 每日 1 条推文，3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1万' : '· 1 tweet/day, mechanism randomized (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥10K views'}</li>
+                      <li>{isZh
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条 3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1万`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between), each randomized across 3 mechanisms (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥10K views`}</li>
                       <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
                       <li>{isZh ? '· 在「真实素材池」里写得越具体，AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
@@ -1462,7 +1464,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </>
                   ) : isBinancePostCreator ? (
                     <>
-                      <li>{isZh ? '· 每日 1 条加密快评 (100-300 字),AI 从你的 token 列表随机挑一个主题' : '· 1 crypto note/day (100-300 chars). AI picks a token from your watchlist as the topic.'}</li>
+                      <li>{isZh
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条加密快评（间隔 5-15 分钟,100-300 字),AI 从你的 token 列表随机挑主题`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} crypto notes/run (5-15 min between, 100-300 chars). AI picks a token from your watchlist as the topic.`}</li>
                       <li>{isZh ? '· 带 $BTC / $ETH 等 cashtag 触发 token 页流量入口' : '· Includes $BTC / $ETH etc. cashtags to surface on token-page traffic feeds.'}</li>
                       <li>{isZh ? '· 在「真实素材池」里写得越具体,AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output.'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开,不要关闭 binance.com 标签页' : '· Keep the browser open during the run; don\'t close the binance.com tab.'}</li>
@@ -1587,9 +1591,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies + ${likeMin}-${likeMax} likes/day (random order, 30s-10min between)`;
                       }
                       if (isXPostCreator) {
+                        const tStr = postCountMin === postCountMax ? String(postCountMin) : `${postCountMin}-${postCountMax}`;
                         return isZh
-                          ? `⏰ ${intervalLabel} · 每日 1 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
-                          : `⏰ ${intervalLabel} · 1 tweet/day (30% rewrite / 30% original / 40% quote, randomized)`;
+                          ? `⏰ ${intervalLabel} · 每次 ${tStr} 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
+                          : `⏰ ${intervalLabel} · ${tStr} tweets/run (30% rewrite / 30% original / 40% quote, randomized)`;
                       }
                       if (isBinancePostCreator) {
                         return isZh
