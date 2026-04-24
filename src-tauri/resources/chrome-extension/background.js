@@ -349,23 +349,20 @@ async function sendToContentScript(tabId, command, params, retries = 2) {
 // group title, or group color. Zero detection surface.
 function platformLabelForPattern(patternStr) {
   if (!patternStr) return null;
-  // Platform name in front (more useful at a glance than brand name).
-  // Color stays brand green for "this is NoobClaw automation" recognition.
-  // v1.2.14: 用户反馈"Noob"看着像缺字,改成全称 NoobClaw
+  // v1.2.14:
+  //   - binance 正则改成 /binance/i (老 /binance\.com/i 匹不上转义的 \.com)
+  //   - 标签改成英文短名 + 品牌后缀,Chrome tab group 显示空间有限
   const color = 'green';
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🤖 小红书-NoobClaw 任务', color };
+    return { title: '🤖 XHS · NoobClaw', color };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🤖 推特-NoobClaw 任务', color };
+    return { title: '🤖 X · NoobClaw', color };
   }
-  // v1.2.14 关键修复:之前用 /binance\.com/i 但 patternStr 里实际是 "binance\\.com"
-  // (regex 里转义的 dot),literal "binance.com" 匹不上 → 走 fallback "🤖 NoobClaw 任务"
-  // 改成直接匹 "binance" 关键字(够独特,无歧义)
   if (/binance/i.test(patternStr)) {
-    return { title: '🤖 币安广场-NoobClaw 任务', color };
+    return { title: '🤖 Binance · NoobClaw', color };
   }
-  return { title: '🤖 NoobClaw 任务', color };
+  return { title: '🤖 NoobClaw', color };
 }
 
 // Per-window cache of "platform label → groupId" so we don't recreate
