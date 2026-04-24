@@ -799,46 +799,21 @@ async function executeCommand(msg) {
 
             if (action === 'submit_short_editor') {
               const accepted = cfg.acceptedTexts || ['发文', '回复', 'Post', 'Reply', 'Publish'];
-              const modals = document.querySelectorAll('.short-editor-inner');
-              if (!modals.length) return { error: 'modal_not_found' };
-              const allBtns = [];
-              const debugTexts = [];
-              for (const m of modals) {
-                const btns = m.querySelectorAll('button');
-                for (const b of btns) allBtns.push(b);
-              }
-              const norm = (s) => (s || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
-              for (const b of allBtns) {
-                const t = norm(b.textContent);
-                debugTexts.push(t.slice(0, 20));
-                let matched = false;
-                for (const a of accepted) {
-                  if (t === a) { matched = true; break; }
-                }
-                if (!matched) {
-                  for (const a of accepted) {
-                    if (t.length > 0 && t.length <= a.length + 5 && t.indexOf(a) >= 0) {
-                      matched = true; break;
-                    }
-                  }
-                }
-                if (matched) {
-                  if (b.disabled) return { error: 'btn_disabled', text: t };
-                  if ((b.className || '').indexOf('inactive') >= 0) {
-                    // v1.2.10+: 不是直接报错,告诉调用方按钮存在但 inactive,让其重试
-                    return { error: 'btn_inactive', text: t, retryable: true };
-                  }
+              const modal = document.querySelector('.short-editor-inner');
+              if (!modal) return { error: 'modal_not_found' };
+              const btns = modal.querySelectorAll('button');
+              for (let i = 0; i < btns.length; i++) {
+                const b = btns[i];
+                const t = (b.textContent || '').trim();
+                if (accepted.indexOf(t) >= 0) {
+                  if (b.disabled) return { error: 'btn_disabled' };
+                  if ((b.className || '').indexOf('inactive') >= 0) return { error: 'btn_inactive' };
                   b.scrollIntoView({ behavior: 'instant', block: 'center' });
                   b.click();
                   return { ok: true, text: t };
                 }
               }
-              return {
-                error: 'submit_btn_not_found',
-                scanned: allBtns.length,
-                modals: modals.length,
-                btn_texts: debugTexts.slice(0, 15),
-              };
+              return { error: 'submit_btn_not_found', scanned: btns.length };
             }
 
             return { error: 'unknown_action: ' + action };
