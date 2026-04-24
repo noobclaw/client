@@ -622,6 +622,208 @@ async function executeCommand(msg) {
           data = { error: String((e && e.message) || e).slice(0, 200) };
         }
       }
+    } else if (command === 'binance_dom_action') {
+      // ── binance_dom_action (v1.2.9+) ──
+      // CSP-safe DOM extraction/interaction for Binance Square. Some
+      // pages (binance.com being one) ship strict CSPs that block the
+      // generic `javascript` command's `new Function(code)` eval inside
+      // the extension's isolated world. We work around by injecting a
+      // STATIC function via chrome.scripting.executeScript({world:'MAIN',
+      // func, args}) — Chrome's official mechanism that doesn't hit
+      // CSP because the function source is parsed/injected, not evaluated.
+      //
+      // Single dispatcher; sub-action picks behavior. Pass:
+      //   { action: 'read_feed', minTextLen, skipCommentGte }
+      //   { action: 'find_follow_buttons' }
+      //   { action: 'click_first_follow_button' }
+      //   { action: 'click_card_comments_icon', cardIndex }
+      //   { action: 'submit_short_editor', acceptedTexts: ["发文","回复"] }
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          // ALL logic must be inline here — no closures from outer scope.
+          const action = cfg && cfg.action;
+          try {
+            if (action === 'read_feed') {
+              const minTextLen = cfg.minTextLen || 5;
+              const skipCommentGte = cfg.skipCommentGte || 100;
+              const stats = {
+                url: location.href,
+                feedBuzzCardEls: document.querySelectorAll('.feed-buzz-card-base-view').length,
+                cardContentBoxEls: document.querySelectorAll('.card-content-box').length,
+                rootEls: document.querySelectorAll('.FeedBuzzBaseViewRoot, [class*="FeedBuzzBaseViewRoot"]').length,
+                scannedCards: 0,
+                skippedNoText: 0,
+                skippedShortText: 0,
+                skippedHighComments: 0,
+              };
+              const rootCards = document.querySelectorAll('.feed-buzz-card-base-view');
+              const useRoot = rootCards.length > 0;
+              const cards = useRoot ? rootCards : document.querySelectorAll('.card-content-box');
+              stats.scanSource = useRoot ? 'feed-buzz-card-base-view' : 'card-content-box (fallback)';
+              const out = [];
+              const max = Math.min(cards.length, 50);
+              for (let i = 0; i < max; i++) {
+                stats.scannedCards++;
+                const c = cards[i];
+                const box = useRoot ? (c.querySelector('.card-content-box') || c) : c;
+                const fullTextLink = box.querySelector('.feed-content-text > a[href*="/square/post/"]');
+                let text = '';
+                if (fullTextLink) text = (fullTextLink.textContent || '').trim();
+                if (!text) {
+                  const textEl = box.querySelector('.card__description.rich-text')
+                    || box.querySelector('.feed-content-text')
+                    || box.querySelector('[class*="description"]');
+                  text = textEl ? (textEl.textContent || '').trim() : '';
+                }
+                if (!text) { stats.skippedNoText++; continue; }
+                if (text.length < minTextLen) { stats.skippedShortText++; continue; }
+                const ccEl = box.querySelector('.comments-icon .num span.current')
+                  || box.querySelector('.comments-icon .num')
+                  || box.querySelector('.comments-icon span.current');
+                let commentCount = 0;
+                if (ccEl) {
+                  const raw = (ccEl.textContent || '').replace(/[^0-9.kKmM万]/g, '');
+                  let n = parseFloat(raw) || 0;
+                  if (/[kK]/.test(raw)) n *= 1000;
+                  else if (/[mM]/.test(raw)) n *= 1000000;
+                  else if (/万/.test(raw)) n *= 10000;
+                  commentCount = Math.floor(n);
+                }
+                if (commentCount >= skipCommentGte) { stats.skippedHighComments++; continue; }
+                const likeEl = box.querySelector('.thumb-up-button .num span.current')
+                  || box.querySelector('.thumb-up-button .num');
+                const likes = likeEl ? parseInt((likeEl.textContent || '').replace(/[^0-9]/g, ''), 10) || 0 : 0;
+                const viewEl = box.querySelector('.view-counts .num span.current')
+                  || box.querySelector('.view-counts .num');
+                let views = 0;
+                if (viewEl) {
+                  const vraw = (viewEl.textContent || '').replace(/[^0-9.kKmM万]/g, '');
+                  let v = parseFloat(vraw) || 0;
+                  if (/[kK]/.test(vraw)) v *= 1000;
+                  else if (/[mM]/.test(vraw)) v *= 1000000;
+                  else if (/万/.test(vraw)) v *= 10000;
+                  views = Math.floor(v);
+                }
+                let nick = '', handle = '', postUrl = '';
+                const nickEl = box.querySelector('.nick-username .nick');
+                if (nickEl) {
+                  nick = (nickEl.textContent || '').trim();
+                  const href = nickEl.getAttribute('href') || '';
+                  const hm = href.match(/\/profile\/([^/?#]+)/);
+                  if (hm) handle = decodeURIComponent(hm[1]);
+                }
+                const postLinkEl = box.querySelector('.feed-content-text a[href*="/square/post/"]');
+                if (postLinkEl) postUrl = postLinkEl.getAttribute('href') || '';
+                const cashtags = [];
+                const ctEls = box.querySelectorAll('[data-role="coinpair"]');
+                for (let ct = 0; ct < ctEls.length; ct++) {
+                  const v = ctEls[ct].getAttribute('data-value') || '';
+                  if (v) cashtags.push(v);
+                }
+                let sentiment = '';
+                const tendencyEl = box.querySelector('.tendency-icon span');
+                if (tendencyEl) sentiment = (tendencyEl.textContent || '').trim();
+                out.push({
+                  index: i, text: text.slice(0, 1500),
+                  comment_count: commentCount, likes, views,
+                  nick, handle, post_url: postUrl, cashtags, sentiment,
+                });
+              }
+              return { posts: out, stats };
+            }
+
+            if (action === 'find_follow_buttons') {
+              let btnRoots = document.querySelectorAll('.feed-follow-button button');
+              let fallback = false;
+              if (!btnRoots.length) {
+                btnRoots = document.querySelectorAll('button');
+                fallback = true;
+              }
+              const out = [];
+              for (let i = 0; i < btnRoots.length; i++) {
+                const b = btnRoots[i];
+                const t = (b.textContent || '').trim();
+                if (t === '关注' || t === 'Follow' || t === '+ 关注' || t === '+ Follow') {
+                  const rect = b.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0 && !b.disabled) {
+                    const card = b.closest('.follow-card');
+                    let handle = '', nick = '';
+                    if (card) {
+                      const a = card.querySelector('a[href*="/profile/"]');
+                      if (a) {
+                        const m = (a.getAttribute('href') || '').match(/\/profile\/([^/?#]+)/);
+                        if (m) handle = decodeURIComponent(m[1]);
+                      }
+                      const n = card.querySelector('.nick');
+                      if (n) nick = (n.textContent || '').trim();
+                    }
+                    out.push({ index: i, text: t, handle, nick, fallback });
+                  }
+                }
+              }
+              return { candidates: out };
+            }
+
+            if (action === 'click_first_follow_button') {
+              const all = document.querySelectorAll('.feed-follow-button button, button');
+              for (let i = 0; i < all.length; i++) {
+                const b = all[i];
+                const t = (b.textContent || '').trim();
+                if (t === '关注' || t === 'Follow' || t === '+ 关注' || t === '+ Follow') {
+                  const rect = b.getBoundingClientRect();
+                  if (rect.width > 0 && rect.height > 0 && !b.disabled) {
+                    b.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    b.click();
+                    return { clicked: true, text: t };
+                  }
+                }
+              }
+              return { clicked: false };
+            }
+
+            if (action === 'click_card_comments_icon') {
+              const cardIdx = cfg.cardIndex || 0;
+              const cards = document.querySelectorAll('.feed-buzz-card-base-view');
+              const card = cards[cardIdx] || document.querySelectorAll('.card-content-box')[cardIdx];
+              if (!card) return { error: 'card_not_found', scanned: cards.length };
+              const commentsBtn = card.querySelector('.comments-icon');
+              if (!commentsBtn) return { error: 'comments_icon_not_found' };
+              commentsBtn.scrollIntoView({ behavior: 'instant', block: 'center' });
+              const clickable = commentsBtn.querySelector('[role="button"]') || commentsBtn.firstElementChild || commentsBtn;
+              clickable.click();
+              return { ok: true };
+            }
+
+            if (action === 'submit_short_editor') {
+              const accepted = cfg.acceptedTexts || ['发文', '回复', 'Post', 'Reply', 'Publish'];
+              const modal = document.querySelector('.short-editor-inner');
+              if (!modal) return { error: 'modal_not_found' };
+              const btns = modal.querySelectorAll('button');
+              for (let i = 0; i < btns.length; i++) {
+                const b = btns[i];
+                const t = (b.textContent || '').trim();
+                if (accepted.indexOf(t) >= 0) {
+                  if (b.disabled) return { error: 'btn_disabled' };
+                  if ((b.className || '').indexOf('inactive') >= 0) return { error: 'btn_inactive' };
+                  b.scrollIntoView({ behavior: 'instant', block: 'center' });
+                  b.click();
+                  return { ok: true, text: t };
+                }
+              }
+              return { error: 'submit_btn_not_found', scanned: btns.length };
+            }
+
+            return { error: 'unknown_action: ' + action };
+          } catch (e) {
+            return { error: 'inner_exception: ' + (e && e.message ? e.message : String(e)) };
+          }
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
     } else {
       // Forward to content script
       const tab = await resolveTab();
