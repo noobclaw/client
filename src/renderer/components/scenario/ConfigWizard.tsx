@@ -1390,16 +1390,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           不再写死"0-3 / X 条"。同一段同时服务 X + Binance auto_engage。 */}
                       <li>{(() => {
                         const platLabel = isBinanceAutoEngage ? '币安广场加密 KOL' : 'Web3 KOL';
-                        // v2.4.60: 不能写死"每天" — runInterval 决定调度频次。
-                        //   daily / daily_random → 每天
-                        //   30min/1h/3h/6h       → 每次运行(因为一天会跑多次)
-                        //   once                 → 本次
-                        const periodLabelZh = (runInterval === 'daily' || runInterval === 'daily_random')
-                          ? '每天'
-                          : (runInterval === 'once' ? '本次' : '每次运行');
-                        const periodLabelEn = (runInterval === 'daily' || runInterval === 'daily_random')
-                          ? 'Daily'
-                          : (runInterval === 'once' ? 'This run' : 'Per run');
+                        // v2.4.87: 用户反馈"应该是每次"。所有 interval 统一用"每次"
+                        // (counts 都是 per-run 的 [min, max] 随机抽样,跟一天跑几次没关系)
+                        const periodLabelZh = (runInterval === 'once') ? '本次' : '每次';
+                        const periodLabelEn = (runInterval === 'once') ? 'This run' : 'Per run';
                         return isZh
                           ? `· ${periodLabelZh}: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条 + 点赞 ${likeMin}-${likeMax} 条(已关注/feed 随机分配),随机顺序`
                           : `· ${periodLabelEn}: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies + ${likeMin}-${likeMax} likes (split followed/feed), randomized`;
@@ -1419,9 +1413,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <li>{isBinanceAutoEngage
                         ? (isZh ? '· 帖子/评论发布后无法撤回,建议第一次运行后人工检查 AI 生成的回复风格' : '· Posts/comments cannot be unposted — review AI output after first run to confirm tone')
                         : (isZh ? '· 推文发布后无法撤回,建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone')}</li>
-                      {!isBinanceAutoEngage && (
-                        <li>{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 x.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running'}</li>
-                      )}
+                      <li className="text-amber-600 dark:text-amber-400">{isZh
+                        ? (isBinanceAutoEngage
+                            ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 binance.com 能正常访问'
+                            : '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 x.com 能正常访问')
+                        : (isBinanceAutoEngage
+                            ? '⚠️ Mainland China users: ensure VPN / proxy is on and binance.com is accessible before running'
+                            : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running')}</li>
                       {(followMax > 5 || replyMax > 8) && (
                         <li className="text-amber-600 dark:text-amber-400">
                           {isZh
@@ -1454,6 +1452,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <li>{isZh ? '· 在「真实素材池」里写得越具体,AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output.'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开,不要关闭 binance.com 标签页' : '· Keep the browser open during the run; don\'t close the binance.com tab.'}</li>
                       <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查生成风格' : '· Posts cannot be unposted — review AI output after first run to confirm tone.'}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 binance.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and binance.com is accessible before running'}</li>
                     </>
                   ) : isAutoReply ? (
                     <>

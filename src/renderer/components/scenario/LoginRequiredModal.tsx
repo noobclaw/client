@@ -344,6 +344,13 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                     : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify x.com is reachable</>}
                 </li>
               )}
+              {isBinance && (
+                <li className="text-amber-600 dark:text-amber-400">
+                  ⚠️ {isZh
+                    ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启，且 binance.com 能正常访问</>
+                    : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify binance.com is reachable</>}
+                </li>
+              )}
             </ul>
           </div>
         </div>
