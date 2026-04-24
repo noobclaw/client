@@ -47,6 +47,11 @@ function sanitize(name: string): string {
     .trim() || 'unnamed';
 }
 
+// NOTE: Don't add `binance: '币安广场'` here — earlier binance task runs
+// landed in `<docs>/binance/...` (English fallback because the entry was
+// missing), so adding the Chinese name now would split historical data
+// across two folders. Keep the English fallback for binance to match what's
+// already on disk.
 const PLATFORM_NAMES: Record<string, string> = {
   xhs: '小红书',
   x: '推特',
@@ -54,6 +59,22 @@ const PLATFORM_NAMES: Record<string, string> = {
   tiktok: 'TikTok',
   youtube: 'YouTube',
 };
+
+/**
+ * Infer platform from task.scenario_id when caller didn't pass one.
+ * Without this, callers that defaulted to 'xhs' would land twitter/binance
+ * task artifacts under 小红书/, and the UI's "open output folder" button
+ * would open the wrong directory.
+ *
+ * All scenario ids follow `<platform>_<rest>` (xhs_*, x_*, binance_*).
+ */
+function inferPlatformFromTask(task: ScenarioTask): string {
+  const sid = (task && task.scenario_id) || '';
+  if (sid.startsWith('xhs_')) return 'xhs';
+  if (sid.startsWith('x_')) return 'x';
+  if (sid.startsWith('binance_')) return 'binance';
+  return 'xhs';
+}
 
 const TRACK_NAMES: Record<string, string> = {
   career_side_hustle: '副业赚钱',
@@ -99,7 +120,8 @@ const batchCache = new Map<string, number>();
 
 /** Get the output directory for a task run */
 export function getTaskOutputDir(task: ScenarioTask, platform?: string): string {
-  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const p = platform || inferPlatformFromTask(task);
+  const platformName = PLATFORM_NAMES[p] || p;
   const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
   const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
   const dayDir = path.join(getDocsRoot(), platformName, taskFolder, todayStr());
@@ -299,7 +321,8 @@ export function getArtifactsRootPath(): string {
 
 /** Create the task output directory immediately (called when task is created) */
 export function ensureTaskOutputDir(task: ScenarioTask, platform?: string): string {
-  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const p = platform || inferPlatformFromTask(task);
+  const platformName = PLATFORM_NAMES[p] || p;
   const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
   const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
   const dir = path.join(getDocsRoot(), platformName, taskFolder);
@@ -309,7 +332,8 @@ export function ensureTaskOutputDir(task: ScenarioTask, platform?: string): stri
 
 /** Get the task-level output directory path (for UI display) */
 export function getTaskDirPath(task: ScenarioTask, platform?: string): string {
-  const platformName = PLATFORM_NAMES[platform || 'xhs'] || platform || 'xhs';
+  const p = platform || inferPlatformFromTask(task);
+  const platformName = PLATFORM_NAMES[p] || p;
   const trackName = TRACK_NAMES[task.track] || task.track || 'unknown';
   const taskFolder = sanitize(task.id.slice(0, 8) + '_' + trackName);
   return path.join(getDocsRoot(), platformName, taskFolder);
