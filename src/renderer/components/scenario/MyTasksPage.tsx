@@ -323,7 +323,38 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     ) : (
                       <div>
                         {isZh ? '频次: ' : 'Frequency: '}
-                        ⏰ {scheduleLabel(task, isZh)} · {task.daily_count} {isZh ? '条/次' : '/run'}
+                        {(() => {
+                          // v2.4.60: 频次显示按场景类型展示真实用户配置,不再写死 "1 条/次"
+                          const sid = task.scenario_id;
+                          const t = task as any;
+                          const fMin = t.daily_follow_min, fMax = t.daily_follow_max;
+                          const rMin = t.daily_reply_min, rMax = t.daily_reply_max;
+                          const cMin = t.daily_count_min, cMax = t.daily_count_max;
+                          const pMin = t.daily_post_min, pMax = t.daily_post_max;
+                          // auto_engage(X 或 Binance):follow + reply 双范围
+                          if (sid === 'x_auto_engage' || sid === 'binance_square_auto_engage') {
+                            const fStr = (typeof fMin === 'number' && typeof fMax === 'number')
+                              ? `${fMin}-${fMax}` : `0-${task.daily_count || 3}`;
+                            const rStr = (typeof rMin === 'number' && typeof rMax === 'number')
+                              ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                          }
+                          // post_creator(Binance/X):daily_post_min/max
+                          if (sid === 'binance_square_post_creator' || sid === 'x_post_creator') {
+                            const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
+                              ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${pStr} ${isZh ? '条/次' : '/run'}`;
+                          }
+                          // XHS auto_reply:用 daily_count_min/max
+                          if ((task as any).scenario_id?.includes('auto_reply') ||
+                              (typeof cMin === 'number' && typeof cMax === 'number')) {
+                            const cStr = (typeof cMin === 'number' && typeof cMax === 'number')
+                              ? `${cMin}-${cMax}` : String(task.daily_count || 1);
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${cStr} ${isZh ? '篇/次' : 'articles/run'}`;
+                          }
+                          // 兜底:旧 daily_count 单值
+                          return `⏰ ${scheduleLabel(task, isZh)} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
+                        })()}
                       </div>
                     )}
                     <div className="text-[11px] text-gray-400">

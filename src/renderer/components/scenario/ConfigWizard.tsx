@@ -327,9 +327,22 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     || VISIBLE_TRACKS[0]
     || TRACK_PRESETS[0];
 
+  // v2.4.60+ 币安 token 默认池(top10 必出 + 10 个补充凑 20,排除稳定币)。
+  // 用户反馈:track preset 里继承过来的是开发关键词("indie hacker / solana rust"
+  // 这种),不是 cashtag 能用的代币 symbol。Binance 场景下必须锁定为真实币种。
+  // 数据来源:CoinGecko 2026-04 全球 spot volume top 50,挑非稳定币能在 binance
+  // square 触发 cashtag 流量入口的。
+  const BINANCE_TOKEN_DEFAULTS = [
+    // Top 10 by mkt cap (排除 USDT/USDC 等稳定币)
+    'BTC', 'ETH', 'BNB', 'SOL', 'XRP', 'DOGE', 'TON', 'TRX', 'ADA', 'AVAX',
+    // +10 多元化补充(L1/L2/Meme/AI/DeFi 各覆盖)
+    'LINK', 'DOT', 'NEAR', 'SUI', 'APT', 'ARB', 'OP', 'PEPE', 'WIF', 'INJ',
+  ];
+
   // Keywords
   const [customKeywordsText, setCustomKeywordsText] = useState<string>(() => {
     if (initialTask?.keywords && initialTask.keywords.length > 0) return initialTask.keywords.join(' ');
+    if (isBinancePlatform) return BINANCE_TOKEN_DEFAULTS.join(' ');
     return selectedTrack.keywords.join(' ');
   });
 
@@ -541,7 +554,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     const preset = TRACK_PRESETS.find(t => t.id === newTrackId);
     if (!preset) return;
     setTrackId(newTrackId);
-    setCustomKeywordsText(preset.keywords.join(' '));
+    // v2.4.60+ Binance scenarios 不用 track preset 的关键词(那些是开发词,
+    // 不能当 cashtag 触发流量),始终用真实 token symbol 池。
+    if (isBinancePlatform) {
+      setCustomKeywordsText(BINANCE_TOKEN_DEFAULTS.join(' '));
+    } else {
+      setCustomKeywordsText(preset.keywords.join(' '));
+    }
     // Same persona resolution as initial mount — Twitter scenarios get the
     // long persona TRIMMED at "口气：" (post-oriented, no need for reply
     // directives). XHS auto_reply gets the full long version. XHS viral
@@ -1091,8 +1110,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* ⭐ XHS auto-reply uses min/max range (v4.22.x): each
                   scheduled run picks a random count in [min, max] to
                   vary cadence and look less bot-like. Same UX pattern
-                  as x_auto_engage's follow / reply ranges. */}
-              {isAutoReply && (
+                  as x_auto_engage's follow / reply ranges.
+                  v2.4.60: 不能让 binance/twitter auto_engage 也走这个滑条 ——
+                  它们 workflow_type 也是 'auto_reply' 但用 follow/reply 双滑条,
+                  不需要 XHS 风格的"回复文章数"概念,否则会跟评论数滑条重复展示。 */}
+              {isAutoReply && !isAutoEngageScenario && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '每次运行回复文章数（随机区间）' : 'Articles per run (random range)'}
@@ -1136,7 +1158,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {/* Follow range — user picks min/max, system picks random in [min, max] each day */}
                   <div>
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                      {isZh ? '每天关注数量（随机区间）' : 'Daily follow count (random range)'}
+                      {isZh ? '每次运行关注数量（随机区间）' : 'Follow count per run (random range)'}
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -1311,15 +1333,24 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           不再写死"0-3 / X 条"。同一段同时服务 X + Binance auto_engage。 */}
                       <li>{(() => {
                         const platLabel = isBinanceAutoEngage ? '币安广场加密 KOL' : 'Web3 KOL';
+                        // v2.4.60: 不能写死"每天" — runInterval 决定调度频次。
+                        //   daily / daily_random → 每天
+                        //   30min/1h/3h/6h       → 每次运行(因为一天会跑多次)
+                        //   once                 → 本次
+                        const periodLabelZh = (runInterval === 'daily' || runInterval === 'daily_random')
+                          ? '每天'
+                          : (runInterval === 'once' ? '本次' : '每次运行');
+                        const periodLabelEn = (runInterval === 'daily' || runInterval === 'daily_random')
+                          ? 'Daily'
+                          : (runInterval === 'once' ? 'This run' : 'Per run');
                         return isZh
-                          ? `· 每天: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条(已关注/feed 随机分配),随机顺序`
-                          : `· Daily: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies (split followed/feed), randomized`;
+                          ? `· ${periodLabelZh}: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条(已关注/feed 随机分配),随机顺序`
+                          : `· ${periodLabelEn}: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies (split followed/feed), randomized`;
                       })()}</li>
                       <li>{(() => {
-                        const intervalRange = isBinanceAutoEngage ? '1-4' : '3-10';
                         return isZh
-                          ? `· 动作之间间隔 ${intervalRange} 分钟随机,模拟真人节奏`
-                          : `· ${intervalRange} min random jitter between actions to mimic human pacing`;
+                          ? `· 动作之间间隔 30 秒-10 分钟随机,模拟真人节奏`
+                          : `· 30s-10min random jitter between actions to mimic human pacing`;
                       })()}</li>
                       <li>{isZh ? '· 同一 KOL 7 天内不重复 engage,避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
                       <li>{(() => {
@@ -1469,15 +1500,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       // v2.4.59: 修 bug — 之前显示写死 "关注 0-3 人 + 评论 2 条",
                       // 没读用户在第 2 步设的 followMin/Max + replyMin/Max。
                       // 现在动态读 state,跟用户配置保持一致。
-                      // 动作间隔分平台差异:推特默认 3-10 分钟 / 币安默认 1-4 分钟。
+                      // v2.4.60+ 三平台统一动作间隔 30s-10min(用户反馈 8-30min 太严)
                       if (isAutoEngageScenario) {
                         const platLabel = isBinanceAutoEngage
                           ? (isZh ? '币安广场' : 'Binance Square')
                           : (isZh ? '推特' : 'Twitter');
-                        const intervalRange = isBinanceAutoEngage ? '1-4' : '3-10';
                         return isZh
-                          ? `⏰ ${intervalLabel} · ${platLabel}每天关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 ${intervalRange} 分钟）`
-                          : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day (random order, ${intervalRange} min between)`;
+                          ? `⏰ ${intervalLabel} · ${platLabel}每天关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 30 秒-10 分钟随机）`
+                          : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day (random order, 30s-10min between)`;
                       }
                       if (isXPostCreator) {
                         return isZh

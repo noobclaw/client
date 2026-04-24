@@ -32,7 +32,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const platformLabel = isX
     ? 'Twitter (x.com)'
     : isBinance
-      ? (isZh ? '币安广场 (binance.com)' : 'Binance Square (binance.com)')
+      ? (isZh ? '币安广场 (binance.com/zh-CN/square)' : 'Binance Square (binance.com/.../square)')
       : (isZh ? '小红书' : 'Xiaohongshu');
   const platformShort = isX
     ? 'Twitter'

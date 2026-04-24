@@ -168,8 +168,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="Daily engagement"
           titleZh="币安广场自动互动"
           titleEn="Binance Square Auto Engagement"
-          descZh="关注币安广场加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 8-30 分钟。"
-          descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 8-30 min spacing."
+          descZh="关注币安广场加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 30 秒-10 分钟随机。"
+          descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 30s-10min spacing."
           tagsLine={isZh ? '关注 · 回复 · 随机节奏' : 'Follow · Reply · Randomized pacing'}
           ctaZh={autoEngage ? '开始互动' : '敬请期待'}
           ctaEn={autoEngage ? 'Start' : 'Coming Soon'}
@@ -213,8 +213,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
             { icon: '💎', zh: '原生 cashtag 导流', en: 'Native cashtag → token page traffic' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
-            { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
-            { icon: '🌐', zh: '中英混合（自动跟随原帖语言）', en: 'zh/en/mixed (follows source language)' },
+            { icon: '🎲', zh: '随机节奏（动作间 30 秒-10 分钟随机）', en: 'Randomized pacing (30s-10min between actions)' },
             { icon: '🤝', zh: '加密 KOL 池', en: 'Crypto KOL pool' },
           ].map((p, i) => (
             <span

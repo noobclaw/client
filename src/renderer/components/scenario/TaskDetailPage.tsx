@@ -124,12 +124,12 @@ const STEP_NAMES_AUTOREPLY_EN = [
 // (KOL pool + follow + feed engage rather than article search/reply).
 const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
   '从后端拉 KOL 池 + 决定今日动作清单（关注 / 评论已关注 / 评论 feed 随机分布）',
-  '逐个执行动作：访问 profile → 关注 / 读最新推 → AI 起草回复 → 发推。动作间 3-10 分钟随机间隔',
+  '逐个执行动作：访问 profile → 关注 / 读最新推 → AI 起草回复 → 发推。动作间 30 秒-10 分钟随机间隔',
   '生成 Markdown 报告（含每个动作的目标 KOL / 推文 / 我发的回复）保存到本地任务目录',
 ];
 const STEP_NAMES_X_AUTO_ENGAGE_EN = [
   'Pull KOL pool from backend + plan today\'s actions (follow / reply followed / reply feed mix)',
-  'Execute actions one by one: visit profile → follow / read latest → AI drafts reply → post. 3-10 min random jitter between actions',
+  'Execute actions one by one: visit profile → follow / read latest → AI drafts reply → post. 30s-10min random jitter between actions',
   'Save Markdown report (each action\'s target KOL / tweet / posted reply) to the local task folder',
 ];
 // Twitter x_post_creator: 3 steps. Daily 1 tweet via random mechanism.
@@ -430,7 +430,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const platformBadge = (() => {
     if (scenario?.platform === 'x') return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
     if (scenario?.platform === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'XHS' };
-    if (scenario?.platform === 'binance') return { icon: '📊', label: isZh ? '币安广场' : 'Binance Square' };
+    if (scenario?.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场' : 'Binance Square' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -440,7 +440,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'x_post_creator')                 return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-    if (sid === 'binance_square_post_creator')    return { icon: '📊', label: isZh ? '币安广场自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isLinkModeForBadge && !isXTask && !isBinanceTask) return { icon: '🔗', label: isZh ? '指定链接 · 小红书爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance auto_reply
     // doesn't get mis-labeled as XHS auto_reply.
@@ -448,7 +448,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       if (isBinanceTask) return { icon: '💬', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
       return { icon: '💬', label: isZh ? '小红书自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
-    if (isBinanceTask) return { icon: '📊', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
+    if (isBinanceTask) return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isXTask)       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     return { icon: '🔥', label: isZh ? '自动批量 · 小红书爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
@@ -552,7 +552,35 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       {!isXTask && (
                         <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
                       )}
-                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(isZh ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' } : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' } as Record<string, string>)[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00')} · {task.daily_count} {isZh ? '条/次' : '/run'}</div>
+                      <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
+                        const intervalMap: Record<string, string> = isZh
+                          ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次', 'once': '不重复（手动触发）' }
+                          : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)', 'once': 'Once (manual)' };
+                        const intervalLabel = intervalMap[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00');
+                        // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
+                        const sid = task.scenario_id;
+                        const t = task as any;
+                        const fMin = t.daily_follow_min, fMax = t.daily_follow_max;
+                        const rMin = t.daily_reply_min, rMax = t.daily_reply_max;
+                        const cMin = t.daily_count_min, cMax = t.daily_count_max;
+                        const pMin = t.daily_post_min, pMax = t.daily_post_max;
+                        if (sid === 'x_auto_engage' || sid === 'binance_square_auto_engage') {
+                          const fStr = (typeof fMin === 'number' && typeof fMax === 'number')
+                            ? `${fMin}-${fMax}` : `0-${task.daily_count || 3}`;
+                          const rStr = (typeof rMin === 'number' && typeof rMax === 'number')
+                            ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
+                          return `${intervalLabel} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                        }
+                        if (sid === 'binance_square_post_creator' || sid === 'x_post_creator') {
+                          const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
+                            ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
+                          return `${intervalLabel} · ${pStr} ${isZh ? '条/次' : '/run'}`;
+                        }
+                        if (typeof cMin === 'number' && typeof cMax === 'number') {
+                          return `${intervalLabel} · ${cMin}-${cMax} ${isZh ? '篇/次' : 'articles/run'}`;
+                        }
+                        return `${intervalLabel} · ${task.daily_count || 1} ${isZh ? '条/次' : '/run'}`;
+                      })()}</div>
                     </>
                   )}
                 </>

@@ -202,8 +202,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '每日互动' : 'Daily engagement'}
           titleZh="推特自动互动"
           titleEn="X Auto Engagement"
-          descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 8-30 分钟。"
-          descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 8-30 min between actions."
+          descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 30 秒-10 分钟随机。"
+          descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 30s-10min between actions."
           loading={loading}
           scenario={autoEngage}
           existingTasks={autoEngage ? tasksByScenario[autoEngage.id] || [] : []}
@@ -265,8 +265,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
             { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
-            { icon: '🎲', zh: '随机节奏（动作间 8-30 分钟随机）', en: 'Randomized pacing (8-30 min between actions)' },
-            { icon: '🌐', zh: '中英混合（自动跟随原推语言）', en: 'zh/en/mixed (follows source language)' },
+            { icon: '🎲', zh: '随机节奏（动作间 30 秒-10 分钟随机）', en: 'Randomized pacing (30s-10min between actions)' },
             { icon: '🤝', zh: '500+ web3 KOL 池', en: '500+ Web3 KOL pool' },
           ].map((p, i) => (
             <span

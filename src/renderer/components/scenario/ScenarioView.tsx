@@ -52,7 +52,7 @@ interface ScenarioViewProps {
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
-  { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '📊', enabled: true },
+  { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
 ];
