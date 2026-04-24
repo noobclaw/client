@@ -676,6 +676,67 @@ function buildContext(
       }
     },
 
+    // v4.25+: ingest 当次抓到的原文 + 原图到爆文库(三平台共享池)。
+    // payload 形式:
+    //   ctx.pushToViralLibrary({ platform: 'x'|'xhs'|'binance', items: [
+    //     {
+    //       source_id: string,        // 必填,平台内唯一(tweet_id / note_id / post_id)
+    //       source_url: string,
+    //       title?: string,           // 推特/币安没有标题,可省
+    //       content: string,          // 必填,正文
+    //       author?: string,          // 显示名
+    //       author_handle?: string,   // @handle / 个人页 slug
+    //       image_base64s?: string[], // 后端会用 sharp 压到 ≤300KB 再传 R2
+    //       posted_at?: number|string,
+    //       views?: number, likes?: number, replies?: number,
+    //     }
+    //   ]})
+    // 后端会:
+    //   - 过滤政治/暴力/血腥/色情命中条目
+    //   - sanitize + 参数化入库防注入
+    //   - 单条最多 4 张图,每张压到 ≤300KB
+    //   - 一次最多 ingest 5 条(配置在 /api/viral/library/config)
+    //   - 重复 source_id 只更新 metrics 不覆盖正文/图
+    pushToViralLibrary: async (payload: { platform: 'x' | 'xhs' | 'binance'; items: any[] }) => {
+      if (!payload || !payload.platform || !Array.isArray(payload.items) || payload.items.length === 0) {
+        return { ok: false, reason: 'invalid_payload' };
+      }
+      const authToken = getNoobClawAuthToken();
+      if (!authToken) {
+        coworkLog('INFO', 'phaseRunner', 'pushToViralLibrary skipped (no auth token)');
+        return { ok: false, reason: 'no_auth_token' };
+      }
+      try {
+        const baseUrl = 'https://api.noobclaw.com';
+        const resp = await fetch(baseUrl + '/api/viral/library/ingest', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({
+            platform: payload.platform,
+            items: payload.items,
+          }),
+        });
+        if (!resp.ok) {
+          const errText = await resp.text().catch(() => '');
+          coworkLog('WARN', 'phaseRunner', 'pushToViralLibrary http error', {
+            status: resp.status, body: errText.slice(0, 200),
+          });
+          return { ok: false, reason: 'http_' + resp.status };
+        }
+        const data = await resp.json();
+        coworkLog('INFO', 'phaseRunner', 'pushToViralLibrary ok', {
+          accepted: data.accepted, items: data.items?.length,
+        });
+        return { ok: true, accepted: data.accepted || 0, items: data.items || [] };
+      } catch (err) {
+        coworkLog('WARN', 'phaseRunner', 'pushToViralLibrary failed', { err: String(err) });
+        return { ok: false, reason: String(err).slice(0, 200) };
+      }
+    },
+
     saveDrafts: async (rawDrafts: any[]) => {
       const drafts: Draft[] = rawDrafts.map(d => ({
         id: crypto.randomUUID(),
