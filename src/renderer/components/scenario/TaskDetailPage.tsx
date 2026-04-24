@@ -646,15 +646,18 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             ) : (
               <>
                 <span className="text-xs text-gray-400">
-                  {isLinkModeForStats
-                    ? (isZh ? '✋ 一次性手动' : '✋ Manual one-shot')
-                    : task.active ? (() => {
-                        const interval = (task as any).run_interval || 'daily';
-                        const map: Record<string, string> = isZh
-                          ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' }
-                          : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' };
-                        return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 自动运行' : ' Scheduled');
-                      })() : (isZh ? '待命' : 'Standby')}
+                  {(() => {
+                    const interval = (task as any).run_interval || 'daily';
+                    // v2.4.62: 'once'(手动触发)就别说"自动运行"和"下次运行" — 没意义
+                    if (interval === 'once' || isLinkModeForStats) {
+                      return isZh ? '✋ 手动触发' : '✋ Manual trigger';
+                    }
+                    if (!task.active) return isZh ? '待命' : 'Standby';
+                    const map: Record<string, string> = isZh
+                      ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' }
+                      : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' };
+                    return (map[interval] || (isZh ? '每天' : 'Daily')) + (isZh ? ' 自动运行' : ' Scheduled');
+                  })()}
                 </span>
                 <button type="button" onClick={handleRunNow}
                   className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors">
@@ -676,9 +679,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         </div>
       </div>
 
-      {/* Stats — link-mode tasks are one-shot so the "下次运行" stat is
-           meaningless; show only the first four for them. */}
-      <div className={`grid grid-cols-2 ${isLinkModeForStats ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} gap-3 mb-6`}>
+      {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
+           so the "下次运行" stat is meaningless; show only the first four. */}
+      <div className={`grid grid-cols-2 ${(isLinkModeForStats || (task as any).run_interval === 'once') ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} gap-3 mb-6`}>
         <StatCard label={isZh ? '累计采集' : 'Collected'} value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
         <StatCard label={isZh ? '生成草稿' : 'Drafts'} value={stats?.draft_count ?? 0} />
         <StatCard label={isZh ? '已推送' : 'Pushed'} value={stats?.pushed_draft_count ?? 0} />
@@ -692,7 +695,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           onClick={onOpenHistory}
           actionLabel={isZh ? '查看历史运行记录 →' : 'View run history →'}
         />
-        {!isLinkModeForStats && (
+        {!isLinkModeForStats && (task as any).run_interval !== 'once' && (
           <StatCard
             label={isZh ? '下次运行' : 'Next Run'}
             value={(() => {
