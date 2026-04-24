@@ -53,7 +53,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   // floor is bumped each release that ships a behavior-affecting
   // extension change (see chrome-extension/manifest.json version).
   // Both XHS and Twitter pre-run modals run this check.
-  const MIN_EXTENSION_VERSION = '1.2.7';
+  // v2.4.63+ bumped to 1.2.9 因为 binance auto_engage / post_creator 必须用
+  // chrome-extension 1.2.9 新加的 binance_dom_action 命令(CSP-safe DOM 操作),
+  // 老版本会在 binance.com 撞 CSP 报错。XHS / Twitter 不依赖这个,但下限统一
+  // 拉到 1.2.9 让用户看到提醒尽快升,避免遇到币安场景才发现要更新。
+  const MIN_EXTENSION_VERSION = '1.2.9';
   const [outdatedExts, setOutdatedExts] = useState<Array<{ version: string }>>([]);
   // True when an extension is connected but hasn't reported its version yet
   // AND we're still inside the handshake grace window. The UI shows a

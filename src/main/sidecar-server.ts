@@ -1191,7 +1191,7 @@ const server = http.createServer(async (req, res) => {
           }
 
           // ── App info ──
-          case 'app:getVersion': return writeJSON(res, 200, '2.4.63');
+          case 'app:getVersion': return writeJSON(res, 200, '2.4.64');
           case 'app:getSystemLocale': return writeJSON(res, 200, Intl.DateTimeFormat().resolvedOptions().locale || 'en-US');
 
           // ── Session title ──
@@ -1830,7 +1830,7 @@ const server = http.createServer(async (req, res) => {
 
     // ── Version ──
     if (pathname === '/api/version') {
-      return writeJSON(res, 200, { version: '2.4.63', mode: 'tauri-sidecar' });
+      return writeJSON(res, 200, { version: '2.4.64', mode: 'tauri-sidecar' });
     }
 
     // ── 404 ──
