@@ -154,6 +154,32 @@ const STEP_NAMES_X_LINK_REWRITE_EN = [
   'AI rewrites in your voice + posts each (10-30 min spacing)',
   'Save Markdown report to local task folder',
 ];
+// Binance Square auto_engage: 3 steps. KOL pool plan + action loop + report.
+// 跟 x_auto_engage 同形态（都是 follow + reply 混合），但 KOL 来自 /square/following
+// 发现页 inline 关注，不依赖外部 KOL 池。
+const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [
+  '准备：装载 KOL 池 + 决定本次动作清单（关注 N 个 / 评论 M 条，比例由风控随机分配）',
+  '逐个执行：访问 /square/following 关注 / 扫 feed → AI 起草回复 → 发评论。动作间 30 秒-10 分钟随机间隔',
+  '生成 Markdown 报告（含每个动作的目标 KOL / 帖子 / 我发的回复）保存到本地任务目录',
+];
+const STEP_NAMES_BINANCE_AUTO_ENGAGE_EN = [
+  'Plan: load KOL pool + decide today\'s actions (N follows / M replies, mix decided by risk caps)',
+  'Execute one by one: visit /square/following to follow / scan feed → AI drafts reply → post. 30s-10min random jitter',
+  'Save Markdown report (each action\'s KOL / post / posted reply) to the local task folder',
+];
+// Binance Square post_creator: 4 steps per post. Daily 1-N posts.
+const STEP_NAMES_BINANCE_POST_CREATOR_ZH = [
+  '打开广场首页 + 选 token + 选钩子（数据 / 观点 / 情绪 / 提问 等）',
+  '调 AI 生成 100-2100 字短评（reasoner 模式，质量优先）',
+  '点侧边栏「发文」打开模态框 + 等 loading overlay 消失 + 写入 ProseMirror 编辑器',
+  '点模态框内「发文」按钮发布（按钮 inactive 时 React 同步重试 3 次）',
+];
+const STEP_NAMES_BINANCE_POST_CREATOR_EN = [
+  'Open Square home + pick token + pick hook (data / opinion / sentiment / question / etc.)',
+  'AI generates 100-2100 char short post (reasoner model, quality-first)',
+  'Click sidebar "Post" to open modal + wait for loading overlay + write into ProseMirror editor',
+  'Click "Post" button inside modal to publish (retries x3 on btn_inactive while React syncs)',
+];
 
 interface Props {
   task: Task;
@@ -194,6 +220,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'x_auto_engage') return isZh ? STEP_NAMES_X_AUTO_ENGAGE_ZH : STEP_NAMES_X_AUTO_ENGAGE_EN;
     if (sid === 'x_post_creator') return isZh ? STEP_NAMES_X_POST_CREATOR_ZH : STEP_NAMES_X_POST_CREATOR_EN;
     if (sid === 'x_link_rewrite') return isZh ? STEP_NAMES_X_LINK_REWRITE_ZH : STEP_NAMES_X_LINK_REWRITE_EN;
+    if (sid === 'binance_square_auto_engage') return isZh ? STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH : STEP_NAMES_BINANCE_AUTO_ENGAGE_EN;
+    if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -243,7 +271,32 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         if (prog.status === 'running') setRunning(true);
       }
     }).catch(() => {});
+    // v2.4.67 fallback: getRunProgress() can return null even when the task
+    // is genuinely running (e.g. progress channel hasn't pushed yet, runner
+    // restarted while task was mid-flight, etc.). The list page reads
+    // getRunningTaskIds() as ground truth — mirror that here so the detail
+    // page doesn't show "等待前一步 / 24 小时后运行" while the list shows
+    // the same task as 运行中. Polled every 3s to match list cadence.
+    scenarioService.getRunningTaskIds().then(ids => {
+      if (!mountedRef.current) return;
+      if (Array.isArray(ids) && ids.indexOf(task.id) >= 0) setRunning(true);
+    }).catch(() => {});
   }, [refreshData, task.id]);
+
+  // v2.4.67: ongoing sync — if list-side reports our task as running but
+  // local state thinks otherwise, flip running=true so the step panel
+  // starts polling progress. Stops when local running already true.
+  useEffect(() => {
+    if (running) return;
+    let cancelled = false;
+    const tick = async () => {
+      const ids = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
+      if (cancelled || !mountedRef.current) return;
+      if (Array.isArray(ids) && ids.indexOf(task.id) >= 0) setRunning(true);
+    };
+    const h = setInterval(tick, 3000);
+    return () => { cancelled = true; clearInterval(h); };
+  }, [running, task.id]);
 
   // ── Poll progress logs every 2s (display only, NOT for running state) ──
   //
@@ -858,7 +911,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   </div>
                 ) : (
                   <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
-                    {stepNum === 1 && !running ? (() => {
+                    {running ? (
+                      // v2.4.67: 任务正在跑但这一步还没拿到 log 事件 — 区分
+                      // step 1 (尚未启动 / 正在初始化) 和 step >1 (等前一步)
+                      stepNum === 1
+                        ? (isZh ? '⏳ 正在启动…(后端流式日志稍候)' : '⏳ Starting…')
+                        : (isZh ? '等待前一步' : 'Waiting for previous step')
+                    ) : stepNum === 1 ? (() => {
                       const interval = (task as any).run_interval || 'daily';
                       // Calculate next run time
                       const lastRun = stats?.last_run_at;
