@@ -332,13 +332,13 @@ function platformLabelForPattern(patternStr) {
   // Color stays brand green for "this is NoobClaw automation" recognition.
   const color = 'green';
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🤖 小红书任务 · NoobClaw', color };
+    return { title: '🤖 小红书-Noob 任务', color };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🤖 推特任务 · NoobClaw', color };
+    return { title: '🤖 推特-Noob 任务', color };
   }
   if (/binance\.com/i.test(patternStr)) {
-    return { title: '🤖 币安广场任务 · NoobClaw', color };
+    return { title: '🤖 币安广场-Noob 任务', color };
   }
   return { title: '🤖 NoobClaw 任务', color };
 }
@@ -799,7 +799,6 @@ async function executeCommand(msg) {
 
             if (action === 'submit_short_editor') {
               const accepted = cfg.acceptedTexts || ['发文', '回复', 'Post', 'Reply', 'Publish'];
-              // 找所有 .short-editor-inner (可能有多个: 嵌套 / 多 modal)
               const modals = document.querySelectorAll('.short-editor-inner');
               if (!modals.length) return { error: 'modal_not_found' };
               const allBtns = [];
@@ -808,7 +807,6 @@ async function executeCommand(msg) {
                 const btns = m.querySelectorAll('button');
                 for (const b of btns) allBtns.push(b);
               }
-              // 严格 trim + 去掉零宽空格 + 兜底 substring(防止"回复 (5)"这种)
               const norm = (s) => (s || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
               for (const b of allBtns) {
                 const t = norm(b.textContent);
@@ -817,7 +815,6 @@ async function executeCommand(msg) {
                 for (const a of accepted) {
                   if (t === a) { matched = true; break; }
                 }
-                // 第二轮: substring 模糊匹配(textContent 长度 ≤ accepted 长度 +5,避免误匹配长按钮)
                 if (!matched) {
                   for (const a of accepted) {
                     if (t.length > 0 && t.length <= a.length + 5 && t.indexOf(a) >= 0) {
@@ -827,7 +824,10 @@ async function executeCommand(msg) {
                 }
                 if (matched) {
                   if (b.disabled) return { error: 'btn_disabled', text: t };
-                  if ((b.className || '').indexOf('inactive') >= 0) return { error: 'btn_inactive', text: t };
+                  if ((b.className || '').indexOf('inactive') >= 0) {
+                    // v1.2.10+: 不是直接报错,告诉调用方按钮存在但 inactive,让其重试
+                    return { error: 'btn_inactive', text: t, retryable: true };
+                  }
                   b.scrollIntoView({ behavior: 'instant', block: 'center' });
                   b.click();
                   return { ok: true, text: t };
@@ -837,7 +837,7 @@ async function executeCommand(msg) {
                 error: 'submit_btn_not_found',
                 scanned: allBtns.length,
                 modals: modals.length,
-                btn_texts: debugTexts.slice(0, 15), // 前 15 个看看
+                btn_texts: debugTexts.slice(0, 15),
               };
             }
 
