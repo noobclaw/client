@@ -663,6 +663,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           daily_like_min: likeMin,
           daily_like_max: likeMax,
         } : {}),
+        // v2.5: XHS auto_reply 也支持 follow + like 范围 slider(reply 数量
+        // 用 xhsReplyMin/Max 不重复传)。orchestrator 读这两组 cap 后,
+        // 在每篇文章回复完按概率触发关注 / 点赞,封顶 randInt(min, max)。
+        ...((isAutoReply && !isAutoEngageScenario) ? {
+          daily_follow_min: followMin,
+          daily_follow_max: followMax,
+          daily_like_min: likeMin,
+          daily_like_max: likeMax,
+        } : {}),
       } as any);
     } catch (err) {
       console.error('[ConfigWizard] save failed:', err);
@@ -1189,11 +1198,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Auto-engage daily follow + reply count sliders.
-                  Same UI for x_auto_engage AND binance_square_auto_engage —
-                  both orchestrators read task.daily_follow_min/max +
-                  task.daily_reply_min/max in the same shape (v2.4.59+). */}
-              {isAutoEngageScenario && (
+              {/* Daily follow + (reply) + like count sliders.
+                  - x_auto_engage / binance_square_auto_engage: full set
+                    (follow + reply + like) — orchestrators read
+                    task.daily_{follow,reply,like}_min/max (v2.4.59+).
+                  - xhs_auto_reply_universal (v2.5+): follow + like only —
+                    orchestrator reads task.daily_{follow,like}_min/max;
+                    reply count is the article-count slider above. */}
+              {(isAutoEngageScenario || isAutoReply) && (
                 <>
                   {/* Follow range — user picks min/max, system picks random in [min, max] each day */}
                   <div>
@@ -1229,39 +1241,42 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   </div>
 
-                  {/* Reply range */}
-                  <div>
-                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                      {isZh ? '每次运行评论数量（随机区间）' : 'Reply count per run (random range)'}
-                    </label>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
+                  {/* Reply range — auto_engage scenarios only (XHS auto_reply
+                      uses xhsReplyMin/Max above for "articles per run") */}
+                  {isAutoEngageScenario && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '每次运行评论数量（随机区间）' : 'Reply count per run (random range)'}
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                            {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
+                          </div>
+                          <input
+                            type="range" min={1} max={REPLY_HARDCAP} value={replyMin}
+                            onChange={e => setReplyMin(parseInt(e.target.value, 10))}
+                            className="w-full"
+                          />
                         </div>
-                        <input
-                          type="range" min={1} max={REPLY_HARDCAP} value={replyMin}
-                          onChange={e => setReplyMin(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
+                        <div>
+                          <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                            {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
+                          </div>
+                          <input
+                            type="range" min={1} max={REPLY_HARDCAP} value={replyMax}
+                            onChange={e => setReplyMax(parseInt(e.target.value, 10))}
+                            className="w-full"
+                          />
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
-                        </div>
-                        <input
-                          type="range" min={1} max={REPLY_HARDCAP} value={replyMax}
-                          onChange={e => setReplyMax(parseInt(e.target.value, 10))}
-                          className="w-full"
-                        />
+                      <div className="text-[11px] text-gray-400 mt-1">
+                        {isZh
+                          ? `每次运行随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
+                          : `Random ${replyMin}-${replyMax} replies/day (1-${REPLY_HARDCAP}, larger = higher ban risk)`}
                       </div>
                     </div>
-                    <div className="text-[11px] text-gray-400 mt-1">
-                      {isZh
-                        ? `每次运行随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
-                        : `Random ${replyMin}-${replyMax} replies/day (1-${REPLY_HARDCAP}, larger = higher ban risk)`}
-                    </div>
-                  </div>
+                  )}
 
                   {/* v2.4.83: Like range — 跟 follow / reply 同样形态 */}
                   <div>
