@@ -7,6 +7,11 @@ const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 let port = null;
 let connected = false;
 
+// v1.2.11: zombie-port 自愈用 — 必须在顶层 connect() 调用(下面那行)
+// 之前声明,否则 TDZ。同坑前科:fd4e1ce 的 v1.2.7 修过一次。
+let connectAttemptStartedAt = 0;
+const STUCK_PORT_TIMEOUT_MS = 15000;
+
 // Auto-connect on browser startup, install, and periodic keepalive.
 // MV3 service workers can be killed any time; relying ONLY on onStartup
 // loses the connection until the next alarm fire. Hence three triggers:
@@ -56,14 +61,9 @@ let reconnectTimer = null;
 let reconnectDelay = 1000;
 const MAX_RECONNECT_DELAY = 30000;
 
-// v1.2.11: 跟踪本次 connectNative attempt 起始时间。Chrome 偶尔会
-// 把 port 对象建出来但 NMH stdin/stdout 没真正接通,onDisconnect 也不
-// 触发 — port 永远"活着"但 connected 永远 false。原 connect() 头一句
-// `if (port) return` 在这种 zombie 状态下短路所有重试 → 用户必须重启
-// 客户端才能恢复。新版:port 存活 > 15 秒还没收到 bridge_status 就强行
-// disconnect + 重置,下一次 alarm 自动重试。
-let connectAttemptStartedAt = 0;
-const STUCK_PORT_TIMEOUT_MS = 15000;
+// v1.2.11 自愈逻辑 — connectAttemptStartedAt + STUCK_PORT_TIMEOUT_MS
+// 已经移到文件顶部 (let port 旁边),否则 TDZ:顶层 connect() 调用早于
+// 这两行声明执行。
 
 function connect() {
   // 自愈:zombie port 检测
