@@ -58,7 +58,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     name_en: 'Binance Square Auto Post',
     description_zh: '每日 AI 写一条 100-300 字加密快评,自动带 $TOKEN cashtag,发到币安广场。',
     description_en: 'Daily AI-drafted 100-300 char crypto market note, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
-    icon: '📊',
+    icon: '🔶',
     default_config: {
       keywords: ['BTC', 'ETH', 'SOL'],
       persona: '中文 web3 KOL,分享市场观察 / 链上数据 / 行业 alpha,语气克制、不喊单',
@@ -84,8 +84,41 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     || scenarios.find(s => (s.platform as any) === 'binance' && s.workflow_type === 'viral_production')
     || POST_CREATOR_FALLBACK;
 
-  // auto_engage doesn't have a backend scenario yet — placeholder for now
-  const autoEngage = scenarios.find(s => s.id === 'binance_square_auto_engage') || null;
+  // v2.4.59: auto_engage 也加 fallback,避免 backend scenarios 异步加载完成前
+  // 卡片是 disabled 状态(用户反馈"开始互动按钮要等几秒才亮")。
+  const AUTO_ENGAGE_FALLBACK: Scenario = {
+    id: 'binance_square_auto_engage',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'auto_reply' as any,
+    category: 'engagement',
+    name_zh: '币安广场自动互动',
+    name_en: 'Binance Square Auto Engagement',
+    description_zh: '每天关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
+    description_en: 'Daily follow Binance Square crypto KOLs + AI-drafted replies to hot posts.',
+    icon: '🤝',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 用户,关注 BTC/ETH/链上数据/DeFi/Memecoin',
+      daily_count: 2,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 30,
+      min_scroll_delay_ms: 1500, max_scroll_delay_ms: 3500,
+      read_dwell_min_ms: 8000, read_dwell_max_ms: 18000,
+      max_run_duration_ms: 7200000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/zh-CN/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const autoEngage =
+    scenarios.find(s => s.id === 'binance_square_auto_engage')
+    || AUTO_ENGAGE_FALLBACK;
 
   // (previously we polled running task ids to drive the inline running-glow
   //  on the "已有任务" list. That list was removed — MyTasksPage is the
@@ -135,8 +168,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="Daily engagement"
           titleZh="币安广场自动互动"
           titleEn="Binance Square Auto Engagement"
-          descZh="关注加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 8-30 分钟。"
-          descEn="Follow crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 8-30 min spacing."
+          descZh="关注币安广场加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 8-30 分钟。"
+          descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 8-30 min spacing."
           tagsLine={isZh ? '关注 · 回复 · 随机节奏' : 'Follow · Reply · Randomized pacing'}
           ctaZh={autoEngage ? '开始互动' : '敬请期待'}
           ctaEn={autoEngage ? 'Start' : 'Coming Soon'}

@@ -300,6 +300,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Binance wizard.
   const isXOrBinance = isXPlatform || isBinancePlatform;
   const isXAutoEngage = scenario.id === 'x_auto_engage';
+  // v2.4.59: Binance auto_engage 复用 X 的 follow/reply 滑条 + save 字段
+  const isBinanceAutoEngage = scenario.id === 'binance_square_auto_engage';
+  const isAutoEngageScenario = isXAutoEngage || isBinanceAutoEngage;
   const isXPostCreator = scenario.id === 'x_post_creator';
   const isBinancePostCreator = scenario.id === 'binance_square_post_creator';
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
@@ -599,7 +602,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           daily_post_max: postCountMax,
         } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
-        ...(isXAutoEngage ? {
+        // v2.4.59: Binance auto_engage 也用同一组 follow_min/max + reply_min/max
+        ...(isAutoEngageScenario ? {
           daily_follow_min: followMin,
           daily_follow_max: followMax,
           daily_reply_min: replyMin,
@@ -1123,11 +1127,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Twitter daily reply count slider (1-10) for x_auto_engage.
-                  Drives task.daily_count which the orchestrator reads as
-                  TOTAL_REPLIES. Each reply slot independently picks
-                  reply_followed vs reply_feed. */}
-              {isXAutoEngage && (
+              {/* Auto-engage daily follow + reply count sliders.
+                  Same UI for x_auto_engage AND binance_square_auto_engage —
+                  both orchestrators read task.daily_follow_min/max +
+                  task.daily_reply_min/max in the same shape (v2.4.59+). */}
+              {isAutoEngageScenario && (
                 <>
                   {/* Follow range — user picks min/max, system picks random in [min, max] each day */}
                   <div>
@@ -1197,26 +1201,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   </div>
 
-                  {/* Risk warning + summary */}
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-                    <div className="text-xs font-semibold text-amber-700 dark:text-amber-400 mb-2">
-                      {isZh ? '⚠️ 数值越大封号风险越高' : '⚠️ Higher numbers = higher ban risk'}
-                    </div>
-                    <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                      <li>{isZh
-                        ? `· 当前: 关注 ${followMin}-${followMax} / 评论 ${replyMin}-${replyMax} 条 / 天`
-                        : `· Current: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day`}</li>
-                      <li>{isZh ? '· 所有动作随机顺序，每个动作之间 3-10 分钟随机间隔' : '· All actions in random order, 3-10 min random spacing'}</li>
-                      <li>{isZh ? '· 同一 KOL 7 天内不重复 engage' : '· No re-engaging same KOL within 7 days'}</li>
-                      {(followMax > 5 || replyMax > 8) && (
-                        <li className="text-amber-600 dark:text-amber-400">
-                          {isZh
-                            ? `· ⚠️ 当前配置较激进 (关注 ${followMax} / 评论 ${replyMax})，新号建议先用保守值 (关注 ≤ 3 / 评论 ≤ 5) 跑 1-2 周`
-                            : `· ⚠️ Aggressive config (follows ${followMax} / replies ${replyMax}). New accounts: start ≤ 3 follows + ≤ 5 replies/day for 1-2 weeks`}
-                        </li>
-                      )}
-                    </ul>
-                  </div>
+                  {/* v2.4.59: 删除原来步骤 2 的"数值越大风险越高"框 ——
+                      跟步骤 3 的"安全提示"信息重复(用户反馈)。当前配置文本
+                      已经在滑条下方的提示文案里展示;激进警告改放到步骤 3
+                      安全提示里(条件触发)。 */}
                 </>
               )}
               {isXPostCreator && (
@@ -1317,16 +1305,42 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isZh ? '⚠️ 安全提示' : '⚠️ Safety Notice'}
                 </div>
                 <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                  {isXAutoEngage ? (
+                  {isAutoEngageScenario ? (
                     <>
-                      <li>{isZh
-                        ? `· 每天: 关注 0-3 个 Web3 KOL + 评论 ${dailyCount} 条（已关注/feed 随机分配），随机顺序`
-                        : `· Daily: follow 0-3 web3 KOLs + ${dailyCount} replies (split followed/feed), randomized order`}</li>
-                      <li>{isZh ? '· 动作之间间隔 3-10 分钟随机，模拟真人节奏' : '· 3-10 min random jitter between actions to mimic human pacing'}</li>
-                      <li>{isZh ? '· 同一 KOL 7 天内不重复 engage，避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
-                      <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
-                      <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone'}</li>
-                      <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启，且 x.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running'}</li>
+                      {/* v2.4.59: 改成动态读 followMin/Max + replyMin/Max 跟用户配置一致,
+                          不再写死"0-3 / X 条"。同一段同时服务 X + Binance auto_engage。 */}
+                      <li>{(() => {
+                        const platLabel = isBinanceAutoEngage ? '币安广场加密 KOL' : 'Web3 KOL';
+                        return isZh
+                          ? `· 每天: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条(已关注/feed 随机分配),随机顺序`
+                          : `· Daily: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies (split followed/feed), randomized`;
+                      })()}</li>
+                      <li>{(() => {
+                        const intervalRange = isBinanceAutoEngage ? '1-4' : '3-10';
+                        return isZh
+                          ? `· 动作之间间隔 ${intervalRange} 分钟随机,模拟真人节奏`
+                          : `· ${intervalRange} min random jitter between actions to mimic human pacing`;
+                      })()}</li>
+                      <li>{isZh ? '· 同一 KOL 7 天内不重复 engage,避免被识别为 follow farming' : '· No re-engaging same KOL within 7 days to avoid follow-farming detection'}</li>
+                      <li>{(() => {
+                        const platTab = isBinanceAutoEngage ? 'binance.com/square' : 'x.com';
+                        return isZh
+                          ? `· 运行期间请保持浏览器打开,不要关闭 ${platTab} 标签页`
+                          : `· Keep the browser open during the run; don't close the ${platTab} tab`;
+                      })()}</li>
+                      <li>{isBinanceAutoEngage
+                        ? (isZh ? '· 帖子/评论发布后无法撤回,建议第一次运行后人工检查 AI 生成的回复风格' : '· Posts/comments cannot be unposted — review AI output after first run to confirm tone')
+                        : (isZh ? '· 推文发布后无法撤回,建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone')}</li>
+                      {!isBinanceAutoEngage && (
+                        <li>{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 x.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running'}</li>
+                      )}
+                      {(followMax > 5 || replyMax > 8) && (
+                        <li className="text-amber-600 dark:text-amber-400">
+                          {isZh
+                            ? `⚠️ 当前配置偏激进 (关注 ${followMax} / 评论 ${replyMax}),新号建议先用保守值 (关注 ≤ 3 / 评论 ≤ 5) 跑 1-2 周再调上`
+                            : `⚠️ Aggressive config (follows ${followMax} / replies ${replyMax}). New accounts: start ≤ 3 follows + ≤ 5 replies/day for 1-2 weeks`}
+                        </li>
+                      )}
                     </>
                   ) : isXPostCreator ? (
                     <>
@@ -1452,10 +1466,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             'daily_random': 'Once daily (random time)',
                           } as Record<string, string>
                       )[runInterval] || runInterval;
-                      if (isXAutoEngage) {
+                      // v2.4.59: 修 bug — 之前显示写死 "关注 0-3 人 + 评论 2 条",
+                      // 没读用户在第 2 步设的 followMin/Max + replyMin/Max。
+                      // 现在动态读 state,跟用户配置保持一致。
+                      // 动作间隔分平台差异:推特默认 3-10 分钟 / 币安默认 1-4 分钟。
+                      if (isAutoEngageScenario) {
+                        const platLabel = isBinanceAutoEngage
+                          ? (isZh ? '币安广场' : 'Binance Square')
+                          : (isZh ? '推特' : 'Twitter');
+                        const intervalRange = isBinanceAutoEngage ? '1-4' : '3-10';
                         return isZh
-                          ? `⏰ ${intervalLabel} · 关注 0-3 人 + 评论 ${dailyCount} 条（随机顺序，动作间隔 3-10 分钟）`
-                          : `⏰ ${intervalLabel} · follow 0-3 + ${dailyCount} replies (random order, 3-10 min between)`;
+                          ? `⏰ ${intervalLabel} · ${platLabel}每天关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 ${intervalRange} 分钟）`
+                          : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day (random order, ${intervalRange} min between)`;
                       }
                       if (isXPostCreator) {
                         return isZh
@@ -1464,8 +1486,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       }
                       if (isBinancePostCreator) {
                         return isZh
-                          ? `⏰ ${intervalLabel} · 每日 1 条币安广场短评 (100-300 字 + cashtag)`
-                          : `⏰ ${intervalLabel} · 1 Binance Square note/day (100-300 chars + cashtag)`;
+                          ? `⏰ ${intervalLabel} · 每日 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条币安广场短评 (100-300 字 + cashtag)`
+                          : `⏰ ${intervalLabel} · ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} Binance Square notes/day (100-300 chars + cashtag)`;
                       }
                       if (isLinkRewriteScenario) {
                         return isZh
@@ -1473,11 +1495,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           : `🔗 One-shot manual · ${parsedUrls.length} URLs (10-30 min spacing)`;
                       }
                       if (isAutoReply) {
-                        const minTotal = dailyCount;          // 每篇固定 1 文章评论
-                        const maxTotal = dailyCount * 2;      // 每篇最多 + 1 用户回复
+                        // v2.4.59: XHS auto_reply 用 xhsReplyMin/Max 区间,不再固定 dailyCount
+                        const minArticles = xhsReplyMin;
+                        const maxArticles = xhsReplyMax;
+                        const minTotal = minArticles;          // 每篇固定 1 文章评论
+                        const maxTotal = maxArticles * 2;      // 每篇最多 + 1 用户回复
                         return isZh
-                          ? `⏰ ${intervalLabel} · 回复 ${dailyCount} 篇文章 · 共 ${minTotal}~${maxTotal} 条评论（每篇 1 文章评论 + 0~1 用户回复，随机决定）`
-                          : `⏰ ${intervalLabel} · ${dailyCount} articles · ${minTotal}–${maxTotal} posts total (1 article comment + 0–1 user-comment reply each, randomized)`;
+                          ? `⏰ ${intervalLabel} · 每次回复 ${minArticles}-${maxArticles} 篇文章(随机) · 共 ${minTotal}-${maxTotal} 条评论(每篇 1 文章评论 + 0~1 用户回复)`
+                          : `⏰ ${intervalLabel} · ${minArticles}-${maxArticles} articles/run (random) · ${minTotal}-${maxTotal} replies total (1 article comment + 0-1 user reply each)`;
                       }
                       return `⏰ ${intervalLabel} · ${dailyCount} ${isZh ? '条/次' : '/run'} · ${variants} ${isZh ? '份改写' : 'rewrites'}`;
                     })()}

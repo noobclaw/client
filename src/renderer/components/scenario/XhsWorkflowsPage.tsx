@@ -305,10 +305,36 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Four-card grid — all XHS tools grouped together at the top:
-          批量仿写 · 指定链接 · 敏感词检测 · 自动回复 */}
+      {/* Four-card grid — v2.4.59: 用户要求自动互动放第一(跟币安/推特页一致)。
+          顺序: 自动互动 · 批量仿写 · 指定链接 · 敏感词检测 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* 1. Batch rewrite (keyword) */}
+        {/* 1. Auto-reply (moved from 4th to 1st per user feedback 2.4.59) */}
+        <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动互动' : 'XHS Auto Engage'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '每日自动找最近一周高评论文章（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
+                : 'Daily: 0-6 random high-comment articles, AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
+            </p>
+            <button
+              type="button"
+              onClick={handleAutoReplyClick}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
+            >
+              💬 {i18nService.currentLanguage === 'zh' ? '开始互动' : 'Start'} →
+            </button>
+          </div>
+        </div>
+
+        {/* 2. Batch rewrite (keyword) */}
         <div className="relative rounded-2xl border border-green-500/30 bg-gradient-to-br from-green-500/10 via-emerald-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-green-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -384,31 +410,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 4. Auto-reply */}
-        <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
-          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
-          <div className="relative flex flex-col h-full">
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
-            </div>
-            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动互动' : 'XHS Auto Engage'}
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
-              {i18nService.currentLanguage === 'zh'
-                ? '每日自动找最近一周高评论文章（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
-                : 'Daily: 0-6 random high-comment articles, AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
-            </p>
-            <button
-              type="button"
-              onClick={handleAutoReplyClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
-            >
-              💬 {i18nService.currentLanguage === 'zh' ? '开始互动' : 'Start'} →
-            </button>
-          </div>
-        </div>
+        {/* (Auto-reply card moved to position 1 above per user feedback v2.4.59) */}
       </section>
 
       {/* Advantage pills (moved out of banner, cross both cards). Note:
