@@ -246,8 +246,11 @@ function anchorUrlFor(patternStr) {
   // Map known platform regexes to their canonical landing URL. Adding a
   // new platform = add one branch here. We don't try to reverse-engineer
   // arbitrary regexes — keep this explicit.
+  // v1.2.14: 加币安分支 — 之前漏了导致 sidecar 抛 "No tab matching ...
+  // no anchor URL known" 弹窗(没开 binance tab + 找不到 anchor URL)
   if (/xiaohongshu/.test(patternStr)) return 'https://www.xiaohongshu.com';
   if (/twitter|x\\\.com|x\.com/.test(patternStr)) return 'https://x.com/home';
+  if (/binance/.test(patternStr)) return 'https://www.binance.com/square';
   return null;
 }
 
@@ -348,15 +351,19 @@ function platformLabelForPattern(patternStr) {
   if (!patternStr) return null;
   // Platform name in front (more useful at a glance than brand name).
   // Color stays brand green for "this is NoobClaw automation" recognition.
+  // v1.2.14: 用户反馈"Noob"看着像缺字,改成全称 NoobClaw
   const color = 'green';
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🤖 小红书-Noob 任务', color };
+    return { title: '🤖 小红书-NoobClaw 任务', color };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🤖 推特-Noob 任务', color };
+    return { title: '🤖 推特-NoobClaw 任务', color };
   }
-  if (/binance\.com/i.test(patternStr)) {
-    return { title: '🤖 币安广场-Noob 任务', color };
+  // v1.2.14 关键修复:之前用 /binance\.com/i 但 patternStr 里实际是 "binance\\.com"
+  // (regex 里转义的 dot),literal "binance.com" 匹不上 → 走 fallback "🤖 NoobClaw 任务"
+  // 改成直接匹 "binance" 关键字(够独特,无歧义)
+  if (/binance/i.test(patternStr)) {
+    return { title: '🤖 币安广场-NoobClaw 任务', color };
   }
   return { title: '🤖 NoobClaw 任务', color };
 }
