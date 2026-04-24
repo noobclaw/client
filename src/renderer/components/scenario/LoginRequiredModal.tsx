@@ -15,7 +15,7 @@ interface Props {
   mode: 'create' | 'run';
   /** Which platform's login state we're checking. Default 'xhs' for
    *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
-   *  mainland China users. 'binance' opens binance.com/zh-CN/square. */
+   *  mainland China users. 'binance' opens binance.com/square. */
   platform?: 'xhs' | 'x' | 'binance';
   onCancel: () => void;
   onConfirmed: () => void;
@@ -32,7 +32,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const platformLabel = isX
     ? 'Twitter (x.com)'
     : isBinance
-      ? (isZh ? '币安广场 (binance.com/zh-CN/square)' : 'Binance Square (binance.com/.../square)')
+      ? (isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)')
       : (isZh ? '小红书' : 'Xiaohongshu');
   const platformShort = isX
     ? 'Twitter'
@@ -42,7 +42,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
   const platformUrl = isX
     ? 'https://x.com/home'
     : isBinance
-      ? 'https://www.binance.com/zh-CN/square'
+      ? 'https://www.binance.com/square'
       : 'https://www.xiaohongshu.com';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');

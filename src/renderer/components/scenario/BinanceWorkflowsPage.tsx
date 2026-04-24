@@ -74,7 +74,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       weekly_rest_days: 1, cooldown_captcha_hours: 24,
       cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
     },
-    required_login_url: 'https://www.binance.com/zh-CN/square',
+    required_login_url: 'https://www.binance.com/square',
     entry_urls: {},
     skills: {},
   };
@@ -112,7 +112,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       weekly_rest_days: 1, cooldown_captcha_hours: 24,
       cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
     },
-    required_login_url: 'https://www.binance.com/zh-CN/square',
+    required_login_url: 'https://www.binance.com/square',
     entry_urls: {},
     skills: {},
   };
@@ -233,7 +233,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       {/* "已有任务" 区块去掉 — 用户反馈底部冗余,我的任务 tab 已经有完整列表。
           Per X/XHS pages 也都没有这个区块,统一掉。 */}
 
-      {/* Login gate — binance platform opens binance.com/zh-CN/square */}
+      {/* Login gate — binance platform opens binance.com/square */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"

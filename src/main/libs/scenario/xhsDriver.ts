@@ -82,7 +82,7 @@ export async function checkXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): 
 const PLATFORM_LOGIN_URL: Record<'xhs' | 'x' | 'binance', string> = {
   xhs: 'https://www.xiaohongshu.com',
   x: 'https://x.com/home',
-  binance: 'https://www.binance.com/zh-CN/square',
+  binance: 'https://www.binance.com/square',
 };
 
 export async function openXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
