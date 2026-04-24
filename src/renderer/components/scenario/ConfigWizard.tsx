@@ -563,9 +563,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
       return parsedUrls.length >= 1 && parsedUrls.length <= 5;
     }
     if (isXOrBinance) {
-      // Binance Square requires at least 1 token (keywords=tokens), persona
-      // alone is not enough. Twitter accepts persona-only (keywords optional).
-      if (isBinancePlatform) {
+      // Binance post_creator requires at least 1 token (keywords=tokens),
+      // persona alone is not enough. Binance auto_engage doesn't read
+      // keywords (orchestrator picks targets from discover feed) — persona
+      // alone is enough, same as Twitter.
+      if (isBinancePlatform && !isBinanceAutoEngage) {
         return persona.trim().length > 0 && keywordList.length > 0;
       }
       return persona.trim().length > 0;
@@ -716,11 +718,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Keywords — for XHS scenarios AND Binance (as tokens).
+              {/* Keywords — for XHS scenarios AND Binance post_creator (as tokens).
                   Twitter scenarios don't use keyword search (auto_engage uses
                   the KOL pool + Home feed; post_creator uses topic_context;
-                  link_rewrite uses URL list). Hide entirely on X only. */}
-              {(!isXPlatform || isBinancePlatform) && (
+                  link_rewrite uses URL list). Binance auto_engage also doesn't
+                  read keywords — orchestrator picks targets from the discover
+                  feed; showing the field would mislead users into thinking
+                  their token list filters AI replies. Hide there too. */}
+              {(!isXPlatform || isBinancePlatform) && !isBinanceAutoEngage && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isBinancePlatform
