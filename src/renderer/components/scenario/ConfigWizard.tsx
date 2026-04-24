@@ -428,9 +428,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //   follows: 0-3 (random in this range)
   //   replies: 2-2 (always 2 — matches old default daily_count=2)
   // User-configurable bounds: follows 0-10, replies 1-20. Wider = higher risk.
-  const FOLLOW_HARDCAP = 20;   // v4.22.x: was 10, bumped per user request
-  const REPLY_HARDCAP = 50;    // v4.22.x: was 20, bumped per user request
-  const LIKE_HARDCAP = 30;     // v2.4.83: like action range
+  // Hardcaps now come from the scenario manifest's risk_caps so each platform
+  // (binance / x) can have its own ceiling without sharing one constant.
+  // Fallbacks preserve pre-manifest-driven defaults for any scenario that
+  // doesn't declare these caps.
+  const scenarioCaps = (scenario.risk_caps as any) || {};
+  const FOLLOW_HARDCAP = scenarioCaps.max_follows_per_day || 20;
+  const REPLY_HARDCAP = scenarioCaps.daily_count_cap || 50;
+  const LIKE_HARDCAP = scenarioCaps.max_likes_per_day || 30;
   // ⭐ XHS auto-reply daily article count range (v4.22.x). Same min/max
   // pattern as x_auto_engage so user can pick "every day random 3-10
   // articles" instead of always exactly 6. Hard cap 20.
@@ -522,7 +527,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Both x_post_creator and binance_square_post_creator now support a
   // per-day post quota picked randomly from [min, max] (range 1-20).
   // Default 1/1 keeps backward compat with pre-v2.4.56 "1 post/day" hard-code.
-  const POST_COUNT_HARDCAP = 20;
+  const POST_COUNT_HARDCAP = scenarioCaps.max_posts_per_day || 20;
   const [postCountMin, setPostCountMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_post_min === 'number'
       ? (initialTask as any).daily_post_min : 1
