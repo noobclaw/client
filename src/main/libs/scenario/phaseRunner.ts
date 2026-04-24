@@ -82,6 +82,96 @@ function keywordMatch(text: string, keywords: string[]): boolean {
   return keywords.some(k => lowered.includes(k.toLowerCase()));
 }
 
+// ── Quality gate (v2.4.58+) ──
+//
+// Deterministic post-AI checks. Used by post-creator orchestrators (XHS,
+// Twitter, Binance) via opts.qualityGate in aiCall. Catches:
+//   - Banned phrases (platform-specific shill / hype / faux-compliance)
+//   - AI-grammar openers ("In the world of..." / "在...的浪潮中" etc.)
+//   - Length bounds
+//   - Missing un-round numbers (when content needs data density)
+//   - Excess emoji
+//
+// On fail, aiCall augments user message with the failure list and retries.
+// Defaults are conservative — most checks only run when caller opts in.
+
+const AI_GRAMMAR_OPENERS = [
+  /^\s*在.*的浪潮中/,
+  /^\s*让我们(来)?(聊聊|看看|讨论|分析)/,
+  /^\s*综上所述/,
+  /^\s*总(的)?来说/,
+  /^\s*众所周知/,
+  /^\s*不可否认/,
+  /^\s*毫无疑问/,
+  /^\s*in the world of/i,
+  /^\s*let'?s dive into/i,
+  /^\s*it'?s no secret that/i,
+  /^\s*in conclusion/i,
+  /^\s*needless to say/i,
+  /^\s*at the end of the day/i,
+];
+
+export interface QualityGateOpts {
+  minLen?: number;
+  maxLen?: number;
+  bannedPhrases?: string[];
+  requireUnRoundNumber?: boolean;
+  maxRetries?: number;
+}
+
+export function checkQuality(
+  text: string,
+  opts: QualityGateOpts,
+): { passed: boolean; failures: string[] } {
+  const failures: string[] = [];
+  const t = String(text || '').trim();
+
+  // Length bounds
+  if (opts.minLen && t.length < opts.minLen) {
+    failures.push(`太短 (${t.length} < ${opts.minLen})`);
+  }
+  if (opts.maxLen && t.length > opts.maxLen) {
+    failures.push(`太长 (${t.length} > ${opts.maxLen})`);
+  }
+
+  // Banned phrases — case-insensitive substring match
+  if (opts.bannedPhrases && opts.bannedPhrases.length > 0) {
+    const lowerT = t.toLowerCase();
+    for (const phrase of opts.bannedPhrases) {
+      if (!phrase) continue;
+      if (lowerT.includes(phrase.toLowerCase())) {
+        failures.push(`命中禁词: "${phrase}"`);
+      }
+    }
+  }
+
+  // AI-grammar openers
+  for (const re of AI_GRAMMAR_OPENERS) {
+    if (re.test(t)) {
+      failures.push(`AI 腔开场: "${t.slice(0, 25)}..."`);
+      break; // one is enough to fail
+    }
+  }
+
+  // Excess emoji (universal — > 5 always looks like content mill)
+  const emojiCount = (t.match(/[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F100}-\u{1F1FF}]/gu) || []).length;
+  if (emojiCount > 5) {
+    failures.push(`emoji 过多 (${emojiCount} > 5)`);
+  }
+
+  // Un-round number requirement (e.g. "92.3" / "0.043%" / "73 signups")
+  // Triggered for content posts that should have data density.
+  // Match: any number with decimal, or 万/亿/K/M/B units, or 2+ digit specific number
+  if (opts.requireUnRoundNumber) {
+    const hasUnRound = /\d+\.\d+|\d+(?:\.\d+)?\s*[万亿KMB]|\b\d{2,}\b/i.test(t);
+    if (!hasUnRound) {
+      failures.push('缺少具体数字 (需要至少一个不圆滑数据点)');
+    }
+  }
+
+  return { passed: failures.length === 0, failures };
+}
+
 // ── Build the ctx object ──
 
 function buildContext(
@@ -254,7 +344,23 @@ function buildContext(
       promptNameOrRaw: string,
       promptOrInput: any,
       rawInput?: string,
-      opts?: { model?: 'noobclawai-chat' | 'noobclawai-reasoner' }
+      opts?: {
+        model?: 'noobclawai-chat' | 'noobclawai-reasoner';
+        // v2.4.58+: quality gate — when set, runs deterministic checks on
+        // the AI's output (banned phrases / AI-grammar openers / length /
+        // un-round number requirement). On failure, augments the user
+        // message with the specific failure list and retries up to
+        // maxRetries times. Reply scenarios omit this; post composers use it.
+        qualityGate?: {
+          minLen?: number;
+          maxLen?: number;
+          bannedPhrases?: string[];     // platform-specific (banned snippets)
+          requireUnRoundNumber?: boolean;
+          maxRetries?: number;          // default 2 (so total attempts ≤ 3)
+        };
+        // Internal — used by the recursive retry. Callers should NOT set this.
+        _attempt?: number;
+      }
     ) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
 
@@ -279,6 +385,8 @@ function buildContext(
       //                            high-quality content with hook + structure.
       // Orchestrator picks via `opts.model`. Reply scenarios just omit it.
       const chosenModel = (opts && opts.model) || 'noobclawai-chat';
+      const attempt = (opts && opts._attempt) || 1;
+      const maxRetries = (opts && opts.qualityGate && opts.qualityGate.maxRetries) ?? 2;
 
       // Scenario rewrite must ALWAYS go through our NoobClaw proxy with
       // model=noobclawai-chat, regardless of the user's current default
@@ -368,6 +476,48 @@ function buildContext(
           coworkLog('WARN', 'phaseRunner', 'AI response not JSON', { rawHead: raw.slice(0, 300) });
           throw new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
         }
+
+        // v2.4.58+ Quality gate (post composers opt in via opts.qualityGate)
+        // Runs deterministic regex/length/banned-phrase checks on the AI text
+        // and retries up to maxRetries with augmented user message on fail.
+        if (opts && opts.qualityGate) {
+          const text = (parsed && (parsed.text || parsed.content)) || (typeof parsed === 'string' ? parsed : '');
+          const gate = checkQuality(String(text), opts.qualityGate);
+          if (!gate.passed) {
+            if (attempt <= maxRetries) {
+              coworkLog('WARN', 'phaseRunner', 'Quality gate failed, retrying', {
+                attempt, failures: gate.failures, textHead: String(text).slice(0, 100),
+              });
+              ctx.report('   ⚠️ 质量门未过(' + gate.failures.join(' / ') + '),第 ' + attempt + ' 次尝试,重写中...');
+              // Augment user message with explicit fix instructions
+              const feedback = '\n\n⚠️ 上次输出在以下维度不合格,这次必须修正:\n'
+                + gate.failures.map(f => '  • ' + f).join('\n')
+                + '\n\n重新写一次,严格修正上述问题。';
+              const newRawInput = (rawInput || userMessage) + feedback;
+              // For non-__raw__ calls, push feedback into promptOrInput as
+              // serialized JSON tail (so the placeholder substitution in
+              // prompt template still works on next call's system message).
+              if (promptNameOrRaw === '__raw__') {
+                return await ctx.aiCall(promptNameOrRaw, prompt, newRawInput, {
+                  ...opts, _attempt: attempt + 1,
+                });
+              } else {
+                return await ctx.aiCall(promptNameOrRaw, userMessage + feedback, undefined, {
+                  ...opts, _attempt: attempt + 1,
+                });
+              }
+            } else {
+              // Out of retries — log loud and return last attempt anyway
+              coworkLog('WARN', 'phaseRunner', 'Quality gate exhausted retries, returning last attempt', {
+                attempts: attempt, failures: gate.failures,
+              });
+              ctx.report('   ⚠️ 质量门 ' + (maxRetries + 1) + ' 次都未过,使用最后一次输出。失败项: ' + gate.failures.join(' / '));
+            }
+          } else if (attempt > 1) {
+            ctx.report('   ✅ 质量门第 ' + attempt + ' 次尝试通过');
+          }
+        }
+
         return parsed;
       } catch (err: any) {
         if (err?.name === 'AbortError' || progress.isAbortRequested()) {
