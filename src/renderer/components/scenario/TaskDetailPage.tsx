@@ -109,76 +109,69 @@ const STEP_NAMES_EN = [
   'Upload to Xiaohongshu drafts. Do not switch browser tabs.',
 ];
 // XHS Auto-reply: 3 steps. Step 2 contains the entire per-article loop
-// (read → AI → post → next), step 3 saves the run report to disk.
+// v2.4.89: 所有步骤标题用**用户视角**的大白话,不再暴露内部实现细节
+// (selector / retry / model name / CSP / React state 这些全藏起来)
 const STEP_NAMES_AUTOREPLY_ZH = [
-  '搜索关键词 + 应用筛选条件 (最多评论 / 一周内 / 不限文章类型) + 采集候选 URL',
-  '逐篇闭环：进入文章 → 读标题/正文/Top3 高赞评论 → AI 生成 → 发文章评论 + 间歇逐条回复 → 全部发完才换下一篇',
-  '生成 Markdown 报告（含每篇文章标题/链接/我发的评论与回复）保存到本地任务目录',
+  '挑选要回复的文章',
+  '逐篇生成评论并发布',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_AUTOREPLY_EN = [
-  'Search + apply filters (most-commented / last week / any type) + collect candidate URLs',
-  'Per-article loop: enter article → read title/body/top-3 comments → AI → post note + replies (with jitter) → next',
-  'Save Markdown report (titles, links, posted note + replies) to the local task folder',
+  'Pick articles to reply to',
+  'Generate and post comments per article',
+  'Save this run report to disk',
 ];
-// Twitter x_auto_engage: 3 steps. Different mechanics from XHS auto_reply
-// (KOL pool + follow + feed engage rather than article search/reply).
 const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
-  '从后端拉 KOL 池 + 决定今日动作清单（关注 / 评论已关注 / 评论 feed 随机分布）',
-  '逐个执行动作：访问 profile → 关注 / 读最新推 → AI 起草回复 → 发推。动作间 30 秒-10 分钟随机间隔',
-  '生成 Markdown 报告（含每个动作的目标 KOL / 推文 / 我发的回复）保存到本地任务目录',
+  '准备本次动作清单',
+  '逐个执行关注 / 回复 / 点赞',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_X_AUTO_ENGAGE_EN = [
-  'Pull KOL pool from backend + plan today\'s actions (follow / reply followed / reply feed mix)',
-  'Execute actions one by one: visit profile → follow / read latest → AI drafts reply → post. 30s-10min random jitter between actions',
-  'Save Markdown report (each action\'s target KOL / tweet / posted reply) to the local task folder',
+  'Plan this run',
+  'Execute follow / reply / like one by one',
+  'Save this run report to disk',
 ];
-// Twitter x_post_creator: 3 steps. Daily 1 tweet via random mechanism.
 const STEP_NAMES_X_POST_CREATOR_ZH = [
-  '随机抽机制（30% 仿写 / 30% 原创 / 40% 引用回应）+ 准备素材（仿写/引用：扫 feed；原创：用 topic_context）',
-  'AI 生成推文 + 发布到推特',
-  '生成 Markdown 报告保存到本地',
+  '准备素材',
+  '生成推文并发布',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_X_POST_CREATOR_EN = [
-  'Pick mechanism (30% rewrite / 30% original / 40% quote) + prepare material (rewrite/quote: scroll feed; original: use topic_context)',
-  'AI generates tweet + post to X',
-  'Save Markdown report to local task folder',
+  'Prepare material',
+  'Generate and post the tweet',
+  'Save this run report to disk',
 ];
-// Twitter x_link_rewrite: 3 steps.
 const STEP_NAMES_X_LINK_REWRITE_ZH = [
-  '逐条访问推文 URL → 读取原推 → AI 解构钩子 + 结构',
-  'AI 用同样钩子 + 你的素材池仿写新推 → 逐条发布（间隔 10-30 分钟）',
-  '生成 Markdown 报告保存到本地',
+  '读取每条原推内容',
+  '逐条仿写并发布',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_X_LINK_REWRITE_EN = [
-  'Visit each tweet URL → read original → AI deconstructs hook + structure',
-  'AI rewrites in your voice + posts each (10-30 min spacing)',
-  'Save Markdown report to local task folder',
+  'Read each source tweet',
+  'Rewrite and post each',
+  'Save this run report to disk',
 ];
-// Binance Square auto_engage: 3 steps. KOL pool plan + action loop + report.
-// 跟 x_auto_engage 同形态（都是 follow + reply 混合），但 KOL 来自 /square/following
-// 发现页 inline 关注，不依赖外部 KOL 池。
 const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [
-  '准备：装载 KOL 池 + 决定本次动作清单（关注 N 个 / 评论 M 条 / 点赞 K 条，比例由风控随机分配）',
-  '逐个执行：访问 /square/following 关注 / 扫 feed → AI 起草回复 → 发评论 / 点赞。动作间 30 秒-10 分钟随机间隔',
-  '生成 Markdown 报告（含每个动作的目标 KOL / 帖子 / 我发的回复）保存到本地任务目录',
+  '准备本次动作清单',
+  '逐个执行关注 / 回复 / 点赞',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_BINANCE_AUTO_ENGAGE_EN = [
-  'Plan: load KOL pool + decide today\'s actions (N follows / M replies / K likes, mix decided by risk caps)',
-  'Execute one by one: visit /square/following to follow / scan feed → AI drafts reply → post / like. 30s-10min random jitter',
-  'Save Markdown report (each action\'s KOL / post / posted reply) to the local task folder',
+  'Plan this run',
+  'Execute follow / reply / like one by one',
+  'Save this run report to disk',
 ];
-// Binance Square post_creator: 4 steps per post. Daily 1-N posts.
 const STEP_NAMES_BINANCE_POST_CREATOR_ZH = [
-  '打开广场首页 + 选 token + 选钩子（数据 / 观点 / 情绪 / 提问 等）',
-  '调 AI 生成 100-2100 字短评（reasoner 模式，质量优先）',
-  '点侧边栏「发文」打开模态框 + 等 loading overlay 消失 + 写入 ProseMirror 编辑器',
-  '点模态框内「发文」按钮发布（按钮 inactive 时 React 同步重试 3 次）',
+  '选题(token + 方向)',
+  'AI 生成内容',
+  '打开发帖框 + 写入内容',
+  '发布',
 ];
 const STEP_NAMES_BINANCE_POST_CREATOR_EN = [
-  'Open Square home + pick token + pick hook (data / opinion / sentiment / question / etc.)',
-  'AI generates 100-2100 char short post (reasoner model, quality-first)',
-  'Click sidebar "Post" to open modal + wait for loading overlay + write into ProseMirror editor',
-  'Click "Post" button inside modal to publish (retries x3 on btn_inactive while React syncs)',
+  'Pick topic (token + angle)',
+  'AI generates the post',
+  'Open composer and write',
+  'Publish',
 ];
 
 interface Props {
