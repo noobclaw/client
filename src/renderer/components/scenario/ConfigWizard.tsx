@@ -430,6 +430,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // User-configurable bounds: follows 0-10, replies 1-20. Wider = higher risk.
   const FOLLOW_HARDCAP = 20;   // v4.22.x: was 10, bumped per user request
   const REPLY_HARDCAP = 50;    // v4.22.x: was 20, bumped per user request
+  const LIKE_HARDCAP = 30;     // v2.4.83: like action range
   // ⭐ XHS auto-reply daily article count range (v4.22.x). Same min/max
   // pattern as x_auto_engage so user can pick "every day random 3-10
   // articles" instead of always exactly 6. Hard cap 20.
@@ -493,6 +494,25 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
     setReplyMaxRaw(n);
     if (replyMin > n) setReplyMinRaw(n);
+  };
+  // v2.4.83: 点赞数 — 跟 follow / reply 同样的 min/max 滑块
+  const [likeMin, setLikeMinRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_like_min === 'number'
+      ? (initialTask as any).daily_like_min : 0
+  );
+  const [likeMax, setLikeMaxRaw] = useState<number>(
+    typeof (initialTask as any)?.daily_like_max === 'number'
+      ? (initialTask as any).daily_like_max : 5
+  );
+  const setLikeMin = (v: number) => {
+    const n = Math.max(0, Math.min(LIKE_HARDCAP, v));
+    setLikeMinRaw(n);
+    if (likeMax < n) setLikeMaxRaw(n);
+  };
+  const setLikeMax = (v: number) => {
+    const n = Math.max(0, Math.min(LIKE_HARDCAP, v));
+    setLikeMaxRaw(n);
+    if (likeMin > n) setLikeMinRaw(n);
   };
 
   // ── Daily post count range (post_creator scenarios on X + Binance) ──
@@ -622,11 +642,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         // v2.4.59: Binance auto_engage 也用同一组 follow_min/max + reply_min/max
+        // v2.4.83: + daily_like_min/max
         ...(isAutoEngageScenario ? {
           daily_follow_min: followMin,
           daily_follow_max: followMax,
           daily_reply_min: replyMin,
           daily_reply_max: replyMax,
+          daily_like_min: likeMin,
+          daily_like_max: likeMax,
         } : {}),
       } as any);
     } catch (err) {
@@ -1223,6 +1246,40 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   </div>
 
+                  {/* v2.4.83: Like range — 跟 follow / reply 同样形态 */}
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? '每次运行点赞数量（随机区间）' : 'Like count per run (random range)'}
+                    </label>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-pink-500">{likeMin}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={LIKE_HARDCAP} value={likeMin}
+                          onChange={e => setLikeMin(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-pink-500">{likeMax}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={LIKE_HARDCAP} value={likeMax}
+                          onChange={e => setLikeMax(parseInt(e.target.value, 10))}
+                          className="w-full"
+                        />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {isZh
+                        ? `每次运行随机点赞 ${likeMin}-${likeMax} 条（0-${LIKE_HARDCAP}，0 = 不点赞）`
+                        : `Random ${likeMin}-${likeMax} likes/day (0-${LIKE_HARDCAP}, 0 = no like)`}
+                    </div>
+                  </div>
+
                   {/* v2.4.59: 删除原来步骤 2 的"数值越大风险越高"框 ——
                       跟步骤 3 的"安全提示"信息重复(用户反馈)。当前配置文本
                       已经在滑条下方的提示文案里展示;激进警告改放到步骤 3
@@ -1344,8 +1401,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           ? 'Daily'
                           : (runInterval === 'once' ? 'This run' : 'Per run');
                         return isZh
-                          ? `· ${periodLabelZh}: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条(已关注/feed 随机分配),随机顺序`
-                          : `· ${periodLabelEn}: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies (split followed/feed), randomized`;
+                          ? `· ${periodLabelZh}: 关注 ${followMin}-${followMax} 个 ${platLabel} + 评论 ${replyMin}-${replyMax} 条 + 点赞 ${likeMin}-${likeMax} 条(已关注/feed 随机分配),随机顺序`
+                          : `· ${periodLabelEn}: follow ${followMin}-${followMax} ${platLabel} + ${replyMin}-${replyMax} replies + ${likeMin}-${likeMax} likes (split followed/feed), randomized`;
                       })()}</li>
                       <li>{(() => {
                         return isZh
@@ -1506,8 +1563,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           ? (isZh ? '币安广场' : 'Binance Square')
                           : (isZh ? '推特' : 'Twitter');
                         return isZh
-                          ? `⏰ ${intervalLabel} · ${platLabel}每次关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 30 秒-10 分钟随机）`
-                          : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day (random order, 30s-10min between)`;
+                          ? `⏰ ${intervalLabel} · ${platLabel}每次关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条 + 点赞 ${likeMin}-${likeMax} 条（随机顺序,动作间隔 30 秒-10 分钟随机）`
+                          : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies + ${likeMin}-${likeMax} likes/day (random order, 30s-10min between)`;
                       }
                       if (isXPostCreator) {
                         return isZh

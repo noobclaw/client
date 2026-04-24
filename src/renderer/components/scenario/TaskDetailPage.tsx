@@ -158,13 +158,13 @@ const STEP_NAMES_X_LINK_REWRITE_EN = [
 // 跟 x_auto_engage 同形态（都是 follow + reply 混合），但 KOL 来自 /square/following
 // 发现页 inline 关注，不依赖外部 KOL 池。
 const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [
-  '准备：装载 KOL 池 + 决定本次动作清单（关注 N 个 / 评论 M 条，比例由风控随机分配）',
-  '逐个执行：访问 /square/following 关注 / 扫 feed → AI 起草回复 → 发评论。动作间 30 秒-10 分钟随机间隔',
+  '准备：装载 KOL 池 + 决定本次动作清单（关注 N 个 / 评论 M 条 / 点赞 K 条，比例由风控随机分配）',
+  '逐个执行：访问 /square/following 关注 / 扫 feed → AI 起草回复 → 发评论 / 点赞。动作间 30 秒-10 分钟随机间隔',
   '生成 Markdown 报告（含每个动作的目标 KOL / 帖子 / 我发的回复）保存到本地任务目录',
 ];
 const STEP_NAMES_BINANCE_AUTO_ENGAGE_EN = [
-  'Plan: load KOL pool + decide today\'s actions (N follows / M replies, mix decided by risk caps)',
-  'Execute one by one: visit /square/following to follow / scan feed → AI drafts reply → post. 30s-10min random jitter',
+  'Plan: load KOL pool + decide today\'s actions (N follows / M replies / K likes, mix decided by risk caps)',
+  'Execute one by one: visit /square/following to follow / scan feed → AI drafts reply → post / like. 30s-10min random jitter',
   'Save Markdown report (each action\'s KOL / post / posted reply) to the local task folder',
 ];
 // Binance Square post_creator: 4 steps per post. Daily 1-N posts.
@@ -615,6 +615,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         const t = task as any;
                         const fMin = t.daily_follow_min, fMax = t.daily_follow_max;
                         const rMin = t.daily_reply_min, rMax = t.daily_reply_max;
+                        const lMin = t.daily_like_min, lMax = t.daily_like_max;
                         const cMin = t.daily_count_min, cMax = t.daily_count_max;
                         const pMin = t.daily_post_min, pMax = t.daily_post_max;
                         if (sid === 'x_auto_engage' || sid === 'binance_square_auto_engage') {
@@ -622,7 +623,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             ? `${fMin}-${fMax}` : `0-${task.daily_count || 3}`;
                           const rStr = (typeof rMin === 'number' && typeof rMax === 'number')
                             ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
-                          return `${intervalLabel} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                          // v2.4.83: 点赞 — 仅 binance auto_engage 有,如果 task 上有就显示
+                          const lStr = (typeof lMin === 'number' && typeof lMax === 'number')
+                            ? `${lMin}-${lMax}` : null;
+                          var summary = `${intervalLabel} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
+                          if (lStr) summary += ` · ${isZh ? '点赞' : 'Like'} ${lStr}`;
+                          return summary;
                         }
                         if (sid === 'binance_square_post_creator' || sid === 'x_post_creator') {
                           const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
