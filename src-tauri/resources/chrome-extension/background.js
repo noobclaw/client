@@ -798,22 +798,95 @@ async function executeCommand(msg) {
             }
 
             if (action === 'submit_short_editor') {
+              // v1.2.10: 扫所有 .short-editor-inner (页面常有多个: 评论模态 +
+              // 侧栏发文容器 + 页内 inline 编辑器),只查第一个会找错。
+              // 同时:严格相等优先 + substring fuzzy 兜底("回复(0)" / "回复 (0)" 都能匹)。
               const accepted = cfg.acceptedTexts || ['发文', '回复', 'Post', 'Reply', 'Publish'];
-              const modal = document.querySelector('.short-editor-inner');
-              if (!modal) return { error: 'modal_not_found' };
-              const btns = modal.querySelectorAll('button');
-              for (let i = 0; i < btns.length; i++) {
-                const b = btns[i];
-                const t = (b.textContent || '').trim();
-                if (accepted.indexOf(t) >= 0) {
-                  if (b.disabled) return { error: 'btn_disabled' };
-                  if ((b.className || '').indexOf('inactive') >= 0) return { error: 'btn_inactive' };
+              const modals = document.querySelectorAll('.short-editor-inner');
+              if (!modals.length) return { error: 'modal_not_found' };
+              const allBtns = [];
+              const debugTexts = [];
+              for (const m of modals) {
+                const btns = m.querySelectorAll('button');
+                for (const b of btns) allBtns.push(b);
+              }
+              const norm = (s) => (s || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+              for (const b of allBtns) {
+                const t = norm(b.textContent);
+                debugTexts.push(t.slice(0, 20));
+                let matched = false;
+                for (const a of accepted) {
+                  if (t === a) { matched = true; break; }
+                }
+                if (!matched) {
+                  for (const a of accepted) {
+                    if (t.length > 0 && t.length <= a.length + 5 && t.indexOf(a) >= 0) {
+                      matched = true; break;
+                    }
+                  }
+                }
+                if (matched) {
+                  if (b.disabled) return { error: 'btn_disabled', text: t };
+                  if ((b.className || '').indexOf('inactive') >= 0) return { error: 'btn_inactive', text: t };
                   b.scrollIntoView({ behavior: 'instant', block: 'center' });
                   b.click();
                   return { ok: true, text: t };
                 }
               }
-              return { error: 'submit_btn_not_found', scanned: btns.length };
+              return {
+                error: 'submit_btn_not_found',
+                scanned: allBtns.length,
+                modals: modals.length,
+                btn_texts: debugTexts.slice(0, 15),
+              };
+            }
+
+            if (action === 'prosemirror_insert_text') {
+              // v1.2.10: 真正解决 "ProseMirror 文字塞了但 React 不知道,按钮一直
+              // inactive" 的根因。CDP type 走的是 keyboard 事件,有时 ProseMirror
+              // 的 React 包装层不响应。这里用 document.execCommand('insertText') —
+              // 浏览器原生的"插入文字"管道,跟用户键盘输入完全同一条路径
+              // (beforeinput → input),React/ProseMirror 必然收到合法事件 →
+              // 按钮变 active。execCommand 兜底:手动派 InputEvent('beforeinput')。
+              const sel = cfg.selector || '.short-editor-inner .ProseMirror[contenteditable="true"], .ProseMirror[contenteditable="true"]';
+              const editor = document.querySelector(sel);
+              if (!editor) return { error: 'editor_not_found', selector: sel };
+              const text = cfg.text;
+              if (typeof text !== 'string') return { error: 'text_required' };
+              try {
+                editor.focus();
+                // 兼容老浏览器:execCommand 优先(虽然 deprecated 但所有现代
+                // 浏览器还都支持,且是触发 React onChange 最稳的方式)
+                let method = 'unknown';
+                let inserted = false;
+                if (typeof document.execCommand === 'function') {
+                  try {
+                    inserted = document.execCommand('insertText', false, text);
+                    if (inserted) method = 'execCommand';
+                  } catch (_) {}
+                }
+                if (!inserted) {
+                  // Fallback: 手动派发 beforeinput + input(InputEvent + inputType)
+                  const ev1 = new InputEvent('beforeinput', {
+                    inputType: 'insertText', data: text, bubbles: true, cancelable: true,
+                  });
+                  editor.dispatchEvent(ev1);
+                  const ev2 = new InputEvent('input', {
+                    inputType: 'insertText', data: text, bubbles: true,
+                  });
+                  editor.dispatchEvent(ev2);
+                  method = 'dispatchEvent';
+                  inserted = true;
+                }
+                return {
+                  ok: inserted,
+                  method,
+                  textLen: text.length,
+                  editorTextLen: (editor.textContent || '').length,
+                };
+              } catch (e) {
+                return { error: 'insert_failed', message: String(e && e.message || e).slice(0, 200) };
+              }
             }
 
             return { error: 'unknown_action: ' + action };
