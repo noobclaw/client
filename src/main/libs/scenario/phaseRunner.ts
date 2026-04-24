@@ -625,6 +625,34 @@ function buildContext(
       }
     },
 
+    // v2.4.90: Binary asset write — decodes base64 and saves to task's
+    // output dir. Unlike writeReport (utf8-only), this handles images /
+    // audio / any binary. Used by x_link_rewrite to save source tweet
+    // images next to the markdown report for user audit.
+    // opts.subdir: optional subdirectory inside task dir (e.g. '原文').
+    // Single-level only, stripped of path separators / parent refs for safety.
+    writeAsset: async (filename: string, base64: string, opts?: { subdir?: string }) => {
+      try {
+        const platform = (manifest as any).platform || 'xhs';
+        const dir = getTaskOutputDir(task, platform);
+        let targetDir = dir;
+        if (opts && typeof opts.subdir === 'string' && opts.subdir.trim()) {
+          const safeSub = opts.subdir.replace(/[\\/:*?"<>|]/g, '_').replace(/\.\./g, '').slice(0, 80);
+          if (safeSub) targetDir = path.join(dir, safeSub);
+        }
+        try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
+        const safeName = String(filename || 'asset.bin').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+        const filePath = path.join(targetDir, safeName);
+        const buf = Buffer.from(String(base64 || ''), 'base64');
+        fs.writeFileSync(filePath, buf);
+        coworkLog('INFO', 'phaseRunner', 'writeAsset ok', { path: filePath, bytes: buf.length });
+        return { ok: true, path: filePath, dir: targetDir, bytes: buf.length };
+      } catch (err) {
+        coworkLog('WARN', 'phaseRunner', 'writeAsset failed', { err: String(err) });
+        return { ok: false, reason: String(err && (err as any).message ? (err as any).message : err) };
+      }
+    },
+
     saveDrafts: async (rawDrafts: any[]) => {
       const drafts: Draft[] = rawDrafts.map(d => ({
         id: crypto.randomUUID(),
