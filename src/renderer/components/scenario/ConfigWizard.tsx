@@ -450,12 +450,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const setXhsReplyMin = (v: number) => {
     const n = Math.max(1, Math.min(XHS_REPLY_HARDCAP, v));
     setXhsReplyMinRaw(n);
-    if (xhsReplyMax < n) setXhsReplyMaxRaw(n);
+    setXhsReplyMaxRaw(prev => (prev < n ? n : prev));
   };
   const setXhsReplyMax = (v: number) => {
     const n = Math.max(1, Math.min(XHS_REPLY_HARDCAP, v));
     setXhsReplyMaxRaw(n);
-    if (xhsReplyMin > n) setXhsReplyMinRaw(n);
+    setXhsReplyMinRaw(prev => (prev > n ? n : prev));
   };
   const [followMin, setFollowMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_follow_min === 'number'
@@ -475,25 +475,28 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
       : (initialTask?.daily_count || 2)
   );
   // Setters that auto-clamp to keep min ≤ max.
+  // v2.4.91: 用函数式 setter — 之前闭包里读 followMax / replyMax / likeMax 在
+  // 快速拖动时可能捕获旧值(React 批处理 + 连续 onChange),导致 clamp 触发
+  // 错误 → 拖动手感发涩。functional updater 保证看到最新 state。
   const setFollowMin = (v: number) => {
     const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v));
     setFollowMinRaw(n);
-    if (followMax < n) setFollowMaxRaw(n);
+    setFollowMaxRaw(prev => (prev < n ? n : prev));
   };
   const setFollowMax = (v: number) => {
     const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v));
     setFollowMaxRaw(n);
-    if (followMin > n) setFollowMinRaw(n);
+    setFollowMinRaw(prev => (prev > n ? n : prev));
   };
   const setReplyMin = (v: number) => {
     const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
     setReplyMinRaw(n);
-    if (replyMax < n) setReplyMaxRaw(n);
+    setReplyMaxRaw(prev => (prev < n ? n : prev));
   };
   const setReplyMax = (v: number) => {
     const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
     setReplyMaxRaw(n);
-    if (replyMin > n) setReplyMinRaw(n);
+    setReplyMinRaw(prev => (prev > n ? n : prev));
   };
   // v2.4.83: 点赞数 — 跟 follow / reply 同样的 min/max 滑块
   const [likeMin, setLikeMinRaw] = useState<number>(
@@ -507,12 +510,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const setLikeMin = (v: number) => {
     const n = Math.max(0, Math.min(LIKE_HARDCAP, v));
     setLikeMinRaw(n);
-    if (likeMax < n) setLikeMaxRaw(n);
+    setLikeMaxRaw(prev => (prev < n ? n : prev));
   };
   const setLikeMax = (v: number) => {
     const n = Math.max(0, Math.min(LIKE_HARDCAP, v));
     setLikeMaxRaw(n);
-    if (likeMin > n) setLikeMinRaw(n);
+    setLikeMinRaw(prev => (prev > n ? n : prev));
   };
 
   // ── Daily post count range (post_creator scenarios on X + Binance) ──
@@ -531,12 +534,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const setPostCountMin = (v: number) => {
     const n = Math.max(1, Math.min(POST_COUNT_HARDCAP, v));
     setPostCountMinRaw(n);
-    if (postCountMax < n) setPostCountMaxRaw(n);
+    setPostCountMaxRaw(prev => (prev < n ? n : prev));
   };
   const setPostCountMax = (v: number) => {
     const n = Math.max(1, Math.min(POST_COUNT_HARDCAP, v));
     setPostCountMaxRaw(n);
-    if (postCountMin > n) setPostCountMinRaw(n);
+    setPostCountMinRaw(prev => (prev > n ? n : prev));
   };
 
   // Confirm
