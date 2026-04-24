@@ -369,25 +369,45 @@ const MAX_CONCURRENT_TASKS = 3;
 /** resource key → taskId currently occupying it */
 const runningByResource = new Map<string, string>();
 
-function resourceKeyForPack(pack: { manifest?: { tab_url_pattern?: string } } | null | undefined): string {
-  const pattern = pack?.manifest?.tab_url_pattern;
-  return pattern ? `tab:${pattern}` : 'tab:default';
+// v4.25+ cross-tab scenarios (binance_from_x_repost) touch multiple tabs
+// in one run, so they claim ALL the tab resources they'll use. If any of
+// them is already busy, the run is rejected up front — avoids the nasty
+// case where e.g. a Twitter post_creator task starts mid-run through a
+// binance_from_x_repost run and they stomp on each other's tab focus.
+//
+// Single-tab scenarios (the common case) get a single-entry array and
+// behave identically to the pre-4.25 single-string key flow.
+function resourceKeysForPack(
+  pack: { manifest?: { tab_url_pattern?: string; additional_tab_patterns?: string[] } } | null | undefined
+): string[] {
+  const keys: string[] = [];
+  const primary = pack?.manifest?.tab_url_pattern;
+  keys.push(primary ? `tab:${primary}` : 'tab:default');
+  const additional = pack?.manifest?.additional_tab_patterns;
+  if (Array.isArray(additional)) {
+    for (const p of additional) {
+      if (typeof p === 'string' && p) keys.push(`tab:${p}`);
+    }
+  }
+  return keys;
 }
 
-function isResourceBusy(key: string): boolean {
-  return runningByResource.has(key);
+/** Returns the first busy key (for error message) or null if all free. */
+function findBusyResource(keys: string[]): string | null {
+  for (const k of keys) if (runningByResource.has(k)) return k;
+  return null;
 }
 
 function atConcurrencyLimit(): boolean {
   return runningByResource.size >= MAX_CONCURRENT_TASKS;
 }
 
-function markResourceBusy(key: string, taskId: string): void {
-  runningByResource.set(key, taskId);
+function markResourcesBusy(keys: string[], taskId: string): void {
+  for (const k of keys) runningByResource.set(k, taskId);
 }
 
-function releaseResource(key: string): void {
-  runningByResource.delete(key);
+function releaseResources(keys: string[]): void {
+  for (const k of keys) runningByResource.delete(k);
 }
 
 /**
@@ -435,14 +455,15 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 
   // Per-resource concurrency: same-platform tasks still serialize, but a
   // Twitter upload won't block an XHS scheduled run (and vice versa).
-  const resource = resourceKeyForPack(pack);
-  if (isResourceBusy(resource)) {
-    return { status: 'skipped', reason: 'resource_busy:' + resource };
+  const resources = resourceKeysForPack(pack);
+  const busyKey = findBusyResource(resources);
+  if (busyKey) {
+    return { status: 'skipped', reason: 'resource_busy:' + busyKey };
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
-  markResourceBusy(resource, task.id);
+  markResourcesBusy(resources, task.id);
   initProgress(task.id);
   // Manual single-draft upload also creates a run record so the user can
   // review what was uploaded later from the history page.
@@ -527,7 +548,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     updateTaskRecordResult(task.id, result);
     return result;
   } finally {
-    releaseResource(resource);
+    releaseResources(resources);
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
     tokensByTaskId.delete(task.id);
@@ -539,21 +560,24 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 }
 
 export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
-  // Per-resource concurrency: load pack first to derive its tab pattern,
+  // Per-resource concurrency: load pack first to derive its tab pattern(s),
   // then check the resource. Tasks targeting the same tab serialize; tasks
   // targeting different tabs (XHS vs Twitter) can run in parallel.
+  // v4.25+: cross-tab scenarios declare additional_tab_patterns and must
+  // acquire ALL declared tab resources (else rejected up front).
   const pack = await loadPack(task.scenario_id);
   if (!pack) {
     return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
-  const resource = resourceKeyForPack(pack);
-  if (isResourceBusy(resource)) {
-    return { status: 'skipped', reason: 'resource_busy:' + resource };
+  const resources = resourceKeysForPack(pack);
+  const busyKey = findBusyResource(resources);
+  if (busyKey) {
+    return { status: 'skipped', reason: 'resource_busy:' + busyKey };
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
-  markResourceBusy(resource, task.id);
+  markResourcesBusy(resources, task.id);
   initProgress(task.id);
   startTaskRecord(task, pack.manifest);
 
@@ -570,7 +594,7 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     setNextPlannedRun(task, Date.now());
     return outcome;
   } finally {
-    releaseResource(resource);
+    releaseResources(resources);
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
     // Keep progress around for 30s so UI can show final state

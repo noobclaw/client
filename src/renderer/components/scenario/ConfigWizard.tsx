@@ -305,6 +305,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const isAutoEngageScenario = isXAutoEngage || isBinanceAutoEngage;
   const isXPostCreator = scenario.id === 'x_post_creator';
   const isBinancePostCreator = scenario.id === 'binance_square_post_creator';
+  // v4.25+: 跨 tab 场景 —— 同 binance_square_post_creator 类似的表单结构
+  // (keywords/persona/daily 条数),但跑时占用双 tab + 从 X 挑素材。Wizard
+  // 走跟 binance_post_creator 完全同一份输入流程,orchestrator 内部差异。
+  const isBinanceFromXRepost = scenario.id === 'binance_from_x_repost';
+  // 把 post-creator 类的场景统一到一个布尔上,wizard 里很多地方只关心
+  // "这是个单条发帖型场景吗"——post_creator / from_x_repost 共享同一分支
+  const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
@@ -648,7 +655,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // other scenarios (auto_engage / link_rewrite / auto_reply) ignore
         // these fields, but sending them is cheap and keeps the payload
         // uniform across scenario types.
-        ...((isBinancePostCreator || isXPostCreator) ? {
+        ...((isAnyBinancePost || isXPostCreator) ? {
           daily_post_min: postCountMin,
           daily_post_max: postCountMax,
         } : {}),
@@ -691,8 +698,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               ? (isZh ? '配置 Twitter 自动互动' : 'Configure X Auto Engagement')
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
-                : isBinancePostCreator
-                  ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
+                : isBinanceFromXRepost
+                  ? (isZh ? '配置币安广场 · 推特搬运' : 'Configure Binance Square · Repost from X')
+                  : isBinancePostCreator
+                    ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
                     ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
                     : (isZh ? '配置赛道' : 'Configure Track')}
@@ -1104,7 +1113,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   run". Both x_post_creator and binance_square_post_creator
                   orchestrators wrap their main loop around `todayCount =
                   randInt(DAILY_POST_MIN, DAILY_POST_MAX)`. */}
-              {(isBinancePostCreator || isXPostCreator) && (
+              {(isAnyBinancePost || isXPostCreator) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh
@@ -1357,7 +1366,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   Hidden for reply scenarios (replies always post live —
                   no "save draft" concept) and x_link_rewrite (its own
                   modal in XWorkflowsPage already has this toggle). */}
-              {!isAutoReply && (!isXOrBinance || isXPostCreator || isBinancePostCreator) && (
+              {!isAutoReply && (!isXOrBinance || isXPostCreator || isAnyBinancePost) && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '生成后的处理' : 'After generation'}
@@ -1375,7 +1384,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         <div className="font-semibold dark:text-white mb-0.5">
                           {isXPostCreator
                             ? (isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter')
-                            : isBinancePostCreator
+                            : isAnyBinancePost
                               ? (isZh ? '🚀 自动发布到币安广场' : '🚀 Auto-post to Binance Square')
                               : (isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts')}
                         </div>
@@ -1401,7 +1410,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         <div className="text-gray-500 dark:text-gray-400">
                           {isXPostCreator
                             ? (isZh ? '生成的推文存盘，你人工审核挑选后再手动发布。封号风险最低。' : 'Generated tweets saved locally; you review and post manually.')
-                            : isBinancePostCreator
+                            : isAnyBinancePost
                               ? (isZh ? '生成的短评存盘，你人工审核挑选后再手动发布到币安广场。' : 'Generated notes saved locally; you review and post to Binance Square manually.')
                               : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
                         </div>
@@ -1479,6 +1488,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <li>{isZh ? '· 推文发布后无法撤回，建议先用 1-2 条试运行' : '· Tweets cannot be unposted — start with 1-2 URLs to test'}</li>
                       <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
                     </>
+                  ) : isBinanceFromXRepost ? (
+                    <>
+                      <li>{isZh
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 改写成中文币安风格,原图一并上传`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral image tweets from X, AI rewrites in Chinese Binance style, reuses original images`}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 运行期间占用 X + 币安两个标签页,不能同时跑其他任务 — 需要两个平台都打开并登录' : '⚠️ Locks both X + Binance tabs while running — other tasks on either platform are blocked. Both must be logged in before starting.'}</li>
+                      <li>{isZh ? '· 每篇自动检测登录态,未登录直接报错终止(不会白跑)' : '· Auto-checks login on both platforms; if either is logged out the run aborts early'}</li>
+                      <li>{isZh ? '· 图用的是原推的图(CDN 直取),文字是 AI 中文改写,带 cashtag' : '· Images come from the original tweet CDN; text is AI-rewritten in Chinese with cashtags'}</li>
+                      <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查改写风格' : '· Posts cannot be unposted — review output after first run to confirm the rewrite tone.'}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:需要 VPN / 代理同时访问 x.com 和 binance.com' : '⚠️ Mainland China users: need VPN / proxy that reaches both x.com and binance.com'}</li>
+                    </>
                   ) : isBinancePostCreator ? (
                     <>
                       <li>{isZh
@@ -1520,9 +1540,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ? (isZh ? '确认并启用 Twitter 自动互动' : 'Confirm & Enable X Auto Engagement')
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
-                    : isBinancePostCreator
-                      ? (isZh ? '确认并启用币安广场发帖' : 'Confirm & Enable Binance Square Post')
-                      : isLinkRewriteScenario
+                    : isBinanceFromXRepost
+                      ? (isZh ? '确认并启用币安广场 · 推特搬运' : 'Confirm & Enable Binance · Repost from X')
+                      : isBinancePostCreator
+                        ? (isZh ? '确认并启用币安广场发帖' : 'Confirm & Enable Binance Square Post')
+                        : isLinkRewriteScenario
                         ? (isZh ? '确认并开始仿写' : 'Confirm & Start Rewriting')
                         : isAutoReply
                           ? (isZh ? '确认并启用自动回复' : 'Confirm & Enable Auto Reply')
@@ -1612,6 +1634,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         return isZh
                           ? `⏰ ${intervalLabel} · 每次 ${tStr} 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
                           : `⏰ ${intervalLabel} · ${tStr} tweets/run (30% rewrite / 30% original / 40% quote, randomized)`;
+                      }
+                      if (isBinanceFromXRepost) {
+                        return isZh
+                          ? `⏰ ${intervalLabel} · 每次 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 推特爆款搬运到币安广场 (原图 + AI 改写)`
+                          : `⏰ ${intervalLabel} · ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · X → Binance Square (original images + AI-rewritten text)`;
                       }
                       if (isBinancePostCreator) {
                         return isZh

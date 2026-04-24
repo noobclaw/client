@@ -182,13 +182,20 @@ function buildContext(
 ): Record<string, any> {
   const { manifest, scripts, config } = pack;
 
-  // ⭐ Multi-tab routing (Twitter v1): if the scenario manifest declares
-  // a tab_url_pattern, every sendBrowserCommand call gets the pattern as
-  // a routing hint so the chrome-extension dispatches to the matching
-  // tab instead of the active one. Backward compatible — old manifests
-  // omit the field, the option object is empty, behavior unchanged.
-  const tabPattern = (manifest as any).tab_url_pattern as string | undefined;
-  const bridgeOpts = tabPattern ? { tabPattern } : undefined;
+  // ⭐ Multi-tab routing: if manifest declares a tab_url_pattern, every
+  // sendBrowserCommand call gets that pattern so the chrome-extension
+  // dispatches to the matching tab instead of the active one.
+  //
+  // v4.25+ cross-tab scenarios (binance_from_x_repost): manifest can also
+  // declare `secondary_tab_url_pattern`. Orchestrator calls
+  // `ctx.setActiveTab('primary' | 'secondary')` to swap routing target
+  // mid-run — needed when one scenario touches both X and Binance tabs.
+  // Back-compat: single-tab scenarios never call setActiveTab and behave
+  // as before (bridgeOpts bound to primary pattern).
+  const primaryPattern = (manifest as any).tab_url_pattern as string | undefined;
+  const secondaryPattern = (manifest as any).secondary_tab_url_pattern as string | undefined;
+  let activePattern: string | undefined = primaryPattern;
+  const getBridgeOpts = () => activePattern ? { tabPattern: activePattern } : undefined;
 
   // All drafts collected during this run (for saveDrafts)
   const allDrafts: Draft[] = [];
@@ -217,7 +224,7 @@ function buildContext(
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const t = timeout || 10000;
       return Promise.race([
-        sendBrowserCommand(command, params || {}, t, bridgeOpts),
+        sendBrowserCommand(command, params || {}, t, getBridgeOpts()),
         new Promise<never>((_, reject) => {
           const check = setInterval(() => {
             if (progress.isAbortRequested()) {
@@ -230,15 +237,31 @@ function buildContext(
       ]);
     },
 
+    // v4.25+ cross-tab routing: swap which tab pattern ctx.browser/navigate/
+    // scroll route to. Only used by scenarios declaring secondary_tab_url_pattern
+    // (currently only binance_from_x_repost). No-op for single-tab scenarios.
+    setActiveTab: (key: 'primary' | 'secondary') => {
+      if (key === 'secondary') {
+        if (!secondaryPattern) {
+          coworkLog('WARN', 'phaseRunner', 'setActiveTab("secondary") called but no secondary_tab_url_pattern in manifest');
+          return;
+        }
+        activePattern = secondaryPattern;
+      } else {
+        activePattern = primaryPattern;
+      }
+    },
+    getActiveTabKey: () => (activePattern === secondaryPattern ? 'secondary' : 'primary'),
+
     // Convenience shortcuts for common operations
     navigate: async (url: string) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('navigate', { url }, 30000, bridgeOpts);
+      await sendBrowserCommand('navigate', { url }, 30000, getBridgeOpts());
     },
 
     scroll: async (amount?: number) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, bridgeOpts);
+      await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, getBridgeOpts());
     },
 
     sleep: async (min: number, max?: number) => {
@@ -266,7 +289,7 @@ function buildContext(
         }
       }
       try {
-        const res = await sendBrowserCommand('javascript', { code: script }, 8000, bridgeOpts);
+        const res = await sendBrowserCommand('javascript', { code: script }, 8000, getBridgeOpts());
         const raw = res?.result;
         if (typeof raw === 'string') {
           try { return JSON.parse(raw); } catch { return raw; }
@@ -280,7 +303,7 @@ function buildContext(
 
     // Atomic click at coordinates — used by orchestrator's clickByText()
     click: async (x: number, y: number) => {
-      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000, bridgeOpts);
+      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000, getBridgeOpts());
     },
 
     // Debug log (visible in sidecar console, not in UI)
@@ -291,7 +314,7 @@ function buildContext(
     checkAnomaly: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('check_anomaly', {}, 5000, bridgeOpts);
+        const res = await sendBrowserCommand('check_anomaly', {}, 5000, getBridgeOpts());
         const data = res?.data || res || {};
         const status = data.status || 'ok';
         if (status === 'captcha' || status === 'login_wall' || status === 'rate_limited' || status === 'account_flag') {
@@ -308,7 +331,7 @@ function buildContext(
     readCards: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('read_feed_cards', {}, 8000, bridgeOpts);
+        const res = await sendBrowserCommand('read_feed_cards', {}, 8000, getBridgeOpts());
         const data = res?.data || res || {};
         return data.cards || [];
       } catch (err) {
@@ -321,7 +344,7 @@ function buildContext(
     readDetail: async () => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       try {
-        const res = await sendBrowserCommand('read_detail_page', {}, 8000, bridgeOpts);
+        const res = await sendBrowserCommand('read_detail_page', {}, 8000, getBridgeOpts());
         return res?.data || res || null;
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', 'readDetail failed', { err: String(err) });

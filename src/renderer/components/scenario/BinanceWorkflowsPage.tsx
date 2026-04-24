@@ -120,6 +120,41 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     scenarios.find(s => s.id === 'binance_square_auto_engage')
     || AUTO_ENGAGE_FALLBACK;
 
+  // v4.25+ 第 3 张卡:推特搬运。跨 X + 币安两个 tab 跑。
+  const FROM_X_REPOST_FALLBACK: Scenario = {
+    id: 'binance_from_x_repost',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'viral_production',
+    category: 'creation',
+    name_zh: '币安广场 · 推特搬运',
+    name_en: 'Binance Square · Repost from X',
+    description_zh: '从推特 feed 挑带图爆款,AI 改写成中文币安风格,原图一并上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
+    description_en: 'Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. Locks both X + Binance tabs.',
+    icon: '🔁',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 KOL,搬运海外 alpha 并加上自己的锐评',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 30,
+      min_scroll_delay_ms: 3000, max_scroll_delay_ms: 10000,
+      read_dwell_min_ms: 10000, read_dwell_max_ms: 45000,
+      max_run_duration_ms: 3600000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const fromXRepost =
+    scenarios.find(s => s.id === 'binance_from_x_repost')
+    || FROM_X_REPOST_FALLBACK;
+
   // (previously we polled running task ids to drive the inline running-glow
   //  on the "已有任务" list. That list was removed — MyTasksPage is the
   //  single source of truth for running state now. No polling needed here.)
@@ -160,7 +195,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Scenario cards — same layout as X: jump straight to cards, no hero */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {/* 1. Auto engage (coming soon — backend scenario not yet built) */}
         <BinanceCard
           emoji="🤝"
@@ -199,6 +234,28 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={postCreator}
           onStart={() => handleStart(postCreator)}
+          isZh={isZh}
+          binanceGold={binanceGold}
+          binanceGoldLight={binanceGoldLight}
+          binanceDark={binanceDark}
+        />
+
+        {/* 3. Repost from X — v4.25+ 新卡 */}
+        <BinanceCard
+          emoji="🔁"
+          badgeZh="推特搬运"
+          badgeEn="X repost"
+          titleZh="币安广场 · 推特搬运"
+          titleEn="Binance Square · Repost from X"
+          descZh="从推特 feed 挑带图爆款,AI 改写成中文币安风格,原图一并上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
+          descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
+          tagsLine={isZh ? '跨平台搬运 · 带图 · 双 tab 校验' : 'Cross-platform · With images · Dual-tab check'}
+          ctaZh="立即开始"
+          ctaEn="Get Started"
+          enabled={true}
+          loading={loading}
+          scenario={fromXRepost}
+          onStart={() => handleStart(fromXRepost)}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
