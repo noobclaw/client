@@ -640,8 +640,370 @@ async function executeCommand(msg) {
           data = { error: String((e && e.message) || e).slice(0, 200) };
         }
       }
+    } else if (command === 'editor_insert_text') {
+      // ── editor_insert_text (v1.2.13+) ──
+      // 通用富文本编辑器写入 — 用 document.execCommand('insertText') 走浏览器
+      // 原生输入管道(beforeinput → input),React/ProseMirror/TipTap/CKEditor
+      // 都能正确收到事件并同步状态。execCommand 失败兜底用 InputEvent dispatch。
+      // 取代 binance_dom_action.prosemirror_insert_text(后者保留作 alias)。
+      // 用法: { command: 'editor_insert_text', selector: '...', text: '...' }
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          const sel = cfg.selector;
+          const text = cfg.text;
+          if (!sel) return { error: 'selector_required' };
+          if (typeof text !== 'string') return { error: 'text_required' };
+          const editor = document.querySelector(sel);
+          if (!editor) return { error: 'editor_not_found', selector: sel };
+          try {
+            editor.focus();
+            let method = 'unknown';
+            let inserted = false;
+            if (typeof document.execCommand === 'function') {
+              try {
+                inserted = document.execCommand('insertText', false, text);
+                if (inserted) method = 'execCommand';
+              } catch (_) {}
+            }
+            if (!inserted) {
+              const ev1 = new InputEvent('beforeinput', {
+                inputType: 'insertText', data: text, bubbles: true, cancelable: true,
+              });
+              editor.dispatchEvent(ev1);
+              const ev2 = new InputEvent('input', {
+                inputType: 'insertText', data: text, bubbles: true,
+              });
+              editor.dispatchEvent(ev2);
+              method = 'dispatchEvent';
+              inserted = true;
+            }
+            return { ok: inserted, method, textLen: text.length, editorTextLen: (editor.textContent || '').length };
+          } catch (e) {
+            return { error: 'insert_failed', message: String(e && e.message || e).slice(0, 200) };
+          }
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
+    } else if (command === 'click_with_text') {
+      // ── click_with_text (v1.2.13+) ──
+      // 在容器内按 textContent 找按钮(元素)点击。取代 binance 系列里的
+      // click_first_follow_button + submit_short_editor 大部分场景。
+      // 用法: { command: 'click_with_text',
+      //         containerSel: '.short-editor-inner.modal',  // 可选,默认 document
+      //         tagSel: 'button',                            // 容器内匹啥 tag,默认 'button'
+      //         acceptedTexts: ['关注', 'Follow'],
+      //         opts: { fuzzy: true,           // 启用 substring 模糊(t.length ≤ accepted+5)
+      //                 skipInactive: true,    // 有 .inactive class 视为禁用
+      //                 skipDisabled: true,    // disabled 属性视为禁用
+      //                 returnDebug: true,     // 失败时返回所有扫到的 button 文本
+      //                 instance: 'first',     // 'first' | 'last' (扫到多个时取哪个)
+      //                 noClick: false } }     // true = 只查不点(用于诊断)
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          const containerSel = cfg.containerSel || null;
+          const tagSel = cfg.tagSel || 'button';
+          const accepted = cfg.acceptedTexts || [];
+          const opts = cfg.opts || {};
+          const fuzzy = opts.fuzzy !== false;
+          const skipInactive = opts.skipInactive !== false;
+          const skipDisabled = opts.skipDisabled !== false;
+          const instance = opts.instance || 'first';
+          const noClick = !!opts.noClick;
+          const returnDebug = !!opts.returnDebug;
+          if (!accepted.length) return { error: 'acceptedTexts_required' };
+          let containers = [document];
+          if (containerSel) {
+            const found = document.querySelectorAll(containerSel);
+            if (!found.length) return { error: 'container_not_found', selector: containerSel };
+            containers = Array.from(found);
+          }
+          const allBtns = [];
+          for (const c of containers) {
+            const btns = c.querySelectorAll(tagSel);
+            for (const b of btns) allBtns.push(b);
+          }
+          const norm = (s) => (s || '').replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+          const debugTexts = [];
+          const matches = [];
+          for (const b of allBtns) {
+            const t = norm(b.textContent);
+            if (returnDebug) debugTexts.push(t.slice(0, 30));
+            let matched = false;
+            for (const a of accepted) {
+              if (t === a) { matched = true; break; }
+            }
+            if (!matched && fuzzy) {
+              for (const a of accepted) {
+                if (t.length > 0 && t.length <= a.length + 5 && t.indexOf(a) >= 0) {
+                  matched = true; break;
+                }
+              }
+            }
+            if (matched) matches.push({ el: b, text: t });
+          }
+          if (matches.length === 0) {
+            return {
+              error: 'no_match',
+              scanned: allBtns.length,
+              containers: containers.length,
+              btn_texts: returnDebug ? debugTexts.slice(0, 20) : undefined,
+            };
+          }
+          const picked = (instance === 'last') ? matches[matches.length - 1] : matches[0];
+          const b = picked.el;
+          if (skipDisabled && b.disabled) return { error: 'btn_disabled', text: picked.text };
+          if (skipInactive && (b.className || '').indexOf('inactive') >= 0) {
+            return { error: 'btn_inactive', text: picked.text };
+          }
+          if (noClick) {
+            return { ok: true, text: picked.text, matchCount: matches.length, clicked: false };
+          }
+          b.scrollIntoView({ behavior: 'instant', block: 'center' });
+          b.click();
+          return { ok: true, text: picked.text, matchCount: matches.length, clicked: true };
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
+    } else if (command === 'wait_for') {
+      // ── wait_for (v1.2.13+) ──
+      // 通用元素等待 — 替代 orchestrator 里那一堆轮询循环。
+      // 用法: { command: 'wait_for',
+      //         selector: '...',
+      //         timeoutMs: 8000,           // 默认 5000
+      //         condition: 'present' }     // 'present' | 'absent' | 'visible'
+      const sel = (params && params.selector) || '';
+      const timeoutMs = (params && params.timeoutMs) || 5000;
+      const condition = (params && params.condition) || 'present';
+      if (!sel) { data = { error: 'selector_required' }; }
+      else {
+        const tab = await resolveTab();
+        const startedAt = Date.now();
+        const POLL_MS = 250;
+        let satisfied = false;
+        let loops = 0;
+        while (Date.now() - startedAt < timeoutMs) {
+          loops++;
+          try {
+            const r = await chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              world: 'MAIN',
+              func: (s, cond) => {
+                const el = document.querySelector(s);
+                if (cond === 'absent') return !el;
+                if (!el) return false;
+                if (cond === 'visible') {
+                  const rect = el.getBoundingClientRect();
+                  return rect.width > 0 && rect.height > 0;
+                }
+                return true; // 'present'
+              },
+              args: [sel, condition],
+            });
+            if (r[0]?.result === true) { satisfied = true; break; }
+          } catch (_) {}
+          await new Promise(r => setTimeout(r, POLL_MS));
+        }
+        const elapsed = Date.now() - startedAt;
+        data = satisfied ? { ok: true, elapsedMs: elapsed, loops } : { error: 'timeout', elapsedMs: elapsed, loops };
+      }
+    } else if (command === 'extract_list') {
+      // ── extract_list (v1.2.13+) ──
+      // JSON-driven DOM 列表提取 — 通用版的 read_feed / find_follow_buttons。
+      // 业务逻辑(选什么 selector / 提什么字段 / 怎么过滤)全在 orchestrator
+      // 传的 rules 里,扩展只负责执行。
+      //
+      // 用法: { command: 'extract_list', rules: { ...见下面 } }
+      // rules: {
+      //   itemSelector: '.feed-buzz-card-base-view',
+      //   itemSelectorFallback: '.card-content-box',  // optional
+      //   itemFilter: { textOneOf: ['关注', 'Follow'] }, // optional 预过滤
+      //   ancestorSelector: '.follow-card',  // optional 找到 item 后 closest()
+      //   maxItems: 50,
+      //   fields: {
+      //     text: { selector: '.text', method: 'textContent', maxLen: 1500,
+      //             altSelectors: ['.fallback', '...'] },
+      //     handle: { selector: 'a[href*="/profile/"]', method: 'attribute',
+      //               attr: 'href', regex: '/profile/([^/?#]+)', decode: 'uri' },
+      //     cashtags: { selector: '[data-role="coinpair"]', method: 'attribute',
+      //                 attr: 'data-value', multiple: true },
+      //     likes: { selector: '.thumb-up-button .num span.current',
+      //              method: 'textContent', parseNumber: true },
+      //   },
+      //   postFilter: { requireField: 'text',           // 字段值非空才保留
+      //                 minLen: { field: 'text', value: 5 },
+      //                 maxValue: { field: 'comments', value: 100 } },
+      // }
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (rules) => {
+          if (!rules || !rules.itemSelector) return { error: 'itemSelector_required' };
+          // 解析数字: 支持 k/m/万 后缀
+          const parseNum = (s) => {
+            const raw = (s || '').replace(/[^0-9.kKmM万]/g, '');
+            let n = parseFloat(raw) || 0;
+            if (/[kK]/.test(raw)) n *= 1000;
+            else if (/[mM]/.test(raw)) n *= 1000000;
+            else if (/万/.test(raw)) n *= 10000;
+            return Math.floor(n);
+          };
+          // 提单字段
+          const extractField = (root, fieldRule) => {
+            const sels = [fieldRule.selector].concat(fieldRule.altSelectors || []);
+            if (fieldRule.multiple) {
+              // 多匹配:返回数组
+              const out = [];
+              for (const sel of sels) {
+                const els = root.querySelectorAll(sel);
+                if (els.length === 0) continue;
+                for (const el of els) {
+                  let val = '';
+                  if (fieldRule.method === 'attribute') val = el.getAttribute(fieldRule.attr || '') || '';
+                  else val = (el.textContent || '').trim();
+                  if (val) out.push(val);
+                }
+                break; // 第一个非空 selector
+              }
+              return out;
+            }
+            // 单匹配
+            for (const sel of sels) {
+              const el = root.querySelector(sel);
+              if (!el) continue;
+              let val = '';
+              if (fieldRule.method === 'attribute') val = el.getAttribute(fieldRule.attr || '') || '';
+              else val = (el.textContent || '').trim();
+              if (fieldRule.regex && val) {
+                try {
+                  const m = val.match(new RegExp(fieldRule.regex));
+                  val = m ? m[1] || m[0] : '';
+                } catch (_) {}
+              }
+              if (fieldRule.decode === 'uri' && val) {
+                try { val = decodeURIComponent(val); } catch (_) {}
+              }
+              if (fieldRule.parseNumber) val = parseNum(val);
+              if (typeof val === 'string' && fieldRule.maxLen) val = val.slice(0, fieldRule.maxLen);
+              if (val !== '' && val !== 0) return val;
+              if (val === 0 && fieldRule.parseNumber) return 0; // 0 是合法数字
+            }
+            return fieldRule.parseNumber ? 0 : '';
+          };
+          // 主流程
+          const stats = {
+            url: location.href,
+            scanned: 0, kept: 0,
+            skippedFilter: 0, skippedNoText: 0, skippedShort: 0, skippedHigh: 0,
+          };
+          let items = document.querySelectorAll(rules.itemSelector);
+          let useFallback = false;
+          if (items.length === 0 && rules.itemSelectorFallback) {
+            items = document.querySelectorAll(rules.itemSelectorFallback);
+            useFallback = true;
+          }
+          stats.scanSource = useFallback ? 'fallback' : 'primary';
+          stats.itemSelector = useFallback ? rules.itemSelectorFallback : rules.itemSelector;
+          const max = Math.min(items.length, rules.maxItems || 50);
+          const out = [];
+          const itemFilter = rules.itemFilter || null;
+          for (let i = 0; i < max; i++) {
+            stats.scanned++;
+            let item = items[i];
+            // 预过滤(item 自己的 textContent)
+            if (itemFilter && itemFilter.textOneOf) {
+              const itemText = (item.textContent || '').trim();
+              if (itemFilter.textOneOf.indexOf(itemText) < 0) {
+                stats.skippedFilter++; continue;
+              }
+            }
+            // 可选 ancestor 提升
+            if (rules.ancestorSelector) {
+              const anc = item.closest(rules.ancestorSelector);
+              if (anc) item = anc;
+            }
+            // 提取所有字段
+            const data = { _index: i };
+            const fields = rules.fields || {};
+            for (const fname of Object.keys(fields)) {
+              data[fname] = extractField(item, fields[fname]);
+            }
+            // 后过滤
+            const pf = rules.postFilter || {};
+            if (pf.requireField && !data[pf.requireField]) { stats.skippedNoText++; continue; }
+            if (pf.minLen) {
+              const v = data[pf.minLen.field];
+              if (typeof v !== 'string' || v.length < pf.minLen.value) { stats.skippedShort++; continue; }
+            }
+            if (pf.maxValue) {
+              const v = data[pf.maxValue.field];
+              if (typeof v === 'number' && v >= pf.maxValue.value) { stats.skippedHigh++; continue; }
+            }
+            stats.kept++;
+            out.push(data);
+          }
+          return { items: out, stats };
+        },
+        args: [params && params.rules || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
+    } else if (command === 'click_in_card') {
+      // ── click_in_card (v1.2.13+) ──
+      // 在某张卡片(由 attr 唯一定位)里点击指定子元素。取代
+      // click_card_comments_icon + 给 doLike 用的 :has() trick 提供更稳固的路径。
+      // 用法: { command: 'click_in_card',
+      //         cardSelector: '.feed-buzz-card-base-view',
+      //         byAttr: 'href',                              // 在卡片内查啥属性匹配
+      //         attrSelector: 'a',                           // 哪种 tag 上找该属性
+      //         attrIncludes: '/post/abc123',                // 属性值 substring 匹配
+      //         innerSelector: '.thumb-up-button' }          // 卡片内点啥
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          const cardSel = cfg.cardSelector || '';
+          const byAttr = cfg.byAttr || 'href';
+          const attrSelector = cfg.attrSelector || 'a';
+          const attrIncludes = cfg.attrIncludes || '';
+          const innerSel = cfg.innerSelector || '';
+          if (!cardSel || !attrIncludes || !innerSel) return { error: 'missing_required_param' };
+          const cards = document.querySelectorAll(cardSel);
+          for (const card of cards) {
+            const attrEls = card.querySelectorAll(attrSelector);
+            let matched = false;
+            for (const el of attrEls) {
+              const v = el.getAttribute(byAttr) || '';
+              if (v.indexOf(attrIncludes) >= 0) { matched = true; break; }
+            }
+            if (!matched) continue;
+            const inner = card.querySelector(innerSel);
+            if (!inner) return { error: 'inner_not_found_in_matched_card', cards: cards.length };
+            inner.scrollIntoView({ behavior: 'instant', block: 'center' });
+            const clickable = inner.querySelector('[role="button"]') || inner.firstElementChild || inner;
+            clickable.click();
+            return { ok: true, cardCount: cards.length };
+          }
+          return { error: 'no_card_matched_attr', cards: cards.length };
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
     } else if (command === 'binance_dom_action') {
-      // ── binance_dom_action (v1.2.9+) ──
+      // ── binance_dom_action (v1.2.9+,v1.2.13 起 deprecated) ──
+      // ⚠️ DEPRECATED — 新代码应该用顶层 editor_insert_text / click_with_text /
+      // extract_list / wait_for / click_in_card 这 5 个通用原语。这里保留所有
+      // 子动作作为 thin alias,仅为兼容老 backend orchestrator 不立即崩。
+      //
+      // 老逻辑(v1.2.9+) ──
       // CSP-safe DOM extraction/interaction for Binance Square. Some
       // pages (binance.com being one) ship strict CSPs that block the
       // generic `javascript` command's `new Function(code)` eval inside
