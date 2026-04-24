@@ -1184,7 +1184,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
-                        ? `每天随机关注 ${followMin}-${followMax} 个 KOL（0-${FOLLOW_HARDCAP}，越大封号风险越高）`
+                        ? `每次运行随机关注 ${followMin}-${followMax} 个 KOL（0-${FOLLOW_HARDCAP}，越大封号风险越高）`
                         : `Random ${followMin}-${followMax} follows/day (0-${FOLLOW_HARDCAP}, larger = higher ban risk)`}
                     </div>
                   </div>
@@ -1192,7 +1192,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {/* Reply range */}
                   <div>
                     <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                      {isZh ? '每天评论数量（随机区间）' : 'Daily reply count (random range)'}
+                      {isZh ? '每次运行评论数量（随机区间）' : 'Reply count per run (random range)'}
                     </label>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -1218,7 +1218,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                     <div className="text-[11px] text-gray-400 mt-1">
                       {isZh
-                        ? `每天随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
+                        ? `每次运行随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
                         : `Random ${replyMin}-${replyMax} replies/day (1-${REPLY_HARDCAP}, larger = higher ban risk)`}
                     </div>
                   </div>
@@ -1506,7 +1506,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           ? (isZh ? '币安广场' : 'Binance Square')
                           : (isZh ? '推特' : 'Twitter');
                         return isZh
-                          ? `⏰ ${intervalLabel} · ${platLabel}每天关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 30 秒-10 分钟随机）`
+                          ? `⏰ ${intervalLabel} · ${platLabel}每次关注 ${followMin}-${followMax} 个 + 评论 ${replyMin}-${replyMax} 条（随机顺序,动作间隔 30 秒-10 分钟随机）`
                           : `⏰ ${intervalLabel} · ${platLabel}: ${followMin}-${followMax} follows + ${replyMin}-${replyMax} replies/day (random order, 30s-10min between)`;
                       }
                       if (isXPostCreator) {

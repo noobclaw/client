@@ -172,7 +172,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const t = tasks.find(t => t.id === view.task_id);
       const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
       const p = s?.platform;
-      if (p === 'xhs' || p === 'x' || p === 'douyin' || p === 'tiktok' || p === 'youtube') return p;
+      // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
+      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'tiktok' || p === 'youtube') return p;
       return 'xhs';
     }
     return 'xhs';

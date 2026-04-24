@@ -94,7 +94,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'engagement',
     name_zh: '币安广场自动互动',
     name_en: 'Binance Square Auto Engagement',
-    description_zh: '每天关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
+    description_zh: '每次运行关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
     description_en: 'Daily follow Binance Square crypto KOLs + AI-drafted replies to hot posts.',
     icon: '🤝',
     default_config: {
