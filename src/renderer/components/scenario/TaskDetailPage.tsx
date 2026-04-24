@@ -814,13 +814,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           page (linked above via the "📊 查看历史运行记录" button). */}
       {(() => {
         const autoUploadMode = (task as any).auto_upload !== false;
-        // "草稿箱"是 XHS viral_production 独有的概念 —— 生成图文后需要用户
-        // 打开小红书草稿箱二次确认再发。其他场景:
-        //   - XHS auto_reply: 无草稿,直接在评论区 post
-        //   - 推特 creator / 币安 creator: 直接发到对应平台,无草稿箱
-        // 所以只有 "XHS 平台 && 非 auto_reply" 才显示"草稿箱/仅本地"那档 badge,
-        // 其余都显示"💬 直接发布到 xxx"。
-        const showUploadBadge = scenario?.platform === 'xhs' && !isAutoReplyTask;
+        // 发布模式 badge:三个 creator 场景都有 auto_upload 切换(见 ConfigWizard)。
+        // 只有 auto_reply 场景没有这个概念(回复永远直接发)。
+        // ⚠️ 文案按平台区分 —— "草稿箱"只适用 XHS(XHS 独有的"上传到小红书草稿箱"模型);
+        // 推特/币安是"直接发到平台"模型,label 要写"发布到 推特/币安广场"。
+        const showUploadBadge = !isAutoReplyTask;
+        const isXhsViral = scenario?.platform === 'xhs';
+        const autoUploadLabel = isXhsViral
+          ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload to drafts')
+          : (isZh ? `🚀 自动发布到${platformLabelForTask}` : `🚀 Auto-post to ${platformLabelForTask}`);
         return (
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
@@ -828,7 +830,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               {showUploadBadge ? (
                 <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
                   {autoUploadMode
-                    ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload')
+                    ? autoUploadLabel
                     : (isZh ? '📁 仅生成保存本地' : '📁 Generate only')}
                 </span>
               ) : (
@@ -849,10 +851,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           const isDone = status === 'done';
           const isError = status === 'error';
 
-          // 仅生成模式的 step 4：不跑上传，替换为"手动上传指引 + 打开目录按钮"。
-          // 只有 XHS viral_production 有这个"生成图文 → 手动传草稿箱"的形态,
-          // 推特/币安 creator 是直接发布,没这一步。
-          const isManualUploadStep = showUploadBadge && stepNum === 4 && !autoUploadMode;
+          // 仅生成模式的 step 4：不跑上传，替换为"打开本地目录 + 手动上传指引"。
+          // ⚠️ 只适用 XHS viral_production:它的 auto_upload=false 是"图文存盘→
+          // 用户打开文件夹→手动上传到草稿箱"。其他场景:
+          //   - 推特 post_creator: 只有 3 步,没 stepNum===4
+          //   - 币安 post_creator: step 4 是"发布";auto_upload=false 时 orchestrator
+          //     已经把正文写进了页面编辑器,用户手动点"发文"即可,不需要"打开文件夹" UI
+          const isManualUploadStep = isXhsViral && stepNum === 4 && !autoUploadMode;
           const displayName = isManualUploadStep
             ? (isZh ? '请在本地手动上传到小红书草稿箱' : 'Manually upload from local folder')
             : name;
