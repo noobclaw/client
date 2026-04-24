@@ -315,12 +315,37 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   useEffect(() => {
     if (!running) return;
     let cancelled = false;
+    // Defensive: if progress comes back null repeatedly while we think the
+    // task is running, the in-memory progress entry was already cleaned up
+    // (it's deleted 30s after the task finishes). Without this, the UI
+    // would stay stuck on "正在启动…" / "等待前一步" placeholders forever
+    // because nothing else flips running back to false.
+    let nullStreak = 0;
+    const NULL_STREAK_THRESHOLD = 3;  // 2s × 3 = 6s of consecutive nulls
     const doFetch = async () => {
       try {
         // Pass task.id so the main process returns THIS task's progress
         // even when another task (different platform) is also running.
         const prog = await scenarioService.getRunProgress(task.id).catch(() => null);
         if (cancelled || !mountedRef.current) return;
+        if (!prog || prog.taskId !== task.id) {
+          // Cross-check with the authoritative running list before downgrading
+          // — getRunningTaskIds reads runningByResource which is updated
+          // synchronously when the task finishes, so it's the safer signal.
+          nullStreak++;
+          if (nullStreak >= NULL_STREAK_THRESHOLD) {
+            const ids = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
+            if (cancelled || !mountedRef.current) return;
+            if (!Array.isArray(ids) || ids.indexOf(task.id) < 0) {
+              setRunning(false);
+              setStopping(false);
+              void refreshData();
+            }
+            nullStreak = 0;
+          }
+          return;
+        }
+        nullStreak = 0;
         if (prog && prog.taskId === task.id) {
           setProgress(prog);
           // If progress says "done" or "error", task has finished
