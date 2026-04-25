@@ -773,6 +773,26 @@ function buildContext(
       }
     },
 
+    // v4.28 把已识别的爆款队列(ctx._viralFlushQueue)批量发到爆文库,清空队列。
+    // 每个动作间隔调一次 — 任务被中断时不至于一次丢光所有识别的爆款。
+    // 返 { ok, accepted, inserted, updated, dup_skip, failed, ... } — 服务端
+    // 准确反馈每条入库的状态。
+    flushViralQueue: async (platform: string): Promise<any> => {
+      const queue = (ctx as any)._viralFlushQueue;
+      if (!Array.isArray(queue) || queue.length === 0) {
+        return { ok: false, reason: 'empty' };
+      }
+      const items = queue.splice(0); // 取出 + 同步清空,防 reentry 重复发
+      try {
+        const res = await (ctx as any).pushToViralLibrary({ platform, items });
+        return res || { ok: false, reason: 'no_response' };
+      } catch (err: any) {
+        // push 失败:把 items 放回队尾,下次 flush 重试
+        queue.unshift(...items);
+        return { ok: false, reason: 'push_failed:' + String(err && err.message || err).slice(0, 80) };
+      }
+    },
+
     // v4.27 评估候选帖是否过爆款阈值。post 字段名按平台 normalize 取(orchestrator
     // 里 metric 字段命名各异:likes / likes_count / comment_count / replies_count …)。
     // 任一阈值字段命中算 1 hit;hit 数 ≥ min_match 即合格。字段缺失不参与评估。
