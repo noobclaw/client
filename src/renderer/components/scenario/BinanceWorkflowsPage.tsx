@@ -129,7 +129,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 推特搬运',
     name_en: 'Binance Square · Repost from X',
-    description_zh: '从推特 feed 挑带图爆款,AI 改写成中文币安风格,原图一并上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
+    description_zh: '从推特 feed 挑带图爆款,AI 改写成中文币安风格,带图上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
     description_en: 'Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. Locks both X + Binance tabs.',
     icon: '🔁',
     default_config: {
@@ -227,7 +227,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           titleEn="Binance Square Auto Post"
           descZh="AI 从你的 token 列表里随机挑一个,按你的人设写一条 100-300 字短评,自动带 $BTC 等 cashtag 触发 token 页流量。"
           descEn="AI picks a token from your watchlist, drafts a 100-300 char note in your persona, posts with $TICKER cashtags to trigger token-page traffic."
-          tagsLine="$BTC · $ETH · $SOL · $BNB"
+          tagsLine={isZh ? 'AI 短评 · $TICKER 导流 · 随机 token' : 'AI short post · $TICKER traffic · Random token'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
@@ -247,7 +247,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="X repost"
           titleZh="币安广场 · 推特搬运"
           titleEn="Binance Square · Repost from X"
-          descZh="从推特 feed 挑带图爆款,AI 改写成中文币安风格,原图一并上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
+          descZh="从推特 feed 挑带图爆款,AI 改写成中文币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
           descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
           tagsLine={isZh ? '跨平台搬运 · 带图 · 双 tab 校验' : 'Cross-platform · With images · Dual-tab check'}
           ctaZh="立即开始"
