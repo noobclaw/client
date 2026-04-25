@@ -378,16 +378,31 @@ const runningByResource = new Map<string, string>();
 // Single-tab scenarios (the common case) get a single-entry array and
 // behave identically to the pre-4.25 single-string key flow.
 function resourceKeysForPack(
-  pack: { manifest?: { tab_url_pattern?: string; additional_tab_patterns?: string[] } } | null | undefined
+  pack: {
+    manifest?: {
+      tab_url_pattern?: string;
+      additional_tab_patterns?: string[];
+      secondary_tab_url_pattern?: string;
+    };
+  } | null | undefined
 ): string[] {
   const keys: string[] = [];
   const primary = pack?.manifest?.tab_url_pattern;
   keys.push(primary ? `tab:${primary}` : 'tab:default');
+  // v4.25+ cross-tab scenarios can declare extra tabs they'll touch via
+  // either `additional_tab_patterns` (array, the canonical field) or
+  // `secondary_tab_url_pattern` (single string, used by binance_from_x_repost).
+  // We read both — manifests historically have one or the other.
   const additional = pack?.manifest?.additional_tab_patterns;
   if (Array.isArray(additional)) {
     for (const p of additional) {
       if (typeof p === 'string' && p) keys.push(`tab:${p}`);
     }
+  }
+  const secondary = pack?.manifest?.secondary_tab_url_pattern;
+  if (typeof secondary === 'string' && secondary) {
+    const sk = `tab:${secondary}`;
+    if (keys.indexOf(sk) < 0) keys.push(sk);
   }
   return keys;
 }
