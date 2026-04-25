@@ -744,9 +744,11 @@ function buildContext(
         // v4.27: 兜底阈值跟服务端 VIRAL_THRESHOLDS 一致。新服务端会下发,
         // 老服务端拿不到也能用这套默认值。
         thresholds: {
-          xhs:     { min_likes: 500,                                  min_match: 1 },
-          x:       { min_likes: 100, min_comments: 30, min_views: 10000, min_match: 1 },
-          binance: { min_likes: 30,  min_comments: 10, min_views: 1000,  min_match: 1 },
+          // 字段在三平台对齐 — 缺失维度服务端可挂 null,helper 会跳过。
+          // XHS 的 min_views 填值但实际抓不到(平台不公开),仅为 schema 对齐。
+          xhs:     { min_likes: 500, min_comments: 20, min_views: 1000, min_match: 1 },
+          x:       { min_likes: 500, min_comments: 20, min_views: 5000, min_match: 1 },
+          binance: { min_likes: 500, min_comments: 20, min_views: 5000, min_match: 1 },
         },
       };
       try {
