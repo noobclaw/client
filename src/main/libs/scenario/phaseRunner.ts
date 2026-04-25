@@ -664,8 +664,12 @@ function buildContext(
         const dir = getTaskOutputDir(task, platform);
         let targetDir = dir;
         if (opts && typeof opts.subdir === 'string' && opts.subdir.trim()) {
-          const safeSub = opts.subdir.replace(/[\\/:*?"<>|]/g, '_').replace(/\.\./g, '').slice(0, 80);
-          if (safeSub) targetDir = path.join(dir, safeSub);
+          // v4.25.2: 允许嵌套("原文/career_side_hustle"),但每层 segment 单独 sanitize
+          // 防 path traversal:任何带 .. 的 segment 直接丢
+          const segments = opts.subdir.split(/[\\/]+/).map(s =>
+            s.replace(/[:*?"<>|]/g, '_').replace(/^\.+$/, '').slice(0, 80).trim()
+          ).filter(s => s.length > 0 && s !== '..');
+          if (segments.length > 0) targetDir = path.join(dir, ...segments);
         }
         try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
         const safeNameRaw = String(filename || 'asset.bin').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
@@ -725,6 +729,33 @@ function buildContext(
       } catch (err) {
         coworkLog('WARN', 'phaseRunner', 'writeAsset failed', { err: String(err) });
         return { ok: false, reason: String(err && (err as any).message ? (err as any).message : err) };
+      }
+    },
+
+    // v4.25.2: 拉服务端下发的爆文库配置(max_per_run / max_image_size_kb / max_image_count)。
+    // 缓存到 ctx 上避免每次都打一遍 GET — 同一次 run 内只取一次。
+    // 取不到就用代码里的默认值兜底(5/300/4),保证旧服务端兼容。
+    getViralConfig: async () => {
+      if ((ctx as any)._viralConfigCache) return (ctx as any)._viralConfigCache;
+      const fallback = { max_per_run: 5, max_image_size_kb: 300, max_image_count: 4 };
+      try {
+        const baseUrl = 'https://api.noobclaw.com';
+        const resp = await fetch(baseUrl + '/api/viral/library/config');
+        if (!resp.ok) {
+          (ctx as any)._viralConfigCache = fallback;
+          return fallback;
+        }
+        const data = await resp.json();
+        const merged = {
+          max_per_run: typeof data.max_per_run === 'number' && data.max_per_run > 0 ? data.max_per_run : fallback.max_per_run,
+          max_image_size_kb: typeof data.max_image_size_kb === 'number' && data.max_image_size_kb > 0 ? data.max_image_size_kb : fallback.max_image_size_kb,
+          max_image_count: typeof data.max_image_count === 'number' && data.max_image_count > 0 ? data.max_image_count : fallback.max_image_count,
+        };
+        (ctx as any)._viralConfigCache = merged;
+        return merged;
+      } catch (_) {
+        (ctx as any)._viralConfigCache = fallback;
+        return fallback;
       }
     },
 
