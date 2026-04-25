@@ -600,6 +600,12 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
   const resources = resourceKeysForPack(pack);
+  // v4.25.34 diag: 打印申请/已占资源,方便调试"为啥 dual-tab 锁没拦住"。
+  // runningByResource 是内存 Map,任务正常结束/中断/app 重启都会清。
+  coworkLog('INFO', 'scenarioManager',
+    `[runTask] task=${task.id} scenario=${task.scenario_id} `
+    + `requesting=${JSON.stringify(resources)} `
+    + `currentlyBusy=${JSON.stringify(Array.from(runningByResource.entries()))}`);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
     return { status: 'skipped', reason: 'resource_busy:' + busyKey };
