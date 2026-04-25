@@ -737,7 +737,18 @@ function buildContext(
     // 取不到就用代码里的默认值兜底(5/300/4),保证旧服务端兼容。
     getViralConfig: async () => {
       if ((ctx as any)._viralConfigCache) return (ctx as any)._viralConfigCache;
-      const fallback = { max_per_run: 5, max_image_size_kb: 300, max_image_count: 4 };
+      const fallback: any = {
+        max_per_run: 100,
+        max_image_size_kb: 300,
+        max_image_count: 4,
+        // v4.27: 兜底阈值跟服务端 VIRAL_THRESHOLDS 一致。新服务端会下发,
+        // 老服务端拿不到也能用这套默认值。
+        thresholds: {
+          xhs:     { min_likes: 500,                                  min_match: 1 },
+          x:       { min_likes: 100, min_comments: 30, min_views: 10000, min_match: 1 },
+          binance: { min_likes: 30,  min_comments: 10, min_views: 1000,  min_match: 1 },
+        },
+      };
       try {
         const baseUrl = 'https://api.noobclaw.com';
         const resp = await fetch(baseUrl + '/api/viral/library/config');
@@ -746,10 +757,11 @@ function buildContext(
           return fallback;
         }
         const data = await resp.json();
-        const merged = {
+        const merged: any = {
           max_per_run: typeof data.max_per_run === 'number' && data.max_per_run > 0 ? data.max_per_run : fallback.max_per_run,
           max_image_size_kb: typeof data.max_image_size_kb === 'number' && data.max_image_size_kb > 0 ? data.max_image_size_kb : fallback.max_image_size_kb,
           max_image_count: typeof data.max_image_count === 'number' && data.max_image_count > 0 ? data.max_image_count : fallback.max_image_count,
+          thresholds: (data.thresholds && typeof data.thresholds === 'object') ? data.thresholds : fallback.thresholds,
         };
         (ctx as any)._viralConfigCache = merged;
         return merged;
@@ -757,6 +769,31 @@ function buildContext(
         (ctx as any)._viralConfigCache = fallback;
         return fallback;
       }
+    },
+
+    // v4.27 评估候选帖是否过爆款阈值。post 字段名按平台 normalize 取(orchestrator
+    // 里 metric 字段命名各异:likes / likes_count / comment_count / replies_count …)。
+    // 任一阈值字段命中算 1 hit;hit 数 ≥ min_match 即合格。字段缺失不参与评估。
+    //
+    // 返回 boolean。这是判"该帖是否值得入爆文库"的唯一真理来源 — 跟"该帖是否
+    // 被选去回复"完全独立。
+    passViralThreshold: async (post: any, platform: string): Promise<boolean> => {
+      if (!post || !platform) return false;
+      const cfg = await (ctx as any).getViralConfig();
+      const t = cfg && cfg.thresholds && cfg.thresholds[platform];
+      if (!t) return false;
+      const likes = Number(post.likes_count ?? post.likes ?? 0) || 0;
+      const comments = Number(
+        post.comments_count ?? post.replies_count ?? post.comment_count
+        ?? post.comments ?? post.replies ?? 0
+      ) || 0;
+      const views = Number(post.views_count ?? post.views ?? 0) || 0;
+      let hits = 0;
+      if (t.min_likes != null    && likes    >= t.min_likes)    hits++;
+      if (t.min_comments != null && comments >= t.min_comments) hits++;
+      if (t.min_views != null    && views    >= t.min_views)    hits++;
+      const need = (typeof t.min_match === 'number' && t.min_match > 0) ? t.min_match : 1;
+      return hits >= need;
     },
 
     // v4.25+: ingest 当次抓到的原文 + 原图到爆文库(三平台共享池)。
