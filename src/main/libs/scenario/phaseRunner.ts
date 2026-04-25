@@ -654,7 +654,11 @@ function buildContext(
     // images next to the markdown report for user audit.
     // opts.subdir: optional subdirectory inside task dir (e.g. '原文').
     // Single-level only, stripped of path separators / parent refs for safety.
-    writeAsset: async (filename: string, base64: string, opts?: { subdir?: string }) => {
+    writeAsset: async (
+      filename: string,
+      base64: string,
+      opts?: { subdir?: string; compress?: boolean; maxSizeKB?: number; maxDimension?: number }
+    ) => {
       try {
         const platform = (manifest as any).platform || 'xhs';
         const dir = getTaskOutputDir(task, platform);
@@ -664,9 +668,57 @@ function buildContext(
           if (safeSub) targetDir = path.join(dir, safeSub);
         }
         try { fs.mkdirSync(targetDir, { recursive: true }); } catch {}
-        const safeName = String(filename || 'asset.bin').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+        const safeNameRaw = String(filename || 'asset.bin').replace(/[\\/:*?"<>|]/g, '_').slice(0, 200);
+
+        let buf = Buffer.from(String(base64 || ''), 'base64');
+        let safeName = safeNameRaw;
+
+        // v4.25+: opt-in 图片压缩 — orchestrator 设 { compress: true } 就把图压
+        // 到 ≤maxSizeKB(默认 300KB)。jpeg + 长边 ≤maxDimension(默认 1600).
+        // 用 sharp(client deps 已带);非图片或 sharp 解码失败就 fallback 写原 buffer。
+        if (opts && opts.compress && buf.length > 0) {
+          const targetKB = opts.maxSizeKB || 300;
+          const maxDim = opts.maxDimension || 1600;
+          if (buf.length > targetKB * 1024) {
+            try {
+              // dynamic require 避免 sharp 没装(开发时)整个 phaseRunner 起不来
+              const sharp = require('sharp');
+              let pipeline = sharp(buf, { failOn: 'error' }).rotate();
+              const meta = await pipeline.metadata().catch((): any => null);
+              if (meta && meta.width && meta.height) {
+                const longest = Math.max(meta.width, meta.height);
+                if (longest > maxDim) {
+                  pipeline = pipeline.resize({
+                    width: meta.width >= meta.height ? maxDim : undefined,
+                    height: meta.height > meta.width ? maxDim : undefined,
+                    fit: 'inside', withoutEnlargement: true,
+                  });
+                }
+                // 二分逼近 quality
+                let qLo = 30, qHi = 90;
+                let best: Buffer | null = null;
+                for (let it = 0; it < 6; it++) {
+                  const q = Math.round((qLo + qHi) / 2);
+                  const out = await pipeline.clone().jpeg({ quality: q, mozjpeg: true }).toBuffer();
+                  if (out.length <= targetKB * 1024) { best = out; qLo = q + 1; }
+                  else qHi = q - 1;
+                  if (qLo > qHi) break;
+                }
+                if (!best) best = await pipeline.clone().jpeg({ quality: 30, mozjpeg: true }).toBuffer();
+                buf = Buffer.from(best);
+                // 强制扩展名为 .jpg(压缩后是 jpeg)
+                safeName = safeNameRaw.replace(/\.(png|webp|gif|bmp|tiff?)$/i, '.jpg');
+                if (!/\.jpe?g$/i.test(safeName)) safeName = safeName.replace(/\.[^.]*$/, '') + '.jpg';
+              }
+            } catch (compressErr) {
+              coworkLog('WARN', 'phaseRunner', 'writeAsset compress failed, falling back to original', {
+                err: String(compressErr).slice(0, 200),
+              });
+            }
+          }
+        }
+
         const filePath = path.join(targetDir, safeName);
-        const buf = Buffer.from(String(base64 || ''), 'base64');
         fs.writeFileSync(filePath, buf);
         coworkLog('INFO', 'phaseRunner', 'writeAsset ok', { path: filePath, bytes: buf.length });
         return { ok: true, path: filePath, dir: targetDir, bytes: buf.length };
