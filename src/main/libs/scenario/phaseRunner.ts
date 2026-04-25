@@ -780,11 +780,17 @@ function buildContext(
     flushViralQueue: async (platform: string): Promise<any> => {
       const queue = (ctx as any)._viralFlushQueue;
       if (!Array.isArray(queue) || queue.length === 0) {
-        return { ok: false, reason: 'empty' };
+        return { ok: false, reason: 'empty', queue_size: 0 };
       }
       const items = queue.splice(0); // 取出 + 同步清空,防 reentry 重复发
       try {
         const res = await (ctx as any).pushToViralLibrary({ platform, items });
+        // 累计 ingest 计数到 viralStats,reportViralStatus 末尾打总结时用
+        if (res && (res.ok || res.accepted || res.queued)) {
+          if (!(ctx as any)._viralStats) (ctx as any)._viralStats = {};
+          const s = (ctx as any)._viralStats;
+          s.ingested = (s.ingested || 0) + (res.accepted || res.queued || 0);
+        }
         return res || { ok: false, reason: 'no_response' };
       } catch (err: any) {
         // push 失败:把 items 放回队尾,下次 flush 重试
@@ -799,11 +805,26 @@ function buildContext(
     //
     // 返回 boolean。这是判"该帖是否值得入爆文库"的唯一真理来源 — 跟"该帖是否
     // 被选去回复"完全独立。
+    //
+    // v4.25.12 副作用:每次调用累加 ctx._viralStats(供 reportViralStatus 在 run 末
+    // 打总结)。让用户看到"本次评估 N 篇,M 篇过门槛,实际入库 K 条"的可见性。
     passViralThreshold: async (post: any, platform: string): Promise<boolean> => {
-      if (!post || !platform) return false;
+      if (!(ctx as any)._viralStats) (ctx as any)._viralStats = {
+        evaluated: 0, passed: 0, missed_likes: 0, missed_comments: 0, missed_views: 0,
+        no_threshold: 0, no_post_data: 0,
+      };
+      const stats = (ctx as any)._viralStats;
+      if (!post || !platform) {
+        stats.no_post_data++;
+        return false;
+      }
       const cfg = await (ctx as any).getViralConfig();
       const t = cfg && cfg.thresholds && cfg.thresholds[platform];
-      if (!t) return false;
+      if (!t) {
+        stats.no_threshold++;
+        return false;
+      }
+      stats.evaluated++;
       const likes = Number(post.likes_count ?? post.likes ?? 0) || 0;
       const comments = Number(
         post.comments_count ?? post.replies_count ?? post.comment_count
@@ -812,10 +833,55 @@ function buildContext(
       const views = Number(post.views_count ?? post.views ?? 0) || 0;
       let hits = 0;
       if (t.min_likes != null    && likes    >= t.min_likes)    hits++;
+      else if (t.min_likes != null) stats.missed_likes++;
       if (t.min_comments != null && comments >= t.min_comments) hits++;
+      else if (t.min_comments != null) stats.missed_comments++;
       if (t.min_views != null    && views    >= t.min_views)    hits++;
+      else if (t.min_views != null) stats.missed_views++;
       const need = (typeof t.min_match === 'number' && t.min_match > 0) ? t.min_match : 1;
-      return hits >= need;
+      const pass = hits >= need;
+      if (pass) stats.passed++;
+      return pass;
+    },
+
+    // v4.25.12 在 run 末尾汇总打一条总结 — 不管是否有爆款入库,用户都能看到
+    // "本次爆文库到底干了啥"。每个 orchestrator 在 step 3 写报告前调一次。
+    reportViralStatus: async (platform: string, stepNum?: number): Promise<void> => {
+      const stats = (ctx as any)._viralStats;
+      const step = (stepNum && stepNum > 0) ? stepNum : (ctx._currentStep || 3);
+      // 拉服务端阈值显示出来,让用户看到门槛是多少
+      let thresholdLine = '';
+      try {
+        const cfg = await (ctx as any).getViralConfig();
+        const t = cfg && cfg.thresholds && cfg.thresholds[platform];
+        if (t) {
+          const parts: string[] = [];
+          if (t.min_likes != null) parts.push('赞≥' + t.min_likes);
+          if (t.min_comments != null) parts.push('评论≥' + t.min_comments);
+          if (t.min_views != null) parts.push('浏览≥' + t.min_views);
+          thresholdLine = '门槛: ' + parts.join(' OR ') + ' (任 ' + (t.min_match || 1) + ' 项)';
+        }
+      } catch (_) {}
+
+      if (!stats || stats.evaluated === 0) {
+        progress.stepLog(step, 'running',
+          '📊 爆文库[' + platform + ']: 本次未评估任何候选(可能 feed 没读到帖子或 metric 全缺)'
+          + (thresholdLine ? ' · ' + thresholdLine : ''));
+        return;
+      }
+      progress.stepLog(step, 'running',
+        '📊 爆文库[' + platform + ']: 评估 ' + stats.evaluated + ' 篇 · 过门槛 ' + stats.passed + ' 篇'
+        + (thresholdLine ? ' · ' + thresholdLine : ''));
+      if (stats.passed === 0 && stats.evaluated > 0) {
+        // 帮用户理解为啥都没过
+        const missLines: string[] = [];
+        if (stats.missed_likes > 0) missLines.push('赞不够 ' + stats.missed_likes + ' 篇');
+        if (stats.missed_comments > 0) missLines.push('评论不够 ' + stats.missed_comments + ' 篇');
+        if (stats.missed_views > 0) missLines.push('浏览不够 ' + stats.missed_views + ' 篇');
+        if (missLines.length > 0) {
+          progress.stepLog(step, 'running', '   原因: ' + missLines.join(' / '));
+        }
+      }
     },
 
     // v4.25+: ingest 当次抓到的原文 + 原图到爆文库(三平台共享池)。
