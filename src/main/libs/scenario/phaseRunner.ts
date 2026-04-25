@@ -789,6 +789,63 @@ function buildContext(
         coworkLog('INFO', 'phaseRunner', 'pushToViralLibrary skipped (no auth token)');
         return { ok: false, reason: 'no_auth_token' };
       }
+
+      // v4.25.3 (C):客户端预压缩 base64 — 把每张图压到 ≤300KB 再上传,
+      // body 体积 5-20x 缩水(慢网用户上传时间从分钟级降到秒级)。
+      // 服务端 sharp 检测 buf.length 已 ≤target 会跳过二次压缩。
+      try {
+        const sharp = require('sharp');
+        const TARGET_KB = 300;
+        const MAX_DIM = 1600;
+        for (const item of payload.items) {
+          if (!Array.isArray(item.image_base64s)) continue;
+          for (let bi = 0; bi < item.image_base64s.length; bi++) {
+            const b64 = item.image_base64s[bi];
+            if (typeof b64 !== 'string' || b64.length === 0) continue;
+            try {
+              const buf = Buffer.from(b64, 'base64');
+              if (buf.length <= TARGET_KB * 1024) continue; // 已经够小
+              let pipeline = sharp(buf, { failOn: 'error' }).rotate();
+              const meta = await pipeline.metadata().catch((): any => null);
+              if (!meta || !meta.width || !meta.height) continue;
+              const longest = Math.max(meta.width, meta.height);
+              if (longest > MAX_DIM) {
+                pipeline = pipeline.resize({
+                  width: meta.width >= meta.height ? MAX_DIM : undefined,
+                  height: meta.height > meta.width ? MAX_DIM : undefined,
+                  fit: 'inside', withoutEnlargement: true,
+                });
+              }
+              let qLo = 30, qHi = 90;
+              let best: Buffer | null = null;
+              for (let it = 0; it < 6; it++) {
+                const q = Math.round((qLo + qHi) / 2);
+                const out = await pipeline.clone().jpeg({ quality: q, mozjpeg: true }).toBuffer();
+                if (out.length <= TARGET_KB * 1024) { best = out; qLo = q + 1; }
+                else qHi = q - 1;
+                if (qLo > qHi) break;
+              }
+              if (!best) best = await pipeline.clone().jpeg({ quality: 30, mozjpeg: true }).toBuffer();
+              item.image_base64s[bi] = Buffer.from(best).toString('base64');
+            } catch (perItemErr) {
+              // 单张压缩失败保留原 base64,服务端会再尝试压
+              coworkLog('WARN', 'phaseRunner', 'preCompress single image failed', {
+                err: String(perItemErr).slice(0, 100),
+              });
+            }
+          }
+        }
+      } catch (compressErr) {
+        // sharp 不可用 — 保留原 base64,服务端兜底压缩
+        coworkLog('INFO', 'phaseRunner', 'preCompress unavailable, sending raw', {
+          err: String(compressErr).slice(0, 100),
+        });
+      }
+
+      // v4.25.3 (B):AbortController 30s 超时 — 弱网用户最坏 30s 而不是无限 hang
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
+
       try {
         const baseUrl = 'https://api.noobclaw.com';
         const resp = await fetch(baseUrl + '/api/viral/library/ingest', {
@@ -801,22 +858,33 @@ function buildContext(
             platform: payload.platform,
             items: payload.items,
           }),
+          signal: controller.signal,
         });
-        if (!resp.ok) {
+        clearTimeout(timeoutId);
+        // v4.25.3 (A):服务端现在异步处理,立即返回 202 + queued 数。
+        // 200(老服务端)和 202(新服务端)都视为 OK。
+        if (!resp.ok && resp.status !== 202) {
           const errText = await resp.text().catch(() => '');
           coworkLog('WARN', 'phaseRunner', 'pushToViralLibrary http error', {
             status: resp.status, body: errText.slice(0, 200),
           });
           return { ok: false, reason: 'http_' + resp.status };
         }
-        const data = await resp.json();
+        const data = await resp.json().catch(() => ({}));
         coworkLog('INFO', 'phaseRunner', 'pushToViralLibrary ok', {
-          accepted: data.accepted, items: data.items?.length,
+          accepted: data.accepted, queued: data.queued, items: data.items?.length,
         });
-        return { ok: true, accepted: data.accepted || 0, items: data.items || [] };
-      } catch (err) {
-        coworkLog('WARN', 'phaseRunner', 'pushToViralLibrary failed', { err: String(err) });
-        return { ok: false, reason: String(err).slice(0, 200) };
+        return {
+          ok: true,
+          accepted: data.accepted || 0,
+          queued: data.queued || 0,
+          items: data.items || [],
+        };
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const msg = err?.name === 'AbortError' ? 'timeout_30s' : String(err).slice(0, 200);
+        coworkLog('WARN', 'phaseRunner', 'pushToViralLibrary failed', { err: msg });
+        return { ok: false, reason: msg };
       }
     },
 
