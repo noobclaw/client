@@ -553,13 +553,28 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     recordIdByTaskId.delete(task.id);
     tokensByTaskId.delete(task.id);
     costUsdByTaskId.delete(task.id);
+    // v4.25.4: 同 runTask 的修复 — 防误杀 30s 内重新启动的同 task progress
     setTimeout(() => {
-      progressByTaskId.delete(task.id);
+      const cur = progressByTaskId.get(task.id);
+      if (cur && cur.status !== 'running') {
+        progressByTaskId.delete(task.id);
+      }
     }, 30000);
   }
 }
 
 export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
+  // v4.25.4: 立即清除上一次 run 的所有 per-task 状态残留 — 防止"用户停掉旧任务,
+  // 立刻直接运行,UI 还显示旧进度 / token 累加上一次"。
+  // loadPack() 可能 200-500ms,这个窗口里 renderer 的轮询会 fetch 到老
+  // progress 然后渲染上去。先清掉,渲染层显示空步骤(loading 态)。
+  // 同时 tokens/cost 累加器也要重置 —— 之前 runTask finally 漏了删,
+  // 同任务跑两次成本就翻倍记录。
+  progressByTaskId.delete(task.id);
+  abortByTaskId.delete(task.id);
+  tokensByTaskId.delete(task.id);
+  costUsdByTaskId.delete(task.id);
+
   // Per-resource concurrency: load pack first to derive its tab pattern(s),
   // then check the resource. Tasks targeting the same tab serialize; tasks
   // targeting different tabs (XHS vs Twitter) can run in parallel.
@@ -597,9 +612,18 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     releaseResources(resources);
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
-    // Keep progress around for 30s so UI can show final state
+    // v4.25.4: 之前 runTask 漏了清 tokens/cost,同任务跑两次成本翻倍记录。
+    tokensByTaskId.delete(task.id);
+    costUsdByTaskId.delete(task.id);
+    // Keep progress around for 30s so UI can show final state.
+    // v4.25.4: 之前 setTimeout 无脑 delete,如果 30s 内用户又跑了一次同一个 task,
+    // initProgress 已经把 entry 换成新 run 的状态(status='running'),这个 setTimeout
+    // 还是会把它删了 → 新 run 的 progress 凭空消失。检查 status 防误杀。
     setTimeout(() => {
-      progressByTaskId.delete(task.id);
+      const cur = progressByTaskId.get(task.id);
+      if (cur && cur.status !== 'running') {
+        progressByTaskId.delete(task.id);
+      }
     }, 30000);
   }
 }
