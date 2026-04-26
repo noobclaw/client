@@ -1491,7 +1491,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isBinanceFromXRepost ? (
                     <>
                       <li>{isZh
-                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 改写成币安风格(语言跟随原帖),带图上传`
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 进行深度改写为币安风格(语言跟随原帖),带图上传`
                         : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral image tweets from X, AI rewrites in Binance style (matches source language), reuses original images`}</li>
                       <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 运行期间占用 X + 币安两个标签页,不能同时跑其他任务 — 需要两个平台都打开并登录' : '⚠️ Locks both X + Binance tabs while running — other tasks on either platform are blocked. Both must be logged in before starting.'}</li>
                       <li>{isZh ? '· 每篇自动检测登录态,未登录直接报错终止(不会白跑)' : '· Auto-checks login on both platforms; if either is logged out the run aborts early'}</li>

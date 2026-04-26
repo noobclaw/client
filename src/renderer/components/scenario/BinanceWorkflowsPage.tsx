@@ -56,8 +56,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场自动发帖',
     name_en: 'Binance Square Auto Post',
-    description_zh: '每日 AI 写一条 100-300 字加密快评,自动带 $TOKEN cashtag,发到币安广场。',
-    description_en: 'Daily AI-drafted 100-300 char crypto market note, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
+    description_zh: '每日 AI 写一条 100-300 字文章,自动带 $TOKEN cashtag,发到币安广场。',
+    description_en: 'Daily AI-drafted 100-300 char article, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
     icon: '🔶',
     default_config: {
       keywords: ['BTC', 'ETH', 'SOL'],
@@ -129,7 +129,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 推特搬运',
     name_en: 'Binance Square · Repost from X',
-    description_zh: '从推特 feed 挑带图爆款,AI 改写成中文币安风格,带图上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
+    description_zh: '从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
     description_en: 'Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. Locks both X + Binance tabs.',
     icon: '🔁',
     default_config: {
@@ -199,13 +199,13 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         {/* 1. Auto engage (coming soon — backend scenario not yet built) */}
         <BinanceCard
           emoji="🤝"
-          badgeZh="每日互动"
+          badgeZh="自动互动"
           badgeEn="Daily engagement"
           titleZh="币安广场自动互动"
           titleEn="Binance Square Auto Engagement"
           descZh="关注币安广场加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 30 秒-10 分钟随机。"
           descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 30s-10min spacing."
-          tagsLine={isZh ? '关注 · 回复 · 随机节奏' : 'Follow · Reply · Randomized pacing'}
+          tagsLine={isZh ? '关注 · 回复 · 点赞 · 随机节奏' : 'Follow · Reply · Like · Randomized pacing'}
           ctaZh={autoEngage ? '开始互动' : '敬请期待'}
           ctaEn={autoEngage ? 'Start' : 'Coming Soon'}
           enabled={!!autoEngage}
@@ -221,7 +221,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         {/* 2. Post creator */}
         <BinanceCard
           emoji="📊"
-          badgeZh="每日发帖"
+          badgeZh="自动发帖"
           badgeEn="Daily post"
           titleZh="币安广场自动发帖"
           titleEn="Binance Square Auto Post"
@@ -247,9 +247,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="X repost"
           titleZh="币安广场 · 推特搬运"
           titleEn="Binance Square · Repost from X"
-          descZh="从推特 feed 挑带图爆款,AI 改写成中文币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
+          descZh="从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
           descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
-          tagsLine={isZh ? '跨平台搬运 · 带图 · 双 tab 校验' : 'Cross-platform · With images · Dual-tab check'}
+          tagsLine={isZh ? '跨平台搬运 · 深度二创 · 双 tab 校验' : 'Cross-platform · Deep rewrite · Dual-tab check'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
@@ -290,11 +290,14 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       {/* "已有任务" 区块去掉 — 用户反馈底部冗余,我的任务 tab 已经有完整列表。
           Per X/XHS pages 也都没有这个区块,统一掉。 */}
 
-      {/* Login gate — binance platform opens binance.com/square */}
+      {/* Login gate — binance platform opens binance.com/square.
+          v4.25.4: 推特搬运是跨 tab 任务,要同时检查 X tab。其他 binance scenario
+          只检查 binance。 */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
           platform="binance"
+          secondaryPlatform={pendingScenario?.id === 'binance_from_x_repost' ? 'x' : undefined}
           onCancel={() => { setLoginModalReason(null); setPendingScenario(null); }}
           onConfirmed={handleLoginConfirmed}
         />

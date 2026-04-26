@@ -17,35 +17,51 @@ interface Props {
    *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
    *  mainland China users. 'binance' opens binance.com/square. */
   platform?: 'xhs' | 'x' | 'binance';
+  /** v4.25.4 Cross-tab scenarios (binance_from_x_repost) need both platforms
+   *  open + logged in. Pass the secondary platform here — modal will render
+   *  an extra row and gate the "下一步" button until BOTH check pass. */
+  secondaryPlatform?: 'xhs' | 'x' | 'binance';
   onCancel: () => void;
   onConfirmed: () => void;
 }
 
 type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 
-export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', onCancel, onConfirmed }) => {
+export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
-  const isX = platform === 'x';
-  const isBinance = platform === 'binance';
-  // Platform-specific labels — single source of truth so all the strings
-  // below stay consistent.
-  const platformLabel = isX
-    ? 'Twitter (x.com)'
-    : isBinance
-      ? (isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)')
-      : (isZh ? '小红书' : 'Xiaohongshu');
-  const platformShort = isX
-    ? 'Twitter'
-    : isBinance
-      ? (isZh ? '币安广场' : 'Binance Square')
-      : (isZh ? '小红书' : 'Xiaohongshu');
-  const platformUrl = isX
-    ? 'https://x.com/home'
-    : isBinance
-      ? 'https://www.binance.com/square'
-      : 'https://www.xiaohongshu.com';
+
+  // Per-platform label/url helpers (primary AND secondary use these).
+  // VPN reminders below check both primary and secondary so cross-tab
+  // scenarios surface the warning if either platform needs a proxy.
+  function platformLabelOf(p: 'xhs' | 'x' | 'binance'): string {
+    if (p === 'x') return 'Twitter (x.com)';
+    if (p === 'binance') return isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)';
+    return isZh ? '小红书' : 'Xiaohongshu';
+  }
+  function platformShortOf(p: 'xhs' | 'x' | 'binance'): string {
+    if (p === 'x') return 'Twitter';
+    if (p === 'binance') return isZh ? '币安广场' : 'Binance Square';
+    return isZh ? '小红书' : 'Xiaohongshu';
+  }
+  function platformUrlOf(p: 'xhs' | 'x' | 'binance'): string {
+    if (p === 'x') return 'https://x.com/home';
+    if (p === 'binance') return 'https://www.binance.com/square';
+    return 'https://www.xiaohongshu.com';
+  }
+  // Back-compat aliases — primary platform's label/url, used by step ① UI
+  // text and the "Open" button. Secondary platform gets its own row using
+  // platformLabelOf/Url in render.
+  const platformLabel = platformLabelOf(platform);
+  const platformShort = platformShortOf(platform);
+  const platformUrl = platformUrlOf(platform);
+  // Primary tab is "isX/isBinance" for downstream conditionals like VPN warning,
+  // but VPN reminder must trigger when EITHER platform needs a proxy. So track
+  // both flags separately.
+  const isX = platform === 'x' || secondaryPlatform === 'x';
+  const isBinance = platform === 'binance' || secondaryPlatform === 'binance';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
+  const [secondaryTabStatus, setSecondaryTabStatus] = useState<StepStatus>(secondaryPlatform ? 'checking' : 'pass');
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
   // Outdated extension warning — shown inline in step ② when an extension
@@ -87,6 +103,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
       if (status.reason === 'browser_not_connected') {
         setExtensionStatus('fail');
         setXhsTabStatus('waiting');
+        if (secondaryPlatform) setSecondaryTabStatus('waiting');
       } else if (
         status.reason === 'xhs_tab_not_reachable' ||
         status.reason === 'x_tab_not_reachable' ||
@@ -98,6 +115,28 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
       } else {
         setExtensionStatus('pass');
         setXhsTabStatus('pass');
+      }
+      // v4.25.4: cross-tab scenario — also probe the secondary platform tab.
+      // Only runs once extension is confirmed connected (else status would
+      // also report browser_not_connected and we already set 'waiting' above).
+      if (secondaryPlatform && status.reason !== 'browser_not_connected') {
+        try {
+          const sStatus = await scenarioService.checkXhsLogin(secondaryPlatform);
+          if (
+            sStatus.reason === 'xhs_tab_not_reachable' ||
+            sStatus.reason === 'x_tab_not_reachable' ||
+            sStatus.reason === 'binance_tab_not_reachable' ||
+            sStatus.reason === 'tab_not_reachable'
+          ) {
+            setSecondaryTabStatus('fail');
+          } else if (sStatus.reason === 'browser_not_connected') {
+            setSecondaryTabStatus('waiting');
+          } else {
+            setSecondaryTabStatus('pass');
+          }
+        } catch {
+          setSecondaryTabStatus('fail');
+        }
       }
       // Version check piggy-backs on the same poll. If any connected
       // extension is below the floor, surface it inline. The "empty
@@ -153,10 +192,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
     } catch {
       setExtensionStatus('fail');
       setXhsTabStatus('waiting');
+      if (secondaryPlatform) setSecondaryTabStatus('waiting');
     } finally {
       setChecking(false);
     }
-  }, [platform]);
+  }, [platform, secondaryPlatform]);
 
   useEffect(() => { void runCheck(); }, []); // eslint-disable-line
 
@@ -187,7 +227,21 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
     }
   };
 
-  const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass';
+  const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass'
+    && (!secondaryPlatform || secondaryTabStatus === 'pass');
+
+  // 一键打开 secondary 平台 tab(跨 tab scenario 用)
+  const handleOpenSecondary = async () => {
+    if (!secondaryPlatform) return;
+    setOpening(true);
+    try {
+      const res = await scenarioService.openXhsLogin(secondaryPlatform);
+      if (!res.ok) { try { window.open(platformUrlOf(secondaryPlatform), '_blank'); } catch {} }
+      setTimeout(() => void runCheck(), 2000);
+    } finally {
+      setOpening(false);
+    }
+  };
   const ICON: Record<StepStatus, string> = { pass: '✅', fail: '❌', checking: '⏳', waiting: '⏳' };
 
   // Shared install/update action block — used by BOTH "extension not
@@ -276,6 +330,49 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
                     <button type="button" onClick={handleOpenXhs} disabled={opening}
                       className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
                       {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Step 1b: 副 tab —— 仅跨 tab scenario(binance_from_x_repost)展示。
+              v4.25.4: 推特搬运任务两个 tab 都得登录,只检查 binance 不够。
+              用同一套 真检测 + 按钮兜底 模式渲染。 */}
+          {secondaryPlatform && (() => {
+            const sLabel = platformLabelOf(secondaryPlatform);
+            const realPass = extensionStatus === 'pass' && secondaryTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && secondaryTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `① 同时打开 ${sLabel} 并登录(跨 tab 任务必需)` : `① Also open ${sLabel} & login (required for cross-tab task)`}
+                  </div>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${sLabel} 页面` : `${sLabel} page not detected`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenSecondary} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${sLabel}` : `🌐 Open ${sLabel}`)}
                     </button>
                   )}
                 </div>
