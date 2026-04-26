@@ -267,6 +267,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2">
           {[
+            { icon: '✨', zh: '深度二创', en: 'Deep AI rewrite' },
             { icon: '💎', zh: '原生 cashtag 导流', en: 'Native cashtag → token page traffic' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
