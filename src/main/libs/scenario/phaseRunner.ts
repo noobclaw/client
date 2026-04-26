@@ -449,6 +449,33 @@ function buildContext(
         }
       }, 500);
 
+      // v4.31.4: 用 DeepSeek 原生 response_format 锁格式 — JSON 模式下后端
+      // 保证 content 字符串是合法 JSON,纯文本模式直接返回字符串。
+      //
+      // ⚠️ 文档警告:json_object 模式必须 prompt 里含 "json" 字眼,否则 DeepSeek
+      // 会无限输出空白直到 token 用完(stuck 请求)。所以下面做了保护性校验:
+      // expectJson 默认为 true(老行为),但只在 prompt 真的提到 "json/JSON" 时
+      // 才传 response_format,否则 fallback 到 text 模式 + 我方 JSON.parse 兜底。
+      const wantJson = opts?.expectJson !== false;
+      const promptMentionsJson = /json/i.test(prompt) || /json/i.test(userMessage);
+      const requestBody: Record<string, unknown> = {
+        model: chosenModel,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: userMessage },
+        ],
+        stream: false,
+        max_tokens: 8000,
+      };
+      if (wantJson && promptMentionsJson) {
+        requestBody.response_format = { type: 'json_object' };
+      } else if (!wantJson) {
+        requestBody.response_format = { type: 'text' };
+      }
+      // 其余情况(wantJson 但 prompt 没说 json)— 不传,用 DeepSeek 默认 text,
+      // 我方 JSON.parse 失败时仍然走 expectJson:true 的兜底路径(parse 失败抛 +
+      // err.rawText 挂全文)。
+
       try {
         const resp = await fetch('https://api.noobclaw.com/api/ai/chat/completions', {
           method: 'POST',
@@ -456,15 +483,7 @@ function buildContext(
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${nbAuthToken}`,
           },
-          body: JSON.stringify({
-            model: chosenModel,
-            messages: [
-              { role: 'system', content: prompt },
-              { role: 'user', content: userMessage },
-            ],
-            stream: false,
-            max_tokens: 8000,
-          }),
+          body: JSON.stringify(requestBody),
           signal: controller.signal,
         });
         if (!resp.ok) {
