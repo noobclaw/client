@@ -601,6 +601,12 @@ function querySelectorCmd(params) {
   if (!selector) return { error: 'selector is required' };
   const limit = params.limit || 50;
   const attrNames = params.attrs ? params.attrs.split(',') : [];
+  // v1.2.15: 之前 text 硬截 200 字符,推特 / 小红书长内容都被砍 →
+  // orchestrator 拿到的 srcLen 永远 ≤200,仿写算字数全错。
+  // 默认提到 5000(覆盖普通推文 280 + 蓝V 长推 ≤4000),caller 可传
+  // maxLen 显式覆盖。
+  const textMaxLen = (typeof params.maxLen === 'number' && params.maxLen > 0)
+    ? params.maxLen : 5000;
 
   const els = document.querySelectorAll(selector);
   const results = [];
@@ -610,7 +616,7 @@ function querySelectorCmd(params) {
     if (rect.width === 0 && rect.height === 0) continue;
 
     const item = {
-      text: (el.textContent || '').trim().slice(0, 200),
+      text: (el.textContent || '').trim().slice(0, textMaxLen),
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined,
       className: (el.className || '').toString().slice(0, 100),

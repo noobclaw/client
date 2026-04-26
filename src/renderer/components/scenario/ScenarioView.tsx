@@ -613,6 +613,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       {linkEditTask && (
         <LinkModeEditModal
           task={linkEditTask}
+          scenario={scenarios.find(s => s.id === linkEditTask.scenario_id) || null}
           onCancel={closeLinkEdit}
           onSaved={async () => {
             closeLinkEdit();
@@ -631,22 +632,49 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
 const LinkModeEditModal: React.FC<{
   task: Task;
+  scenario: Scenario | null;
   onCancel: () => void;
   onSaved: () => void | Promise<void>;
-}> = ({ task, onCancel, onSaved }) => {
+}> = ({ task, scenario, onCancel, onSaved }) => {
   const isZh = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
   const initialUrls: string[] = (task as any).urls || [];
   const [linksText, setLinksText] = useState(initialUrls.join('\n'));
   const [autoUpload, setAutoUpload] = useState<boolean>((task as any).auto_upload !== false);
+  const [isBlueV, setIsBlueV] = useState<boolean>(!!(task as any).is_blue_v);
   const [submitting, setSubmitting] = useState(false);
+
+  // v4.25.5: 平台感知。之前硬编码"小红书",x_link_rewrite / binance_from_x_link
+  // 任务点编辑也走这个 modal,但显示文案 / URL 校验 / 上传去向都按 XHS 来 →
+  // x.com URL 保存被 reject;且 Twitter 任务缺 is_blue_v 选项,AI 字数走默认。
+  const platform: 'xhs' | 'x' | 'binance' = scenario?.platform === 'x' ? 'x'
+    : scenario?.platform === 'binance' ? 'binance'
+    : 'xhs';
+  const isXhs = platform === 'xhs';
+  const isX = platform === 'x';
+  const isBinance = platform === 'binance';
+  // 部分 binance 链接搬运任务粘的也是 x.com 链接(从推特搬到币安),所以
+  // binance + x 都接受 x.com / twitter.com。
+  const acceptsTwitterUrl = isX || isBinance;
+  const platformLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
+    : isBinance ? (isZh ? '币安广场' : 'Binance Square')
+    : (isZh ? '小红书' : 'XHS');
+  const sourceLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
+    : isBinance ? (isZh ? '推特(搬运到币安)' : 'X tweet (repost to Binance)')
+    : (isZh ? '小红书' : 'XHS');
 
   const validate = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
     if (lines.length > 3) return { ok: [], err: isZh ? '最多 3 个链接' : 'Max 3 URLs' };
     for (const l of lines) {
-      if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
-        return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+      if (acceptsTwitterUrl) {
+        if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
+          return { ok: [], err: (isZh ? '不是有效的推特推文链接：' : 'Not a valid X/Twitter status URL: ') + l.slice(0, 80) };
+        }
+      } else {
+        if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
+          return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+        }
       }
     }
     return { ok: lines, err: null };
@@ -658,13 +686,15 @@ const LinkModeEditModal: React.FC<{
     if (err) { alert(err); return; }
     setSubmitting(true);
     try {
-      await scenarioService.updateTask(task.id, {
+      const patch: any = {
         urls: ok,
         daily_count: ok.length,
         auto_upload: autoUpload,
         active: true,
         enabled: true,
-      } as any);
+      };
+      if (isX) patch.is_blue_v = isBlueV;
+      await scenarioService.updateTask(task.id, patch);
       await onSaved();
     } catch (e) {
       alert((isZh ? '保存失败：' : 'Save failed: ') + String(e).slice(0, 120));
@@ -684,7 +714,7 @@ const LinkModeEditModal: React.FC<{
           🔗 {isZh ? '编辑指定链接任务' : 'Edit link-mode task'}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          {isZh ? '粘贴 1~3 个小红书原文链接，每行一个。' : 'Paste 1-3 XHS note URLs, one per line.'}
+          {isZh ? `粘贴 1~3 个${sourceLabel}原文链接，每行一个。` : `Paste 1-3 ${sourceLabel} URLs, one per line.`}
         </p>
         <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
           {isZh ? '原文链接' : 'Source URLs'}
@@ -697,6 +727,47 @@ const LinkModeEditModal: React.FC<{
           disabled={submitting}
         />
 
+        {/* v4.25.5: 推特账号类型(蓝V) — 仅 X link rewrite 显示。决定 AI 生成
+            上限(普通号 ≤140 字硬限,蓝V 自由短/中/长)。 */}
+        {isX && (
+          <div className="mt-4">
+            <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+              {isZh ? '🔵 推特账号类型' : '🔵 Twitter account type'}
+            </label>
+            <div
+              className={`flex items-start gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
+                isBlueV ? 'border-blue-500 bg-blue-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-blue-500/50'
+              }`}
+              onClick={() => setIsBlueV(!isBlueV)}
+            >
+              <input
+                type="checkbox"
+                checked={isBlueV}
+                onChange={e => setIsBlueV(e.target.checked)}
+                onClick={e => e.stopPropagation()}
+                className="mt-0.5 h-4 w-4 accent-blue-500 cursor-pointer"
+                disabled={submitting}
+              />
+              <div className="flex-1 text-sm">
+                <div className="font-medium dark:text-white">
+                  {isZh ? '我的推特账号是蓝V（已订阅 X Premium）' : 'My X account is verified (Blue / Premium)'}
+                </div>
+                <div className="mt-1 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                  {isZh
+                    ? <>
+                        <strong className="text-blue-500">勾选</strong> = 蓝V 账号,AI 可短/中/长自由发挥(不受 140 字硬限)<br/>
+                        <strong className="text-gray-500">不勾</strong>(默认)= 普通账号,AI 强制 ≤ <strong>140 字符</strong>
+                      </>
+                    : <>
+                        <strong className="text-blue-500">Checked</strong>: Blue/Premium — AI may pick short/mid/long freely.<br/>
+                        <strong className="text-gray-500">Unchecked</strong>: non-Blue — AI forced ≤ <strong>140 chars</strong>.
+                      </>}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
           {isZh ? '生成后的处理' : 'After generation'}
         </label>
@@ -705,7 +776,7 @@ const LinkModeEditModal: React.FC<{
             <input type="radio" name="link_edit_auto_upload" checked={autoUpload} onChange={() => setAutoUpload(true)} className="mt-0.5" disabled={submitting} />
             <div className="flex-1 text-xs leading-relaxed">
               <div className="font-semibold dark:text-white mb-0.5">
-                {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
+                {isZh ? `📤 自动发布到${platformLabel}` : `📤 Auto-publish to ${platformLabel}`}
               </div>
               <div className="text-gray-500 dark:text-gray-400">
                 {isZh ? '全流程无人值守。⚠️ 单日 >10 篇有封号风险。' : 'Unattended. ⚠️ >10/day risks ban.'}
@@ -719,7 +790,7 @@ const LinkModeEditModal: React.FC<{
                 {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
               </div>
               <div className="text-gray-500 dark:text-gray-400">
-                {isZh ? '存盘后手动审核上传，封号风险最低。' : 'Review and upload manually later.'}
+                {isZh ? '存盘后手动审核发布,封号风险最低。' : 'Review and post manually later.'}
               </div>
             </div>
           </label>
