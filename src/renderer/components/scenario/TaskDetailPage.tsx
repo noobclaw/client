@@ -452,7 +452,18 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         // Task launched (or finished instantly) — progress polling handles the rest
         return;
       } else if (outcome.status === 'skipped') {
-        showToast('warn', `已跳过: ${outcome.reason}`);
+        // v4.25.35: 资源被占用时拼一句人话给用户(平台名 + 占用任务名),
+        // 而不是甩一坨 'resource_busy:tab:^https?://...' 的内部 key。
+        const r = outcome.reason || '';
+        if (r.startsWith('resource_busy:') && Array.isArray(outcome.busy_platforms) && outcome.busy_platforms.length) {
+          const plats = outcome.busy_platforms.join(' + ');
+          const holder = outcome.busy_task_name || '其他任务';
+          showToast('warn', `该任务需要 ${plats} 都空闲。当前 "${holder}" 正在运行,请先停掉它再启动此任务。`);
+        } else if (r === 'concurrency_limit_reached') {
+          showToast('warn', '同时运行的任务已达上限,请先停掉一个再启动新任务。');
+        } else {
+          showToast('warn', `已跳过: ${r || '未知原因'}`);
+        }
         setRunning(false);
       } else {
         const r = outcome.reason || '';

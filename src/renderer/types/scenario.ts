@@ -180,6 +180,8 @@ export interface ScenarioRunOutcome {
   collected_count?: number;
   draft_count?: number;
   drafts?: ScenarioDraftIPC[];
+  busy_platforms?: string[];
+  busy_task_name?: string;
 }
 
 // ── Run progress (polled from scenarioManager) ──

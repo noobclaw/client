@@ -53,6 +53,11 @@ export interface RunOutcome {
   collected_count?: number;
   draft_count?: number;
   drafts?: Draft[];
+  // v4.25.35: 'resource_busy' 跳过时,把人话信息一起带给 UI(平台名 + 占用任务名)。
+  // 让 toast 能显示"该任务需要推特+币安广场都空闲,目前 'XXX' 任务在运行,请先关闭"
+  // 而不是 "已跳过: resource_busy:tab:^https?://..." 这种不可读字符串。
+  busy_platforms?: string[];   // ['推特', '币安广场']
+  busy_task_name?: string;     // 占用资源的那个任务名
 }
 
 // ── Progress tracking ──
@@ -413,6 +418,17 @@ function findBusyResource(keys: string[]): string | null {
   return null;
 }
 
+// v4.25.35: 把 'tab:^https?://...' 这种内部 key 翻译成用户看得懂的平台名,
+// 让"resource_busy"提示能直接说"推特 + 币安广场",而不是甩一坨 regex。
+function humanizePlatformFromKey(key: string): string {
+  const lc = key.toLowerCase();
+  if (lc.indexOf('binance') >= 0) return '币安广场';
+  if (lc.indexOf('twitter') >= 0 || lc.indexOf('x.com') >= 0 || lc.indexOf('x\\.com') >= 0) return '推特';
+  if (lc.indexOf('xiaohongshu') >= 0) return '小红书';
+  if (key === 'tab:default') return '默认浏览器标签';
+  return key;
+}
+
 function atConcurrencyLimit(): boolean {
   return runningByResource.size >= MAX_CONCURRENT_TASKS;
 }
@@ -473,7 +489,16 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
   const resources = resourceKeysForPack(pack);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    return { status: 'skipped', reason: 'resource_busy:' + busyKey };
+    const holdingTaskId = runningByResource.get(busyKey);
+    const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
+    return {
+      status: 'skipped',
+      reason: 'resource_busy:' + busyKey,
+      busy_platforms: resources.map(humanizePlatformFromKey),
+      busy_task_name: holdingTask
+        ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
+        : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
+    };
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
@@ -608,7 +633,17 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     + `currentlyBusy=${JSON.stringify(Array.from(runningByResource.entries()))}`);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    return { status: 'skipped', reason: 'resource_busy:' + busyKey };
+    // v4.25.35: 占用提示加人话信息 — UI toast 能告诉用户具体是哪个任务卡了哪个平台。
+    const holdingTaskId = runningByResource.get(busyKey);
+    const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
+    return {
+      status: 'skipped',
+      reason: 'resource_busy:' + busyKey,
+      busy_platforms: resources.map(humanizePlatformFromKey),
+      busy_task_name: holdingTask
+        ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
+        : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
+    };
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
