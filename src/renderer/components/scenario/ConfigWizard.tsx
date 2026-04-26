@@ -1075,39 +1075,49 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   deliberately has NO time picker either — and Twitter scenarios
                   never pin a time (risk-control), so we hide the picker
                   entirely on X. */}
-              {!isXOrBinance && runInterval === 'daily' && (
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? '触发时间' : 'Trigger Time'}
-                  </label>
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={dailyTime.split(':')[0] || '08'}
-                      onChange={e => setDailyTime(e.target.value.padStart(2, '0') + ':' + (dailyTime.split(':')[1] || '00'))}
-                      style={{ appearance: 'auto', WebkitAppearance: 'menulist', minWidth: 70 }}
-                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
-                    >
-                      {Array.from({ length: 24 }, (_, i) => (
-                        <option key={i} value={String(i).padStart(2, '0')}>{String(i).padStart(2, '0')}</option>
-                      ))}
-                    </select>
-                    <span className="text-lg font-mono dark:text-white">:</span>
-                    <select
-                      value={dailyTime.split(':')[1] || '00'}
-                      onChange={e => setDailyTime((dailyTime.split(':')[0] || '08') + ':' + e.target.value.padStart(2, '0'))}
-                      style={{ appearance: 'auto', WebkitAppearance: 'menulist', minWidth: 70 }}
-                      className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-base font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
-                    >
-                      {[0, 15, 30, 45].map(m => (
-                        <option key={m} value={String(m).padStart(2, '0')}>{String(m).padStart(2, '0')}</option>
-                      ))}
-                    </select>
+              {!isXOrBinance && runInterval === 'daily' && (() => {
+                // v4.25.38: 触发时间从两个 <select> 改成两个滑条 — 跟其他所有
+                // 数字组件(daily_count / postCountMin/Max / followMin/Max ...)统一用拖动操作。
+                // 小时 0-23,分钟用 step=15 卡到 0/15/30/45。
+                const hour = parseInt(dailyTime.split(':')[0] || '8', 10);
+                const minute = parseInt(dailyTime.split(':')[1] || '0', 10);
+                const setHour = (h: number) => setDailyTime(String(h).padStart(2, '0') + ':' + String(minute).padStart(2, '0'));
+                const setMin  = (m: number) => setDailyTime(String(hour).padStart(2, '0') + ':' + String(m).padStart(2, '0'));
+                return (
+                  <div>
+                    <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                      {isZh ? `触发时间 · ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}` : `Trigger Time · ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`}
+                    </label>
+                    <div className="space-y-3">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '小时' : 'Hour'}</span>
+                          <span className="text-sm font-mono dark:text-white">{String(hour).padStart(2, '0')}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={23} value={hour}
+                          onChange={e => setHour(parseInt(e.target.value, 10))}
+                          className="w-full accent-green-500 cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '分钟' : 'Minute'}</span>
+                          <span className="text-sm font-mono dark:text-white">{String(minute).padStart(2, '0')}</span>
+                        </div>
+                        <input
+                          type="range" min={0} max={45} step={15} value={minute}
+                          onChange={e => setMin(parseInt(e.target.value, 10))}
+                          className="w-full accent-green-500 cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
+                      {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for human-like behavior'}
+                    </p>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5">
-                    {isZh ? '前后 ±15 分钟随机偏移模拟人类节奏' : '±15 min random offset for human-like behavior'}
-                  </p>
-                </div>
-              )}
+                );
+              })()}
 
               {/* ── Post count range (post_creator scenarios on X + Binance) ──
                   Each scheduled run posts a random N ∈ [min, max] with 5-15 min
