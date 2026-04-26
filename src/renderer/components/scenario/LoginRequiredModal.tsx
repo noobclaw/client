@@ -237,36 +237,51 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', on
         </div>
 
         <div className="px-6 py-3 space-y-3">
-          {/* Step 1: XHS tab — 先检查小红书是否打开 */}
-          <div className={`flex items-start gap-3 rounded-xl p-3 border ${
-            xhsTabStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
-              : xhsTabStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
-              : 'border-gray-200 dark:border-gray-700'
-          }`}>
-            <div className="text-xl shrink-0 mt-0.5">{ICON[xhsTabStatus]}</div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">
-                {isZh ? `① 在浏览器中打开 ${platformLabel} 并登录` : `① Open ${platformLabel} in browser & login`}
-              </div>
-              {extensionStatus === 'fail' && (
-                <div className="text-xs text-gray-400 mt-1">{isZh ? '请先安装浏览器插件（步骤②）' : 'Install browser extension first (step ②)'}</div>
-              )}
-              {extensionStatus === 'pass' && xhsTabStatus === 'fail' && (
-                <div className="mt-1">
-                  <div className="text-xs text-red-500">
-                    {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
+          {/* Step 1: 平台 tab —— 不依赖插件,先让用户打开页面。
+              v4.25.4: 之前 step ① 的真实状态要等 step ② 装好插件才能查,
+              UI 显示"请先安装浏览器插件(步骤②)" — 用户被两步互锁绕晕。
+              改成:不论插件状态,这一步都允许用户立刻点 "打开" 按钮 → 浏览器
+              开页;插件已连接时再用真检测 (✓/✗);未连接时显示"待插件检测",
+              但按钮仍可用,用户可以在装插件之前先把页面打开。 */}
+          {(() => {
+            // 只有在插件已连接 + tab 检测真过了的时候才算 pass。其他都让用户能动作。
+            const realPass = extensionStatus === 'pass' && xhsTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && xhsTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `① 在浏览器中打开 ${platformLabel} 并登录` : `① Open ${platformLabel} in browser & login`}
                   </div>
-                  <button type="button" onClick={handleOpenXhs} disabled={opening}
-                    className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50">
-                    {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
-                  </button>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenXhs} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
+                    </button>
+                  )}
                 </div>
-              )}
-              {xhsTabStatus === 'pass' && (
-                <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
-              )}
-            </div>
-          </div>
+              </div>
+            );
+          })()}
 
           {/* Step 2: Extension — 再检查插件 */}
           <div className={`flex items-start gap-3 rounded-xl p-3 border ${

@@ -1491,11 +1491,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isBinanceFromXRepost ? (
                     <>
                       <li>{isZh
-                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 改写成中文币安风格,带图上传`
-                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral image tweets from X, AI rewrites in Chinese Binance style, reuses original images`}</li>
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 改写成币安风格(语言跟随原帖),带图上传`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral image tweets from X, AI rewrites in Binance style (matches source language), reuses original images`}</li>
                       <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 运行期间占用 X + 币安两个标签页,不能同时跑其他任务 — 需要两个平台都打开并登录' : '⚠️ Locks both X + Binance tabs while running — other tasks on either platform are blocked. Both must be logged in before starting.'}</li>
                       <li>{isZh ? '· 每篇自动检测登录态,未登录直接报错终止(不会白跑)' : '· Auto-checks login on both platforms; if either is logged out the run aborts early'}</li>
-                      <li>{isZh ? '· 图用的是原推的图(CDN 直取),文字是 AI 中文改写,带 cashtag' : '· Images come from the original tweet CDN; text is AI-rewritten in Chinese with cashtags'}</li>
                       <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查改写风格' : '· Posts cannot be unposted — review output after first run to confirm the rewrite tone.'}</li>
                       <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:需要 VPN / 代理同时访问 x.com 和 binance.com' : '⚠️ Mainland China users: need VPN / proxy that reaches both x.com and binance.com'}</li>
                     </>
