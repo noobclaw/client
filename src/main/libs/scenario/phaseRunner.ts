@@ -557,6 +557,11 @@ function buildContext(
     recordSeen: (postIds: string[]) => {
       taskStore.recordSeen(task.id, postIds);
     },
+    // v4.25.36: 暴露读取 seen 列表 — binance_from_x_repost 等需要跨 run 跳过
+    // 已经搬运过的源推文。返回 Set<string>(orchestrator 自己 .has() 判断)。
+    getSeenIds: (): Set<string> => {
+      return taskStore.getSeenPostIds(task.id);
+    },
 
     // Call backend API (e.g. image generation) — includes auth token,
     // abortable via progress.isAbortRequested() every 300ms.
