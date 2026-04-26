@@ -850,7 +850,14 @@ export function startScheduler(): void {
       if (!Array.isArray(allTasks)) return;
 
       for (const task of allTasks) {
-        if (!task.active || !task.enabled) continue;
+        // v4.25.4: 之前要求 task.active=true 才进 scheduler —— 但 active 在
+        // taskStore 里是"单选"语义(setActiveTask 会把所有其他任务 active 设
+        // 成 false)。结果:用户建多个任务,只有 1 个能自动跑,其他到点也不动
+        // (用户多次反馈"到点都不运行")。资源锁本身已经能防 same-platform
+        // 任务争抢(busy 直接 silent skip),跨平台天然并行,active 这层 gate
+        // 是多余的且违反用户预期。改成只看 enabled。active 字段保留给 UI 显
+        // 示用("当前选中"),不再驱动调度。
+        if (!task.enabled) continue;
         if (atConcurrencyLimit()) break;
 
         const interval = (task as any).run_interval || 'daily';

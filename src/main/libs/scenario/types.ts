@@ -184,9 +184,10 @@ export interface ScenarioTask {
    *  Affects post_creator, link_rewrite, and auto_engage reply lengths. */
   is_blue_v?: boolean;
   enabled: boolean;
-  /** Only the 'active' task is eligible for scheduled auto-runs.
-   *  When multiple tasks exist, user must explicitly pick which one is active.
-   *  If only one task exists, it's auto-marked active. */
+  /** v4.25.4 (语义变更):"当前选中的任务" — UI 高亮用,不再驱动调度。
+   *  之前是"only active 可以 scheduler 自动运行"的单选闸门,导致多任务时
+   *  其他任务到点不跑。现在 scheduler 看的是 enabled,active 仅供 UI 显示
+   *  "starred / current" 状态。setActiveTask 仍可用,只影响 UI 不影响调度。 */
   active: boolean;
   created_at: number;
   updated_at: number;

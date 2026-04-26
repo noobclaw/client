@@ -743,7 +743,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     if (interval === 'once' || isLinkModeForStats) {
                       return isZh ? '✋ 手动触发' : '✋ Manual trigger';
                     }
-                    if (!task.active) return isZh ? '待命' : 'Standby';
+                    // v4.25.4: 不再依赖 task.active 判定 "待命" —— 现在所有
+                    // enabled 任务都会自动跑(active 仅 UI 高亮用)。直接显示
+                    // schedule label。
                     const map: Record<string, string> = isZh
                       ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次' }
                       : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)' };
@@ -790,7 +792,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <StatCard
             label={isZh ? '下次运行' : 'Next Run'}
             value={(() => {
-              if (!task.active) return isZh ? '待命' : 'Standby';
+              // v4.25.4: 不再因 active=false 显示 "待命" —— scheduler 现在
+              // 会跑所有 enabled 任务,active 仅 UI 高亮。
               // Prefer the pre-picked timestamp from the scheduler (set
               // after each run + on the first scheduler tick). With
               // daily_random the random offset is already baked in, so
