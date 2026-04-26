@@ -54,7 +54,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     platform: 'binance' as any,
     workflow_type: 'viral_production',
     category: 'creation',
-    name_zh: '币安广场自动发帖',
+    name_zh: '币安广场 · 自动发帖',
     name_en: 'Binance Square Auto Post',
     description_zh: '每日 AI 写一条 100-300 字文章,自动带 $TOKEN cashtag,发到币安广场。',
     description_en: 'Daily AI-drafted 100-300 char article, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
@@ -92,7 +92,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     platform: 'binance' as any,
     workflow_type: 'auto_reply' as any,
     category: 'engagement',
-    name_zh: '币安广场自动互动',
+    name_zh: '币安广场 · 自动互动',
     name_en: 'Binance Square Auto Engagement',
     description_zh: '每次运行关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
     description_en: 'Daily follow Binance Square crypto KOLs + AI-drafted replies to hot posts.',
@@ -223,7 +223,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           emoji="🤝"
           badgeZh="自动互动"
           badgeEn="Daily engagement"
-          titleZh="币安广场自动互动"
+          titleZh="币安广场 · 自动互动"
           titleEn="Binance Square Auto Engagement"
           descZh="关注币安广场加密 KOL + 热门帖 AI 生成观点回复,每天 0-5 个动作随机打散,每个动作间 30 秒-10 分钟随机。"
           descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 30s-10min spacing."
@@ -245,7 +245,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           emoji="📊"
           badgeZh="自动发帖"
           badgeEn="Daily post"
-          titleZh="币安广场自动发帖"
+          titleZh="币安广场 · 自动发帖"
           titleEn="Binance Square Auto Post"
           descZh="AI 按你的人设原创写一条 100-300 字文章或接入爆款文章进行改写,自动带 $BTC 等 Tag 触发 token 页流量。"
           descEn="AI writes an original 100-300 char article in your persona, or picks from the viral library and rewrites it. Auto-tagged with $TICKER cashtags to drive token-page traffic."

@@ -200,7 +200,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           color="emerald"
           emoji="🐦"
           badge={isZh ? '每日互动' : 'Daily engagement'}
-          titleZh="推特自动互动"
+          titleZh="推特 · 自动互动"
           titleEn="X Auto Engagement"
           descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 30 秒-10 分钟随机。"
           descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 30s-10min between actions."
@@ -219,7 +219,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           color="sky"
           emoji="📝"
           badge={isZh ? '每日发推' : 'Daily post'}
-          titleZh="推特自动发推"
+          titleZh="推特 · 自动发推"
           titleEn="X Auto Post"
           descZh="每天自动发 1 条推，40% feed 仿写（字数≥100、浏览≥1万）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
           descEn="Posts 1 tweet/day: 40% feed-rewrite (≥100 chars, ≥10K views) / 40% original / 20% quote-tweet, randomized for variety."
@@ -238,7 +238,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           color="violet"
           emoji="✍️"
           badge={isZh ? '手动一次性' : 'One-shot'}
-          titleZh="指定链接仿写"
+          titleZh="推特 · 指定链接仿写"
           titleEn="Tweet Rewrite (URL)"
           descZh="粘贴 1-5 条推文链接，AI 解构每条钩子 + 结构，用你的人设仿写成新推（不抄袭），逐条间隔发布。"
           descEn="Paste 1-5 tweet URLs. AI deconstructs hook + structure, rewrites in your voice (no copying), posts one by one."
@@ -299,7 +299,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
             <h3 className="text-lg font-bold dark:text-white mb-2">
-              ✍️ {isZh ? '指定链接仿写' : 'Tweet Rewrite (URL)'}
+              ✍️ {isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh

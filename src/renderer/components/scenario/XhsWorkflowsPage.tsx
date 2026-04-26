@@ -150,7 +150,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_auto_reply_universal',
     workflow_type: 'auto_reply' as any,
-    name_zh: '小红书自动互动',
+    name_zh: '小红书 · 自动互动',
     name_en: 'XHS Auto Engage',
     description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。每次还会按 0~30% 概率关注作者。',
     description_en: 'Find articles by keyword, AI-reply + reply to comments, post on safe jitter. Optionally follow the author (0-30% chance).',
@@ -317,7 +317,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书自动互动' : 'XHS Auto Engage'}
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书 · 自动互动' : 'XHS Auto Engage'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
@@ -393,7 +393,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               {i18nService.currentLanguage === 'zh' ? '即开即用' : 'Instant'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              🚫 {i18nService.currentLanguage === 'zh' ? '敏感词检测' : 'Sensitive Word Checker'}
+              🚫 {i18nService.currentLanguage === 'zh' ? '小红书 · 敏感词检测' : 'XHS Sensitive Word Checker'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'

@@ -183,7 +183,7 @@ export const SensitiveCheckPage: React.FC<Props> = ({ onBack }) => {
           ← {isZh ? '返回' : 'Back'}
         </button>
         <h1 className="text-xl font-bold dark:text-white">
-          🚫 {isZh ? '小红书敏感词检测' : 'XHS Sensitive Word Checker'}
+          🚫 {isZh ? '小红书 · 敏感词检测' : 'XHS Sensitive Word Checker'}
         </h1>
       </div>
 
