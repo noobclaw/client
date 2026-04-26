@@ -381,6 +381,10 @@ function buildContext(
           requireUnRoundNumber?: boolean;
           maxRetries?: number;          // default 2 (so total attempts ≤ 3)
         };
+        // v4.31.3 架构清理:expectJson=false → 纯文本模式,跳过 JSON.parse,
+        // qualityGate 直接验 raw 字符串,返回字符串。配合 prompt 里写 "只输出正文
+        // 不要 JSON 包" 的场景。默认 true 维持老行为(老 orchestrator 不动)。
+        expectJson?: boolean;
         // Internal — used by the recursive retry. Callers should NOT set this.
         _attempt?: number;
       }
@@ -492,41 +496,45 @@ function buildContext(
           const cost = Number(nb?.costUsd) || 0;
           if (total > 0 && progress.addTokensUsed) progress.addTokensUsed(total, cost);
         } catch { /* non-fatal */ }
-        // Parse the JSON rewrite payload. Retry parse once if it fails —
-        // cheap and catches the occasional 'almost-JSON' response.
-        const parsed = parseJsonSafe(raw);
-        if (!parsed) {
-          coworkLog('WARN', 'phaseRunner', 'AI response not JSON', { rawHead: raw.slice(0, 300) });
-          // v4.31.2: 老 case 这里 raw.slice(0, 200) 直接把原文砍到 200 字,
-          // orchestrator 的 salvage 路径(从 error 消息提原文)永远只能拿 200 字,
-          // 整篇 750 字的好正文被这一刀腰斩,长期表现成 'rewrite_too_short'。
-          // 改成:错误消息只放短摘要(给日志看),完整原文挂在 err.rawText 上。
-          const err: any = new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
-          err.rawText = raw;
-          err.code = 'AI_PARSE_FAIL';
-          throw err;
+        // v4.31.3 架构清理:两条返回路径 — JSON 模式 vs 纯文本模式 —
+        // 都走同一个 qualityGate 重试逻辑。
+        const isTextMode = opts?.expectJson === false;
+
+        // ── 决定可被 qualityGate 校验的 text + 最终 return value ──
+        let textForGate: string;
+        let returnValue: any;
+        if (isTextMode) {
+          // 纯文本模式 — 不解析,直接用 raw,return string
+          textForGate = raw;
+          returnValue = raw;
+        } else {
+          // JSON 模式 — 严格 parse,失败抛 AI_PARSE_FAIL(原文挂 err.rawText)
+          const parsed = parseJsonSafe(raw);
+          if (!parsed) {
+            coworkLog('WARN', 'phaseRunner', 'AI response not JSON', { rawHead: raw.slice(0, 300) });
+            const err: any = new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
+            err.rawText = raw;
+            err.code = 'AI_PARSE_FAIL';
+            throw err;
+          }
+          textForGate = (parsed && (parsed.text || parsed.content)) || (typeof parsed === 'string' ? parsed : '');
+          returnValue = parsed;
         }
 
-        // v2.4.58+ Quality gate (post composers opt in via opts.qualityGate)
-        // Runs deterministic regex/length/banned-phrase checks on the AI text
-        // and retries up to maxRetries with augmented user message on fail.
+        // v2.4.58+ Quality gate(post composers opt in via opts.qualityGate)
+        // 不论 JSON / text 模式都跑同一套校验 + 重试。
         if (opts && opts.qualityGate) {
-          const text = (parsed && (parsed.text || parsed.content)) || (typeof parsed === 'string' ? parsed : '');
-          const gate = checkQuality(String(text), opts.qualityGate);
+          const gate = checkQuality(String(textForGate), opts.qualityGate);
           if (!gate.passed) {
             if (attempt <= maxRetries) {
               coworkLog('WARN', 'phaseRunner', 'Quality gate failed, retrying', {
-                attempt, failures: gate.failures, textHead: String(text).slice(0, 100),
+                attempt, failures: gate.failures, textHead: String(textForGate).slice(0, 100),
               });
               ctx.report('   ⚠️ 质量门未过(' + gate.failures.join(' / ') + '),第 ' + attempt + ' 次尝试,重写中...');
-              // Augment user message with explicit fix instructions
               const feedback = '\n\n⚠️ 上次输出在以下维度不合格,这次必须修正:\n'
                 + gate.failures.map(f => '  • ' + f).join('\n')
                 + '\n\n重新写一次,严格修正上述问题。';
               const newRawInput = (rawInput || userMessage) + feedback;
-              // For non-__raw__ calls, push feedback into promptOrInput as
-              // serialized JSON tail (so the placeholder substitution in
-              // prompt template still works on next call's system message).
               if (promptNameOrRaw === '__raw__') {
                 return await ctx.aiCall(promptNameOrRaw, prompt, newRawInput, {
                   ...opts, _attempt: attempt + 1,
@@ -537,7 +545,6 @@ function buildContext(
                 });
               }
             } else {
-              // Out of retries — log loud and return last attempt anyway
               coworkLog('WARN', 'phaseRunner', 'Quality gate exhausted retries, returning last attempt', {
                 attempts: attempt, failures: gate.failures,
               });
@@ -548,7 +555,7 @@ function buildContext(
           }
         }
 
-        return parsed;
+        return returnValue;
       } catch (err: any) {
         if (err?.name === 'AbortError' || progress.isAbortRequested()) {
           throw new Error('user_stopped');
