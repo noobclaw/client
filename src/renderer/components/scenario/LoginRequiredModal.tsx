@@ -284,13 +284,16 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
-        <div className="px-6 pt-6 pb-3 text-center">
-          <div className="text-4xl mb-2">🔐</div>
+      {/* v4.25.4: 跨 tab 任务多了一行检查,modal 高度容易超屏导致取消按钮被切。
+          宽度从 max-w-md (~448px) 拉到 max-w-2xl (~672px),整体 max-h 限到
+          90vh,中间内容区 overflow-y-auto,头/底永远可见。 */}
+      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
+        <div className="px-6 pt-5 pb-2 text-center shrink-0">
+          <div className="text-3xl mb-1">🔐</div>
           <h3 className="text-lg font-bold dark:text-white">{isZh ? '运行前检查' : 'Pre-run Check'}</h3>
         </div>
 
-        <div className="px-6 py-3 space-y-3">
+        <div className="px-6 py-2 space-y-2.5 overflow-y-auto flex-1">
           {/* Step 1: 平台 tab —— 不依赖插件,先让用户打开页面。
               v4.25.4: 之前 step ① 的真实状态要等 step ② 装好插件才能查,
               UI 显示"请先安装浏览器插件(步骤②)" — 用户被两步互锁绕晕。
@@ -303,7 +306,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
             const realFail = extensionStatus === 'pass' && xhsTabStatus === 'fail';
             const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
             return (
-              <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
                 visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
                   : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
                   : 'border-gray-200 dark:border-gray-700'
@@ -346,7 +349,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
             const realFail = extensionStatus === 'pass' && secondaryTabStatus === 'fail';
             const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
             return (
-              <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
                 visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
                   : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
                   : 'border-gray-200 dark:border-gray-700'
@@ -381,7 +384,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           })()}
 
           {/* Step 2: Extension — 再检查插件 */}
-          <div className={`flex items-start gap-3 rounded-xl p-3 border ${
+          <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
             extensionStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
               : extensionStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
               : 'border-gray-200 dark:border-gray-700'
@@ -467,13 +470,13 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           </div>
         </div>
 
-        {/* Bottom button */}
-        <div className="px-6 pb-6 pt-3 flex flex-col items-center gap-2">
+        {/* Bottom button — shrink-0 + 边框分隔,永远 stick 在 modal 底部不会被滚走 */}
+        <div className="px-6 py-3 flex flex-col items-center gap-1.5 border-t border-gray-200 dark:border-gray-800 shrink-0">
           <button
             type="button"
             onClick={onConfirmed}
             disabled={!allReady}
-            className={`w-full max-w-[280px] text-sm font-semibold px-6 py-3 rounded-xl transition-colors ${
+            className={`w-full max-w-[280px] text-sm font-semibold px-6 py-2.5 rounded-xl transition-colors ${
               allReady
                 ? 'bg-green-500 text-white hover:bg-green-600'
                 : 'bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed'

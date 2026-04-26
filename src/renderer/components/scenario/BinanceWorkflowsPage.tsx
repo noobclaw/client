@@ -196,7 +196,29 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     <div className="p-6 max-w-6xl mx-auto">
       {/* Scenario cards — same layout as X: jump straight to cards, no hero */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {/* 1. Auto engage (coming soon — backend scenario not yet built) */}
+        {/* v4.25.4: 推特搬运放第一个 — 主推卖点 */}
+        <BinanceCard
+          emoji="🔁"
+          badgeZh="推特搬运"
+          badgeEn="X repost"
+          titleZh="币安广场 · 推特搬运"
+          titleEn="Binance Square · Repost from X"
+          descZh="从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
+          descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
+          tagsLine={isZh ? '跨平台搬运 · 深度二创 · 双 tab 校验' : 'Cross-platform · Deep rewrite · Dual-tab check'}
+          ctaZh="立即开始"
+          ctaEn="Get Started"
+          enabled={true}
+          loading={loading}
+          scenario={fromXRepost}
+          onStart={() => handleStart(fromXRepost)}
+          isZh={isZh}
+          binanceGold={binanceGold}
+          binanceGoldLight={binanceGoldLight}
+          binanceDark={binanceDark}
+        />
+
+        {/* Auto engage */}
         <BinanceCard
           emoji="🤝"
           badgeZh="自动互动"
@@ -218,44 +240,22 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           binanceDark={binanceDark}
         />
 
-        {/* 2. Post creator */}
+        {/* Post creator — 描述加上"50% 接入爆文库改写"卖点 */}
         <BinanceCard
           emoji="📊"
           badgeZh="自动发帖"
           badgeEn="Daily post"
           titleZh="币安广场自动发帖"
           titleEn="Binance Square Auto Post"
-          descZh="AI 从你的 token 列表里随机挑一个,按你的人设写一条 100-300 字短评,自动带 $BTC 等 cashtag 触发 token 页流量。"
-          descEn="AI picks a token from your watchlist, drafts a 100-300 char note in your persona, posts with $TICKER cashtags to trigger token-page traffic."
-          tagsLine={isZh ? 'AI 短评 · $TICKER 导流 · 随机 token' : 'AI short post · $TICKER traffic · Random token'}
+          descZh="AI 按你的人设原创写一条 100-300 字文章或接入爆款文章进行改写,自动带 $BTC 等 Tag 触发 token 页流量。"
+          descEn="AI writes an original 100-300 char article in your persona, or picks from the viral library and rewrites it. Auto-tagged with $TICKER cashtags to drive token-page traffic."
+          tagsLine={isZh ? 'AI 原创 · $TICKER 导流 · 爆文接入' : 'AI original · $TICKER traffic · Viral library'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
           loading={loading}
           scenario={postCreator}
           onStart={() => handleStart(postCreator)}
-          isZh={isZh}
-          binanceGold={binanceGold}
-          binanceGoldLight={binanceGoldLight}
-          binanceDark={binanceDark}
-        />
-
-        {/* 3. Repost from X — v4.25+ 新卡 */}
-        <BinanceCard
-          emoji="🔁"
-          badgeZh="推特搬运"
-          badgeEn="X repost"
-          titleZh="币安广场 · 推特搬运"
-          titleEn="Binance Square · Repost from X"
-          descZh="从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
-          descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
-          tagsLine={isZh ? '跨平台搬运 · 深度二创 · 双 tab 校验' : 'Cross-platform · Deep rewrite · Dual-tab check'}
-          ctaZh="立即开始"
-          ctaEn="Get Started"
-          enabled={true}
-          loading={loading}
-          scenario={fromXRepost}
-          onStart={() => handleStart(fromXRepost)}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
