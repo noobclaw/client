@@ -12,14 +12,6 @@ let connected = false;
 let connectAttemptStartedAt = 0;
 const STUCK_PORT_TIMEOUT_MS = 15000;
 
-// v1.2.15: ping/pong 心跳自愈。zombie port 之前的逻辑只防"connect 后没收到
-// bridge_status",防不了"connect 后 connected=true 但 sidecar 已死"的 case。
-// 解决:每 15s 发 ping → sidecar 立即回 pong → 连续 30s 没 pong 强制重连。
-let heartbeatTimer = null;
-let lastPongAt = 0;
-const HEARTBEAT_INTERVAL_MS = 15000;
-const HEARTBEAT_DEAD_MS = 30000; // 连续 2 次心跳没 pong 就判死
-
 // Auto-connect on browser startup, install, and periodic keepalive.
 // MV3 service workers can be killed any time; relying ONLY on onStartup
 // loses the connection until the next alarm fire. Hence three triggers:
@@ -97,9 +89,6 @@ function connect() {
           connected = true;
           reconnectDelay = 1000;
           updateStatus('connected');
-          // v1.2.15: bridge 起来后立即启动心跳
-          lastPongAt = Date.now();
-          startHeartbeat();
           // Multi-browser routing (v1.2.0): announce ourselves to the
           // desktop bridge with our current tab inventory so it can route
           // commands to the right browser. Without this, the bridge can
@@ -108,16 +97,12 @@ function connect() {
         } else {
           connected = false;
           updateStatus('disconnected');
-          stopHeartbeat();
         }
         return;
       }
 
-      // Pong (keepalive) — v1.2.15 用来更新心跳时间戳
-      if (msg.type === 'pong') {
-        lastPongAt = Date.now();
-        return;
-      }
+      // Pong (keepalive)
+      if (msg.type === 'pong') return;
 
       // Command from NoobClaw
       if (msg.id && msg.command) {
@@ -134,7 +119,6 @@ function connect() {
       port = null;
       connected = false;
       updateStatus('disconnected');
-      stopHeartbeat();
       scheduleReconnect();
     });
 
@@ -151,46 +135,12 @@ function disconnect() {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-  stopHeartbeat();
   if (port) {
     port.disconnect();
     port = null;
   }
   connected = false;
   updateStatus('disconnected');
-}
-
-// v1.2.15: 心跳 + 强制重连。每 15s 发 ping,30s 没 pong 强制 reset port
-// (无视当前 connected 状态)→ 再 connect。解决"sidecar 死了但 port 还
-// 存在 + connected=true 假象"的僵尸状态,这是用户报"必须关浏览器才能恢
-// 复"的根因。同时 popup Reconnect 按钮调用 forceReset() 也走这条路径。
-function startHeartbeat() {
-  stopHeartbeat();
-  heartbeatTimer = setInterval(() => {
-    if (!port) { stopHeartbeat(); return; }
-    // 检测 dead:HEARTBEAT_DEAD_MS 没收到 pong → port 已僵尸
-    if (lastPongAt && Date.now() - lastPongAt > HEARTBEAT_DEAD_MS) {
-      console.log('[NoobClaw] No pong in', HEARTBEAT_DEAD_MS, 'ms → force reset zombie port');
-      forceReset();
-      return;
-    }
-    // 发 ping
-    try { port.postMessage({ type: 'ping' }); } catch (_) { forceReset(); }
-  }, HEARTBEAT_INTERVAL_MS);
-}
-function stopHeartbeat() {
-  if (heartbeatTimer) { clearInterval(heartbeatTimer); heartbeatTimer = null; }
-}
-function forceReset() {
-  console.log('[NoobClaw] Force reset port (zombie / manual reconnect)');
-  stopHeartbeat();
-  if (port) { try { port.disconnect(); } catch (_) {} port = null; }
-  connected = false;
-  updateStatus('disconnected');
-  // 立即重连,不走 scheduleReconnect 的指数退避(用户期望立即恢复)
-  reconnectDelay = 1000;
-  if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
-  setTimeout(connect, 200);
 }
 
 function scheduleReconnect() {
@@ -1344,17 +1294,21 @@ async function executeCommand(msg) {
   }
 }
 
-// v1.2.15: 老的 25s keepalive 已被 startHeartbeat() 取代(15s 间隔 + 死检测)。
+// Keepalive ping every 25s
+setInterval(() => {
+  if (port && connected) {
+    port.postMessage({ type: 'ping' });
+  }
+}, 25000);
 
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === 'get_status') {
     sendResponse({ connected, status: connected ? 'connected' : 'disconnected' });
   } else if (msg.type === 'reconnect') {
-    // v1.2.15: 用 forceReset 而不是 disconnect+connect — 后者在 zombie port
-    // 时(port 已死但 connect() 里 if (port) return 短路)无效。forceReset
-    // 强制清掉 port,绕过短路,真正重新建立连接。
-    forceReset();
+    disconnect();
+    reconnectDelay = 1000;
+    connect();
     sendResponse({ ok: true });
   }
   return true;
