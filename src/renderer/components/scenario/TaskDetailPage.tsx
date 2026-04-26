@@ -228,6 +228,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_auto_engage') return isZh ? STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH : STEP_NAMES_BINANCE_AUTO_ENGAGE_EN;
     if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
     if (sid === 'binance_from_x_repost') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
+    if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -536,7 +537,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场 · 自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
     if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
-    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特搬运' : 'Binance · Repost from X', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (isLinkModeForBadge && !isXTask && !isBinanceTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance auto_reply
     // doesn't get mis-labeled as XHS auto_reply.
@@ -1019,7 +1021,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         <LoginRequiredModal
           mode="run"
           platform={(scenario?.platform === 'x' ? 'x' : scenario?.platform === 'binance' ? 'binance' : 'xhs') as 'x' | 'xhs' | 'binance'}
-          secondaryPlatform={task.scenario_id === 'binance_from_x_repost' ? 'x' : undefined}
+          secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
           onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}
         />

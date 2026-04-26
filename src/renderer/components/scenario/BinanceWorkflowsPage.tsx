@@ -127,7 +127,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     platform: 'binance' as any,
     workflow_type: 'viral_production',
     category: 'creation',
-    name_zh: '币安广场 · 推特搬运',
+    name_zh: '币安广场 · 推特批量搬运',
     name_en: 'Binance Square · Repost from X',
     description_zh: '从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
     description_en: 'Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. Locks both X + Binance tabs.',
@@ -154,6 +154,41 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   const fromXRepost =
     scenarios.find(s => s.id === 'binance_from_x_repost')
     || FROM_X_REPOST_FALLBACK;
+
+  // v4.31.18: 第 4 张卡 — 币安广场 · 推特链接仿写。手动一次性,粘 1-5 个推文 URL。
+  const FROM_X_LINK_FALLBACK: Scenario = {
+    id: 'binance_from_x_link',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'viral_production',
+    category: 'creation',
+    name_zh: '币安广场 · 推特链接仿写',
+    name_en: 'Binance Square · From X Link',
+    description_zh: '粘贴 1-5 个推文链接,AI 改写成币安风格短帖,原推图片一并下载上传,逐条间隔发到币安广场。运行期间占用推特+币安两个标签页。',
+    description_en: 'Paste 1-5 X tweet URLs. AI rewrites in Binance style with original images. One-shot.',
+    icon: '🔗',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 用户',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 0,
+      min_scroll_delay_ms: 0, max_scroll_delay_ms: 0,
+      read_dwell_min_ms: 5000, read_dwell_max_ms: 12000,
+      max_run_duration_ms: 3600000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const fromXLink =
+    scenarios.find(s => s.id === 'binance_from_x_link')
+    || FROM_X_LINK_FALLBACK;
 
   // (previously we polled running task ids to drive the inline running-glow
   //  on the "已有任务" list. That list was removed — MyTasksPage is the
@@ -199,9 +234,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         {/* v4.25.4: 推特搬运放第一个 — 主推卖点 */}
         <BinanceCard
           emoji="🔁"
-          badgeZh="推特搬运"
-          badgeEn="X repost"
-          titleZh="币安广场 · 推特搬运"
+          badgeZh="推特批量搬运"
+          badgeEn="X batch repost"
+          titleZh="币安广场 · 推特批量搬运"
           titleEn="Binance Square · Repost from X"
           descZh="从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
           descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
@@ -261,6 +296,28 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           binanceGoldLight={binanceGoldLight}
           binanceDark={binanceDark}
         />
+
+        {/* v4.31.18: 第 4 张卡 — 推特链接仿写。手动一次,粘 1-5 个 URL */}
+        <BinanceCard
+          emoji="🔗"
+          badgeZh="链接仿写"
+          badgeEn="From URL"
+          titleZh="币安广场 · 推特链接仿写"
+          titleEn="Binance Square · From X Link"
+          descZh="粘贴 1-5 个推文链接,AI 改写成币安风格,原推图一并下载上传,逐条间隔发到广场。⚠️ 跨双 tab,需双平台都登录。"
+          descEn="Paste 1-5 X tweet URLs. AI rewrites in Binance style with original images. ⚠️ Locks both X + Binance tabs."
+          tagsLine={isZh ? '手动一次性 · 1-5 链接 · 复用源图' : 'One-shot · 1-5 URLs · Reuse images'}
+          ctaZh="立即开始"
+          ctaEn="Get Started"
+          enabled={true}
+          loading={loading}
+          scenario={fromXLink}
+          onStart={() => handleStart(fromXLink)}
+          isZh={isZh}
+          binanceGold={binanceGold}
+          binanceGoldLight={binanceGoldLight}
+          binanceDark={binanceDark}
+        />
       </section>
 
       {/* Features pills — same compact design as X page */}
@@ -298,7 +355,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         <LoginRequiredModal
           mode="create"
           platform="binance"
-          secondaryPlatform={pendingScenario?.id === 'binance_from_x_repost' ? 'x' : undefined}
+          secondaryPlatform={(pendingScenario?.id === 'binance_from_x_repost' || pendingScenario?.id === 'binance_from_x_link') ? 'x' : undefined}
           onCancel={() => { setLoginModalReason(null); setPendingScenario(null); }}
           onConfirmed={handleLoginConfirmed}
         />

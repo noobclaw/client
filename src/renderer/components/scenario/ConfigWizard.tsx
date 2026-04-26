@@ -306,10 +306,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // (keywords/persona/daily 条数),但跑时占用双 tab + 从 X 挑素材。Wizard
   // 走跟 binance_post_creator 完全同一份输入流程,orchestrator 内部差异。
   const isBinanceFromXRepost = scenario.id === 'binance_from_x_repost';
+  // v4.31.18: 币安广场 · 推特链接仿写 — 跟 x_link_rewrite 一样吃 URL 列表,
+  // 跟 binance_from_x_repost 一样跨 tab 发币安。
+  const isBinanceFromXLink = scenario.id === 'binance_from_x_link';
   // 把 post-creator 类的场景统一到一个布尔上,wizard 里很多地方只关心
   // "这是个单条发帖型场景吗"——post_creator / from_x_repost 共享同一分支
-  const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
-  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite';
+  const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost || isBinanceFromXLink;
+  // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
+  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
@@ -688,7 +692,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
                 : isBinanceFromXRepost
-                  ? (isZh ? '配置币安广场 · 推特搬运' : 'Configure Binance Square · Repost from X')
+                  ? (isZh ? '配置币安广场 · 推特批量搬运' : 'Configure Binance · Repost from X (Batch)')
                   : isBinancePostCreator
                     ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
@@ -1518,7 +1522,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
                     : isBinanceFromXRepost
-                      ? (isZh ? '确认并启用币安广场 · 推特搬运' : 'Confirm & Enable Binance · Repost from X')
+                      ? (isZh ? '确认并启用币安广场 · 推特批量搬运' : 'Confirm & Enable Binance · Repost from X (Batch) (Batch)')
                       : isBinancePostCreator
                         ? (isZh ? '确认并启用币安广场发帖' : 'Confirm & Enable Binance Square Post')
                         : isLinkRewriteScenario
