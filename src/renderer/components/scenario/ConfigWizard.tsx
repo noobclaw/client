@@ -932,8 +932,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   )}
 
                   {/* user_context — for post_creator only (Twitter + Binance).
-                      link_rewrite doesn't need it (AI rewrites source tweet). */}
-                  {!isAutoReply && !isLinkRewriteScenario && (
+                      link_rewrite doesn't need it (AI rewrites source tweet).
+                      v4.25.4: binance_from_x_repost 也不需要 — 它的内容来源是
+                      推特原推 + AI 改写,不是用户素材池。 */}
+                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceFromXRepost && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '📝 你的真实素材池（选填）' : '📝 Your real-experience notes (optional)'}
