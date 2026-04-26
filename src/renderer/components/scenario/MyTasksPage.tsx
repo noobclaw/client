@@ -217,12 +217,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const isXhsLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0 && platformId === 'xhs');
               const taskUrls: string[] = (task as any).urls || [];
               // Type labels per user spec (v2.4.26):
-              // Twitter: 推特自动互动 / 推特自动发推 / 指定推文仿写
+              // Twitter: 推特自动互动 / 推特自动发推 / 指定链接仿写
               // XHS:     自动批量 · 小红书爆款批量仿写 / 指定链接 · 小红书爆款仿写 / 小红书自动互动
               const typeLabel = (() => {
                 if (sid === 'x_auto_engage')                  return { icon: '🐦', zh: '推特自动互动', en: 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
                 if (sid === 'x_post_creator')                 return { icon: '📝', zh: '推特自动发推', en: 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-                if (sid === 'x_link_rewrite')                 return { icon: '✍️', zh: '指定推文仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+                if (sid === 'x_link_rewrite')                 return { icon: '✍️', zh: '指定链接仿写', en: 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'binance_square_auto_engage')     return { icon: '🤝', zh: '币安广场自动互动', en: 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
                 if (sid === 'binance_square_post_creator')    return { icon: '🔶', zh: '币安广场自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'binance_from_x_repost')          return { icon: '🔁', zh: '币安广场 · 推特搬运', en: 'Binance · Repost from X', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };

@@ -62,7 +62,7 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
     || (Array.isArray(taskUrls) && taskUrls.length > 0 && rec.scenario_snapshot.platform === 'xhs');
   if (sid === 'x_auto_engage')               return { icon: '🐦', label: isZh ? '推特自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
   if (sid === 'x_post_creator')              return { icon: '📝', label: isZh ? '推特自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
-  if (sid === 'x_link_rewrite')              return { icon: '✍️', label: isZh ? '指定推文仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+  if (sid === 'x_link_rewrite')              return { icon: '✍️', label: isZh ? '指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
   if (sid === 'binance_square_auto_engage')  return { icon: '🤝', label: isZh ? '币安广场自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
   if (sid === 'binance_square_post_creator') return { icon: '🔶', label: isZh ? '币安广场自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
   if (sid === 'binance_from_x_repost')       return { icon: '🔁', label: isZh ? '币安广场 · 推特搬运' : 'Binance · Repost from X', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
