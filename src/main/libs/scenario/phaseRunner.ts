@@ -497,7 +497,14 @@ function buildContext(
         const parsed = parseJsonSafe(raw);
         if (!parsed) {
           coworkLog('WARN', 'phaseRunner', 'AI response not JSON', { rawHead: raw.slice(0, 300) });
-          throw new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
+          // v4.31.2: 老 case 这里 raw.slice(0, 200) 直接把原文砍到 200 字,
+          // orchestrator 的 salvage 路径(从 error 消息提原文)永远只能拿 200 字,
+          // 整篇 750 字的好正文被这一刀腰斩,长期表现成 'rewrite_too_short'。
+          // 改成:错误消息只放短摘要(给日志看),完整原文挂在 err.rawText 上。
+          const err: any = new Error('AI_PARSE_FAIL — AI 返回非 JSON: ' + raw.slice(0, 200).replace(/[\n\r]/g, ' '));
+          err.rawText = raw;
+          err.code = 'AI_PARSE_FAIL';
+          throw err;
         }
 
         // v2.4.58+ Quality gate (post composers opt in via opts.qualityGate)
