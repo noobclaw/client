@@ -885,9 +885,26 @@ export function startScheduler(): void {
         if (Date.now() < planned) continue;
 
         coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval}, planned: ${new Date(planned).toISOString()})`);
-        runTask(task, false).catch(err => {
-          coworkLog('ERROR', 'scheduler', `Auto-run failed: ${err}`);
-        });
+        // v4.25.4: 之前 runTask 返回 skipped(资源忙/并发上限)直接吞掉,用户
+        // 看到"到点了不运行"完全没线索。现在所有结局都打 log,失败/跳过附原因。
+        runTask(task, false)
+          .then(out => {
+            if (!out) return;
+            if (out.status === 'skipped') {
+              coworkLog('WARN', 'scheduler',
+                `Auto-run SKIPPED for task ${task.id}: ${out.reason || 'unknown'} `
+                + `— scheduler 会在下一 tick(60s)再试`);
+            } else if (out.status === 'failed') {
+              coworkLog('WARN', 'scheduler',
+                `Auto-run FAILED for task ${task.id}: ${out.reason || 'unknown'}`);
+            } else {
+              coworkLog('INFO', 'scheduler',
+                `Auto-run finished for task ${task.id}: ${out.status}`);
+            }
+          })
+          .catch(err => {
+            coworkLog('ERROR', 'scheduler', `Auto-run threw for task ${task.id}: ${err}`);
+          });
         // Do NOT break — keep scanning. If two tasks on different tabs are
         // both due, we want to start them both this tick (subject to the
         // atConcurrencyLimit guard at the top of the loop body).
