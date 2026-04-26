@@ -476,8 +476,11 @@ function buildContext(
       // 我方 JSON.parse 失败时仍然走 expectJson:true 的兜底路径(parse 失败抛 +
       // err.rawText 挂全文)。
 
-      try {
-        const resp = await fetch('https://api.noobclaw.com/api/ai/chat/completions', {
+      // v4.31.6: fetch 网络错误一次性重试。'fetch failed' 通常是瞬时网络抖动
+       // (WiFi 切换 / VPN 重连 / 服务侧短暂 502),首次失败后等 3s 重试一次。
+       // 不重试 5xx / abort / 业务错(401/402)— 那些是确定性失败。
+      const fetchWithRetry = async (): Promise<Response> => {
+        const doFetch = () => fetch('https://api.noobclaw.com/api/ai/chat/completions', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -486,6 +489,19 @@ function buildContext(
           body: JSON.stringify(requestBody),
           signal: controller.signal,
         });
+        try {
+          return await doFetch();
+        } catch (err: any) {
+          if (err?.name === 'AbortError' || progress.isAbortRequested()) throw err;
+          coworkLog('WARN', 'phaseRunner', 'fetch failed, retrying once', { err: String(err).slice(0, 200) });
+          ctx.report('   ⚠️ 网络异常,3 秒后重试一次');
+          await new Promise(r => setTimeout(r, 3000));
+          return await doFetch(); // 第二次失败就让它抛
+        }
+      };
+
+      try {
+        const resp = await fetchWithRetry();
         if (!resp.ok) {
           if (resp.status === 401) throw new Error('AI_AUTH_FAILED — NoobClaw 登录态失效，请重新登录');
           if (resp.status === 402) throw new Error('CREDITS_INSUFFICIENT — 积分余额不足，请前往钱包充值');
