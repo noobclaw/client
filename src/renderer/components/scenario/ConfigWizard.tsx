@@ -1393,7 +1393,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         <div className="text-gray-500 dark:text-gray-400">
                           {isXPostCreator
                             ? (isZh ? '全流程无人值守。⚠️ 推文一旦发布无法撤回。' : 'Fully unattended. ⚠️ Tweets cannot be unposted.')
-                            : (isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >3 篇有封号风险。' : 'Fully unattended. ⚠️ >3/day risks ban on new accounts.')}
+                            : (isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >10 篇有封号风险。' : 'Fully unattended. ⚠️ >10/day risks ban on new accounts.')}
                         </div>
                       </div>
                     </label>
@@ -1413,7 +1413,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           {isXPostCreator
                             ? (isZh ? '生成的推文存盘，你人工审核挑选后再手动发布。封号风险最低。' : 'Generated tweets saved locally; you review and post manually.')
                             : isAnyBinancePost
-                              ? (isZh ? '生成的短评存盘，你人工审核挑选后再手动发布到币安广场。' : 'Generated notes saved locally; you review and post to Binance Square manually.')
+                              ? (isZh ? '生成的文章存盘，你人工审核挑选后再手动发布到币安广场。' : 'Generated articles saved locally; you review and post to Binance Square manually.')
                               : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
                         </div>
                       </div>

@@ -708,7 +708,7 @@ const LinkModeEditModal: React.FC<{
                 {isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts'}
               </div>
               <div className="text-gray-500 dark:text-gray-400">
-                {isZh ? '全流程无人值守。⚠️ 单日 >3 篇有封号风险。' : 'Unattended. ⚠️ >3/day risks ban.'}
+                {isZh ? '全流程无人值守。⚠️ 单日 >10 篇有封号风险。' : 'Unattended. ⚠️ >10/day risks ban.'}
               </div>
             </div>
           </label>
