@@ -452,20 +452,20 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               <li>🌐 {isZh ? <>运行期间请<strong>不要切换浏览器标签页</strong></> : <><strong>Do not switch browser tabs</strong> during a run</>}</li>
               <li>🔐 {isZh ? <>请<strong>不要退出 {platformLabel} 登录</strong></> : <><strong>Do not log out</strong> of {platformLabel}</>}</li>
               <li>⏰ {isZh ? '可以正常使用电脑，保持浏览器打开即可' : 'You can use your computer normally, just keep the browser open'}</li>
-              {isX && (
-                <li className="text-amber-600 dark:text-amber-400">
-                  ⚠️ {isZh
-                    ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启，且 x.com 能正常访问</>
-                    : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify x.com is reachable</>}
-                </li>
-              )}
-              {isBinance && (
-                <li className="text-amber-600 dark:text-amber-400">
-                  ⚠️ {isZh
-                    ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启，且 binance.com 能正常访问</>
-                    : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify binance.com is reachable</>}
-                </li>
-              )}
+              {(isX || isBinance) && (() => {
+                // 跨 tab 任务时两个站点合并成一句,免得连出两条 ⚠️ 警告占屏。
+                const sites = [
+                  isX ? 'x.com' : null,
+                  isBinance ? (isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)') : null,
+                ].filter(Boolean).join(' + ');
+                return (
+                  <li className="text-amber-600 dark:text-amber-400">
+                    ⚠️ {isZh
+                      ? <><strong>大陆用户</strong>请确保 VPN / 代理已开启,且 {sites} 都能正常访问</>
+                      : <><strong>Mainland China users</strong> must enable a VPN / proxy and verify {sites} is reachable</>}
+                  </li>
+                );
+              })()}
             </ul>
           </div>
         </div>

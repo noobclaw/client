@@ -1458,10 +1458,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         : (isZh ? '· 推文发布后无法撤回,建议第一次运行后人工检查 AI 生成的回复风格' : '· Tweets cannot be unposted — review AI output after first run to confirm tone')}</li>
                       <li className="text-amber-600 dark:text-amber-400">{isZh
                         ? (isBinanceAutoEngage
-                            ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 binance.com 能正常访问'
+                            ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且币安广场 (binance.com/square) 能正常访问'
                             : '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 x.com 能正常访问')
                         : (isBinanceAutoEngage
-                            ? '⚠️ Mainland China users: ensure VPN / proxy is on and binance.com is accessible before running'
+                            ? '⚠️ Mainland China users: ensure VPN / proxy is on and Binance Square (binance.com/.../square) is accessible before running'
                             : '⚠️ Mainland China users: ensure VPN / proxy is on and x.com is accessible before running')}</li>
                       {(followMax > 5 || replyMax > 8) && (
                         <li className="text-amber-600 dark:text-amber-400">
@@ -1509,7 +1509,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <li>{isZh ? '· 在「真实素材池」里写得越具体,AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output.'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开,不要关闭 binance.com 标签页' : '· Keep the browser open during the run; don\'t close the binance.com tab.'}</li>
                       <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查生成风格' : '· Posts cannot be unposted — review AI output after first run to confirm tone.'}</li>
-                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且 binance.com 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and binance.com is accessible before running'}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且币安广场 (binance.com/square) 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and Binance Square (binance.com/.../square) is accessible before running'}</li>
                     </>
                   ) : isAutoReply ? (
                     <>
