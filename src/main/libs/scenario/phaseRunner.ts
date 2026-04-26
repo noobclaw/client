@@ -1013,6 +1013,67 @@ function buildContext(
       }
     },
 
+    // v4.25.4: 50% 概率从爆文库挑文章给 post_creator 改写。
+    // 服务端按当前钱包过滤,排除已用过的(基于 viral_library.used_by_wallets 数组)。
+    // 返回 { ok: true, item: {...} } 或 { ok: false, reason: '...' }
+    pickFromViralLibrary: async (
+      platform: 'x' | 'xhs' | 'binance',
+      opts?: { category?: string }
+    ) => {
+      const authToken = getNoobClawAuthToken();
+      if (!authToken) return { ok: false, reason: 'no_auth_token' };
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+      try {
+        const baseUrl = 'https://api.noobclaw.com';
+        const qs = new URLSearchParams({ platform });
+        if (opts?.category) qs.set('category', opts.category);
+        const resp = await fetch(baseUrl + '/api/viral/library/pick?' + qs.toString(), {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${authToken}` },
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!resp.ok) return { ok: false, reason: 'http_' + resp.status };
+        const data = await resp.json().catch(() => ({}));
+        return data;
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const msg = err?.name === 'AbortError' ? 'timeout_15s' : String(err).slice(0, 200);
+        coworkLog('WARN', 'phaseRunner', 'pickFromViralLibrary failed', { err: msg });
+        return { ok: false, reason: msg };
+      }
+    },
+
+    // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
+    // 下次同钱包不会再选中这篇。
+    markViralUsed: async (viralId: string) => {
+      const authToken = getNoobClawAuthToken();
+      if (!authToken) return { ok: false, reason: 'no_auth_token' };
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      try {
+        const baseUrl = 'https://api.noobclaw.com';
+        const resp = await fetch(baseUrl + '/api/viral/library/mark-used', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`,
+          },
+          body: JSON.stringify({ viral_id: viralId }),
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+        if (!resp.ok) return { ok: false, reason: 'http_' + resp.status };
+        return await resp.json().catch(() => ({ ok: true }));
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const msg = err?.name === 'AbortError' ? 'timeout_10s' : String(err).slice(0, 200);
+        coworkLog('WARN', 'phaseRunner', 'markViralUsed failed', { err: msg });
+        return { ok: false, reason: msg };
+      }
+    },
+
     saveDrafts: async (rawDrafts: any[]) => {
       const drafts: Draft[] = rawDrafts.map(d => ({
         id: crypto.randomUUID(),
