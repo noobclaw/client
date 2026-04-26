@@ -264,9 +264,6 @@ interface Props {
     /** Twitter v1: content language mode. zh/en/mixed. Only shown on
      *  Twitter scenarios; XHS implicitly 'zh'. */
     language?: 'zh' | 'en' | 'mixed';
-    /** Twitter v1: user_context is the "my real experience" pool used by
-     *  post_creator rewrite/original/quote mechanisms. Optional free-form. */
-    user_context?: string;
     /** Twitter v1: URL list for x_link_rewrite (1-5 tweet URLs). */
     urls?: string[];
   }) => Promise<void> | void;
@@ -411,9 +408,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (initLang === 'zh' || initLang === 'en' || initLang === 'mixed') return initLang;
     return 'mixed'; // default for Twitter — most NoobClaw users are zh-en bilingual
   });
-  const [userContext, setUserContext] = useState<string>(
-    (initialTask as any)?.user_context || ''
-  );
+  // v4.31.9: userContext 字段移除 — UI 不显示,save 不发,backend prompt 不读
   // Blue V flag — drives the AI length cap (140 chars for non-Blue, free
   // for Blue). Default false (most users aren't Blue subscribers).
   const [isBlueV, setIsBlueV] = useState<boolean>(
@@ -641,14 +636,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         // it does care.
         ...(isXPlatform ? {
           language,
-          user_context: userContext.trim() || undefined,
-          // Blue V flag is Twitter-only — drives per-tweet length cap.
+          // v4.31.9: user_context 字段废弃,wizard 不再发(prompt 也已剥)。
           is_blue_v: isBlueV,
-        } : {}),
-        // Binance Square uses user_context too (AI picks from user's real
-        // observations/positions), but no language toggle or Blue V flag.
-        ...(isBinancePlatform ? {
-          user_context: userContext.trim() || undefined,
         } : {}),
         // daily_post_min/max — orchestrator loops N times per run where
         // N = randInt(min, max). Only relevant for post_creator scenarios;
@@ -931,31 +920,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </div>
                   )}
 
-                  {/* user_context — for post_creator only (Twitter + Binance).
-                      link_rewrite doesn't need it (AI rewrites source tweet).
-                      v4.25.4: binance_from_x_repost 也不需要 — 它的内容来源是
-                      推特原推 + AI 改写,不是用户素材池。 */}
-                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceFromXRepost && (
-                    <div>
-                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                        {isZh ? '📝 你的真实素材池（选填）' : '📝 Your real-experience notes (optional)'}
-                      </label>
-                      <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
-                        {isZh
-                          ? <>💡 写下你最近真实在做的事 / 持仓 / 看到的有趣现象 / 想表达的观点。AI 在「原创发推」时会从这里挑素材填进去，让推文有具体内容而不是空洞模板。</>
-                          : <>💡 Real things you're doing / positions / observations / opinions. AI uses these in original posts so they have substance instead of being template-y.</>}
-                      </div>
-                      <textarea
-                        value={userContext}
-                        onChange={e => setUserContext(e.target.value)}
-                        placeholder={isZh
-                          ? '例：最近重仓 SOL（30%）+ ETH（40%），做了 Hyperliquid 30 天交互拿了 100 个 HYPE，觉得 RWA 赛道还在炒概念，看不上 AI agent 板块的 90%项目...'
-                          : 'e.g. Heavy on SOL (30%) and ETH (40%) right now. Did 30 days of Hyperliquid trading + got 100 HYPE airdrop. RWA narrative still feels speculative imo. Skeptical of 90% of AI agent projects.'}
-                        rows={5}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50 leading-relaxed"
-                      />
-                    </div>
-                  )}
+                  {/* v4.31.9: user_context (真实素材池) 字段移除。
+                      用户反馈"没用" —— 实际上 AI 生成内容时用 persona + topic 已经足够,
+                      用户额外写素材池形同任务变指引,效果不佳。后端 orchestrator 仍然
+                      接受这字段以向后兼容(未来可清理),前端不再展示。 */}
 
                   {/* URL list — x_link_rewrite. Only thing the user needs to provide. */}
                   {isLinkRewriteScenario && (
@@ -1487,7 +1455,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条 3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1万`
                         : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between), each randomized across 3 mechanisms (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥10K views`}</li>
                       <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
-                      <li>{isZh ? '· 在「真实素材池」里写得越具体，AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查' : '· Tweets cannot be unposted — review AI output after first run'}</li>
                       <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
@@ -1516,7 +1483,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条加密快评（间隔 5-15 分钟,100-300 字),AI 从你的 token 列表随机挑主题`
                         : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} crypto notes/run (5-15 min between, 100-300 chars). AI picks a token from your watchlist as the topic.`}</li>
                       <li>{isZh ? '· 带 $BTC / $ETH 等 cashtag 触发 token 页流量入口' : '· Includes $BTC / $ETH etc. cashtags to surface on token-page traffic feeds.'}</li>
-                      <li>{isZh ? '· 在「真实素材池」里写得越具体,AI 生成的内容越像真人' : '· The more specific your real-experience notes, the less AI-like the output.'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开,不要关闭 binance.com 标签页' : '· Keep the browser open during the run; don\'t close the binance.com tab.'}</li>
                       <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查生成风格' : '· Posts cannot be unposted — review AI output after first run to confirm tone.'}</li>
                       <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:使用前请确保 VPN / 代理已开启,且币安广场 (binance.com/square) 能正常访问' : '⚠️ Mainland China users: ensure VPN / proxy is on and Binance Square (binance.com/.../square) is accessible before running'}</li>
