@@ -1146,8 +1146,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条${isXPostCreator ? '推' : '帖'}发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-2 起步。`
-                      : `Each run posts ${postCountMin}-${postCountMax} ${isXPostCreator ? 'tweets' : 'posts'} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-2.`}
+                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条${isXPostCreator ? '推' : '帖'}发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-10 起步。`
+                      : `Each run posts ${postCountMin}-${postCountMax} ${isXPostCreator ? 'tweets' : 'posts'} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-10.`}
                   </p>
                 </div>
               )}
