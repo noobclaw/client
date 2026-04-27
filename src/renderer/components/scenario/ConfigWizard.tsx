@@ -740,7 +740,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   read keywords — orchestrator picks targets from the discover
                   feed; showing the field would mislead users into thinking
                   their token list filters AI replies. Hide there too. */}
-              {(!isXPlatform || isBinancePlatform) && !isBinanceAutoEngage && (
+              {(!isXPlatform || isBinancePlatform) && !isBinanceAutoEngage && !isLinkRewriteScenario && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isBinancePlatform
