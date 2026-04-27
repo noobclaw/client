@@ -760,6 +760,90 @@ async function executeCommand(msg) {
         args: [params || {}],
       });
       data = results[0]?.result || { error: 'executeScript_failed' };
+    } else if (command === 'editor_insert_text_strict') {
+      // ── editor_insert_text_strict (v1.2.20+) ──
+      // 强焦点版 editor_insert_text。execCommand('insertText') 操作的是
+      // document.activeElement 而不是我们传的 selector,如果页面同时有多个
+      // contenteditable(modal + 背景 inline 等),focus() 可能被 React 抢走,
+      // 字插到错的元素去。
+      //
+      // 这个命令做 3 件事保证 execCommand 必中目标:
+      //   1. 找目标 editor
+      //   2. 把页面上其他所有 contenteditable=true 临时设成 false(物理意义上不可抢焦点)
+      //   3. focus 目标 → 验 activeElement → execCommand → 还原其他元素
+      //
+      // 适用场景:已知页面有多个可编辑区(modal、drawer、嵌入富文本等)。
+      // 一般 editor_insert_text 够用时无需切到这个 — 它有不可逆副作用(虽然立即还原)。
+      //
+      // 用法: { command: 'editor_insert_text_strict', selector: '...', text: '...' }
+      // 返回: { ok, method, focusOk, focusForced, othersDisabled, textLen, editorTextLen }
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          const sel = cfg.selector;
+          const text = cfg.text;
+          if (!sel) return { error: 'selector_required' };
+          if (typeof text !== 'string') return { error: 'text_required' };
+          const editor = document.querySelector(sel);
+          if (!editor) return { error: 'editor_not_found', selector: sel };
+          const others = [];
+          let focusForced = false;
+          try {
+            editor.focus({ preventScroll: true });
+            if (document.activeElement !== editor) {
+              // 别的 contenteditable 抢焦点了 — 临时禁
+              const all = document.querySelectorAll('[contenteditable="true"]');
+              for (const el of all) {
+                if (el !== editor) {
+                  others.push(el);
+                  el.setAttribute('contenteditable', 'false');
+                }
+              }
+              editor.focus({ preventScroll: true });
+              focusForced = true;
+            }
+          } catch (_) {}
+          const focusOk = document.activeElement === editor;
+          try {
+            let method = 'unknown';
+            let inserted = false;
+            if (focusOk && typeof document.execCommand === 'function') {
+              try {
+                inserted = document.execCommand('insertText', false, text);
+                if (inserted) method = 'execCommand';
+              } catch (_) {}
+            }
+            if (!inserted) {
+              // execCommand 失败/未 focus → 直接 dispatch 到目标(不依赖 activeElement)
+              try {
+                editor.dispatchEvent(new InputEvent('beforeinput', {
+                  inputType: 'insertText', data: text, bubbles: true, cancelable: true,
+                }));
+                editor.dispatchEvent(new InputEvent('input', {
+                  inputType: 'insertText', data: text, bubbles: true,
+                }));
+                method = 'dispatchEvent';
+                inserted = true;
+              } catch (_) {}
+            }
+            return {
+              ok: inserted, method, focusOk, focusForced,
+              othersDisabled: others.length,
+              textLen: text.length,
+              editorTextLen: (editor.textContent || '').length,
+            };
+          } catch (e) {
+            return { error: 'insert_failed', message: String(e && e.message || e).slice(0, 200) };
+          } finally {
+            // 还原其他 contenteditable
+            for (const el of others) el.setAttribute('contenteditable', 'true');
+          }
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
     } else if (command === 'click_with_text') {
       // ── click_with_text (v1.2.13+) ──
       // 在容器内按 textContent 找按钮(元素)点击。取代 binance 系列里的
