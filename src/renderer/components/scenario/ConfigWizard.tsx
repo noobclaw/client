@@ -1647,10 +1647,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               </h3>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 mb-4 space-y-2 text-sm">
-                {/* Track row hidden for x_link_rewrite — no track concept */}
+                {/* Track row hidden for x_link_rewrite — no track concept。
+                    v4.31.27: X / 币安场景 track 实际是 web3 人设,labelled 成"人设"更准 */}
                 {!isLinkRewriteScenario && (
                   <div>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {isXOrBinance ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
+                    </span>
                     <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
                   </div>
                 )}
