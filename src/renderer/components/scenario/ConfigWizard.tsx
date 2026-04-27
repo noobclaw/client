@@ -702,7 +702,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
-            {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
+            {/* v4.31.21: link rewrite 场景跳过 step 2(运行间隔/触发时间都不需要),
+                总步数显示成 2 步;step 1 → step 3 直接跳。 */}
+            {isLinkRewriteScenario
+              ? (isZh ? `第 ${step === 3 ? 2 : step} / 2 步` : `Step ${step === 3 ? 2 : step} / 2`)
+              : (isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`)}
           </div>
         </div>
 
@@ -1732,15 +1736,29 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           </button>
           <div className="flex items-center gap-2">
             {step > 1 && (
-              <button type="button" onClick={() => setStep((step - 1) as 1 | 2 | 3)} disabled={saving}
+              <button type="button"
+                onClick={() => {
+                  // v4.31.21: link rewrite 跳 step 2,3 → 1
+                  var prev = (isLinkRewriteScenario && step === 3) ? 1 : step - 1;
+                  setStep(prev as 1 | 2 | 3);
+                }}
+                disabled={saving}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                 ← {isZh ? '上一步' : 'Back'}
               </button>
             )}
             {step < 3 ? (
               <button type="button"
-                onClick={() => setStep((step + 1) as 1 | 2 | 3)}
-                disabled={step === 1 && (keywordList.length === 0 || !persona.trim())}
+                onClick={() => {
+                  // v4.31.21: link rewrite 跳 step 2,1 → 3
+                  var next = (isLinkRewriteScenario && step === 1) ? 3 : step + 1;
+                  setStep(next as 1 | 2 | 3);
+                }}
+                disabled={step === 1 && (
+                  isLinkRewriteScenario
+                    ? parsedUrls.length === 0  // link rewrite: 至少 1 个 URL
+                    : (keywordList.length === 0 || !persona.trim())  // 其他: keywords + persona
+                )}
                 className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50">
                 {isZh ? '下一步' : 'Next'} →
               </button>
