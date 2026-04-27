@@ -728,10 +728,47 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {/* Step 1: Track + Keywords + Persona (all in one) */}
           {step === 1 && (
             <div className="space-y-5">
+              {/* v4.31.27: binance_from_x_repost 专属顶部位置 — 媒体类型放最前。
+                  其他场景的媒体筛选区块在下面 isXOrBinance 块里(此处只对 repost 提前)。 */}
+              {isBinanceFromXRepost && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '🎞 媒体类型' : '🎞 Media type'}
+                  </label>
+                  <div className="flex gap-2">
+                    {([
+                      { v: 'all' as const,        label: isZh ? '全部'   : 'All' },
+                      { v: 'image_only' as const, label: isZh ? '仅图文' : 'Images only' },
+                      { v: 'video_only' as const, label: isZh ? '仅视频' : 'Videos only' },
+                    ]).map(opt => (
+                      <button
+                        key={opt.v}
+                        type="button"
+                        onClick={() => setMediaFilter(opt.v)}
+                        className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                          mediaFilter === opt.v
+                            ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                    {isZh
+                      ? '「仅视频」抓不到视频帖时会自动降级为图文(避免空跑)'
+                      : 'Videos only — falls back to image posts if no videos found this run.'}
+                  </p>
+                </div>
+              )}
+
               {/* Track dropdown — hidden for x_link_rewrite (URL-rewrite has
                   no "track" concept; the source URL IS the topic). All other
-                  scenarios still need it for keyword/persona presets. */}
-              {!isLinkRewriteScenario && (
+                  scenarios still need it for keyword/persona presets。
+                  v4.31.27: binance_from_x_repost 也不在这里显示 — 移到下面的
+                  「选择人设」分组里跟 persona textarea 合一。 */}
+              {!isLinkRewriteScenario && !isBinanceFromXRepost && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择赛道' : 'Select Track'}
@@ -761,7 +798,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isBinancePlatform
-                      ? (isZh ? 'Token 列表' : 'Token list')
+                      ? (isZh ? 'Token 标签' : 'Token tags')
                       : (isZh ? '关键词' : 'Keywords')} <span className="text-xs text-gray-400 font-normal">
                       {isBinancePlatform
                         ? (isZh ? '（每次运行随机挑 1 个作为帖子主题,自动带 cashtag）' : '(1 random token per run as post topic, auto $ cashtag)')
@@ -805,6 +842,38 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
+              {/* v4.31.27: binance_from_x_repost 专属「选择人设」分组 —
+                  preset 下拉(原 Track 选项)+ 详细人设 textarea 合在一个 label 下。 */}
+              {isBinanceFromXRepost && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '选择人设（你以什么身份发推/评论）' : 'Persona (who you are when posting/commenting)'}
+                  </label>
+                  <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-700 dark:text-sky-400 leading-relaxed">
+                    {isZh
+                      ? <>💡 先选一个预设人设(下拉),再在文本框里按自己实际情况调细。<strong>越具体(年龄/链/仓位/风格/口头禅)越像真人</strong>。</>
+                      : <>💡 Pick a preset, then tweak in the textarea. <strong>More specific = less AI-like.</strong></>}
+                  </div>
+                  <select
+                    value={trackId}
+                    onChange={e => handleTrackChange(e.target.value)}
+                    className="w-full mb-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                  >
+                    {VISIBLE_TRACKS.map(preset => (
+                      <option key={preset.id} value={preset.id}>
+                        {preset.icon} {preset.name_zh}
+                      </option>
+                    ))}
+                  </select>
+                  <textarea
+                    value={persona}
+                    onChange={e => setPersona(e.target.value)}
+                    rows={6}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 leading-relaxed"
+                  />
+                </div>
+              )}
+
               {/* Persona — only exposed for auto_reply. Determines the voice of
                   every comment posted under your account. Default is the
                   detailed reply_persona_hint for the chosen track. */}
@@ -842,8 +911,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {/* Persona — for x_auto_engage / x_post_creator / binance_square_post_creator.
                       x_link_rewrite is "literal rewrite of provided URLs" —
                       AI follows the original tweet's content + language,
-                      no persona injection needed. */}
-                  {!isAutoReply && !isLinkRewriteScenario && (
+                      no persona injection needed.
+                      v4.31.27: binance_from_x_repost 移到下面 token tags 后面的
+                      「选择人设」分组里(persona 选择框 + 详细 textarea 合一)。 */}
+                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceFromXRepost && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
@@ -862,41 +933,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     </div>
                   )}
 
-                  {/* v4.31.27: 媒体类型筛选 — 仅 binance_from_x_repost(批量搬运)。
-                      用户场景: 想统一发图文 / 统一发视频 / 不限制。video_only 没视频时
-                      降级图文(不放弃 run)。 */}
-                  {isBinanceFromXRepost && (
-                    <div>
-                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                        {isZh ? '🎞 媒体类型' : '🎞 Media type'}
-                      </label>
-                      <div className="flex gap-2">
-                        {([
-                          { v: 'all' as const,        label: isZh ? '全部'       : 'All' },
-                          { v: 'image_only' as const, label: isZh ? '仅图文'     : 'Images only' },
-                          { v: 'video_only' as const, label: isZh ? '仅视频'     : 'Videos only' },
-                        ]).map(opt => (
-                          <button
-                            key={opt.v}
-                            type="button"
-                            onClick={() => setMediaFilter(opt.v)}
-                            className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
-                              mediaFilter === opt.v
-                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
-                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                        {isZh
-                          ? '「仅视频」抓不到视频帖时会自动降级为图文(避免空跑)'
-                          : 'Videos only — falls back to image posts if no videos found this run.'}
-                      </p>
-                    </div>
-                  )}
+                  {/* v4.31.27: media filter for binance_from_x_repost 已经移到 step 1 顶部,
+                      此处不再渲染(其他 isXOrBinance 场景目前都不需要 media filter)。 */}
 
                   {/* Language mode — Twitter-only, also skipped for x_link_rewrite
                       AND x_auto_engage (per user request 2026-04: 互动场景一律
