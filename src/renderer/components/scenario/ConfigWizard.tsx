@@ -307,11 +307,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // 走跟 binance_post_creator 完全同一份输入流程,orchestrator 内部差异。
   const isBinanceFromXRepost = scenario.id === 'binance_from_x_repost';
   // v4.31.18: 币安广场 · 推特链接仿写 — 跟 x_link_rewrite 一样吃 URL 列表,
-  // 跟 binance_from_x_repost 一样跨 tab 发币安。
+  // 一次性运行,**不**显示 token / 调度 / daily_post 这些常规发帖字段。
   const isBinanceFromXLink = scenario.id === 'binance_from_x_link';
   // 把 post-creator 类的场景统一到一个布尔上,wizard 里很多地方只关心
   // "这是个单条发帖型场景吗"——post_creator / from_x_repost 共享同一分支
-  const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost || isBinanceFromXLink;
+  // ⚠️ 不要把 binance_from_x_link 算进去 — 它行为跟 x_link_rewrite 一样
+  // (URL 输入 + 一次性),不是常规发帖
+  const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
   // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
@@ -936,9 +938,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         {isZh ? '🔗 推文链接（每行 1 个，最多 5 条）' : '🔗 Tweet URLs (1 per line, max 5)'}
                       </label>
                       <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
-                        {isZh
-                          ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 解构钩子+结构 → <strong>用原推的同种语言、同种风格</strong>仿写一条新推（不抄袭原文）。<br/>不需要填人设 / 素材 / 语言 — 一切跟原推走。</>
-                          : <>✍️ Paste tweet URLs to rewrite. AI reads each → deconstructs hook + structure → rewrites in the <strong>same language and style</strong> as the original (no copying).<br/>No persona / context / language config needed — it follows the source.</>}
+                        {isBinanceFromXLink
+                          ? (isZh
+                              ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 用原推仿写一条新文发到币安广场(原图一并搬运)。</>
+                              : <>✍️ Paste X tweet URLs. AI reads each → rewrites in Binance Square style and posts (with original images).</>)
+                          : (isZh
+                              ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 用原推仿写一条新推发到推特(同语言同风格,不抄袭原文)。</>
+                              : <>✍️ Paste tweet URLs. AI reads each → rewrites a new tweet in same language and style as the original (no copying).</>)}
                       </div>
                       <textarea
                         value={urlsText}

@@ -127,10 +127,11 @@ function readPage(params) {
       return;
     }
 
+    // v1.2.15: 不截断 text。原子任务原则 — 扩展返回原文,业务方自己决定要不要截。
     const info = {
       tag,
       role: role || undefined,
-      text: (el.textContent || '').trim().slice(0, 100),
+      text: (el.textContent || '').trim(),
       selector: getSelector(el),
       type: el.getAttribute('type') || undefined,
       placeholder: el.getAttribute('placeholder') || undefined,
@@ -156,7 +157,8 @@ function getText() {
   // Try article content first
   const article = document.querySelector('article') || document.querySelector('[role="main"]') || document.querySelector('main');
   const target = article || document.body;
-  return { text: target.innerText.trim().slice(0, 50000) };
+  // v1.2.15: 不截断。caller 自己决定要不要切前 N 字。
+  return { text: target.innerText.trim() };
 }
 
 function resolveElement(params) {
@@ -280,7 +282,8 @@ function findElements(params) {
       if (rect.width === 0 && rect.height === 0) continue;
       results.push({
         tag: el.tagName.toLowerCase(),
-        text: rawText.slice(0, 200),
+        // v1.2.15: 不截断 — 原文返回,caller 决定。
+        text: rawText,
         selector: getSelector(el),
         ariaLabel: el.getAttribute('aria-label') || undefined,
         bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
