@@ -967,6 +967,42 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           {isZh ? '识别到' : 'Parsed'}: {parsedUrls.length}/5
                         </span>
                       </div>
+
+                      {/* v4.31.21: link rewrite 砍成 2 步 wizard,自动发布选项搬到 step 1 末尾。
+                          其他场景仍在 step 2 显示这个块。 */}
+                      <div className="mt-5">
+                        <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                          {isZh ? '生成后的处理' : 'After generation'}
+                        </label>
+                        <div className="space-y-2">
+                          <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                            <input type="radio" name="auto_upload_step1" checked={autoUpload}
+                              onChange={() => setAutoUpload(true)} className="mt-0.5" />
+                            <div className="flex-1 text-xs leading-relaxed">
+                              <div className="font-semibold dark:text-white mb-0.5">
+                                {isBinanceFromXLink
+                                  ? (isZh ? '🚀 自动发布到币安广场' : '🚀 Auto-post to Binance Square')
+                                  : (isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter')}
+                              </div>
+                              <div className="text-gray-500 dark:text-gray-400">
+                                {isZh ? '全流程无人值守。⚠️ 发布后无法撤回。' : 'Fully unattended. ⚠️ Cannot be unposted.'}
+                              </div>
+                            </div>
+                          </label>
+                          <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                            <input type="radio" name="auto_upload_step1" checked={!autoUpload}
+                              onChange={() => setAutoUpload(false)} className="mt-0.5" />
+                            <div className="flex-1 text-xs leading-relaxed">
+                              <div className="font-semibold dark:text-white mb-0.5">
+                                {isZh ? '📁 仅生成保存到本地(更安全)' : '📁 Save locally only (safer)'}
+                              </div>
+                              <div className="text-gray-500 dark:text-gray-400">
+                                {isZh ? '不发布,留在本地草稿,你审过再手动发。' : 'Saves to local drafts; you review and post manually.'}
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </>
