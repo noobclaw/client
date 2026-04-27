@@ -757,8 +757,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </div>
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
-                      ? '「仅视频」抓不到视频帖时会自动降级为图文(避免空跑)'
-                      : 'Videos only — falls back to image posts if no videos found this run.'}
+                      ? '「仅视频」严格只挑视频,找不到会持续滚动 + KOL fallback 找,实在没视频才放弃此条'
+                      : 'Videos only — keeps scrolling and KOL fallback to find videos, skips post only if all attempts exhausted.'}
                   </p>
                 </div>
               )}
