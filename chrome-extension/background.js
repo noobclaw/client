@@ -591,6 +591,41 @@ async function executeCommand(msg) {
         args: [params.selector],
       });
       data = results[0]?.result || { error: 'executeScript failed' };
+    } else if (command === 'upload_file_from_url') {
+      // v1.2.17: 移到 background.js + main world 跑,绕开 content script 的
+      // isolated world(实测在 isolated world 里给 binance 视频 modal 注入大文件,
+      // input.files = dt.files 这一步会触发 binance React handler "Maximum call
+      // stack size exceeded" 爆栈;在 main world 跑同样的代码 17 MB 完全没事)。
+      // 之前 content.js 的 uploadFileFromUrl 保留以兼容老 orchestrator,但新调用都走这里。
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: async (selector, fileUrl, fileName, mimeType) => {
+          try {
+            const input = document.querySelector(selector);
+            if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+              return { error: 'file_input_not_found', selector };
+            }
+            const resp = await fetch(fileUrl, { method: 'GET' });
+            if (!resp.ok) return { error: 'fetch_http_' + resp.status };
+            const blob = await resp.blob();
+            if (!blob || blob.size === 0) return { error: 'empty_file' };
+            const finalMime = mimeType || blob.type || 'application/octet-stream';
+            const file = new File([blob], fileName, { type: finalMime });
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            return { ok: true, message: 'Uploaded ' + fileName + ' (' + blob.size + ' bytes)', size: blob.size, mimeType: finalMime };
+          } catch (err) {
+            return { error: 'main_world_inject_failed: ' + (err && err.message || String(err)).slice(0, 200) };
+          }
+        },
+        args: [params.selector || params.ref, params.fileUrl, params.fileName, params.mimeType || ''],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
     } else if (command === 'fetch_image') {
       // ── fetch_image (v1.2.8+) ──
       // Fetch an image URL through the browser's own network stack so it
