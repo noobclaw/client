@@ -230,7 +230,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   return (
     <div className="p-6 max-w-6xl mx-auto">
       {/* Scenario cards — same layout as X: jump straight to cards, no hero */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* v4.25.4: 推特搬运放第一个 — 主推卖点 */}
         <BinanceCard
           emoji="🔁"
