@@ -601,12 +601,13 @@ function querySelectorCmd(params) {
   if (!selector) return { error: 'selector is required' };
   const limit = params.limit || 50;
   const attrNames = params.attrs ? params.attrs.split(',') : [];
-  // v1.2.15: 之前 text 硬截 200 字符,推特 / 小红书长内容都被砍 →
-  // orchestrator 拿到的 srcLen 永远 ≤200,仿写算字数全错。
-  // 默认提到 5000(覆盖普通推文 280 + 蓝V 长推 ≤4000),caller 可传
-  // maxLen 显式覆盖。
+  // v1.2.15: 默认不截断 text —— 原文多长就返回多长。caller 可传 maxLen
+  // 显式截断(比如调试场景只想看前 N 字)。
+  // 之前硬截 200 是 readPage "扫交互元素" 时为了避免长文本搞炸 IPC 抄过来的,
+  // 在 query_selector "抓内容" 用法下完全错位 —— 推 307 字 / 文章 800 字
+  // 全砍剩 200,orchestrator 算 60% 字数下限基础不对,仿写全跑偏。
   const textMaxLen = (typeof params.maxLen === 'number' && params.maxLen > 0)
-    ? params.maxLen : 5000;
+    ? params.maxLen : Infinity;
 
   const els = document.querySelectorAll(selector);
   const results = [];
@@ -615,8 +616,9 @@ function querySelectorCmd(params) {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) continue;
 
+    const rawText = (el.textContent || '').trim();
     const item = {
-      text: (el.textContent || '').trim().slice(0, textMaxLen),
+      text: textMaxLen === Infinity ? rawText : rawText.slice(0, textMaxLen),
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined,
       className: (el.className || '').toString().slice(0, 100),
