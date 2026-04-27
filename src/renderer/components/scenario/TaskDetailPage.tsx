@@ -175,26 +175,26 @@ const STEP_NAMES_BINANCE_POST_CREATOR_EN = [
 ];
 const STEP_NAMES_BINANCE_FROM_X_REPOST_ZH = [
   '校验双平台 + 从推特挑爆款',
-  'AI 改写 + 下载原图',
-  '写入币安编辑器 + 上传原图',
+  'AI 改写 + 下载原图/视频',
+  '写入币安编辑器 + 上传原图/视频',
   '发布到币安广场',
 ];
 const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
   'Verify both tabs + pick viral tweet',
-  'AI rewrite + download images',
-  'Write to Binance + upload images',
+  'AI rewrite + download images/video',
+  'Write to Binance + upload images/video',
   'Publish to Binance Square',
 ];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
-  'AI 改写为币安风格 + 下载原图',
-  '切到币安 · 写入正文 + 上传原图',
+  'AI 改写为币安风格 + 下载原图/视频',
+  '切到币安 · 写入正文 + 上传原图/视频',
   '发布到币安广场',
 ];
 const STEP_NAMES_BINANCE_FROM_X_LINK_EN = [
   'Verify both tabs + open URL & read source tweet',
-  'AI rewrite into Binance style + download images',
-  'Switch to Binance · write content + upload images',
+  'AI rewrite into Binance style + download images/video',
+  'Switch to Binance · write content + upload images/video',
   'Publish to Binance Square',
 ];
 
