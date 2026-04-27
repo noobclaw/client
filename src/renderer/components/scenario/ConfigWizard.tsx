@@ -403,9 +403,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // (anti risk-control). Users who want a fixed daily HH:MM can still
   // pick `daily` for posting/rewriting scenarios from the interval list
   // below — it's not exposed for reply scenarios at all.
-  const [runInterval, setRunInterval] = useState<string>(
-    (initialTask as any)?.run_interval || 'daily_random'
-  );
+  const [runInterval, setRunInterval] = useState<string>(() => {
+    const init = (initialTask as any)?.run_interval || 'daily_random';
+    // 旧任务可能存的是 'daily' (固定钟点),但 X / Binance / auto_reply 都已经
+    // 不再支持这个选项 — 加载进来时回退到 daily_random,避免按钮全灰、picker 不显示。
+    if (init === 'daily' && (isXOrBinance || isAutoReply)) return 'daily_random';
+    return init;
+  });
   const [dailyTime, setDailyTime] = useState<string>(() => {
     if (initialTask?.daily_time) return initialTask.daily_time;
     return '08:00';
@@ -1106,10 +1110,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       same wall-clock hour every day get flagged as bots). They
                       get [once, 3h, 6h, daily_random] only.
 
-                      Posting / rewriting scenarios (XHS viral_production,
-                      x_post_creator, x_link_rewrite) get the FULL list including
-                      BOTH `daily` (fixed HH:MM) and `daily_random`. Default for
-                      both groups is daily_random — user opts INTO fixed time. */}
+                      Twitter / Binance posting scenarios also drop `daily`
+                      entirely — every X/Binance task type gets flagged when it
+                      fires at the same wall-clock hour. Only XHS posting /
+                      rewriting keeps the `daily` (fixed HH:MM) option. Default
+                      across all groups is daily_random. */}
                   {(isAutoReply
                     ? [
                         { value: 'once', label: isZh ? '不重复（手动触发）' : 'Once (manual only)' },
@@ -1123,7 +1128,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         { value: '1h', label: isZh ? '每小时' : 'Hourly' },
                         { value: '3h', label: isZh ? '每 3 小时' : 'Every 3h' },
                         { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
-                        { value: 'daily', label: isZh ? '每天（固定时间）' : 'Daily (fixed time)' },
+                        ...(isXOrBinance ? [] : [{ value: 'daily', label: isZh ? '每天（固定时间）' : 'Daily (fixed time)' }]),
                         { value: 'daily_random', label: isZh ? '每日随机时间' : 'Daily (random time)' },
                       ]
                   ).map(opt => (
@@ -1167,10 +1172,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               )}
 
               {/* HH:MM picker for the legacy fixed-time `daily`.
-                  XHS / Binance scenarios支持选固定时间;Twitter 仍旧隐藏(风控)。
-                  v4.31.27: 之前 !isXOrBinance 把币安也隐了 → 用户选了"每天固定时间"
-                  下面没时间组件,体验断了。改成只 Twitter 隐。 */}
-              {!isXPlatform && runInterval === 'daily' && (() => {
+                  Only XHS keeps fixed-time daily — Twitter and Binance both
+                  drop the option entirely (风控:同一钟点每日触发会被判定为机器人)。 */}
+              {!isXOrBinance && runInterval === 'daily' && (() => {
                 // v4.25.38: 触发时间从两个 <select> 改成两个滑条 — 跟其他所有
                 // 数字组件(daily_count / postCountMin/Max / followMin/Max ...)统一用拖动操作。
                 // 小时 0-23,分钟用 step=15 卡到 0/15/30/45。
