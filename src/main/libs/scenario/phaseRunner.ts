@@ -1277,6 +1277,184 @@ function buildContext(
       }
     },
 
+    // v4.25.6 Phase 2: 完整发视频帖到币安广场 — 整合 modal 流程。
+    // 跟图片帖完全不同:点视频图标 → 弹 quote-mode modal → 在 modal 内
+    // upload + 写正文 → 发文。
+    //
+    // 用户实测 DOM:
+    //   - 工具栏视频图标 SVG path d 头部 "M8.6 8.883" (用 :has 锁)
+    //   - 弹出 modal class: .short-editor-inner.quote-mode
+    //   - modal 内 file input: accept 含 mp4 的 input
+    //   - modal 内 ProseMirror: 正文输入
+    //   - 发文按钮: button 含 "发文" 文本,默认带 .inactive 类
+    //
+    // 限制(币安实测): 时长 ≤ 10 min, 大小 ≤ 200 MB,11 种格式
+    //
+    // 调用前提: 当前 active tab 已经在 binance.com/square 且 inline 编辑器可见
+    publishVideoToBinance: async (videoFilePath: string, content: string, opts?: {
+      uploadTimeoutMs?: number;       // 视频上传等待上限,默认 3 min
+      publishRetries?: number;         // "发文"按钮 polling 重试,默认 6
+    }) => {
+      const log = (msg: string) => ctx.report('   ' + msg);
+      const uploadTimeout = opts?.uploadTimeoutMs || 3 * 60 * 1000;
+      const publishRetries = opts?.publishRetries || 6;
+
+      try {
+        // ── Step 1: 点工具栏视频图标 → 等 modal 出现 ──
+        log('🎬 点视频图标 → 等弹出 modal...');
+        const videoIconSel = '.icon-box:has(svg path[d^="M8.6 8.883"])';
+        try {
+          await sendBrowserCommand('main_world_click', { selector: videoIconSel }, getBridgeOpts());
+        } catch (e: any) {
+          return { ok: false, reason: 'video_icon_click_failed:' + String(e?.message || e).slice(0, 80) };
+        }
+        // 等 modal 出现 (最多 6 秒)
+        const modalSel = '.short-editor-inner.quote-mode';
+        let modalReady = false;
+        for (let i = 0; i < 12; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          try {
+            const r = await sendBrowserCommand('query_selector', { selector: modalSel, limit: 1 }, getBridgeOpts());
+            const els = (r && (r as any).elements) || ((r as any)?.data?.elements) || [];
+            if (els.length > 0) { modalReady = true; break; }
+          } catch { /* keep polling */ }
+        }
+        if (!modalReady) return { ok: false, reason: 'modal_not_appearing' };
+        log('✓ modal 出现');
+
+        // ── Step 2: 上传视频文件到 modal 内的 input ──
+        const fileInputSel = '.short-editor-inner.quote-mode input[type="file"][accept*="mp4"]';
+        log('📤 上传视频文件 ' + videoFilePath.split(/[/\\]/).pop());
+        const upR: any = await (ctx.uploadVideoFromDisk as any)(videoFilePath, {
+          targetSelector: fileInputSel,
+          mimeType: 'video/mp4',
+        });
+        if (!upR || !upR.ok) {
+          return { ok: false, reason: 'video_upload_failed:' + (upR?.reason || upR?.error || 'unknown') };
+        }
+        log('✓ 视频字节已注入 input,等币安处理...');
+
+        // ── Step 3: polling 等"发文"按钮变 active(视频上传 + 转码完成的信号) ──
+        const publishBtnSel = '.short-editor-inner.quote-mode button';
+        let publishReady = false;
+        const startWait = Date.now();
+        let lastBtnTexts = '';
+        while (Date.now() - startWait < uploadTimeout) {
+          await new Promise(r => setTimeout(r, 1500));
+          try {
+            const r = await sendBrowserCommand('query_selector', {
+              selector: publishBtnSel, limit: 5, attrs: 'class',
+            }, getBridgeOpts());
+            const els = (r && (r as any).elements) || ((r as any)?.data?.elements) || [];
+            const btns = els as Array<{ text?: string; class?: string }>;
+            lastBtnTexts = btns.map(b => `[${b.text || ''}|${(b.class || '').slice(0, 30)}]`).join(' ');
+            // 找文本为"发文"且 class 不含 inactive 的
+            const ready = btns.find(b => /^发文$/.test((b.text || '').trim()) && !/inactive/.test(b.class || ''));
+            if (ready) { publishReady = true; break; }
+          } catch { /* keep polling */ }
+          // 心跳
+          if ((Date.now() - startWait) % 30000 < 1500) {
+            log('⏳ 等视频处理中... ' + Math.round((Date.now() - startWait) / 1000) + 's');
+          }
+        }
+        if (!publishReady) {
+          return { ok: false, reason: 'publish_btn_never_active', detail: '上传超时 / 视频处理失败 / 按钮文案变了 — 末次按钮: ' + lastBtnTexts.slice(0, 200) };
+        }
+        log('✓ 视频处理完成,发文按钮已激活');
+
+        // ── Step 4: 写正文到 modal 内 ProseMirror ──
+        const editorSel = '.short-editor-inner.quote-mode .ProseMirror[contenteditable="true"]';
+        log('✏️ 写入正文(' + content.length + ' 字符)...');
+        try {
+          await sendBrowserCommand('main_world_click', { selector: editorSel }, getBridgeOpts());
+          await new Promise(r => setTimeout(r, 400));
+          const ir: any = await sendBrowserCommand('editor_insert_text', {
+            selector: editorSel, text: content,
+          }, getBridgeOpts());
+          if (!ir || (!ir.ok && ir.error)) {
+            return { ok: false, reason: 'editor_insert_failed:' + (ir?.error || 'unknown') };
+          }
+        } catch (e: any) {
+          return { ok: false, reason: 'editor_failed:' + String(e?.message || e).slice(0, 80) };
+        }
+
+        // ── Step 5: 点"发文"按钮 ──
+        // 用 click_with_text 在 modal 容器范围内精准匹配 "发文" 文本
+        log('🚀 点击 [发文] ...');
+        let published = false;
+        for (let attempt = 0; attempt < publishRetries; attempt++) {
+          if (attempt > 0) await new Promise(r => setTimeout(r, 1500));
+          try {
+            const r: any = await sendBrowserCommand('click_with_text', {
+              containerSel: modalSel,
+              acceptedTexts: ['发文', '发布', 'Post', 'Publish'],
+              opts: { fuzzy: true, skipInactive: true, returnDebug: true },
+            }, getBridgeOpts());
+            if (r?.ok) { published = true; break; }
+            if (r?.error && !/inactive/.test(r.error)) break;
+          } catch { /* retry */ }
+        }
+        if (!published) {
+          return { ok: false, reason: 'publish_click_failed' };
+        }
+
+        // ── Step 6: 等 modal 关闭(发文成功的信号) ──
+        let modalClosed = false;
+        const closeWait = Date.now();
+        while (Date.now() - closeWait < 15000) {
+          await new Promise(r => setTimeout(r, 800));
+          try {
+            const r = await sendBrowserCommand('query_selector', { selector: modalSel, limit: 1 }, getBridgeOpts());
+            const els = (r && (r as any).elements) || ((r as any)?.data?.elements) || [];
+            if (els.length === 0) { modalClosed = true; break; }
+          } catch { /* keep polling */ }
+        }
+        if (!modalClosed) {
+          // 假设成功 — modal 偶尔残留,日志里 warn
+          coworkLog('WARN', 'phaseRunner', 'publishVideoToBinance: modal lingered after publish click');
+        }
+        return { ok: true, modalClosed };
+      } catch (err: any) {
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
+    // v4.25.6 Phase 2: 推特 compose 视频上传 — 比币安简单,
+    // [data-testid="fileInput"] 同时接图和视频(mp4 直接传)。
+    //
+    // 调用前提: 当前 active tab 已经在 x.com/compose/post 或 inline reply
+    // 编辑器已展开,SEL_COMPOSE_TEXTAREA 已 focused/已写正文。
+    //
+    // 这个 helper 只管"上传视频字节 + 等转码完成",不管点提交按钮(交给
+    // 调用方 — orchestrator 已经有自己的提交按钮 polling 逻辑)。
+    uploadVideoToTwitter: async (videoFilePath: string, opts?: {
+      processingWaitMs?: number;       // 等推特处理视频的时间,默认 60s
+    }) => {
+      const log = (msg: string) => ctx.report('   ' + msg);
+      const waitMs = opts?.processingWaitMs || 60000;
+
+      try {
+        // Twitter compose 的 file input,既接图又接视频
+        const fileInputSel = 'input[data-testid="fileInput"], input[type="file"][accept*="image"], input[type="file"]';
+        log('📤 上传视频到推特 compose ...');
+        const upR: any = await (ctx.uploadVideoFromDisk as any)(videoFilePath, {
+          targetSelector: fileInputSel,
+          mimeType: 'video/mp4',
+        });
+        if (!upR || !upR.ok) {
+          return { ok: false, reason: 'video_upload_failed:' + (upR?.reason || upR?.error || 'unknown') };
+        }
+
+        // 等推特服务端转码 — 简单 wait,推特没有显眼的"处理完成"DOM 信号,
+        // 比起在 DOM 里 polling 不如等一段固定时间(视频越大越久)。
+        log('⏳ 等推特处理视频 ' + Math.round(waitMs / 1000) + 's...');
+        await new Promise(r => setTimeout(r, waitMs));
+        return { ok: true };
+      } catch (err: any) {
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
     // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
     // 下次同钱包不会再选中这篇。
     markViralUsed: async (viralId: string) => {
