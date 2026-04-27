@@ -1099,7 +1099,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
           {/* Step 2: Schedule */}
           {step === 2 && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               {/* v4.31.20: link rewrite 场景(URL 列表手动一次性运行)隐藏运行间隔配置。
                   运行间隔默认 'once',点"立即运行"就跑。 */}
               {!isLinkRewriteScenario && (
@@ -1139,7 +1139,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       key={opt.value}
                       type="button"
                       onClick={() => setRunInterval(opt.value)}
-                      className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                      className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
                         runInterval === opt.value
                           ? 'border-green-500 bg-green-500/10 text-green-500 font-medium'
                           : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-green-500/50'
@@ -1157,21 +1157,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </p>
                 )}
                 {!isAutoReply && runInterval === 'daily_random' && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
-                      ? '✨ 默认推荐 — 每天在随机时间点触发一次（每次距离上次至少 24 小时），比固定钟点更像真人'
-                      : '✨ Default recommended — triggers once per day at a randomized time (≥24h between runs), more human-like than fixed hour'}
+                      ? '✨ 推荐 — 每天随机时间触发(≥24h),比固定钟点更像真人'
+                      : '✨ Recommended — daily at a randomized time (≥24h apart), more human-like'}
                   </p>
                 )}
-                {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h)
-                    — scheduler adds 0-10 min random delay after the nominal
-                    interval so successive runs don't fire on a perfect clock.
-                    Daily picker has its own ±15 min jitter (shown below). */}
+                {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h) */}
                 {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
-                      ? '⚠️ 实际调度会在到点后再随机延迟 1-10 分钟才触发，避免每次精准卡点（防风控）'
-                      : '⚠️ Actual schedule adds 1-10 min random delay after the threshold so runs don\'t fire on a perfect clock (anti-detection).'}
+                      ? '⚠️ 到点后再加 1-10 分钟随机延迟,避免精准卡点'
+                      : '⚠️ +1-10min jitter after threshold (anti-detection).'}
                   </p>
                 )}
               </div>
@@ -1238,12 +1235,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh
-                      ? `每次运行${isXPostCreator ? '发推' : '发帖'}条数（随机 1-${POST_COUNT_HARDCAP}）`
-                      : `${isXPostCreator ? 'Tweets' : 'Posts'} per scheduled run (random 1-${POST_COUNT_HARDCAP})`}
+                      ? `每次运行${isXPostCreator ? '发推' : '发帖'}条数(1-${POST_COUNT_HARDCAP})`
+                      : `${isXPostCreator ? 'Tweets' : 'Posts'} per run (1-${POST_COUNT_HARDCAP})`}
                   </label>
-                  <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
                         {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{postCountMin}</span>
                       </div>
                       <input
@@ -1253,7 +1250,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       />
                     </div>
                     <div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
                         {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{postCountMax}</span>
                       </div>
                       <input
@@ -1263,10 +1260,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       />
                     </div>
                   </div>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
-                      ? `每次运行随机选 ${postCountMin}-${postCountMax} 条${isXPostCreator ? '推' : '帖'}发布,条与条之间间隔 5-15 分钟。日均值越高风控风险越大,新账号建议 1-10 起步。`
-                      : `Each run posts ${postCountMin}-${postCountMax} ${isXPostCreator ? 'tweets' : 'posts'} randomly, with 5-15 min jitter between. Higher counts raise detection risk; new accounts should start with 1-10.`}
+                      ? `${postCountMin}-${postCountMax} 条 / 次 · 间隔 5-15 分钟 · 新号建议 1-10 起步`
+                      : `${postCountMin}-${postCountMax}/run · 5-15min jitter · new accounts: start 1-10`}
                   </p>
                 </div>
               )}
@@ -1492,8 +1489,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '生成后的处理' : 'After generation'}
                   </label>
-                  <div className="space-y-2">
-                    <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
                       <input
                         type="radio"
                         name="auto_upload"
@@ -1501,22 +1498,22 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         onChange={() => setAutoUpload(true)}
                         className="mt-0.5"
                       />
-                      <div className="flex-1 text-xs leading-relaxed">
+                      <div className="flex-1 text-xs leading-snug">
                         <div className="font-semibold dark:text-white mb-0.5">
                           {isXPostCreator
-                            ? (isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter')
+                            ? (isZh ? '🚀 自动发布' : '🚀 Auto-post')
                             : isAnyBinancePost
-                              ? (isZh ? '🚀 自动发布到币安广场' : '🚀 Auto-post to Binance Square')
-                              : (isZh ? '📤 自动上传到小红书草稿箱' : '📤 Auto-upload to XHS drafts')}
+                              ? (isZh ? '🚀 自动发布' : '🚀 Auto-post')
+                              : (isZh ? '📤 自动传草稿箱' : '📤 Auto-draft')}
                         </div>
-                        <div className="text-gray-500 dark:text-gray-400">
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
                           {isXPostCreator
-                            ? (isZh ? '全流程无人值守。⚠️ 推文一旦发布无法撤回。' : 'Fully unattended. ⚠️ Tweets cannot be unposted.')
-                            : (isZh ? '全流程无人值守。⚠️ 新号/低粉号单日 >10 篇有封号风险。' : 'Fully unattended. ⚠️ >10/day risks ban on new accounts.')}
+                            ? (isZh ? '无人值守 · ⚠️ 不可撤回' : 'Unattended · ⚠️ Cannot unpost')
+                            : (isZh ? '无人值守 · ⚠️ 新号 >10/日 风险' : 'Unattended · ⚠️ >10/day risky')}
                         </div>
                       </div>
                     </label>
-                    <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
+                    <label className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
                       <input
                         type="radio"
                         name="auto_upload"
@@ -1524,16 +1521,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         onChange={() => setAutoUpload(false)}
                         className="mt-0.5"
                       />
-                      <div className="flex-1 text-xs leading-relaxed">
+                      <div className="flex-1 text-xs leading-snug">
                         <div className="font-semibold dark:text-white mb-0.5">
-                          {isZh ? '📁 仅生成保存到本地（更安全）' : '📁 Generate only (safer)'}
+                          {isZh ? '📁 仅存本地' : '📁 Local only'}
                         </div>
-                        <div className="text-gray-500 dark:text-gray-400">
-                          {isXPostCreator
-                            ? (isZh ? '生成的推文存盘，你人工审核挑选后再手动发布。封号风险最低。' : 'Generated tweets saved locally; you review and post manually.')
-                            : isAnyBinancePost
-                              ? (isZh ? '生成的文章存盘，你人工审核挑选后再手动发布到币安广场。' : 'Generated articles saved locally; you review and post to Binance Square manually.')
-                              : (isZh ? '改写+生图后存盘，你人工审核挑选后再手动一键上传。封号风险最低。' : 'Saved locally; you review and upload manually later.')}
+                        <div className="text-[11px] text-gray-500 dark:text-gray-400">
+                          {isZh ? '人工审核后手动发 · 风险最低' : 'Manual review · safest'}
                         </div>
                       </div>
                     </label>
