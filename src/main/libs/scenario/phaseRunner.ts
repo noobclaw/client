@@ -1259,12 +1259,16 @@ function buildContext(
         const port = parseInt(process.env.NOOBCLAW_SIDECAR_PORT || '18800', 10);
         const fileUrl = buildUrl(token, port);
         try {
+          // v1.2.17 bug fix: 老代码把 getBridgeOpts() 当 timeoutMs 传(setTimeout
+          // 拿到对象 → 立刻触发"timed out after [object Object]ms")。
+          // 现在显式传 ttlMs(默认 5 min)做 timeout,getBridgeOpts() 走第 4 参 options。
+          const uploadTimeout = opts.ttlMs || 5 * 60 * 1000;
           const r = await sendBrowserCommand('upload_file_from_url', {
             selector: opts.targetSelector,
             fileUrl,
             fileName,
             mimeType: opts.mimeType,
-          }, getBridgeOpts());
+          }, uploadTimeout, getBridgeOpts());
           // 不 unregister(让 TTL 兜底),浏览器有时会重 fetch
           return r;
         } catch (err: any) {
