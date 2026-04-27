@@ -266,6 +266,10 @@ interface Props {
     language?: 'zh' | 'en' | 'mixed';
     /** Twitter v1: URL list for x_link_rewrite (1-5 tweet URLs). */
     urls?: string[];
+    /** v4.31.27: binance_from_x_repost 媒体类型筛选(只该场景用)。
+     *  all = 不过滤; image_only = 跳过视频; video_only = 优先视频,
+     *  无视频时降级图文(不放弃 run)。 */
+    media_filter?: 'all' | 'image_only' | 'video_only';
   }) => Promise<void> | void;
 }
 
@@ -406,6 +410,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const [autoUpload, setAutoUpload] = useState<boolean>(
     (initialTask as any)?.auto_upload !== undefined ? !!(initialTask as any).auto_upload : true
   );
+  // v4.31.27: binance_from_x_repost 媒体类型筛选 (all / image_only / video_only)。
+  // image_only: 只挑图文推,跳过视频;video_only: 优先视频,无视频时降级图文。
+  const [mediaFilter, setMediaFilter] = useState<'all' | 'image_only' | 'video_only'>(() => {
+    const v = (initialTask as any)?.media_filter;
+    if (v === 'image_only' || v === 'video_only' || v === 'all') return v;
+    return 'all';
+  });
 
   // Twitter-specific fields (only rendered when scenario.platform === 'x')
   // (isXPlatform / isLinkRewriteScenario are declared at the top — see comment there)
@@ -654,6 +665,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           daily_post_min: postCountMin,
           daily_post_max: postCountMax,
         } : {}),
+        // v4.31.27: 仅 binance_from_x_repost(批量搬运 feed)用,其他场景忽略
+        ...(isBinanceFromXRepost ? { media_filter: mediaFilter } : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         // v2.4.59: Binance auto_engage 也用同一组 follow_min/max + reply_min/max
         // v2.4.83: + daily_like_min/max
@@ -846,6 +859,42 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         rows={6}
                         className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 leading-relaxed"
                       />
+                    </div>
+                  )}
+
+                  {/* v4.31.27: 媒体类型筛选 — 仅 binance_from_x_repost(批量搬运)。
+                      用户场景: 想统一发图文 / 统一发视频 / 不限制。video_only 没视频时
+                      降级图文(不放弃 run)。 */}
+                  {isBinanceFromXRepost && (
+                    <div>
+                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                        {isZh ? '🎞 媒体类型' : '🎞 Media type'}
+                      </label>
+                      <div className="flex gap-2">
+                        {([
+                          { v: 'all' as const,        label: isZh ? '全部'       : 'All' },
+                          { v: 'image_only' as const, label: isZh ? '仅图文'     : 'Images only' },
+                          { v: 'video_only' as const, label: isZh ? '仅视频'     : 'Videos only' },
+                        ]).map(opt => (
+                          <button
+                            key={opt.v}
+                            type="button"
+                            onClick={() => setMediaFilter(opt.v)}
+                            className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                              mediaFilter === opt.v
+                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                        {isZh
+                          ? '「仅视频」抓不到视频帖时会自动降级为图文(避免空跑)'
+                          : 'Videos only — falls back to image posts if no videos found this run.'}
+                      </p>
                     </div>
                   )}
 
