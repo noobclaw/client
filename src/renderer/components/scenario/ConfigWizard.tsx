@@ -834,11 +834,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     rows={isBinancePlatform ? 3 : 6}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   />
-                  <div className="text-[11px] text-gray-400 mt-1">
-                    {isBinancePlatform
-                      ? (isZh ? 'Token 越多越丰富,每次发帖内容主题不重复,也避免被判定为单币种喊单' : 'More tokens = more varied topics; avoids looking like a single-coin shill')
-                      : (isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk')}
-                  </div>
+                  {!isBinancePlatform && (
+                    <div className="text-[11px] text-gray-400 mt-1">
+                      {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -849,22 +849,25 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择人设（你以什么身份发推/评论）' : 'Persona (who you are when posting/commenting)'}
                   </label>
-                  <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-700 dark:text-sky-400 leading-relaxed">
-                    {isZh
-                      ? <>💡 先选一个预设人设(下拉),再在文本框里按自己实际情况调细。<strong>越具体(年龄/链/仓位/风格/口头禅)越像真人</strong>。</>
-                      : <>💡 Pick a preset, then tweak in the textarea. <strong>More specific = less AI-like.</strong></>}
+                  <div className="relative mb-2">
+                    <select
+                      value={trackId}
+                      onChange={e => handleTrackChange(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 cursor-pointer"
+                    >
+                      {VISIBLE_TRACKS.map(preset => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.icon} {preset.name_zh}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
-                  <select
-                    value={trackId}
-                    onChange={e => handleTrackChange(e.target.value)}
-                    className="w-full mb-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                  >
-                    {VISIBLE_TRACKS.map(preset => (
-                      <option key={preset.id} value={preset.id}>
-                        {preset.icon} {preset.name_zh}
-                      </option>
-                    ))}
-                  </select>
                   <textarea
                     value={persona}
                     onChange={e => setPersona(e.target.value)}
@@ -919,11 +922,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
                       </label>
-                      <div className="mb-2 rounded-lg border border-sky-500/30 bg-sky-500/5 px-3 py-2 text-[11px] text-sky-700 dark:text-sky-400 leading-relaxed">
-                        {isZh
-                          ? <>💡 已根据所选 web3 赛道预填详细人设。<strong>越具体（年龄/链/仓位/风格/口头禅）越像真人</strong>。</>
-                          : <>💡 Pre-filled with a detailed web3 persona. <strong>The more specific, the less AI-like.</strong></>}
-                      </div>
                       <textarea
                         value={persona}
                         onChange={e => setPersona(e.target.value)}
