@@ -628,7 +628,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         daily_count: effectiveDailyCount,
         variants_per_post: variants,
         daily_time: dailyTime,
-        run_interval: runInterval,
+        run_interval: isLinkRewriteScenario ? 'once' : runInterval,
         auto_upload: autoUpload,
         // XHS auto-reply min/max (sent for auto_reply only — other
         // scenarios ignore these fields).
@@ -973,6 +973,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           {/* Step 2: Schedule */}
           {step === 2 && (
             <div className="space-y-5">
+              {/* v4.31.20: link rewrite 场景(URL 列表手动一次性运行)隐藏运行间隔配置。
+                  运行间隔默认 'once',点"立即运行"就跑。 */}
+              {!isLinkRewriteScenario && (
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
@@ -1045,6 +1048,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   </p>
                 )}
               </div>
+              )}
 
               {/* HH:MM picker ONLY for the legacy fixed-time `daily` (XHS
                   rewrite scenarios). v2.4.27 — `once` (不重复 / 手动触发) no
