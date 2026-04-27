@@ -1225,6 +1225,58 @@ function buildContext(
       }
     },
 
+    // v4.25.6 Phase 2: 推特视频搬运 — 上传链路
+    //
+    // 把本地 mp4 文件通过 sidecar 临时 HTTP 端点喂给浏览器扩展,扩展 fetch
+    // 拿到 blob 后构造 File 对象注入到 input[type=file]。整个流程不走
+    // native messaging base64 IPC,大文件(几十 MB 视频)无压力。
+    //
+    // 内部用法:registerFile() → upload_file_from_url 命令 → unregister。
+    // 上层应封装 publishVideoToBinance / publishVideoToTwitter 两个 helper
+    // 包含完整的 modal 流程。
+    uploadVideoFromDisk: async (
+      filePath: string,
+      opts: {
+        targetSelector: string;       // file input CSS selector
+        fileName?: string;
+        mimeType?: string;
+        ttlMs?: number;
+      }
+    ) => {
+      try {
+        const { registerFile, buildUrl, unregister } = require('../localFileServer');
+        const fs = require('fs');
+        if (!fs.existsSync(filePath)) {
+          return { ok: false, reason: 'file_not_found' };
+        }
+        const fileName = opts.fileName || require('path').basename(filePath);
+        const token = registerFile(filePath, {
+          mimeType: opts.mimeType,
+          fileName,
+          ttlMs: opts.ttlMs || 5 * 60 * 1000,
+        });
+        // sidecar 端口 — 跟 sidecar-server.ts 里的 PORT 同步,默认 18800
+        const port = parseInt(process.env.NOOBCLAW_SIDECAR_PORT || '18800', 10);
+        const fileUrl = buildUrl(token, port);
+        try {
+          const r = await sendBrowserCommand('upload_file_from_url', {
+            selector: opts.targetSelector,
+            fileUrl,
+            fileName,
+            mimeType: opts.mimeType,
+          }, getBridgeOpts());
+          // 不 unregister(让 TTL 兜底),浏览器有时会重 fetch
+          return r;
+        } catch (err: any) {
+          unregister(token); // 失败时立即清掉
+          return { ok: false, reason: 'upload_command_failed:' + String(err?.message || err).slice(0, 100) };
+        }
+      } catch (err: any) {
+        coworkLog('WARN', 'phaseRunner', 'uploadVideoFromDisk failed', { err: String(err) });
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
     // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
     // 下次同钱包不会再选中这篇。
     markViralUsed: async (viralId: string) => {

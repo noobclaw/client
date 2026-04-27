@@ -77,6 +77,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'upload_file':
           result = uploadFile(params);
           break;
+        case 'upload_file_from_url':
+          result = await uploadFileFromUrl(params);
+          break;
         case 'triple_click':
           result = tripleClickElement(params);
           break;
@@ -586,6 +589,58 @@ function uploadFile(params) {
     return { message: `Uploaded ${params.fileName} (${byteArray.length} bytes)` };
   } catch (e) {
     return { error: `Upload failed: ${e.message}` };
+  }
+}
+
+// v1.2.16: 大文件 upload — 通过本地 HTTP fetch 走 sidecar 临时文件,
+// 不走 native messaging base64 IPC。给视频(几十 MB)和大图用。
+//
+// 参数:
+//   selector  : 目标 file input CSS selector(必传)
+//   fileUrl   : http://127.0.0.1:18800/api/local-file?token=xxx 形式(必传)
+//   fileName  : 上传时显示的文件名(必传)
+//   mimeType  : MIME 类型(默认 application/octet-stream 或从 blob 推断)
+//
+// 实现: fetch(fileUrl) → blob → File → DataTransfer → input.files,
+// 触发 change + input 事件让 React/Vue 收到。
+async function uploadFileFromUrl(params) {
+  const selector = params.selector || params.ref;
+  if (!selector) return { error: 'selector_required' };
+  if (!params.fileUrl) return { error: 'fileUrl_required' };
+  if (!params.fileName) return { error: 'fileName_required' };
+
+  const input = document.querySelector(selector);
+  if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+    return { error: 'file_input_not_found', selector };
+  }
+
+  let blob;
+  try {
+    const resp = await fetch(params.fileUrl, { method: 'GET' });
+    if (!resp.ok) return { error: 'fetch_http_' + resp.status };
+    blob = await resp.blob();
+  } catch (err) {
+    return { error: 'fetch_failed: ' + (err.message || String(err)).slice(0, 200) };
+  }
+
+  if (!blob || blob.size === 0) return { error: 'empty_file' };
+
+  try {
+    const mimeType = params.mimeType || blob.type || 'application/octet-stream';
+    const file = new File([blob], params.fileName, { type: mimeType });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      ok: true,
+      message: `Uploaded ${params.fileName} (${blob.size} bytes)`,
+      size: blob.size,
+      mimeType,
+    };
+  } catch (err) {
+    return { error: 'inject_failed: ' + (err.message || String(err)).slice(0, 200) };
   }
 }
 

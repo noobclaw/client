@@ -522,6 +522,16 @@ const server = http.createServer(async (req, res) => {
       return writeJSON(res, 200, { status: 'ok', port: PORT, mode: 'tauri-sidecar', clients: sseClients.size });
     }
 
+    // ── Local file token-based serving ──
+    // For chrome-extension to fetch large files (videos) the sidecar holds on
+    // disk, bypassing native messaging IPC base64 limits. Token is registered
+    // by phaseRunner via registerFile(), URL is built and passed to extension's
+    // upload_file_from_url command. See libs/localFileServer.ts.
+    if (pathname === '/api/local-file' && req.method === 'GET') {
+      const { handleLocalFileRequest } = require('./libs/localFileServer');
+      return handleLocalFileRequest(req, res, url.searchParams);
+    }
+
     // ── Sessions ──
     if (pathname === '/api/sessions' && req.method === 'GET') {
       const runner = await getRunner();
