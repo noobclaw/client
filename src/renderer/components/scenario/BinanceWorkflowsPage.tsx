@@ -129,8 +129,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 推特批量搬运',
     name_en: 'Binance Square · Repost from X',
-    description_zh: '从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
-    description_en: 'Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. Locks both X + Binance tabs.',
+    description_zh: '从推特 feed 挑带图/视频爆款,AI 进行深度改写为币安风格,图文/视频一并搬运上传,一键发到广场。运行期间占用 X + 币安两个标签页。',
+    description_en: 'Pull viral image/video tweets from X, AI rewrite in Chinese Binance style, repost with original media (image + video). Locks both X + Binance tabs.',
     icon: '🔁',
     default_config: {
       keywords: [],
@@ -164,8 +164,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 推特链接仿写',
     name_en: 'Binance Square · From X Link',
-    description_zh: '粘贴 1-5 个推文链接,AI 改写成币安风格短帖,原推图片一并下载上传,逐条间隔发到币安广场。运行期间占用推特+币安两个标签页。',
-    description_en: 'Paste 1-5 X tweet URLs. AI rewrites in Binance style with original images. One-shot.',
+    description_zh: '粘贴 1-5 个推文链接,AI 改写成币安风格短帖,原推图片/视频一并下载上传,逐条间隔发到币安广场。运行期间占用推特+币安两个标签页。',
+    description_en: 'Paste 1-5 X tweet URLs. AI rewrites in Binance style with original media (image + video). One-shot.',
     icon: '🔗',
     default_config: {
       keywords: [],
@@ -238,9 +238,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="X batch repost"
           titleZh="币安广场 · 推特批量搬运"
           titleEn="Binance Square · Repost from X"
-          descZh="从推特 feed 挑带图爆款,AI 进行深度改写为币安风格,带图上传。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
-          descEn="Pull viral image tweets from X, AI rewrite in Chinese Binance style, repost with original images. ⚠️ Locks both X + Binance tabs while running."
-          tagsLine={isZh ? '跨平台搬运 · 深度二创 · 爆文接入' : 'Cross-platform · Deep rewrite · Viral library'}
+          descZh="从推特 feed 挑爆款帖(图文/视频均支持),AI 进行深度改写为币安风格,原推的图片/视频一并搬过来发。⚠️ 运行期间占用推特 + 币安两个标签页,开跑前需双平台都登录。"
+          descEn="Pull viral tweets from X (images & videos both supported), AI rewrite in Chinese Binance style, repost with original media. ⚠️ Locks both X + Binance tabs while running."
+          tagsLine={isZh ? '跨平台搬运 · 图文 + 视频 · 深度二创 · 爆文接入' : 'Cross-platform · Image + video · Deep rewrite · Viral library'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
@@ -304,9 +304,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="From URL"
           titleZh="币安广场 · 推特链接仿写"
           titleEn="Binance Square · From X Link"
-          descZh="粘贴 1-5 个推文链接,AI 改写成币安风格,原推图一并下载上传,逐条间隔发到广场。⚠️ 跨双 tab,需双平台都登录。"
-          descEn="Paste 1-5 X tweet URLs. AI rewrites in Binance style with original images. ⚠️ Locks both X + Binance tabs."
-          tagsLine={isZh ? '手动一次性 · 1-5 链接 · 复用源图' : 'One-shot · 1-5 URLs · Reuse images'}
+          descZh="粘贴 1-5 个推文链接(支持图文/视频帖),AI 改写成币安风格,原推图片 / 视频一并下载上传,逐条间隔发到广场。⚠️ 跨双 tab,需双平台都登录。"
+          descEn="Paste 1-5 X tweet URLs (image & video tweets both supported). AI rewrites in Binance style, reuses the tweet's original media. ⚠️ Locks both X + Binance tabs."
+          tagsLine={isZh ? '手动一次性 · 1-5 链接 · 图文 + 视频复用' : 'One-shot · 1-5 URLs · Reuse image + video'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
@@ -325,6 +325,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         <div className="flex flex-wrap gap-2">
           {[
             { icon: '✨', zh: '深度二创', en: 'Deep AI rewrite' },
+            { icon: '🎬', zh: '图文 + 视频全支持', en: 'Image + video both supported' },
             { icon: '💎', zh: '原生 cashtag 导流', en: 'Native cashtag → token page traffic' },
             { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
             { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
