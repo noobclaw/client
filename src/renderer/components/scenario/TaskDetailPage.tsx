@@ -615,7 +615,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               return (
                 <>
                   <div className="flex items-center gap-3">
-                    <span className="text-gray-400">{isZh ? '赛道:' : 'Track:'}</span>
+                    <span className="text-gray-400">
+                      {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
+                    </span>
                     <span className="dark:text-white font-medium">
                       {isLinkMode
                         ? (isXTask
@@ -660,8 +662,19 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           URL-driven). Hide on X to avoid showing a misleading
                           empty/default keyword list. */}
                       {!isXTask && (
-                        <div>{isZh ? '关键词' : 'Keywords'}: {task.keywords.join(' · ')}</div>
+                        <div>
+                          {(/^binance/.test(task.scenario_id) ? (isZh ? 'Token tag' : 'Token tag') : (isZh ? '关键词' : 'Keywords'))}
+                          : {task.keywords.join(' · ')}
+                        </div>
                       )}
+                      {/* v4.31.27: binance_from_x_repost 显示媒体类型 */}
+                      {task.scenario_id === 'binance_from_x_repost' && (() => {
+                        const mf = (task as any).media_filter;
+                        const lab = mf === 'image_only' ? (isZh ? '仅图文' : 'Images only')
+                          : mf === 'video_only' ? (isZh ? '仅视频(严格)' : 'Videos only (strict)')
+                          : (isZh ? '全部(图文 + 视频)' : 'All (images + videos)');
+                        return <div>{isZh ? '搬运类型' : 'Media filter'}: 🎞 {lab}</div>;
+                      })()}
                       <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
                         const intervalMap: Record<string, string> = isZh
                           ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次', 'once': '不重复（手动触发）' }
@@ -687,7 +700,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (lStr) summary += ` · ${isZh ? '点赞' : 'Like'} ${lStr}`;
                           return summary;
                         }
-                        if (sid === 'binance_square_post_creator' || sid === 'x_post_creator') {
+                        // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
+                        if (sid === 'binance_square_post_creator' || sid === 'x_post_creator' || sid === 'binance_from_x_repost') {
                           const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
                             ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
                           return `${intervalLabel} · ${pStr} ${isZh ? '条/次' : '/run'}`;
