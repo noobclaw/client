@@ -97,10 +97,9 @@ const App: React.FC = () => {
         let resolvedModels: { id: string; name: string; provider?: string; providerKey?: string; supportsImage?: boolean }[];
 
         if (useNoobClawServer) {
-          // When using NoobClawAI service, show two model options
+          // v4.31.28: 砍掉 reasoner 选项,后端两路都走 v4-flash,UI 只暴露一个 chat。
           resolvedModels = [
             { id: 'noobclawai-chat', name: 'NoobClawAI-Chat', provider: 'NoobClaw', providerKey: 'noobclawAI' },
-            { id: 'noobclawai-reasoner', name: 'NoobClawAI-Reasoner', provider: 'NoobClaw', providerKey: 'noobclawAI' },
           ];
         } else {
           // Custom API Key mode: load models from enabled third-party providers (skip NoobClaw own services)
@@ -132,15 +131,20 @@ const App: React.FC = () => {
 
         if (resolvedModels.length > 0) {
           dispatch(setAvailableModels(resolvedModels));
-          // Migrate old default: deepseek-chat / noobclawai-chat → noobclawai-reasoner
+          // v4.31.28: reasoner 砍掉了,老用户存的 noobclawai-reasoner / deepseek-reasoner
+          // 也要回落到 chat。
           let defaultModelId = config.model.defaultModel;
-          if (defaultModelId === 'deepseek-chat' || defaultModelId === 'noobclawai-chat') {
-            defaultModelId = 'noobclawai-reasoner';
+          if (
+            defaultModelId === 'deepseek-chat'
+            || defaultModelId === 'deepseek-reasoner'
+            || defaultModelId === 'noobclawai-reasoner'
+          ) {
+            defaultModelId = 'noobclawai-chat';
           }
           const preferredModel = resolvedModels.find(
             model => model.id === defaultModelId
               && (!config.model.defaultModelProvider || model.providerKey === config.model.defaultModelProvider)
-          ) ?? resolvedModels.find(m => m.id === 'noobclawai-reasoner') ?? resolvedModels[0];
+          ) ?? resolvedModels.find(m => m.id === 'noobclawai-chat') ?? resolvedModels[0];
           dispatch(setSelectedModel(preferredModel));
         }
         
@@ -399,11 +403,11 @@ const App: React.FC = () => {
 
     const useServer = config.app?.useNoobClawServer !== false;
     if (useServer) {
+      // v4.31.28: 单 chat 项,reasoner 已砍。
       dispatch(setAvailableModels([
         { id: 'noobclawai-chat', name: 'NoobClawAI-Chat', provider: 'NoobClaw', providerKey: 'noobclawAI' },
-        { id: 'noobclawai-reasoner', name: 'NoobClawAI-Reasoner', provider: 'NoobClaw', providerKey: 'noobclawAI' },
       ]));
-      dispatch(setSelectedModel({ id: 'noobclawai-reasoner', name: 'NoobClawAI-Reasoner', provider: 'NoobClaw', providerKey: 'noobclawAI' }));
+      dispatch(setSelectedModel({ id: 'noobclawai-chat', name: 'NoobClawAI-Chat', provider: 'NoobClaw', providerKey: 'noobclawAI' }));
     } else if (config.providers) {
       const allModels: { id: string; name: string; provider?: string; providerKey?: string; supportsImage?: boolean }[] = [];
       Object.entries(config.providers).forEach(([providerName, providerConfig]) => {
