@@ -377,7 +377,8 @@ function getElementValue(params) {
   return {
     tag: el.tagName.toLowerCase(),
     value: el.value !== undefined ? el.value : null,
-    text: (el.textContent || '').trim().slice(0, 500),
+    // v1.2.15: 不截断
+    text: (el.textContent || '').trim(),
     checked: el.checked !== undefined ? el.checked : null,
     selected: el.tagName === 'SELECT' ? el.options[el.selectedIndex]?.text : null,
     href: el.getAttribute('href'),
@@ -624,7 +625,9 @@ function querySelectorCmd(params) {
       text: textMaxLen === Infinity ? rawText : rawText.slice(0, textMaxLen),
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined,
-      className: (el.className || '').toString().slice(0, 100),
+      // v1.2.15: className 不截断 — 给 caller 完整信息(SVG className 是
+      // SVGAnimatedString,先 toString 拿 baseVal-equivalent 再返回)
+      className: (el.className || '').toString(),
       tagName: el.tagName.toLowerCase(),
       bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
     };

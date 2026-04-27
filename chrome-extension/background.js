@@ -1111,7 +1111,9 @@ async function executeCommand(msg) {
                 const tendencyEl = box.querySelector('.tendency-icon span');
                 if (tendencyEl) sentiment = (tendencyEl.textContent || '').trim();
                 out.push({
-                  index: i, text: text.slice(0, 1500),
+                  // v1.2.15: 不截断 text — 之前 1500 字符上限把币安长贴砍了,
+                  // 改写算源字数全错。原子任务原则:扩展返回原文,业务方决定。
+                  index: i, text: text,
                   comment_count: commentCount, likes, views,
                   nick, handle, post_url: postUrl, cashtags, sentiment,
                 });
