@@ -755,11 +755,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </button>
                     ))}
                   </div>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                    {isZh
-                      ? '「仅视频」严格只挑视频,找不到会持续滚动 + KOL fallback 找,实在没视频才放弃此条'
-                      : 'Videos only — keeps scrolling and KOL fallback to find videos, skips post only if all attempts exhausted.'}
-                  </p>
                 </div>
               )}
 
@@ -807,24 +802,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
                     </span>
                   </label>
-                  {/* Pre-fill hint, scenario-aware */}
-                  <div className={`mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
-                    isBinancePlatform
-                      ? 'border-yellow-500/30 bg-yellow-500/5 text-yellow-700 dark:text-yellow-400'
-                      : 'border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400'
-                  }`}>
-                    {isBinancePlatform
-                      ? (isZh
-                          ? <>💰 输入你关注的 token symbol (不用加 $,空格分隔),例:<code className="font-mono">BTC ETH SOL BNB</code>。AI 每次挑 1 个写短评,发帖时自动带 <code className="font-mono">$BTC</code> 这样的 cashtag 触发 token 页流量。</>
-                          : <>💰 Type token symbols (no $ prefix, space-separated), e.g. <code className="font-mono">BTC ETH SOL BNB</code>. AI picks one per run, auto-adds <code className="font-mono">$BTC</code>-style cashtags to surface on token-page traffic feeds.</>)
-                      : isAutoReply
+                  {/* Pre-fill hint — XHS only(币安场景已删,推特场景没这个 textarea) */}
+                  {!isBinancePlatform && (
+                    <div className="mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400">
+                      {isAutoReply
                         ? (isZh
                             ? <>✨ 关键词决定<strong>你想去哪类文章下评论互动</strong>。预填的是各赛道高互动话题词，可以按你账号定位增删。</>
                             : <>✨ Keywords decide <strong>which articles you'll engage with</strong>. Pre-filled with each track's high-engagement topic words — adjust to match your account positioning.</>)
                         : (isZh
                             ? <>✨ 预填关键词基于 <strong>2026 小红书流量报告</strong>（千瓜数据 / 新榜 / 官方趋势）整理的各赛道热度词，你可以直接用或按需增删。</>
                             : <>✨ Pre-filled keywords are curated from <strong>2026 Xiaohongshu traffic reports</strong> (千瓜数据 / 新榜 / official trends). Use as-is or tweak.</>)}
-                  </div>
+                    </div>
+                  )}
                   <textarea
                     value={customKeywordsText}
                     onChange={e => setCustomKeywordsText(e.target.value)}
