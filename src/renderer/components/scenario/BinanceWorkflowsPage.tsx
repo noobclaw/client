@@ -326,11 +326,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           {[
             { icon: '✨', zh: '深度二创', en: 'Deep AI rewrite' },
             { icon: '🎬', zh: '图文 + 视频全支持', en: 'Image + video both supported' },
-            { icon: '💎', zh: '原生 cashtag 导流', en: 'Native cashtag → token page traffic' },
-            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
-            { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
-            { icon: '🎲', zh: '随机节奏（动作间 30 秒-10 分钟随机）', en: 'Randomized pacing (30s-10min between actions)' },
-            { icon: '🤝', zh: '加密 KOL 池', en: 'Crypto KOL pool' },
+            { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
+            { icon: '🛡️', zh: '严风控,完全模拟人类行为(动作间隔时间 + 随机)', en: 'Strict anti-detection, fully human-like (jittered intervals + randomization)' },
+            { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement → rapid gain)' },
           ].map((p, i) => (
             <span
               key={i}
