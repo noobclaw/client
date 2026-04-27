@@ -1099,6 +1099,132 @@ function buildContext(
       }
     },
 
+    // v4.25.6: 推特视频搬运 — 通过 Twitter Syndication API 拿真链 mp4
+    // 端点 https://cdn.syndication.twimg.com/tweet-result?id=<id>&token=<rand>
+    // 是 Twitter 给第三方 embed 用的公开端点,无需 cookie / 无需登录。
+    // 返回 mediaDetails[].video_info.variants 含多档 mp4 直链。
+    //
+    // 实测(2026-04-27): tweet 2048339856938696725 拿到 720x1280 mp4,
+    // 1 MB 文件 0.6s 下完。
+    //
+    // 不存任何 binary,只存到任务输出目录。caller 拿 filePath 后自己决定干啥
+    // (本地审计 / 上传到币安/推特 / 走爆文库等)。
+    fetchTweetVideo: async (
+      tweetUrl: string,
+      opts?: { outputDir?: string; preferQuality?: 'highest' | 'lowest' | 'medium' }
+    ) => {
+      try {
+        // 1) 抽 status_id
+        const m = String(tweetUrl || '').match(/(?:twitter|x)\.com\/[^\/]+\/status\/(\d+)/i);
+        if (!m) return { ok: false, reason: 'invalid_tweet_url' };
+        const statusId = m[1];
+
+        // 2) 调 syndication API(token 任意 12 字符够)
+        const token = Math.random().toString(36).slice(2, 14);
+        const apiUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`;
+        const apiCtl = new AbortController();
+        const apiTo = setTimeout(() => apiCtl.abort(), 15000);
+        let meta: any = null;
+        try {
+          const apiResp = await fetch(apiUrl, {
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', 'Accept': 'application/json' },
+            signal: apiCtl.signal,
+          });
+          clearTimeout(apiTo);
+          if (!apiResp.ok) return { ok: false, reason: 'syndication_http_' + apiResp.status };
+          meta = await apiResp.json().catch(() => null);
+        } catch (e: any) {
+          clearTimeout(apiTo);
+          return { ok: false, reason: 'syndication_failed:' + String(e?.message || e).slice(0, 80) };
+        }
+        if (!meta || meta.__typename === 'TweetTombstone') {
+          return { ok: false, reason: 'tweet_unavailable' };
+        }
+
+        // 3) 找视频 + 选 mp4 variant
+        const mediaList: any[] = Array.isArray(meta.mediaDetails) ? meta.mediaDetails : [];
+        const videoMedia = mediaList.find((it: any) => it && it.type === 'video');
+        if (!videoMedia) return { ok: false, reason: 'no_video' };
+
+        const variants: Array<{ content_type: string; bitrate?: number; url: string }>
+          = videoMedia.video_info?.variants || [];
+        const mp4Variants = variants
+          .filter(v => v && v.content_type === 'video/mp4' && typeof v.url === 'string')
+          .sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+        if (mp4Variants.length === 0) {
+          return { ok: false, reason: 'no_mp4_variant', hls_url: variants.find(v => v.content_type === 'application/x-mpegURL')?.url };
+        }
+
+        const pref = opts?.preferQuality || 'highest';
+        const chosen = pref === 'highest' ? mp4Variants[0]
+          : pref === 'lowest' ? mp4Variants[mp4Variants.length - 1]
+          : mp4Variants[Math.floor(mp4Variants.length / 2)];
+
+        // 4) 下载视频字节
+        const dlCtl = new AbortController();
+        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000); // 5 min for big videos
+        let videoBuf: Buffer;
+        try {
+          const vResp = await fetch(chosen.url, {
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
+            signal: dlCtl.signal,
+          });
+          clearTimeout(dlTo);
+          if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
+          const ab = await vResp.arrayBuffer();
+          videoBuf = Buffer.from(ab);
+        } catch (e: any) {
+          clearTimeout(dlTo);
+          return { ok: false, reason: 'video_download_failed:' + String(e?.message || e).slice(0, 80) };
+        }
+
+        // 5) 写本地 — 默认任务目录,subdir = '原文'
+        const dir = opts?.outputDir || path.join(getTaskOutputDir(task, manifest.platform as any), '原文');
+        try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+        const videoFile = path.join(dir, `源视频_${statusId}.mp4`);
+        fs.writeFileSync(videoFile, videoBuf);
+
+        // 6) 顺手下封面图(poster) — 失败不阻塞
+        let posterFile: string | null = null;
+        const posterUrl = videoMedia.media_url_https || '';
+        if (posterUrl) {
+          try {
+            const pResp = await fetch(posterUrl, { method: 'GET' });
+            if (pResp.ok) {
+              const pAb = await pResp.arrayBuffer();
+              const ext = posterUrl.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+              posterFile = path.join(dir, `源视频封面_${statusId}.${ext}`);
+              fs.writeFileSync(posterFile, Buffer.from(pAb));
+            }
+          } catch { /* poster 失败不阻塞 */ }
+        }
+
+        const orig = videoMedia.original_info || {};
+        coworkLog('INFO', 'phaseRunner', 'fetchTweetVideo ok', {
+          statusId, size: videoBuf.length, bitrate: chosen.bitrate, file: videoFile,
+        });
+        return {
+          ok: true,
+          statusId,
+          filePath: videoFile,
+          posterPath: posterFile,
+          videoUrl: chosen.url,                       // 原始 mp4 直链(给爆文库存)
+          posterUrl: posterUrl || null,
+          size: videoBuf.length,
+          duration: videoMedia.video_info?.duration_millis || 0,
+          width: orig.width || 0,
+          height: orig.height || 0,
+          bitrate: chosen.bitrate || 0,
+          contentType: 'video/mp4',
+        };
+      } catch (err: any) {
+        coworkLog('WARN', 'phaseRunner', 'fetchTweetVideo unexpected error', { err: String(err) });
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
     // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
     // 下次同钱包不会再选中这篇。
     markViralUsed: async (viralId: string) => {
