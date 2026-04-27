@@ -649,7 +649,6 @@ const LinkModeEditModal: React.FC<{
   const platform: 'xhs' | 'x' | 'binance' = scenario?.platform === 'x' ? 'x'
     : scenario?.platform === 'binance' ? 'binance'
     : 'xhs';
-  const isXhs = platform === 'xhs';
   const isX = platform === 'x';
   const isBinance = platform === 'binance';
   // 部分 binance 链接搬运任务粘的也是 x.com 链接(从推特搬到币安),所以
