@@ -318,12 +318,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // ⚠️ 不要把 binance_from_x_link 算进去 — 它行为跟 x_link_rewrite 一样
   // (URL 输入 + 一次性),不是常规发帖
   const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
+  // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
+  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
   // v4.31.27: 币安所有非 link 场景(发帖 / 互动 / 搬运)统一沿用"批量搬运"的 wizard 布局:
   // 隐藏顶部 Track 下拉,把它合到"选择人设"分组里(预设 + 详细 textarea),
   // 隐藏冗余 hint 蓝框,隐藏底部使用须知。
   const isBinanceNonLink = isBinancePlatform && !isLinkRewriteScenario;
-  // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
-  const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
