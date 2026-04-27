@@ -701,10 +701,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           return summary;
                         }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
+                        // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",
+                        //   旧任务 daily_post_min/max 缺失时回落 daily_count(常为 1),
+                        //   显示"每30分钟 · 1 条/次",和 wizard 实时摘要不一致引发用户困惑。
+                        //   现按场景给出和 wizard step3 同款描述,且 min===max 时只显示单值。
                         if (sid === 'binance_square_post_creator' || sid === 'x_post_creator' || sid === 'binance_from_x_repost') {
-                          const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
-                            ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
-                          return `${intervalLabel} · ${pStr} ${isZh ? '条/次' : '/run'}`;
+                          const hasRange = typeof pMin === 'number' && typeof pMax === 'number';
+                          const pStr = hasRange
+                            ? (pMin === pMax ? String(pMin) : `${pMin}-${pMax}`)
+                            : String(task.daily_count || 1);
+                          if (sid === 'x_post_creator') {
+                            return isZh
+                              ? `${intervalLabel} · 每次 ${pStr} 条推文（仿写 30% / 原创 30% / 引用 40% 随机）`
+                              : `${intervalLabel} · ${pStr} tweets/run (30% rewrite / 30% original / 40% quote)`;
+                          }
+                          if (sid === 'binance_from_x_repost') {
+                            return isZh
+                              ? `${intervalLabel} · 每次 ${pStr} 条 · 推特爆款搬运到币安广场（原图/视频 + AI 改写）`
+                              : `${intervalLabel} · ${pStr} repost(s)/run · X → Binance Square (original media + AI rewrite)`;
+                          }
+                          // binance_square_post_creator
+                          return isZh
+                            ? `${intervalLabel} · 每次 ${pStr} 条币安广场短评（100-300 字 + cashtag）`
+                            : `${intervalLabel} · ${pStr} Binance Square notes/run (100-300 chars + cashtag)`;
                         }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
                           return `${intervalLabel} · ${cMin}-${cMax} ${isZh ? '篇/次' : 'articles/run'}`;
