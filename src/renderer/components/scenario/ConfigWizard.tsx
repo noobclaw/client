@@ -318,6 +318,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // ⚠️ 不要把 binance_from_x_link 算进去 — 它行为跟 x_link_rewrite 一样
   // (URL 输入 + 一次性),不是常规发帖
   const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
+  // v4.31.27: 币安所有非 link 场景(发帖 / 互动 / 搬运)统一沿用"批量搬运"的 wizard 布局:
+  // 隐藏顶部 Track 下拉,把它合到"选择人设"分组里(预设 + 详细 textarea),
+  // 隐藏冗余 hint 蓝框,隐藏底部使用须知。
+  const isBinanceNonLink = isBinancePlatform && !isLinkRewriteScenario;
   // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
@@ -711,7 +715,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   : isBinancePostCreator
                     ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
-                    ? (isZh ? '配置自动回复' : 'Configure Auto Reply')
+                    ? (isBinancePlatform
+                        ? (isZh ? '配置自动互动' : 'Configure Auto Engage')
+                        : (isZh ? '配置自动回复' : 'Configure Auto Reply'))
                     : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
           <div className="text-xs px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">
@@ -761,9 +767,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* Track dropdown — hidden for x_link_rewrite (URL-rewrite has
                   no "track" concept; the source URL IS the topic). All other
                   scenarios still need it for keyword/persona presets。
-                  v4.31.27: binance_from_x_repost 也不在这里显示 — 移到下面的
-                  「选择人设」分组里跟 persona textarea 合一。 */}
-              {!isLinkRewriteScenario && !isBinanceFromXRepost && (
+                  v4.31.27: 币安所有非 link 场景(发帖/互动/搬运)不在这显示,
+                  移到下面的「选择人设」分组里跟 persona textarea 合一。 */}
+              {!isLinkRewriteScenario && !isBinanceNonLink && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择赛道' : 'Select Track'}
@@ -831,9 +837,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* v4.31.27: binance_from_x_repost 专属「选择人设」分组 —
-                  preset 下拉(原 Track 选项)+ 详细人设 textarea 合在一个 label 下。 */}
-              {isBinanceFromXRepost && (
+              {/* v4.31.27: 币安所有非 link 场景共用「选择人设」分组 —
+                  preset 下拉(原 Track 选项)+ 详细人设 textarea 合在一个 label 下。
+                  发帖 / 互动 / 搬运 都用这个布局。 */}
+              {isBinanceNonLink && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择人设（你以什么身份发推/评论）' : 'Persona (who you are when posting/commenting)'}
@@ -900,13 +907,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* ── Twitter + Binance simple-post fields ── */}
               {isXOrBinance && (
                 <>
-                  {/* Persona — for x_auto_engage / x_post_creator / binance_square_post_creator.
-                      x_link_rewrite is "literal rewrite of provided URLs" —
-                      AI follows the original tweet's content + language,
-                      no persona injection needed.
-                      v4.31.27: binance_from_x_repost 移到下面 token tags 后面的
-                      「选择人设」分组里(persona 选择框 + 详细 textarea 合一)。 */}
-                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceFromXRepost && (
+                  {/* Persona — for x_auto_engage / x_post_creator.
+                      x_link_rewrite is "literal rewrite of provided URLs" — no persona injection.
+                      v4.31.27: 币安所有非 link 场景的 persona 都到上面「选择人设」分组里去了
+                      (preset 下拉 + 详细 textarea 合一)。 */}
+                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceNonLink && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                         {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
@@ -1765,8 +1770,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               </div>
 
               {/* Usage warning — scenario-specific copy
-                  v4.31.27: binance_from_x_repost 用户嫌冗余,隐掉 */}
-              {!isBinanceFromXRepost && (
+                  v4.31.27: 所有币安非 link 场景都隐掉(用户统一规则) */}
+              {!isBinanceNonLink && (
                 <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
                   <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
                     {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
