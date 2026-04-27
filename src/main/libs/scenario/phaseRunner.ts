@@ -1419,6 +1419,62 @@ function buildContext(
       }
     },
 
+    // v4.25.6 Phase 3: 直接 mp4 URL → 落本地任务目录。给 viral 库 pick
+    // 路径用(库里存的就是 syndication 拿到的 mp4 直链,不需要再过一次
+    // syndication API)。
+    //
+    // 跟 fetchTweetVideo 区别:那个吃 tweet URL,内部走 syndication;
+    // 这个吃直接 mp4 URL,纯 fetch + 写盘。
+    downloadVideoToDisk: async (
+      videoUrl: string,
+      opts?: { outputDir?: string; fileName?: string; posterUrl?: string }
+    ) => {
+      try {
+        if (!videoUrl || !/^https?:\/\//i.test(videoUrl)) {
+          return { ok: false, reason: 'invalid_video_url' };
+        }
+        const dlCtl = new AbortController();
+        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000);
+        let videoBuf: Buffer;
+        try {
+          const vResp = await fetch(videoUrl, {
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
+            signal: dlCtl.signal,
+          });
+          clearTimeout(dlTo);
+          if (!vResp.ok) return { ok: false, reason: 'video_http_' + vResp.status };
+          const ab = await vResp.arrayBuffer();
+          videoBuf = Buffer.from(ab);
+        } catch (e: any) {
+          clearTimeout(dlTo);
+          return { ok: false, reason: 'video_fetch_failed:' + String(e?.message || e).slice(0, 80) };
+        }
+        const dir = opts?.outputDir || path.join(getTaskOutputDir(task, manifest.platform as any), '原文');
+        try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+        const baseName = opts?.fileName
+          || ('viral_video_' + Date.now() + '.mp4');
+        const filePath = path.join(dir, baseName);
+        fs.writeFileSync(filePath, videoBuf);
+        // 顺手下封面图(如有)
+        let posterFile: string | null = null;
+        if (opts?.posterUrl) {
+          try {
+            const pResp = await fetch(opts.posterUrl);
+            if (pResp.ok) {
+              const pAb = await pResp.arrayBuffer();
+              const ext = (opts.posterUrl.split('.').pop() || 'jpg').split('?')[0].toLowerCase();
+              posterFile = filePath.replace(/\.mp4$/, '_poster.' + ext);
+              fs.writeFileSync(posterFile, Buffer.from(pAb));
+            }
+          } catch { /* poster 失败不阻塞 */ }
+        }
+        return { ok: true, filePath, posterPath: posterFile, size: videoBuf.length };
+      } catch (err: any) {
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
     // v4.25.6 Phase 2: 推特 compose 视频上传 — 比币安简单,
     // [data-testid="fileInput"] 同时接图和视频(mp4 直接传)。
     //
