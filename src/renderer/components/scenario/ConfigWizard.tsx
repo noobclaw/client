@@ -1161,14 +1161,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               </div>
               )}
 
-              {/* HH:MM picker ONLY for the legacy fixed-time `daily` (XHS
-                  rewrite scenarios). v2.4.27 — `once` (不重复 / 手动触发) no
-                  longer shows a time picker since the user is the trigger,
-                  there's nothing to schedule. Auto-reply's `daily_random`
-                  deliberately has NO time picker either — and Twitter scenarios
-                  never pin a time (risk-control), so we hide the picker
-                  entirely on X. */}
-              {!isXOrBinance && runInterval === 'daily' && (() => {
+              {/* HH:MM picker for the legacy fixed-time `daily`.
+                  XHS / Binance scenarios支持选固定时间;Twitter 仍旧隐藏(风控)。
+                  v4.31.27: 之前 !isXOrBinance 把币安也隐了 → 用户选了"每天固定时间"
+                  下面没时间组件,体验断了。改成只 Twitter 隐。 */}
+              {!isXPlatform && runInterval === 'daily' && (() => {
                 // v4.25.38: 触发时间从两个 <select> 改成两个滑条 — 跟其他所有
                 // 数字组件(daily_count / postCountMin/Max / followMin/Max ...)统一用拖动操作。
                 // 小时 0-23,分钟用 step=15 卡到 0/15/30/45。
