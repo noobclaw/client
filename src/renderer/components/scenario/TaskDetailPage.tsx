@@ -185,6 +185,18 @@ const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
   'Write to Binance + upload images',
   'Publish to Binance Square',
 ];
+const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
+  '校验双平台 + 打开链接读取原推',
+  'AI 改写为币安风格 + 下载原图',
+  '切到币安 · 写入正文 + 上传原图',
+  '发布到币安广场',
+];
+const STEP_NAMES_BINANCE_FROM_X_LINK_EN = [
+  'Verify both tabs + open URL & read source tweet',
+  'AI rewrite into Binance style + download images',
+  'Switch to Binance · write content + upload images',
+  'Publish to Binance Square',
+];
 
 interface Props {
   task: Task;
@@ -228,7 +240,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_auto_engage') return isZh ? STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH : STEP_NAMES_BINANCE_AUTO_ENGAGE_EN;
     if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
     if (sid === 'binance_from_x_repost') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
-    if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
+    if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_LINK_ZH : STEP_NAMES_BINANCE_FROM_X_LINK_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
