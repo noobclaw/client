@@ -1735,8 +1735,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       }
                       if (isBinanceFromXRepost) {
                         return isZh
-                          ? `⏰ ${intervalLabel} · 每次 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 推特爆款搬运到币安广场 (原图 + AI 改写)`
-                          : `⏰ ${intervalLabel} · ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · X → Binance Square (original images + AI-rewritten text)`;
+                          ? `⏰ ${intervalLabel} · 每次 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 推特爆款搬运到币安广场 (原图/视频 + AI 改写)`
+                          : `⏰ ${intervalLabel} · ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · X → Binance Square (original images/video + AI-rewritten text)`;
                       }
                       if (isBinancePostCreator) {
                         return isZh
@@ -1764,29 +1764,32 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               </div>
 
-              {/* Usage warning — scenario-specific copy */}
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
-                <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                  {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
+              {/* Usage warning — scenario-specific copy
+                  v4.31.27: binance_from_x_repost 用户嫌冗余,隐掉 */}
+              {!isBinanceFromXRepost && (
+                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
+                  <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
+                    {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
+                  </div>
+                  <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
+                    {isXPlatform
+                      ? (isZh
+                          ? <>推文一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 x.com 标签页或退出登录。⚠️ <strong>大陆用户需开启 VPN / 代理</strong>确保 x.com 可访问。建议第一次运行后人工检查 AI 生成内容的风格。</>
+                          : <>Tweets <strong>cannot be unposted</strong>. Keep the browser open and don't close the x.com tab or log out. ⚠️ <strong>Mainland China users must use a VPN / proxy</strong> for x.com access. Review AI output after first run to confirm voice.</>)
+                      : isBinancePlatform
+                        ? (isZh
+                            ? <>帖子一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 binance.com 标签页或退出登录。建议第一次运行后人工检查 AI 生成内容的风格与 cashtag 是否合适。</>
+                            : <>Posts <strong>cannot be unposted</strong>. Keep the browser open and don't close the binance.com tab or log out. Review AI output after first run to confirm voice and cashtag usage.</>)
+                      : isAutoReply
+                        ? (isZh
+                            ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
+                            : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
+                        : (isZh
+                            ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
+                            : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
+                  </p>
                 </div>
-                <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                  {isXPlatform
-                    ? (isZh
-                        ? <>推文一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 x.com 标签页或退出登录。⚠️ <strong>大陆用户需开启 VPN / 代理</strong>确保 x.com 可访问。建议第一次运行后人工检查 AI 生成内容的风格。</>
-                        : <>Tweets <strong>cannot be unposted</strong>. Keep the browser open and don't close the x.com tab or log out. ⚠️ <strong>Mainland China users must use a VPN / proxy</strong> for x.com access. Review AI output after first run to confirm voice.</>)
-                    : isBinancePlatform
-                      ? (isZh
-                          ? <>帖子一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 binance.com 标签页或退出登录。建议第一次运行后人工检查 AI 生成内容的风格与 cashtag 是否合适。</>
-                          : <>Posts <strong>cannot be unposted</strong>. Keep the browser open and don't close the binance.com tab or log out. Review AI output after first run to confirm voice and cashtag usage.</>)
-                    : isAutoReply
-                      ? (isZh
-                          ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
-                          : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
-                      : (isZh
-                          ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
-                          : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
-                </p>
-              </div>
+              )}
 
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
