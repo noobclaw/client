@@ -593,17 +593,16 @@ async function executeCommand(msg) {
       data = results[0]?.result || { error: 'executeScript failed' };
     } else if (command === 'upload_file_from_url') {
       // v1.2.17: 移到 background.js + main world 跑,绕开 content script 的
-      // isolated world(实测在 isolated world 里给 binance 视频 modal 注入大文件,
-      // input.files = dt.files 这一步会触发 binance React handler "Maximum call
-      // stack size exceeded" 爆栈;在 main world 跑同样的代码 17 MB 完全没事)。
-      // v1.2.18: 拆成两步 — fetch 必须在 BG 跑(binance.com 严格 CSP 拦
-      // localhost sidecar URL: "Refused to connect ... violates CSP connect-src ..."),
-      // 拿到字节后用 Uint8Array 作为 args 传到 MAIN world 重建 Blob 注入。
-      // 之前在 MAIN world 直接 fetch sidecar URL 被 page CSP 静默拦掉 → 注入空文件
-      // → Binance 不响应 → polling 误判完成 → 发空帖。
+      // isolated world(isolated world 里给 binance 视频 modal 注入大文件,
+      // input.files = dt.files 触发 binance React "Maximum call stack" 爆栈)。
+      // v1.2.18: 拆两步 — fetch 必须在 BG 跑(binance.com 严格 CSP 拦
+      // localhost sidecar)。试过 Uint8Array 跨 world 但 chrome.scripting args
+      // 只接受 JSON-serializable,抛 "Unserializable argument passed"。
+      // v1.2.19: 改 base64 string 跨 world(JSON-safe),MAIN world atob 重建。
+      //          chunk-encode 避开 String.fromCharCode(...arr) 撑爆栈。
       const tab = await resolveTab();
-      // Step A: BG fetch sidecar URL(无 page CSP 限制)
-      let bytes;
+      // Step A: BG fetch + base64 encode(无 page CSP 限制)
+      let base64Str;
       try {
         const resp = await fetch(params.fileUrl, { method: 'GET' });
         if (!resp.ok) {
@@ -613,25 +612,35 @@ async function executeCommand(msg) {
           if (!ab || ab.byteLength === 0) {
             data = { error: 'bg_fetch_empty' };
           } else {
-            bytes = new Uint8Array(ab);
+            // 大文件 (17MB+) 不能 String.fromCharCode(...uint8) 一把梭(stack overflow)
+            // 分块拼接,每块 8KB
+            const u8 = new Uint8Array(ab);
+            const chunks = [];
+            const CHUNK = 0x8000; // 32KB
+            for (let i = 0; i < u8.length; i += CHUNK) {
+              chunks.push(String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK)));
+            }
+            base64Str = btoa(chunks.join(''));
           }
         }
       } catch (e) {
         data = { error: 'bg_fetch_failed: ' + (e && e.message || String(e)).slice(0, 200) };
       }
-      // Step B: 把字节传到 MAIN world 重建 File + 注入
-      if (bytes) {
+      // Step B: base64 字符串作 arg 传 MAIN world,重建 File
+      if (base64Str) {
         const results = await chrome.scripting.executeScript({
           target: { tabId: tab.id },
           world: 'MAIN',
-          func: (selector, byteArr, fileName, mimeType) => {
+          func: (selector, base64, fileName, mimeType) => {
             try {
               const input = document.querySelector(selector);
               if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
                 return { error: 'file_input_not_found', selector };
               }
-              // byteArr 跨 world 边界结构化克隆,保留 Uint8Array 类型
-              const u8 = byteArr instanceof Uint8Array ? byteArr : new Uint8Array(byteArr);
+              // base64 解回 Uint8Array
+              const bin = atob(base64);
+              const u8 = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
               if (u8.byteLength === 0) return { error: 'empty_bytes' };
               const finalMime = mimeType || 'application/octet-stream';
               const blob = new Blob([u8], { type: finalMime });
@@ -646,7 +655,7 @@ async function executeCommand(msg) {
               return { error: 'main_world_inject_failed: ' + (err && err.message || String(err)).slice(0, 200) };
             }
           },
-          args: [params.selector || params.ref, bytes, params.fileName, params.mimeType || 'application/octet-stream'],
+          args: [params.selector || params.ref, base64Str, params.fileName, params.mimeType || 'application/octet-stream'],
         });
         data = results[0]?.result || { error: 'executeScript_failed' };
       }
