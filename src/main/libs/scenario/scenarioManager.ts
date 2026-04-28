@@ -754,8 +754,16 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
   } catch (err) {
     let msg = String(err instanceof Error ? err.message : err);
     if (msg.includes('user_stopped')) msg = 'user_stopped';
-    riskGuard.markRunFailure(task.id, msg);
-    finishProgress(task.id, 'error', msg);
+    // v4.31.33: 保证 finishProgress 一定被调 —— 之前 markRunFailure 自己也可能
+    //   ensureLoaded() 抛(若 riskGuard 没 init),整条 error 路径挂掉,
+    //   finishProgress 永远不调,progress 永久卡 'running' + 空 logs,UI 永远
+    //   显示"正在启动…"。各步骤独立 try。
+    try { riskGuard.markRunFailure(task.id, msg); } catch (e) {
+      coworkLog('WARN', 'scenarioManager', `markRunFailure threw (riskGuard not initialized?)`, { err: String(e) });
+    }
+    try { finishProgress(task.id, 'error', msg); } catch (e) {
+      coworkLog('WARN', 'scenarioManager', `finishProgress threw`, { err: String(e) });
+    }
     return { status: 'failed', reason: msg };
   }
 }
@@ -879,6 +887,26 @@ const SCHEDULER_TICK_MS = 60 * 1000;
  *  cowork.log 里直接看到 scheduler 有没有在心跳。 */
 async function schedulerTick(): Promise<void> {
   try {
+    // v4.31.33: lazy-init 所有 stores —— 跟 sidecar-server.ts 'scenario:runTaskNow'
+    //   handler 对齐。之前差异:手动入口在 handler 里 lazy init,scheduler tick
+    //   直接调 runTask 绕过这一步。如果 sidecar 启动链上某个 init 失败,scheduler
+    //   触发的 runTask 走到 ensureLoaded() 就抛,且 catch 里的 markRunFailure 也
+    //   抛同一个错 → finishProgress 永不被调 → progress 卡 status='running' +
+    //   空 logs → UI 永远显示"正在启动…(后端流式日志稍候)"。
+    //   表现上就是"立即运行能展示进度,定时不能"。这里 idempotent 兜底。
+    try {
+      const { getUserDataPath } = require('../platformAdapter');
+      const userDataPath = getUserDataPath();
+      const tStore = require('./taskStore');
+      if (!tStore._loaded) { tStore.initTaskStore(userDataPath); tStore._loaded = true; }
+      const rg = require('./riskGuard');
+      if (!rg._loaded) { rg.initRiskGuard(userDataPath); rg._loaded = true; }
+      const rr = require('./runRecords');
+      try { rr.initRunRecords(userDataPath); } catch { /* idempotent */ }
+    } catch (e) {
+      coworkLog('WARN', 'scheduler', `pre-tick lazy init failed: ${e}`);
+    }
+
     if (atConcurrencyLimit()) {
       coworkLog('INFO', 'scheduler', 'tick skipped — at concurrency limit');
       return;
