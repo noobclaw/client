@@ -657,22 +657,35 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     + `currentlyBusy=${JSON.stringify(Array.from(runningByResource.entries()))}`);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    // v4.25.35: 占用提示加人话信息 — UI toast 能告诉用户具体是哪个任务卡了哪个平台。
     const holdingTaskId = runningByResource.get(busyKey)?.taskId;
-    const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
-    return {
-      status: 'skipped',
-      reason: 'resource_busy:' + busyKey,
-      busy_platforms: resources.map(humanizePlatformFromKey),
-      busy_task_name: holdingTask
-        ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
-        : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
-    };
+    // v4.31.37: 自占自直接抢占 —— 之前同一个 task 卡死(orchestrator 永远 pending,
+    //   runTask finally 没跑到)resources 没释放,scheduler 后续 tick 看到自己占
+    //   自己永远 SKIPPED 死循环。简单逻辑:持有者就是自己 = 旧实例僵尸,force
+    //   释放重新 mark,新实例直接跑。不同 task 占着才视为真并发避让。
+    if (holdingTaskId === task.id) {
+      coworkLog('WARN', 'scenarioManager',
+        `[runTask] 自占自抢占: task=${task.id} 旧实例占着 ${busyKey} 没释放(可能 orchestrator pending),force release 重启`);
+      releaseResources(resources);
+    } else {
+      const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
+      return {
+        status: 'skipped',
+        reason: 'resource_busy:' + busyKey,
+        busy_platforms: resources.map(humanizePlatformFromKey),
+        busy_task_name: holdingTask
+          ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
+          : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
+      };
+    }
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
   markResourcesBusy(resources, task.id);
+  // v4.31.37: 抢占启动时把同 taskId 的旧 progress 主动清掉,避免 UI 看到上一次
+  //   遗留的 status='running' + 空 logs(initProgress 后续会重写,但旧 timer
+  //   设的 30s delete 还在 pending,中间窗口有歧义)。
+  abortByTaskId.delete(task.id);
   initProgress(task.id);
   startTaskRecord(task, pack.manifest);
 
