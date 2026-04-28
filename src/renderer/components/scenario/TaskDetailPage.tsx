@@ -284,59 +284,25 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     } catch {}
   }, [task.id]);
 
-  // v4.31.41: 把持久化 runRecord 的 step_logs 转成 UI 用的 ScenarioRunProgress
-  //   形状,详情页 mount 时如果内存 progress 已被清(task 跑完 30s 后)就用这个
-  //   fallback 展示上次跑的步骤日志。task 还在跑就用 in-memory 实时数据覆盖。
-  const recordToProgress = useCallback((rec: any): ScenarioRunProgress => {
-    const steps = STEP_NAMES.map(name => ({
-      name,
-      status: 'waiting' as 'waiting' | 'running' | 'done' | 'error',
-      logs: [] as { time: string; status: 'done' | 'running' | 'error'; message: string }[],
-    }));
-    const entries = Array.isArray(rec?.step_logs) ? rec.step_logs : [];
-    for (const e of entries) {
-      const idx = (e.step || 1) - 1;
-      if (idx < 0 || idx >= steps.length) continue;
-      steps[idx].logs.push({ time: e.time, status: e.status, message: e.message });
-    }
-    // 推算每步状态:从该步最后一条 log 的 status 取
-    for (const s of steps) {
-      if (s.logs.length === 0) continue;
-      const last = s.logs[s.logs.length - 1].status;
-      s.status = last === 'done' ? 'done' : last === 'error' ? 'error' : 'running';
-    }
-    const isRunning = rec?.status === 'running';
-    return {
-      taskId: rec?.task_id || task.id,
-      status: isRunning ? 'running' : (rec?.status === 'error' || rec?.status === 'stopped') ? 'error' : 'done',
-      currentStep: 0,
-      steps,
-    } as ScenarioRunProgress;
-  }, [STEP_NAMES, task.id]);
+  // v4.31.42: 撤回 v4.31.41 的 runRecord fallback —— 用户反馈"没运行的任务
+  //   详情页显示上次进度容易误以为还在跑"。现在没运行就纯净空步骤,只内存
+  //   progress 实时展示。事后想看历史日志走 RunHistoryPage。
 
   // ── Check running state on mount (ONE TIME) ──
   useEffect(() => {
     void refreshData();
-    // 1. 优先内存 progress(实时 polling 数据,task 还在跑时 freshest)
     scenarioService.getRunProgress(task.id).then(prog => {
       if (!mountedRef.current) return;
       if (prog && prog.taskId === task.id) {
         setProgress(prog);
         if (prog.status === 'running') setRunning(true);
-        return; // 拿到 live progress 不再走 fallback
       }
-      // 2. v4.31.41 fallback: in-memory progress 没了(task 结束 30s 后被清)
-      //    从持久化 runRecord 拉上次跑的步骤日志展示
-      scenarioService.getLatestRunRecord(task.id).then(rec => {
-        if (!mountedRef.current || !rec) return;
-        setProgress(recordToProgress(rec));
-      }).catch(() => {});
     }).catch(() => {});
     scenarioService.getRunningTaskIds().then(ids => {
       if (!mountedRef.current) return;
       if (Array.isArray(ids) && ids.indexOf(task.id) >= 0) setRunning(true);
     }).catch(() => {});
-  }, [refreshData, task.id, recordToProgress]);
+  }, [refreshData, task.id]);
 
   // v2.4.67: ongoing sync — if list-side reports our task as running but
   // local state thinks otherwise, flip running=true so the step panel
@@ -642,7 +608,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       })()}
 
       {/* Config + actions */}
-      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
+      {/* v4.31.42: 跟 list 页保持一致 — 运行中卡片绿框发亮(border-green-500 + ring + noobclaw-running-glow) */}
+      <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
+        running
+          ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow'
+          : 'border-gray-200 dark:border-gray-700'
+      }`}>
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 text-xs text-gray-500 dark:text-gray-400 space-y-1">
             {(() => {
