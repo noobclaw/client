@@ -867,92 +867,100 @@ function setNextPlannedRun(task: ScenarioTask, fromTs: number, isFirstRun: boole
 }
 
 let schedulerStarted = false;
+let schedulerTimer: NodeJS.Timeout | null = null;
+
+const SCHEDULER_TICK_MS = 60 * 1000;
+
+/** v4.31.32: 单次 tick 抽出来,启动时立即跑一次 + 之后每 60s 跑一次。
+ *  之前是裸 `setInterval(60s)` —— 第一次触发要等 60 秒,而且如果 sidecar
+ *  启动到这步链路中任何一步抛异常,scheduler 永远不启动(用户感知"立即
+ *  运行能跑,但定时永远不动")。重写成 setTimeout 自递归 + 启动立即跑,
+ *  对齐 cowork Scheduler 的可靠模式。tick 入口打 INFO log 让用户能在
+ *  cowork.log 里直接看到 scheduler 有没有在心跳。 */
+async function schedulerTick(): Promise<void> {
+  try {
+    if (atConcurrencyLimit()) {
+      coworkLog('INFO', 'scheduler', 'tick skipped — at concurrency limit');
+      return;
+    }
+    const allTasks = taskStore.listTasks();
+    if (!Array.isArray(allTasks) || allTasks.length === 0) {
+      coworkLog('INFO', 'scheduler', 'tick — no tasks in store');
+      return;
+    }
+
+    // tick 入口打一行总览,便于在 cowork.log 里直接看 scheduler 有没有心跳
+    let nDisabled = 0, nOnce = 0, nNotDue = 0, nFired = 0;
+    const now = Date.now();
+
+    for (const task of allTasks) {
+      if (!task.enabled) { nDisabled++; continue; }
+      if (atConcurrencyLimit()) break;
+
+      const interval = (task as any).run_interval || 'daily';
+      if (interval === 'once') { nOnce++; continue; }
+
+      let planned = (task as any).next_planned_run_at as number | undefined;
+      if (!planned) {
+        const runs = riskGuard.getRuns(task.id);
+        const hasRealRuns = runs.length > 0;
+        const fromTs = hasRealRuns
+          ? Math.max(...runs.map((r: any) => r.started_at || 0))
+          : now;
+        setNextPlannedRun(task, fromTs, !hasRealRuns);
+        const refreshed = taskStore.getTask(task.id);
+        planned = (refreshed as any)?.next_planned_run_at;
+        if (!planned) { nNotDue++; continue; }
+      }
+      if (now < planned) { nNotDue++; continue; }
+
+      nFired++;
+      coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval}, planned: ${new Date(planned).toISOString()})`);
+      runTask(task, false)
+        .then(out => {
+          if (!out) return;
+          if (out.status === 'skipped') {
+            coworkLog('WARN', 'scheduler', `Auto-run SKIPPED ${task.id}: ${out.reason || 'unknown'} — 下次 tick(60s)再试`);
+          } else if (out.status === 'failed') {
+            coworkLog('WARN', 'scheduler', `Auto-run FAILED ${task.id}: ${out.reason || 'unknown'}`);
+          } else {
+            coworkLog('INFO', 'scheduler', `Auto-run finished ${task.id}: ${out.status}`);
+          }
+        })
+        .catch(err => coworkLog('ERROR', 'scheduler', `Auto-run threw ${task.id}: ${err}`));
+    }
+
+    coworkLog('INFO', 'scheduler',
+      `tick: ${allTasks.length} tasks (disabled:${nDisabled} once:${nOnce} notDue:${nNotDue} fired:${nFired})`);
+  } catch (err) {
+    coworkLog('ERROR', 'scheduler', `tick threw: ${err}`);
+  }
+}
 
 export function startScheduler(): void {
-  if (schedulerStarted) return;
+  if (schedulerStarted) {
+    coworkLog('INFO', 'scheduler', 'startScheduler called twice — ignoring');
+    return;
+  }
   schedulerStarted = true;
+  coworkLog('INFO', 'scheduler', `startScheduler: kicking off (tick every ${SCHEDULER_TICK_MS / 1000}s, immediate first run)`);
 
-  setInterval(async () => {
-    // Twitter v1: instead of bailing when ANY task is running, scan all
-    // eligible tasks each tick and start every one whose target tab
-    // resource is free. The atConcurrencyLimit() / isResourceBusy() guards
-    // are inside runTask itself, so the worst case here is "we tried to
-    // start, runTask returned skipped" — cheap.
-    if (atConcurrencyLimit()) return;
+  // 立即跑一次,不等 60s
+  schedulerTick().catch(err => coworkLog('ERROR', 'scheduler', `initial tick threw: ${err}`));
 
-    try {
-      const allTasks = taskStore.listTasks();
-      if (!Array.isArray(allTasks)) return;
+  // 之后每 60s 自递归一次(setTimeout 而不是 setInterval —— 上一 tick 还
+  //   在跑时不会堆积新 tick,行为更可预期)
+  const loop = (): void => {
+    schedulerTimer = setTimeout(async () => {
+      await schedulerTick();
+      if (schedulerStarted) loop();
+    }, SCHEDULER_TICK_MS);
+  };
+  loop();
+}
 
-      for (const task of allTasks) {
-        // v4.25.4: 之前要求 task.active=true 才进 scheduler —— 但 active 在
-        // taskStore 里是"单选"语义(setActiveTask 会把所有其他任务 active 设
-        // 成 false)。结果:用户建多个任务,只有 1 个能自动跑,其他到点也不动
-        // (用户多次反馈"到点都不运行")。资源锁本身已经能防 same-platform
-        // 任务争抢(busy 直接 silent skip),跨平台天然并行,active 这层 gate
-        // 是多余的且违反用户预期。改成只看 enabled。active 字段保留给 UI 显
-        // 示用("当前选中"),不再驱动调度。
-        if (!task.enabled) continue;
-        if (atConcurrencyLimit()) break;
-
-        const interval = (task as any).run_interval || 'daily';
-        if (interval === 'once') continue; // 不重复：仅手动触发
-
-        // v2.4.25+ scheduler: every active task has a pre-picked
-        // next_planned_run_at on disk. The pre-picking applies the
-        // jitter UPFRONT (see computeNextPlannedRun) so:
-        //   1. UI can show the exact wall-clock fire time
-        //   2. Restarting the app doesn't reroll the random offset
-        //   3. Scheduler is just "if now >= planned, fire" — no per-tick
-        //      probability rolls in this loop
-        let planned = (task as any).next_planned_run_at as number | undefined;
-        if (!planned) {
-          // First scheduler tick after the task was created (or after
-          // upgrading from an older app version that didn't track this).
-          // Backfill based on the last run if any, else from now.
-          const runs = riskGuard.getRuns(task.id);
-          const hasRealRuns = runs.length > 0;
-          const fromTs = hasRealRuns
-            ? Math.max(...runs.map((r: any) => r.started_at || 0))
-            : Date.now();
-          // hasRealRuns=false means this is the first-ever schedule for
-          // this task → use the "first bucket" / "today's slot" picks
-          // so the task fires soon, not 一个完整周期后.
-          setNextPlannedRun(task, fromTs, !hasRealRuns);
-          // Re-fetch to get the freshly-stored value
-          const refreshed = taskStore.getTask(task.id);
-          planned = (refreshed as any)?.next_planned_run_at;
-          if (!planned) continue;
-        }
-        if (Date.now() < planned) continue;
-
-        coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval}, planned: ${new Date(planned).toISOString()})`);
-        // v4.25.4: 之前 runTask 返回 skipped(资源忙/并发上限)直接吞掉,用户
-        // 看到"到点了不运行"完全没线索。现在所有结局都打 log,失败/跳过附原因。
-        runTask(task, false)
-          .then(out => {
-            if (!out) return;
-            if (out.status === 'skipped') {
-              coworkLog('WARN', 'scheduler',
-                `Auto-run SKIPPED for task ${task.id}: ${out.reason || 'unknown'} `
-                + `— scheduler 会在下一 tick(60s)再试`);
-            } else if (out.status === 'failed') {
-              coworkLog('WARN', 'scheduler',
-                `Auto-run FAILED for task ${task.id}: ${out.reason || 'unknown'}`);
-            } else {
-              coworkLog('INFO', 'scheduler',
-                `Auto-run finished for task ${task.id}: ${out.status}`);
-            }
-          })
-          .catch(err => {
-            coworkLog('ERROR', 'scheduler', `Auto-run threw for task ${task.id}: ${err}`);
-          });
-        // Do NOT break — keep scanning. If two tasks on different tabs are
-        // both due, we want to start them both this tick (subject to the
-        // atConcurrencyLimit guard at the top of the loop body).
-      }
-    } catch (err) {
-      coworkLog('ERROR', 'scheduler', `Scheduler check failed: ${err}`);
-    }
-  }, 60 * 1000); // Check every 60 seconds
+/** Force a tick right now — exposed so a debug endpoint or the UI's
+ *  "刷新调度" 按钮能立即触发一轮检查。 */
+export async function tickSchedulerNow(): Promise<void> {
+  await schedulerTick();
 }

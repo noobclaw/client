@@ -1856,19 +1856,38 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
   coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
 
   // Start scenario scheduler (checks every 60s for auto-run tasks)
-  try {
-    const scenarioManager = require('./libs/scenario/scenarioManager');
-    const scenarioTaskStore = require('./libs/scenario/taskStore');
-    const scenarioRiskGuard = require('./libs/scenario/riskGuard');
-    const scenarioRunRecords = require('./libs/scenario/runRecords');
+  // v4.31.32: 之前所有 init 步骤共用一个 try/catch,只要任何一步抛异常 →
+  //   下面的 startScheduler() 永远不会执行,sidecar 还能跑(立即运行能用)
+  //   但 scheduler 整个失踪,用户感知"任务到点不动"。现在每步独立 try,
+  //   即便 store/riskGuard/runRecords init 失败 startScheduler 也照样调。
+  {
     const { getUserDataPath } = require('./libs/platformAdapter');
-    if (!scenarioTaskStore._loaded) { scenarioTaskStore.initTaskStore(getUserDataPath()); scenarioTaskStore._loaded = true; }
-    if (!scenarioRiskGuard._loaded) { scenarioRiskGuard.initRiskGuard(getUserDataPath()); scenarioRiskGuard._loaded = true; }
-    scenarioRunRecords.initRunRecords(getUserDataPath());
-    scenarioManager.startScheduler();
-    coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');
-  } catch (err) {
-    coworkLog('WARN', 'sidecar-server', 'Failed to start scenario scheduler', { err: String(err) });
+    const userDataPath = getUserDataPath();
+    try {
+      const scenarioTaskStore = require('./libs/scenario/taskStore');
+      if (!scenarioTaskStore._loaded) { scenarioTaskStore.initTaskStore(userDataPath); scenarioTaskStore._loaded = true; }
+    } catch (e) {
+      coworkLog('WARN', 'sidecar-server', 'scenarioTaskStore.initTaskStore failed', { err: String(e) });
+    }
+    try {
+      const scenarioRiskGuard = require('./libs/scenario/riskGuard');
+      if (!scenarioRiskGuard._loaded) { scenarioRiskGuard.initRiskGuard(userDataPath); scenarioRiskGuard._loaded = true; }
+    } catch (e) {
+      coworkLog('WARN', 'sidecar-server', 'scenarioRiskGuard.initRiskGuard failed', { err: String(e) });
+    }
+    try {
+      const scenarioRunRecords = require('./libs/scenario/runRecords');
+      scenarioRunRecords.initRunRecords(userDataPath);
+    } catch (e) {
+      coworkLog('WARN', 'sidecar-server', 'scenarioRunRecords.initRunRecords failed', { err: String(e) });
+    }
+    try {
+      const scenarioManager = require('./libs/scenario/scenarioManager');
+      scenarioManager.startScheduler();
+      coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');
+    } catch (e) {
+      coworkLog('ERROR', 'sidecar-server', 'scenarioManager.startScheduler failed', { err: String(e) });
+    }
   }
 
   // Install the crash reporter. Broadcasts system:crash SSE on
