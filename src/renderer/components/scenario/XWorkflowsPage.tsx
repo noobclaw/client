@@ -265,6 +265,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
             { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
             { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
             { icon: '🛡️', zh: '严风控,完全模拟人类行为(动作间隔时间 + 随机)', en: 'Strict anti-detection, fully human-like (jittered intervals + randomization)' },
+            { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement = rapid follow gains)' },
             { icon: '🤝', zh: '1000+ web3 KOL 池', en: '1000+ Web3 KOL pool' },
           ].map((p, i) => (
             <span
