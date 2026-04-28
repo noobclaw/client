@@ -320,13 +320,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const isAnyBinancePost = isBinancePostCreator || isBinanceFromXRepost;
   // 任何"用户粘 URL 列表仿写"场景 — x_link_rewrite + binance_from_x_link
   const isLinkRewriteScenario = scenario.id === 'x_link_rewrite' || isBinanceFromXLink;
-  // v4.31.27: 币安所有非 link 场景(发帖 / 互动 / 搬运)统一沿用"批量搬运"的 wizard 布局:
-  // 隐藏顶部 Track 下拉,把它合到"选择人设"分组里(预设 + 详细 textarea),
-  // 隐藏冗余 hint 蓝框,隐藏底部使用须知。
-  const isBinanceNonLink = isBinancePlatform && !isLinkRewriteScenario;
-  // v4.28.x: 推特(自动互动 + 自动发推)也沿用同一布局 ——「选择人设」下拉 + textarea
-  // 合一,代替原来的「选择赛道 + 单独 persona 区块」。
-  // x_link_rewrite 仍排除(它根本不需要 persona)。
+  // v4.28.x: 之前 v4.31.27 引入的 isBinanceNonLink (= isBinancePlatform && !isLinkRewriteScenario)
+  // 已被更通用的 useCombinedPersona 完全取代(覆盖 X + Binance 两个平台的非 link 场景),
+  // 不再需要单独的币安专用 flag。TS strict 模式抛 unused 编译错,直接删除。
+  // useCombinedPersona: 推特(auto_engage / post_creator) + 币安(发帖 / 互动 / 搬运)
+  // 都沿用同一「选择人设」合一布局(下拉 + textarea),代替原来的「选择赛道 + 单独
+  // persona 区块」。x_link_rewrite / binance_from_x_link 排除(链接仿写不需要 persona)。
   const useCombinedPersona = isXOrBinance && !isLinkRewriteScenario;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"

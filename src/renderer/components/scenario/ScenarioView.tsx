@@ -671,9 +671,9 @@ const LinkModeEditModal: React.FC<{
   const platformLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
     : isBinance ? (isZh ? '币安广场' : 'Binance Square')
     : (isZh ? '小红书' : 'XHS');
-  const sourceLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
-    : isBinance ? (isZh ? '推特(搬运到币安)' : 'X tweet (repost to Binance)')
-    : (isZh ? '小红书' : 'XHS');
+  // v4.28.x: sourceLabel 之前用在描述文案里("粘贴 1-3 个 ${sourceLabel} 原文链接"),
+  // 现在描述按 acceptsTwitterUrl 直接走两个固定文案,不再需要 sourceLabel 占位 ——
+  // TS strict 模式抛 unused 编译错(打包失败),直接移除。
 
   const validate = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
