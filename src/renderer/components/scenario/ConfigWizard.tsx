@@ -1017,8 +1017,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
                         {isBinanceFromXLink
                           ? (isZh
-                              ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 用原推仿写一条新文发到币安广场(原图一并搬运)。</>
-                              : <>✍️ Paste X tweet URLs. AI reads each → rewrites in Binance Square style and posts (with original images).</>)
+                              ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 用原推仿写一条新文发到币安广场(原图视频一并搬运)。</>
+                              : <>✍️ Paste X tweet URLs. AI reads each → rewrites in Binance Square style and posts (with original images & video).</>)
                           : (isZh
                               ? <>✍️ 粘贴你想仿写的推文链接。AI 会读原推 → 用原推仿写一条新推发到推特(同语言同风格,不抄袭原文)。</>
                               : <>✍️ Paste tweet URLs. AI reads each → rewrites a new tweet in same language and style as the original (no copying).</>)}
