@@ -281,6 +281,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     urls?: string[];
   }) => {
     let landingTaskId: string | null = null;
+    let createdLinkRewrite = false;
     if (wizardEditingTask) {
       // Edit → always activate as scheduled task
       await scenarioService.updateTask(wizardEditingTask.id, { ...input, active: true, enabled: true });
@@ -292,6 +293,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       // createTask returns the persisted Task with its assigned id.
       const created = await scenarioService.createTask({ ...input, enabled: true, active: true });
       landingTaskId = created?.id || null;
+      // v4.28.x: 链接仿写场景(x_link_rewrite / binance_from_x_link)创建后立刻 runTaskNow,
+      // 跟 X / XHS workflows 页面里的"快速 link 模式"行为对齐 —— 用户粘了 URL 列表
+      // 就是想立刻看结果,不应该等下一次 scheduler tick 或者手动点"立即运行"。
+      // 普通调度型场景(post_creator / repost / auto_engage)保持原行为(等 scheduler)。
+      if (created?.id && (input.scenario_id === 'x_link_rewrite' || input.scenario_id === 'binance_from_x_link')) {
+        createdLinkRewrite = true;
+      }
     }
     closeWizard();
     // Refresh BEFORE navigating so TaskDetailPage can find the new task
@@ -300,6 +308,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     await refreshAll();
     if (landingTaskId) {
       setView({ kind: 'task_detail', task_id: landingTaskId, from: 'tasks' });
+      if (createdLinkRewrite) {
+        // 异步触发,不阻塞跳转
+        scenarioService.runTaskNow(landingTaskId).catch(e => {
+          console.error('[ScenarioView] link-rewrite auto-run failed:', e);
+        });
+      }
     }
   };
 
@@ -664,7 +678,9 @@ const LinkModeEditModal: React.FC<{
   const validate = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
-    if (lines.length > 3) return { ok: [], err: isZh ? '最多 3 个链接' : 'Max 3 URLs' };
+    // v4.28.x: 跟 ConfigWizard 创建流程对齐 —— 创建那边一直是 1-5,这里编辑 modal
+    // 之前卡在 1-3,导致用户在编辑里加第 4 个 URL 直接被拒。统一为 1-5。
+    if (lines.length > 5) return { ok: [], err: isZh ? '最多 5 个链接' : 'Max 5 URLs' };
     for (const l of lines) {
       if (acceptsTwitterUrl) {
         if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
@@ -713,7 +729,13 @@ const LinkModeEditModal: React.FC<{
           🔗 {isZh ? '编辑指定链接任务' : 'Edit link-mode task'}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          {isZh ? `粘贴 1~3 个${sourceLabel}原文链接，每行一个。` : `Paste 1-3 ${sourceLabel} URLs, one per line.`}
+          {isZh
+            ? (acceptsTwitterUrl
+                ? '粘贴 1~5 个推特原文链接，图文视频均可，每行一个，AI 进行深度改写后发布。'
+                : '粘贴 1~5 个小红书原文链接，每行一个，AI 进行深度改写后发布。')
+            : (acceptsTwitterUrl
+                ? 'Paste 1-5 tweet URLs (images & videos both supported), one per line. AI will deep-rewrite and publish.'
+                : 'Paste 1-5 XHS URLs, one per line. AI will deep-rewrite and publish.')}
         </p>
         <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
           {isZh ? '原文链接' : 'Source URLs'}

@@ -1067,12 +1067,12 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
     // Link-based rewrite
     scenarioLinkModeTitle: '小红书 · 指定链接',
-    scenarioLinkModeDesc: '直接粘贴 1-3 个你看中的爆款文章链接，NoobClaw 自动取原文，AI 深度改写标题+正文+配图，按你的人设上传到草稿箱，精挑细选不靠搜索。',
+    scenarioLinkModeDesc: '直接粘贴 1-5 个你看中的爆款文章链接，NoobClaw 自动取原文，AI 深度改写标题+正文+配图，按你的人设上传到草稿箱，精挑细选不靠搜索。',
     scenarioLinkModeBtn: '粘贴链接开始',
     scenarioLinkModeLabel: '小红书文章链接',
-    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\n每行一个，最多 3 个',
+    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\n每行一个，最多 5 个',
     scenarioLinkModeSubmit: '开始仿写',
-    scenarioLinkModeHint: '每行一个链接，1-3 个',
+    scenarioLinkModeHint: '每行一个链接，1-5 个',
 
     // Login gate modal
     scenarioLoginRequiredTitle: '请先登录小红书',
@@ -2309,12 +2309,12 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
 
     // Link-based rewrite
     scenarioLinkModeTitle: 'Xiaohongshu · Pick-your-links',
-    scenarioLinkModeDesc: 'Paste 1-3 hand-picked viral article URLs. NoobClaw fetches the originals, AI deep-rewrites title + body + images in your persona, uploads to draft box — hand-picked, no keyword search.',
+    scenarioLinkModeDesc: 'Paste 1-5 hand-picked viral article URLs. NoobClaw fetches the originals, AI deep-rewrites title + body + images in your persona, uploads to draft box — hand-picked, no keyword search.',
     scenarioLinkModeBtn: 'Paste links & start',
     scenarioLinkModeLabel: 'XHS article URLs',
-    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\none per line, up to 3',
+    scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\none per line, up to 5',
     scenarioLinkModeSubmit: 'Start rewriting',
-    scenarioLinkModeHint: 'One URL per line, 1-3 total',
+    scenarioLinkModeHint: 'One URL per line, 1-5 total',
 
     // Login gate modal
     scenarioLoginRequiredTitle: 'Please log in to Xiaohongshu',

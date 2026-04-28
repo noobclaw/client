@@ -15,7 +15,17 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 import { i18nService } from '../../services/i18n';
 import type { ScenarioRunProgress } from '../../types/scenario';
 
+// v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
+// detail 页面被翻译,会回落到原始 ID(如 'web3_alpha'),用户看到「人设: web3_alpha」。
+// MyTasksPage 列表那边的 TRACK_ICONS 是全的所以没问题,这里补齐 web3 系列保持一致。
 const TRACK_NAMES: Record<string, string> = {
+  // Twitter / Binance (web3) tracks
+  web3_alpha: '🎯 Web3 · Alpha 猎人',
+  web3_defi: '🏛️ Web3 · DeFi 用户',
+  web3_meme: '🎪 Web3 · Meme 文化',
+  web3_builder: '🛠️ Web3 · 建设者',
+  web3_zh_kol: '📢 Web3 · 通用 KOL',
+  // XHS tracks
   career_side_hustle: '💼 副业 · 打工人赚钱',
   indie_dev: '👩‍💻 独立开发 · 程序员记录',
   personal_finance: '💰 理财 · 记账攻略',
@@ -614,19 +624,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               const taskUrls: string[] = (task as any).urls || [];
               return (
                 <>
-                  <div className="flex items-center gap-3">
-                    <span className="text-gray-400">
-                      {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
-                    </span>
-                    <span className="dark:text-white font-medium">
-                      {isLinkMode
-                        ? (isXTask
-                            ? (isZh ? '🔗 指定推文 · Twitter 仿写' : '🔗 Pick-your-tweets · X rewrite')
-                            : (isZh ? '🔗 小红书 · 指定链接爆款仿写' : '🔗 Pick-your-links · XHS rewrite'))
-                        : trackName}
-                    </span>
-                    <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
-                  </div>
+                  {/* v4.28.x: 链接仿写场景(XHS link mode / x_link_rewrite / binance_from_x_link)
+                      隐藏「赛道/人设: 🔗 ...」整行 —— 上面已经有 type badge 标明任务类型,
+                      这一行的 link-mode label 跟 badge 完全重复,#ID 也已在标题区显示;
+                      用户根本没填 track / persona,展示出来纯属噪音。 */}
+                  {!isLinkMode && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400">
+                        {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
+                      </span>
+                      <span className="dark:text-white font-medium">{trackName}</span>
+                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                    </div>
+                  )}
+                  {/* v4.28.x: 把 task.persona 文本展开显示在「人设: XXX」下面 ——
+                      列表页(MyTasksPage)只截取首行 80 字,用户进到详情想看完整身份
+                      描述只能去 wizard 编辑里翻,体验不好。这里展示完整 persona。
+                      Link 模式没人设概念跳过。 */}
+                  {!isLinkMode && (task.persona || '').trim() && (
+                    <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
+                      👤 {(task.persona || '').trim()}
+                    </div>
+                  )}
                   {isLinkMode ? (
                     <>
                       <div>{isZh ? '原文链接' : 'Source URLs'}: {taskUrls.length} {isZh ? '个' : ''}</div>

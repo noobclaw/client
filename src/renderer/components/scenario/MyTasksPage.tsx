@@ -215,6 +215,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const sid = task.scenario_id;
               const isLinkRewriteTwitter = sid === 'x_link_rewrite';
               const isXhsLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0 && platformId === 'xhs');
+              const isBinanceLinkRewrite = sid === 'binance_from_x_link';
+              // v4.28.x: 任何"用户粘 URL 列表仿写"任务统一处理 —— 之前 binance_from_x_link
+              // 没被算进去,导致它在列表里还显示 track 名 + persona 摘要(其实用户没填,
+              // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
+              // 引入 isAnyLinkRewrite 后:隐藏 track 行 / 隐藏 persona snippet / 改显 URL 列表。
+              const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite;
               const taskUrls: string[] = (task as any).urls || [];
               // Type labels per user spec (v2.4.26):
               // Twitter: 推特 · 智能互动 / 推特 · 自动发推 / 指定链接仿写
@@ -273,7 +279,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
                         {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
                       </span>
-                      {!isLinkRewriteTwitter && (
+                      {!isAnyLinkRewrite && (
                         <>
                           <span className="text-lg">{subIcon}</span>
                           <span className="font-medium dark:text-white truncate">{subTitle}</span>
@@ -289,7 +295,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           {isZh ? '运行中' : 'Running'}
                         </span>
-                      ) : interval === 'once' || isLinkRewriteTwitter || isXhsLinkMode ? (
+                      ) : interval === 'once' || isAnyLinkRewrite ? (
                         <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
                           ✋ {isZh ? '手动运行' : 'Manual'}
                         </span>
@@ -304,15 +310,18 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       )}
                     </div>
                   </div>
-                  {/* Persona snippet — strip Chinese prefix in EN mode */}
-                  {personaSnippet && (
+                  {/* Persona snippet — strip Chinese prefix in EN mode.
+                      v4.28.x: 链接仿写场景(x_link_rewrite / binance_from_x_link / XHS link mode)
+                      用户根本没填 persona,只有 wizard fallback 默认值,展示出来反而误导
+                      ("我没填怎么有身份"用户原话),所以这里跳过。 */}
+                  {!isAnyLinkRewrite && personaSnippet && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
                       👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
                   )}
                   {/* Frequency / URL details */}
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-                    {isLinkRewriteTwitter || isXhsLinkMode ? (
+                    {isAnyLinkRewrite ? (
                       <>
                         <div>
                           {isZh ? '链接' : 'URLs'}: {taskUrls.length}

@@ -302,7 +302,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh
-                ? '粘贴 1-5 条推文链接（x.com / twitter.com /<handle>/status/<id>）。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
+                ? '粘贴 1-5 条推文链接。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
                 : 'Paste 1-5 tweet URLs. AI deconstructs hook + structure, rewrites in source language/style (no copying), posts with 10-30 min spacing.'}
             </p>
             <label className="text-sm font-medium dark:text-gray-200 mb-2 block">

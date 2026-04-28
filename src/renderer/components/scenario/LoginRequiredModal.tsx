@@ -255,10 +255,6 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   const installActionButtons = (
     <>
       <div className="flex flex-col gap-1.5">
-        <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
-          className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
-          {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
-        </button>
         <button type="button" onClick={() => window.open('https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-green-500/30 text-green-500 hover:bg-green-500/10 transition-colors text-left">
           {isZh ? '🌐 安装 Chrome 浏览器插件' : '🌐 Install Chrome Extension'}
@@ -266,6 +262,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         <button type="button" onClick={() => window.open('https://addons.mozilla.org/firefox/addon/noobclaw-browser-assistant/', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-orange-500/30 text-orange-500 hover:bg-orange-500/10 transition-colors text-left">
           {isZh ? '🦊 安装 Firefox 浏览器插件' : '🦊 Install Firefox Extension'}
+        </button>
+        <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/search/noobclaw', '_blank')}
+          className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
+          {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
         </button>
         <button type="button" onClick={() => {
           setLocalInstallOpen(true);
@@ -504,9 +504,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               📁 {isZh ? '本地安装浏览器插件' : 'Install Local Extension'}
             </h3>
             <ol className="text-xs text-gray-700 dark:text-gray-300 space-y-2 mb-4 list-decimal list-inside leading-relaxed">
-              <li>{isZh ? '点下方 📂 按钮，会自动打开 chrome://extensions/ 并把 NoobClaw 的资源目录复制到剪贴板' : 'Click 📂 below — opens chrome://extensions/ and copies the NoobClaw resources folder path to clipboard'}</li>
-              <li>{isZh ? '在扩展页右上角打开「开发者模式」' : 'Enable "Developer mode" in the top-right'}</li>
-              <li>{isZh ? '点「加载已解压的扩展程序」，在弹出的文件选择框地址栏粘贴刚才复制的路径回车，然后选中里面的 chrome-extension 文件夹点「选择文件夹」' : 'Click "Load unpacked", paste the copied path into the file dialog\'s address bar, then click into the chrome-extension folder and click "Select Folder"'}</li>
+              <li>{isZh ? '点下方 📂 按钮，会自动打开 chrome://extensions/ 并把 NoobClaw 的插件目录复制到剪贴板' : 'Click 📂 below — opens chrome://extensions/ and copies the NoobClaw extension folder path to clipboard'}</li>
+              <li>{isZh ? '在浏览器的插件页右上角打开「开发者模式」' : 'Enable "Developer mode" in the top-right of the browser extensions page'}</li>
+              <li>{isZh ? '点「加载已解压的扩展程序」，在弹出的文件选择框地址栏粘贴刚才复制的路径回车，然后选中里面的 chrome-extension 文件夹进行加载' : 'Click "Load unpacked", paste the copied path into the file dialog\'s address bar, then select the chrome-extension folder to load it'}</li>
               <li>{isZh ? '回到本页面点「重新检测」，检测到绿色 ✓ 即安装成功' : 'Return here and click "Re-check" — ✓ means success'}</li>
             </ol>
             {localInstallMsg && (
@@ -547,8 +547,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                     }
                     if (copied) {
                       setLocalInstallMsg(isZh
-                        ? '✅ 已打开浏览器扩展页，资源目录已复制到剪贴板。粘贴后选中里面的 chrome-extension 文件夹即可。'
-                        : '✅ Opened extensions page, resources folder path copied. After pasting, click into the chrome-extension folder and select it.');
+                        ? '✅ 已打开浏览器扩展页，插件目录已复制到剪贴板。粘贴后选中里面的 chrome-extension 文件夹即可。'
+                        : '✅ Opened extensions page, extension folder path copied. After pasting, click into the chrome-extension folder and select it.');
                     } else {
                       // Clipboard write failed — give user the path to copy manually
                       setLocalInstallMsg((isZh

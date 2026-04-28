@@ -189,7 +189,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const validateLinks = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
     if (lines.length < 1) return { ok: [], err: i18nService.currentLanguage === 'zh' ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
-    if (lines.length > 3) return { ok: [], err: i18nService.currentLanguage === 'zh' ? '最多 3 个链接' : 'Max 3 URLs' };
+    if (lines.length > 5) return { ok: [], err: i18nService.currentLanguage === 'zh' ? '最多 5 个链接' : 'Max 5 URLs' };
     for (const l of lines) {
       if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
         return { ok: [], err: (i18nService.currentLanguage === 'zh' ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };

@@ -324,6 +324,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // 隐藏顶部 Track 下拉,把它合到"选择人设"分组里(预设 + 详细 textarea),
   // 隐藏冗余 hint 蓝框,隐藏底部使用须知。
   const isBinanceNonLink = isBinancePlatform && !isLinkRewriteScenario;
+  // v4.28.x: 推特(自动互动 + 自动发推)也沿用同一布局 ——「选择人设」下拉 + textarea
+  // 合一,代替原来的「选择赛道 + 单独 persona 区块」。
+  // x_link_rewrite 仍排除(它根本不需要 persona)。
+  const useCombinedPersona = isXOrBinance && !isLinkRewriteScenario;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
@@ -405,9 +409,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // below — it's not exposed for reply scenarios at all.
   const [runInterval, setRunInterval] = useState<string>(() => {
     const init = (initialTask as any)?.run_interval || 'daily_random';
-    // 旧任务可能存的是 'daily' (固定钟点),但 X / Binance / auto_reply 都已经
-    // 不再支持这个选项 — 加载进来时回退到 daily_random,避免按钮全灰、picker 不显示。
-    if (init === 'daily' && (isXOrBinance || isAutoReply)) return 'daily_random';
+    // v4.28.x: 'daily'(固定钟点)对所有场景都已经下线 —— 任意场景每天同一时刻打
+    // 卡都易触发风控,统一改成 daily_random。旧任务存的 'daily' 在加载进来时
+    // 全部回退到 daily_random,避免按钮全灰、picker 不显示。
+    if (init === 'daily') return 'daily_random';
     return init;
   });
   const [dailyTime, setDailyTime] = useState<string>(() => {
@@ -772,8 +777,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   no "track" concept; the source URL IS the topic). All other
                   scenarios still need it for keyword/persona presets。
                   v4.31.27: 币安所有非 link 场景(发帖/互动/搬运)不在这显示,
-                  移到下面的「选择人设」分组里跟 persona textarea 合一。 */}
-              {!isLinkRewriteScenario && !isBinanceNonLink && (
+                  移到下面的「选择人设」分组里跟 persona textarea 合一。
+                  v4.28.x: 推特场景同样改成下面的「选择人设」合一布局,这里也隐掉。 */}
+              {!isLinkRewriteScenario && !useCombinedPersona && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择赛道' : 'Select Track'}
@@ -833,21 +839,19 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     rows={isBinancePlatform ? 3 : 6}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   />
-                  {!isBinancePlatform && (
-                    <div className="text-[11px] text-gray-400 mt-1">
-                      {isZh ? '关键词越多，每次搜索内容越不重复，降低风控风险' : 'More keywords = less detection risk'}
-                    </div>
-                  )}
+                  {/* v4.28.x: 之前这里有「关键词越多，每次搜索内容越不重复，降低风控风险」
+                      hint —— 用户反馈冗余,文案占视觉空间但实际信息量低,直接移除。 */}
                 </div>
               )}
 
               {/* v4.31.27: 币安所有非 link 场景共用「选择人设」分组 —
                   preset 下拉(原 Track 选项)+ 详细人设 textarea 合在一个 label 下。
-                  发帖 / 互动 / 搬运 都用这个布局。 */}
-              {isBinanceNonLink && (
+                  发帖 / 互动 / 搬运 都用这个布局。
+                  v4.28.x: 推特场景(auto_engage / post_creator) 也改用这个合一布局。 */}
+              {useCombinedPersona && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? '选择人设（你以什么身份发推/评论）' : 'Persona (who you are when posting/commenting)'}
+                    {isZh ? '选择人设（你以什么身份发帖/评论）' : 'Persona (who you are when posting/commenting)'}
                   </label>
                   <div className="relative mb-2">
                     <select
@@ -879,8 +883,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
               {/* Persona — only exposed for auto_reply. Determines the voice of
                   every comment posted under your account. Default is the
-                  detailed reply_persona_hint for the chosen track. */}
-              {isAutoReply && (
+                  detailed reply_persona_hint for the chosen track.
+                  v4.28.x: 跳过 X/Binance auto_reply(x_auto_engage / binance_square_auto_engage)
+                  —— 它们的 persona 已经在上面的「选择人设」合一区块里渲染了,
+                  这里再渲染一次就是重复输入框。仅 XHS auto_reply 走这条路径。 */}
+              {isAutoReply && !useCombinedPersona && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '人设（你以什么身份在评论）' : 'Persona (who you are in the comments)'}
@@ -888,11 +895,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       {isZh ? '· 越具体 AI 越像真人' : '· Specific = less AI-like'}
                     </span>
                   </label>
-                  <div className="mb-2 rounded-lg border border-cyan-500/30 bg-cyan-500/5 px-3 py-2 text-[11px] text-cyan-700 dark:text-cyan-400 leading-relaxed">
-                    {isZh
-                      ? <>💡 已根据所选赛道预填详细人设。<strong>建议你按自己实际情况微调</strong>（年龄、职业、城市、消费水平、口头禅、避讳话题），人设越独特生成的回复越不像 AI。</>
-                      : <>💡 Pre-filled with a detailed persona for this track. <strong>Tweak it to match your real profile</strong> (age, job, city, spending, catchphrases, taboos) — the more unique, the less AI-like.</>}
-                  </div>
+                  {/* v4.28.x: 之前这里有「💡 已根据所选赛道预填详细人设…」cyan hint 框,
+                      用户反馈跟下面 textarea 内容重复且占空间,移除。 */}
                   <textarea
                     value={persona}
                     onChange={e => setPersona(e.target.value)}
@@ -911,23 +915,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {/* ── Twitter + Binance simple-post fields ── */}
               {isXOrBinance && (
                 <>
-                  {/* Persona — for x_auto_engage / x_post_creator.
-                      x_link_rewrite is "literal rewrite of provided URLs" — no persona injection.
-                      v4.31.27: 币安所有非 link 场景的 persona 都到上面「选择人设」分组里去了
-                      (preset 下拉 + 详细 textarea 合一)。 */}
-                  {!isAutoReply && !isLinkRewriteScenario && !isBinanceNonLink && (
-                    <div>
-                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                        {isZh ? '人设（你以什么身份发推/评论）' : 'Persona'}
-                      </label>
-                      <textarea
-                        value={persona}
-                        onChange={e => setPersona(e.target.value)}
-                        rows={6}
-                        className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500/50 leading-relaxed"
-                      />
-                    </div>
-                  )}
+                  {/* v4.28.x: 之前这里有一个 x_post_creator 专用的 persona textarea
+                      (isXOrBinance && !isAutoReply && !isLinkRewriteScenario && !isBinanceNonLink)
+                      —— 现在所有 X / Binance 非 link 场景都走上面的 useCombinedPersona
+                      合一区块了,这块成了死代码,移除以避免出现两个 persona 输入框。 */}
 
                   {/* v4.31.27: media filter for binance_from_x_repost 已经移到 step 1 顶部,
                       此处不再渲染(其他 isXOrBinance 场景目前都不需要 media filter)。 */}
@@ -1128,7 +1119,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         { value: '1h', label: isZh ? '每小时' : 'Hourly' },
                         { value: '3h', label: isZh ? '每 3 小时' : 'Every 3h' },
                         { value: '6h', label: isZh ? '每 6 小时' : 'Every 6h' },
-                        ...(isXOrBinance ? [] : [{ value: 'daily', label: isZh ? '每天（固定时间）' : 'Daily (fixed time)' }]),
+                        // v4.28.x: 移除「每天(固定时间)」—— 任意场景在固定时间打卡都
+                        // 容易被风控判机器人,统一用 daily_random(每日随机时间)代替。
                         { value: 'daily_random', label: isZh ? '每日随机时间' : 'Daily (random time)' },
                       ]
                   ).map(opt => (
@@ -1773,32 +1765,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               </div>
 
-              {/* Usage warning — scenario-specific copy
-                  v4.31.27: 所有币安非 link 场景都隐掉(用户统一规则) */}
-              {!isBinanceNonLink && (
-                <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3 mb-4">
-                  <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                    {isZh ? '⚠️ 使用须知（重要）' : '⚠️ Usage Notes (Important)'}
-                  </div>
-                  <p className="text-xs text-gray-700 dark:text-gray-300 leading-relaxed">
-                    {isXPlatform
-                      ? (isZh
-                          ? <>推文一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 x.com 标签页或退出登录。⚠️ <strong>大陆用户需开启 VPN / 代理</strong>确保 x.com 可访问。建议第一次运行后人工检查 AI 生成内容的风格。</>
-                          : <>Tweets <strong>cannot be unposted</strong>. Keep the browser open and don't close the x.com tab or log out. ⚠️ <strong>Mainland China users must use a VPN / proxy</strong> for x.com access. Review AI output after first run to confirm voice.</>)
-                      : isBinancePlatform
-                        ? (isZh
-                            ? <>帖子一旦发布<strong>无法撤回</strong>。运行期间请<strong>保持浏览器打开</strong>、不要关闭 binance.com 标签页或退出登录。建议第一次运行后人工检查 AI 生成内容的风格与 cashtag 是否合适。</>
-                            : <>Posts <strong>cannot be unposted</strong>. Keep the browser open and don't close the binance.com tab or log out. Review AI output after first run to confirm voice and cashtag usage.</>)
-                      : isAutoReply
-                        ? (isZh
-                            ? <>评论一旦发布<strong>无法撤回</strong>。任务会模拟你本人浏览并按 <strong>评论间隔 30-80 秒、文章间隔 60-200 秒</strong>逐条发评，运行期间请<strong>保持浏览器打开</strong>、不要关闭小红书页面或退出登录。建议先用 1-2 篇试运行确认 AI 生成的口吻符合你的风格。</>
-                            : <>Comments <strong>cannot be unposted</strong> once submitted. The task simulates your own browsing with <strong>30-80s between replies, 60-200s between articles</strong>. Keep the browser open, do not close the Xiaohongshu tab or log out. Start with 1-2 articles to validate the AI's voice.</>)
-                        : (isZh
-                            ? <>任务会<strong>模拟你本人</strong>在小红书上的行为。运行期间请<strong>保持浏览器打开</strong>、<strong>不要关闭小红书页面</strong>或退出登录，否则任务会中断。每次执行前会自动检查登录状态。</>
-                            : <>The task <strong>simulates your own behavior</strong> on Xiaohongshu. Keep the browser open, don't close the Xiaohongshu tab, and don't log out — otherwise the run will be interrupted. Login status is auto-checked before each run.</>)}
-                  </p>
-                </div>
-              )}
+              {/* v4.28.x: 「使用须知」amber 警告框已经全场景隐掉(用户统一规则)
+                  —— 之前只对币安非 link 场景隐藏,现在 X / XHS step3 也都不再展示。
+                  下方的「使用条款」勾选清单仍保留以满足合规需求。 */}
 
               <div className="space-y-2">
                 <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
