@@ -1227,27 +1227,49 @@ function buildContext(
         }
 
         const pref = opts?.preferQuality || 'highest';
-        const chosen = pref === 'highest' ? mp4Variants[0]
-          : pref === 'lowest' ? mp4Variants[mp4Variants.length - 1]
-          : mp4Variants[Math.floor(mp4Variants.length / 2)];
+        // v4.31.47: 之前直接选 highest variant + 5min 单次 timeout,Twitter CDN 慢
+        //   时整个 task 卡 5 分钟才放弃。改成:按偏好排好优先级序列,每个
+        //   variant 60s timeout,失败立刻降级试下一个。最差情况几分钟内一定
+        //   有结果(成功最低质量,或者全部 fail)。每次失败 + 切换在 cowork.log
+        //   打 WARN 含 statusId / variant bitrate 方便事后定位。
+        const orderedVariants = pref === 'highest'
+          ? mp4Variants  // 已按 bitrate 降序
+          : pref === 'lowest'
+            ? [...mp4Variants].reverse()
+            : mp4Variants.slice(Math.floor(mp4Variants.length / 2)).concat(mp4Variants.slice(0, Math.floor(mp4Variants.length / 2)));
 
-        // 4) 下载视频字节
-        const dlCtl = new AbortController();
-        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000); // 5 min for big videos
-        let videoBuf: Buffer;
-        try {
-          const vResp = await fetch(chosen.url, {
-            method: 'GET',
-            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
-            signal: dlCtl.signal,
-          });
-          clearTimeout(dlTo);
-          if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
-          const ab = await vResp.arrayBuffer();
-          videoBuf = Buffer.from(ab);
-        } catch (e: any) {
-          clearTimeout(dlTo);
-          return { ok: false, reason: 'video_download_failed:' + String(e?.message || e).slice(0, 80) };
+        let videoBuf: Buffer | null = null;
+        let chosen: typeof mp4Variants[number] | null = null;
+        let lastDlErr = '';
+        for (let vi = 0; vi < orderedVariants.length; vi++) {
+          const v = orderedVariants[vi];
+          const dlCtl = new AbortController();
+          const dlTo = setTimeout(() => dlCtl.abort(), 60 * 1000); // 60s/variant
+          try {
+            const vResp = await fetch(v.url, {
+              method: 'GET',
+              headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
+              signal: dlCtl.signal,
+            });
+            clearTimeout(dlTo);
+            if (!vResp.ok) {
+              lastDlErr = 'http_' + vResp.status;
+              coworkLog('WARN', 'phaseRunner', `fetchTweetVideo 下载失败 variant=${vi+1}/${orderedVariants.length} bitrate=${v.bitrate} status=${vResp.status} statusId=${statusId}`);
+              continue;
+            }
+            const ab = await vResp.arrayBuffer();
+            videoBuf = Buffer.from(ab);
+            chosen = v;
+            break;
+          } catch (e: any) {
+            clearTimeout(dlTo);
+            lastDlErr = String(e?.message || e).slice(0, 80);
+            coworkLog('WARN', 'phaseRunner', `fetchTweetVideo 下载异常 variant=${vi+1}/${orderedVariants.length} bitrate=${v.bitrate} err=${lastDlErr} statusId=${statusId}`);
+            continue;
+          }
+        }
+        if (!videoBuf || !chosen) {
+          return { ok: false, reason: 'video_download_failed:' + lastDlErr };
         }
 
         // 5) 写本地 — 默认任务目录,subdir = '原文'
