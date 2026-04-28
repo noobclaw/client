@@ -80,6 +80,11 @@ function abortPoll(isAbortRequested: () => boolean): Promise<never> {
   });
 }
 
+/** v4.31.39: 所有 ctx.* 调 sendBrowserCommand 的统一入口 —— 调用前 check
+ *  abort + race(sendBrowserCommand vs abortPoll)。task 停了浏览器侧立即
+ *  throw user_stopped 不再 click/scroll/navigate。需要 closure 捕获 progress
+ *  + getBridgeOpts,所以放进 buildContext 内做工厂。 */
+
 function parseLikes(text: string): number {
   if (!text) return 0;
   const s = String(text).trim();
@@ -213,6 +218,16 @@ function buildContext(
   let activePattern: string | undefined = primaryPattern;
   const getBridgeOpts = () => activePattern ? { tabPattern: activePattern } : undefined;
 
+  // v4.31.39: 统一 abortable browser command —— 所有 ctx.* 浏览器操作经此入口,
+  //   abort flag 设置后立即 throw 'user_stopped',不等浏览器响应。
+  const abortableCmd = async (command: string, params: any, timeout: number): Promise<any> => {
+    if (progress.isAbortRequested()) throw new Error('user_stopped');
+    return Promise.race([
+      sendBrowserCommand(command, params, timeout, getBridgeOpts()),
+      abortPoll(progress.isAbortRequested),
+    ]);
+  };
+
   // All drafts collected during this run (for saveDrafts)
   const allDrafts: Draft[] = [];
 
@@ -286,24 +301,17 @@ function buildContext(
     getActiveTabKey: () => (activePattern === secondaryPattern ? 'secondary' : 'primary'),
 
     // Convenience shortcuts for common operations
-    // v4.31.38: 所有 ctx.* 浏览器操作都用 race(sendBrowserCommand vs abortPoll)
-    //   实现严格 abort —— 之前只在调用前 check 一次 aborted,await 期间用户停
-    //   task 也得等响应回来才 throw,期间 orchestrator 还在跑 ctx.scroll /
-    //   ctx.click 操作浏览器,UI 任务显示已停但浏览器还在自动滚动/发文。
+    // v4.31.38/39: 所有 ctx.* 浏览器操作走 abortableCmd —— race
+    //   (sendBrowserCommand vs abortPoll),用户停 task 后浏览器侧立即 throw
+    //   不再操作。之前只 navigate/scroll 加了,click/runScript 漏了 → 发推
+    //   按钮的最后一击 click 不 abort,task 停了还能发出去。这里抽 helper
+    //   统一加固。
     navigate: async (url: string) => {
-      if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await Promise.race([
-        sendBrowserCommand('navigate', { url }, 30000, getBridgeOpts()),
-        abortPoll(progress.isAbortRequested),
-      ]);
+      await abortableCmd('navigate', { url }, 30000);
     },
 
     scroll: async (amount?: number) => {
-      if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await Promise.race([
-        sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, getBridgeOpts()),
-        abortPoll(progress.isAbortRequested),
-      ]);
+      await abortableCmd('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000);
     },
 
     sleep: async (min: number, max?: number) => {
@@ -324,28 +332,30 @@ function buildContext(
         coworkLog('WARN', 'phaseRunner', `script "${name}" not found in pack`);
         return null;
       }
-      // Replace __KEY__ placeholders with param values
       if (params) {
         for (const [key, val] of Object.entries(params)) {
           script = script.replace(new RegExp(`__${key.toUpperCase()}__`, 'g'), String(val).replace(/'/g, "\\'"));
         }
       }
       try {
-        const res = await sendBrowserCommand('javascript', { code: script }, 8000, getBridgeOpts());
+        const res = await abortableCmd('javascript', { code: script }, 8000);
         const raw = res?.result;
         if (typeof raw === 'string') {
           try { return JSON.parse(raw); } catch { return raw; }
         }
         return raw;
       } catch (err) {
+        if (String(err && (err as any).message || err).includes('user_stopped')) throw err;
         coworkLog('WARN', 'phaseRunner', `runScript("${name}") failed`, { err: String(err) });
         return null;
       }
     },
 
-    // Atomic click at coordinates — used by orchestrator's clickByText()
+    // Atomic click at coordinates — used by orchestrator's clickByText().
+    // v4.31.39: 加 abortableCmd —— click 是发推/发帖按钮的最后一击,task 停
+    //   了不 abort 浏览器还会真的点出去,造成用户报告"任务停了还在自动发文"。
     click: async (x: number, y: number) => {
-      await sendBrowserCommand('click', { coordinate: [x, y] }, 3000, getBridgeOpts());
+      await abortableCmd('click', { coordinate: [x, y] }, 3000);
     },
 
     // Debug log (visible in sidecar console, not in UI)
