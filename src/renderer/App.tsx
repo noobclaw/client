@@ -488,6 +488,28 @@ const App: React.FC = () => {
     return () => window.removeEventListener('app:showToast', handler);
   }, [showToast]);
 
+  // v4.31.45: 全局监听定时任务被 SKIPPED 事件,toast 提示用户。手动触发已有
+  //   类似提示(在 TaskDetailPage),定时跑跟它对齐 — 用户能看到"X 任务到点
+  //   没启动:被 XXX 占用",不再 silently 错过。
+  useEffect(() => {
+    const off = (window.electron as any)?.ipcRenderer?.on?.('scenario:scheduledSkipped', (info: any) => {
+      const taskShort = info?.taskId ? `#${String(info.taskId).slice(0, 8)}` : '任务';
+      const reason = String(info?.reason || '');
+      let msg: string;
+      if (reason.startsWith('resource_busy:') && Array.isArray(info?.busyPlatforms) && info.busyPlatforms.length) {
+        const plats = info.busyPlatforms.join(' + ');
+        const holder = info?.busyTaskName || '其他任务';
+        msg = `⏰ 定时任务 ${taskShort} 到点未启动:${plats} 被 ${holder} 占用,下个 tick 重试`;
+      } else if (reason === 'concurrency_limit_reached') {
+        msg = `⏰ 定时任务 ${taskShort} 到点未启动:同时运行任务已达上限,下个 tick 重试`;
+      } else {
+        msg = `⏰ 定时任务 ${taskShort} 到点未启动:${reason || '未知'}`;
+      }
+      showToast(msg);
+    });
+    return () => { if (typeof off === 'function') off(); };
+  }, [showToast]);
+
   // Subscribe to auth state changes
   useEffect(() => {
     const unsub = noobClawAuth.subscribe(setAuthState);

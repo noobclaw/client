@@ -887,6 +887,19 @@ function setNextPlannedRun(task: ScenarioTask, fromTs: number, isFirstRun: boole
 let schedulerStarted = false;
 let schedulerTimer: NodeJS.Timeout | null = null;
 
+/** v4.31.45: 定时触发被 SKIPPED 时调,sidecar-server 启动时注入 broadcastSSE
+ *  包装让前端 UI 能 toast 提示。注入前调用是 no-op(早期 tick 静默)。 */
+let onScheduledSkipped: ((info: {
+  taskId: string;
+  scenarioId: string;
+  reason?: string;
+  busyPlatforms?: string[];
+  busyTaskName?: string;
+}) => void) | null = null;
+export function setOnScheduledSkipped(fn: typeof onScheduledSkipped): void {
+  onScheduledSkipped = fn;
+}
+
 const SCHEDULER_TICK_MS = 60 * 1000;
 
 /** v4.31.32: 单次 tick 抽出来,启动时立即跑一次 + 之后每 60s 跑一次。
@@ -954,11 +967,27 @@ async function schedulerTick(): Promise<void> {
 
       nFired++;
       coworkLog('INFO', 'scheduler', `Auto-running task ${task.id} (interval: ${interval}, planned: ${new Date(planned).toISOString()})`);
+      const taskRefForLog = task; // closure 捕获,SKIPPED 时给前端推送用
       runTask(task, false)
         .then(out => {
           if (!out) return;
           if (out.status === 'skipped') {
             coworkLog('WARN', 'scheduler', `Auto-run SKIPPED ${task.id}: ${out.reason || 'unknown'} — 下次 tick(60s)再试`);
+            // v4.31.45: 定时触发被资源占用 SKIPPED 时给前端推一个事件,UI
+            //   全局 toast 提示用户"X 任务到点没启动:被 XXX 占用"。之前
+            //   只在 cowork.log 里打 WARN,用户根本看不到。手动触发已有
+            //   类似提示,定时跑也对齐。
+            if (onScheduledSkipped) {
+              try {
+                onScheduledSkipped({
+                  taskId: taskRefForLog.id,
+                  scenarioId: taskRefForLog.scenario_id,
+                  reason: out.reason,
+                  busyPlatforms: (out as any).busy_platforms,
+                  busyTaskName: (out as any).busy_task_name,
+                });
+              } catch (_) { /* non-fatal */ }
+            }
           } else if (out.status === 'failed') {
             coworkLog('WARN', 'scheduler', `Auto-run FAILED ${task.id}: ${out.reason || 'unknown'}`);
           } else {

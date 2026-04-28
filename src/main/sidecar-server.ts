@@ -1884,6 +1884,12 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
     }
     try {
       const scenarioManager = require('./libs/scenario/scenarioManager');
+      // v4.31.45: 定时跑被 SKIPPED 时通过 SSE 推前端,UI 全局 toast 提示
+      if (typeof scenarioManager.setOnScheduledSkipped === 'function') {
+        scenarioManager.setOnScheduledSkipped((info: any) => {
+          broadcastSSE('scenario:scheduledSkipped', info);
+        });
+      }
       scenarioManager.startScheduler();
       coworkLog('INFO', 'sidecar-server', 'Scenario scheduler started');
     } catch (e) {
