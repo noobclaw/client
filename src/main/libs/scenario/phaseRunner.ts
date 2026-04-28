@@ -64,6 +64,22 @@ function sleep(minMs: number, maxMs?: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
+/** v4.31.38: race 用 abort 哨兵 —— 所有 ctx.* 浏览器操作 race 它,abort flag
+ *  设置后立即 reject('user_stopped'),不等浏览器响应。每 200ms 轮询一次。
+ *  调用方负责清理 setInterval(通过 finally 或 race 完成自动 GC)。 */
+function abortPoll(isAbortRequested: () => boolean): Promise<never> {
+  return new Promise<never>((_, reject) => {
+    const check = setInterval(() => {
+      if (isAbortRequested()) {
+        clearInterval(check);
+        reject(new Error('user_stopped'));
+      }
+    }, 200);
+    // 30 分钟兜底自动 GC,防 setInterval 永不退出泄漏
+    setTimeout(() => clearInterval(check), 30 * 60 * 1000);
+  });
+}
+
 function parseLikes(text: string): number {
   if (!text) return 0;
   const s = String(text).trim();
@@ -270,14 +286,24 @@ function buildContext(
     getActiveTabKey: () => (activePattern === secondaryPattern ? 'secondary' : 'primary'),
 
     // Convenience shortcuts for common operations
+    // v4.31.38: 所有 ctx.* 浏览器操作都用 race(sendBrowserCommand vs abortPoll)
+    //   实现严格 abort —— 之前只在调用前 check 一次 aborted,await 期间用户停
+    //   task 也得等响应回来才 throw,期间 orchestrator 还在跑 ctx.scroll /
+    //   ctx.click 操作浏览器,UI 任务显示已停但浏览器还在自动滚动/发文。
     navigate: async (url: string) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('navigate', { url }, 30000, getBridgeOpts());
+      await Promise.race([
+        sendBrowserCommand('navigate', { url }, 30000, getBridgeOpts()),
+        abortPoll(progress.isAbortRequested),
+      ]);
     },
 
     scroll: async (amount?: number) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      await sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, getBridgeOpts());
+      await Promise.race([
+        sendBrowserCommand('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000, getBridgeOpts()),
+        abortPoll(progress.isAbortRequested),
+      ]);
     },
 
     sleep: async (min: number, max?: number) => {
