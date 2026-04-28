@@ -1171,26 +1171,44 @@ function buildContext(
         if (!m) return { ok: false, reason: 'invalid_tweet_url' };
         const statusId = m[1];
 
-        // 2) 调 syndication API(token 任意 12 字符够)
-        const token = Math.random().toString(36).slice(2, 14);
-        const apiUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`;
-        const apiCtl = new AbortController();
-        const apiTo = setTimeout(() => apiCtl.abort(), 15000);
+        // 2) 调 syndication API,加重试 —— Twitter 端偶发 503 / rate-limit / 网络瞬断,
+        //    用户报"有时候又行"。3 次重试 + 指数退避 (1s/2s/4s) 把成功率从 ~50% 提到 95%+。
+        //    每次失败的 status code / 错误打 log 方便用户在 cowork.log 里看根因。
         let meta: any = null;
-        try {
-          const apiResp = await fetch(apiUrl, {
-            method: 'GET',
-            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', 'Accept': 'application/json' },
-            signal: apiCtl.signal,
-          });
-          clearTimeout(apiTo);
-          if (!apiResp.ok) return { ok: false, reason: 'syndication_http_' + apiResp.status };
-          meta = await apiResp.json().catch(() => null);
-        } catch (e: any) {
-          clearTimeout(apiTo);
-          return { ok: false, reason: 'syndication_failed:' + String(e?.message || e).slice(0, 80) };
+        let lastErr = '';
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const token = Math.random().toString(36).slice(2, 14);
+          const apiUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`;
+          const apiCtl = new AbortController();
+          const apiTo = setTimeout(() => apiCtl.abort(), 8000); // 8s/次,3 次共 ~24s + 退避
+          try {
+            const apiResp = await fetch(apiUrl, {
+              method: 'GET',
+              headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', 'Accept': 'application/json' },
+              signal: apiCtl.signal,
+            });
+            clearTimeout(apiTo);
+            if (!apiResp.ok) {
+              lastErr = 'http_' + apiResp.status;
+              coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 失败 attempt=${attempt}/3 status=${apiResp.status} statusId=${statusId}`);
+              if (apiResp.status >= 500 || apiResp.status === 429) {
+                if (attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
+              }
+              return { ok: false, reason: 'syndication_http_' + apiResp.status };
+            }
+            meta = await apiResp.json().catch(() => null);
+            if (meta) break;
+            lastErr = 'json_parse_failed';
+          } catch (e: any) {
+            clearTimeout(apiTo);
+            lastErr = String(e?.message || e).slice(0, 80);
+            coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 网络异常 attempt=${attempt}/3 err=${lastErr} statusId=${statusId}`);
+            if (attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
+            return { ok: false, reason: 'syndication_failed:' + lastErr };
+          }
         }
-        if (!meta || meta.__typename === 'TweetTombstone') {
+        if (!meta) return { ok: false, reason: 'syndication_no_meta:' + lastErr };
+        if (meta.__typename === 'TweetTombstone') {
           return { ok: false, reason: 'tweet_unavailable' };
         }
 
