@@ -1060,14 +1060,14 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: '对比',
 
     // Quick-start banner (XhsWorkflowsPage)
-    scenarioQuickStartTitle: '自动批量 · 小红书爆款批量仿写',
-    scenarioQuickStartDesc: 'NoobClaw 会在你已登录的小红书里通过关键词自动发现爆款，AI 拆解后用你的风格生成仿写，并帮你填入创作中心草稿箱。',
+    scenarioQuickStartTitle: '小红书 · 爆款批量仿写',
+    scenarioQuickStartDesc: '自动找近一周爆款图文（智能识别近期突然火起来的爆款，0-N 篇随机），AI 一键深度仿写标题+正文+配图，按你的人设落到草稿箱，全流程无人值守。',
     scenarioQuickStartBtn: '立即开始',
     scenarioQuickStartContinueBtn: '开始仿写',
 
     // Link-based rewrite
-    scenarioLinkModeTitle: '指定链接 · 小红书爆款仿写',
-    scenarioLinkModeDesc: '不通过关键词搜索，直接粘贴 1-3 个小红书文章链接，NoobClaw 取下原文，AI 改写标题和正文，生成新配图并上传到创作中心草稿箱。',
+    scenarioLinkModeTitle: '小红书 · 指定链接',
+    scenarioLinkModeDesc: '直接粘贴 1-3 个你看中的爆款文章链接，NoobClaw 自动取原文，AI 深度改写标题+正文+配图，按你的人设上传到草稿箱，精挑细选不靠搜索。',
     scenarioLinkModeBtn: '粘贴链接开始',
     scenarioLinkModeLabel: '小红书文章链接',
     scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\n每行一个，最多 3 个',
@@ -2302,14 +2302,14 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scenarioAdvantageCompareTable: 'Comparison',
 
     // Quick-start banner
-    scenarioQuickStartTitle: 'Auto Batch · Xiaohongshu viral rewrite',
-    scenarioQuickStartDesc: 'NoobClaw auto-discovers viral posts via keywords in your logged-in Xiaohongshu session, extracts them with AI, rewrites in your persona, and drops them into the creator-center draft box.',
+    scenarioQuickStartTitle: 'Xiaohongshu · Batch viral rewrite',
+    scenarioQuickStartDesc: 'Smartly finds viral notes from the past week (recently-trending detection, 0-N random), AI deep-rewrites title + body + images in your persona, drops them into your draft box — fully unattended.',
     scenarioQuickStartBtn: 'Start now',
     scenarioQuickStartContinueBtn: 'Continue',
 
     // Link-based rewrite
-    scenarioLinkModeTitle: 'Pick-your-links · XHS rewrite',
-    scenarioLinkModeDesc: 'Skip keyword search — paste 1-3 Xiaohongshu article URLs. NoobClaw fetches them, AI rewrites titles + body, generates new images, uploads to the creator-center draft box.',
+    scenarioLinkModeTitle: 'Xiaohongshu · Pick-your-links',
+    scenarioLinkModeDesc: 'Paste 1-3 hand-picked viral article URLs. NoobClaw fetches the originals, AI deep-rewrites title + body + images in your persona, uploads to draft box — hand-picked, no keyword search.',
     scenarioLinkModeBtn: 'Paste links & start',
     scenarioLinkModeLabel: 'XHS article URLs',
     scenarioLinkModePlaceholder: 'https://www.xiaohongshu.com/explore/xxxxxxxx\none per line, up to 3',

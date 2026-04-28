@@ -58,8 +58,8 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
 ];
 
 const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
-  { id: 'create',  zh: '创建自动化运营任务', en: 'Create Task',     icon: '✨' },
-  { id: 'tasks',   zh: '我的自动化运营任务', en: 'My Tasks',        icon: '📋' },
+  { id: 'create',  zh: '创建新的涨粉任务', en: 'Create Task',     icon: '✨' },
+  { id: 'tasks',   zh: '已有的涨粉任务',   en: 'My Tasks',        icon: '📋' },
   { id: 'history', zh: '运行记录',          en: 'Run History',     icon: '📊' },
 ];
 

@@ -199,8 +199,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <ScenarioCard
           color="emerald"
           emoji="🐦"
-          badge={isZh ? '每日互动' : 'Daily engagement'}
-          titleZh="推特 · 自动互动"
+          badge={isZh ? '智能互动' : 'Daily engagement'}
+          titleZh="推特 · 智能互动"
           titleEn="X Auto Engagement"
           descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 30 秒-10 分钟随机。"
           descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 30s-10min between actions."
@@ -218,11 +218,11 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <ScenarioCard
           color="sky"
           emoji="📝"
-          badge={isZh ? '每日发推' : 'Daily post'}
+          badge={isZh ? '自动发推' : 'Daily post'}
           titleZh="推特 · 自动发推"
           titleEn="X Auto Post"
-          descZh="每天自动发 1 条推，40% feed 仿写（字数≥100、浏览≥1万）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
-          descEn="Posts 1 tweet/day: 40% feed-rewrite (≥100 chars, ≥10K views) / 40% original / 20% quote-tweet, randomized for variety."
+          descZh="全智能深度写作,40% feed 爆款仿写（字数≥100、浏览≥1万）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
+          descEn="Fully intelligent deep writing: 40% viral feed-rewrite (≥100 chars, ≥10K views) / 40% trending original / 20% quote-tweet, randomized for variety."
           loading={loading}
           scenario={postCreator}
           existingTasks={postCreator ? tasksByScenario[postCreator.id] || [] : []}
@@ -263,10 +263,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <div className="flex flex-wrap gap-2">
           {[
             { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
-            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
-            { icon: '🛡️', zh: '严风控（每日动作上限 + 周休）', en: 'Strict caps (daily limits + weekly rest)' },
-            { icon: '🎲', zh: '随机节奏（动作间 30 秒-10 分钟随机）', en: 'Randomized pacing (30s-10min between actions)' },
-            { icon: '🤝', zh: '500+ web3 KOL 池', en: '500+ Web3 KOL pool' },
+            { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
+            { icon: '🛡️', zh: '严风控,完全模拟人类行为(动作间隔时间 + 随机)', en: 'Strict anti-detection, fully human-like (jittered intervals + randomization)' },
+            { icon: '🤝', zh: '1000+ web3 KOL 池', en: '1000+ Web3 KOL pool' },
           ].map((p, i) => (
             <span
               key={i}

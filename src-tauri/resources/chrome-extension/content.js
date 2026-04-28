@@ -77,6 +77,9 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         case 'upload_file':
           result = uploadFile(params);
           break;
+        case 'upload_file_from_url':
+          result = await uploadFileFromUrl(params);
+          break;
         case 'triple_click':
           result = tripleClickElement(params);
           break;
@@ -127,10 +130,11 @@ function readPage(params) {
       return;
     }
 
+    // v1.2.15: 不截断 text。原子任务原则 — 扩展返回原文,业务方自己决定要不要截。
     const info = {
       tag,
       role: role || undefined,
-      text: (el.textContent || '').trim().slice(0, 100),
+      text: (el.textContent || '').trim(),
       selector: getSelector(el),
       type: el.getAttribute('type') || undefined,
       placeholder: el.getAttribute('placeholder') || undefined,
@@ -156,7 +160,8 @@ function getText() {
   // Try article content first
   const article = document.querySelector('article') || document.querySelector('[role="main"]') || document.querySelector('main');
   const target = article || document.body;
-  return { text: target.innerText.trim().slice(0, 50000) };
+  // v1.2.15: 不截断。caller 自己决定要不要切前 N 字。
+  return { text: target.innerText.trim() };
 }
 
 function resolveElement(params) {
@@ -280,7 +285,8 @@ function findElements(params) {
       if (rect.width === 0 && rect.height === 0) continue;
       results.push({
         tag: el.tagName.toLowerCase(),
-        text: rawText.slice(0, 200),
+        // v1.2.15: 不截断 — 原文返回,caller 决定。
+        text: rawText,
         selector: getSelector(el),
         ariaLabel: el.getAttribute('aria-label') || undefined,
         bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
@@ -374,7 +380,8 @@ function getElementValue(params) {
   return {
     tag: el.tagName.toLowerCase(),
     value: el.value !== undefined ? el.value : null,
-    text: (el.textContent || '').trim().slice(0, 500),
+    // v1.2.15: 不截断
+    text: (el.textContent || '').trim(),
     checked: el.checked !== undefined ? el.checked : null,
     selected: el.tagName === 'SELECT' ? el.options[el.selectedIndex]?.text : null,
     href: el.getAttribute('href'),
@@ -585,6 +592,58 @@ function uploadFile(params) {
   }
 }
 
+// v1.2.16: 大文件 upload — 通过本地 HTTP fetch 走 sidecar 临时文件,
+// 不走 native messaging base64 IPC。给视频(几十 MB)和大图用。
+//
+// 参数:
+//   selector  : 目标 file input CSS selector(必传)
+//   fileUrl   : http://127.0.0.1:18800/api/local-file?token=xxx 形式(必传)
+//   fileName  : 上传时显示的文件名(必传)
+//   mimeType  : MIME 类型(默认 application/octet-stream 或从 blob 推断)
+//
+// 实现: fetch(fileUrl) → blob → File → DataTransfer → input.files,
+// 触发 change + input 事件让 React/Vue 收到。
+async function uploadFileFromUrl(params) {
+  const selector = params.selector || params.ref;
+  if (!selector) return { error: 'selector_required' };
+  if (!params.fileUrl) return { error: 'fileUrl_required' };
+  if (!params.fileName) return { error: 'fileName_required' };
+
+  const input = document.querySelector(selector);
+  if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+    return { error: 'file_input_not_found', selector };
+  }
+
+  let blob;
+  try {
+    const resp = await fetch(params.fileUrl, { method: 'GET' });
+    if (!resp.ok) return { error: 'fetch_http_' + resp.status };
+    blob = await resp.blob();
+  } catch (err) {
+    return { error: 'fetch_failed: ' + (err.message || String(err)).slice(0, 200) };
+  }
+
+  if (!blob || blob.size === 0) return { error: 'empty_file' };
+
+  try {
+    const mimeType = params.mimeType || blob.type || 'application/octet-stream';
+    const file = new File([blob], params.fileName, { type: mimeType });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      ok: true,
+      message: `Uploaded ${params.fileName} (${blob.size} bytes)`,
+      size: blob.size,
+      mimeType,
+    };
+  } catch (err) {
+    return { error: 'inject_failed: ' + (err.message || String(err)).slice(0, 200) };
+  }
+}
+
 function tripleClickElement(params) {
   const el = resolveElement(params);
   if (!el) return { error: 'Element not found' };
@@ -601,6 +660,13 @@ function querySelectorCmd(params) {
   if (!selector) return { error: 'selector is required' };
   const limit = params.limit || 50;
   const attrNames = params.attrs ? params.attrs.split(',') : [];
+  // v1.2.15: 默认不截断 text —— 原文多长就返回多长。caller 可传 maxLen
+  // 显式截断(比如调试场景只想看前 N 字)。
+  // 之前硬截 200 是 readPage "扫交互元素" 时为了避免长文本搞炸 IPC 抄过来的,
+  // 在 query_selector "抓内容" 用法下完全错位 —— 推 307 字 / 文章 800 字
+  // 全砍剩 200,orchestrator 算 60% 字数下限基础不对,仿写全跑偏。
+  const textMaxLen = (typeof params.maxLen === 'number' && params.maxLen > 0)
+    ? params.maxLen : Infinity;
 
   const els = document.querySelectorAll(selector);
   const results = [];
@@ -609,11 +675,14 @@ function querySelectorCmd(params) {
     const rect = el.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) continue;
 
+    const rawText = (el.textContent || '').trim();
     const item = {
-      text: (el.textContent || '').trim().slice(0, 200),
+      text: textMaxLen === Infinity ? rawText : rawText.slice(0, textMaxLen),
       href: el.getAttribute('href') || undefined,
       src: el.getAttribute('src') || undefined,
-      className: (el.className || '').toString().slice(0, 100),
+      // v1.2.15: className 不截断 — 给 caller 完整信息(SVG className 是
+      // SVGAnimatedString,先 toString 拿 baseVal-equivalent 再返回)
+      className: (el.className || '').toString(),
       tagName: el.tagName.toLowerCase(),
       bounds: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
     };

@@ -150,7 +150,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_auto_reply_universal',
     workflow_type: 'auto_reply' as any,
-    name_zh: '小红书 · 自动互动',
+    name_zh: '小红书 · 智能互动',
     name_en: 'XHS Auto Engage',
     description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。每次还会按 0~30% 概率关注作者。',
     description_en: 'Find articles by keyword, AI-reply + reply to comments, post on safe jitter. Optionally follow the author (0-30% chance).',
@@ -305,8 +305,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Four-card grid — v2.4.59: 用户要求自动互动放第一(跟币安/推特页一致)。
-          顺序: 自动互动 · 批量仿写 · 指定链接 · 敏感词检测 */}
+      {/* Four-card grid — v2.4.59: 用户要求智能互动放第一(跟币安/推特页一致)。
+          顺序: 智能互动 · 批量仿写 · 指定链接 · 敏感词检测 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 1. Auto-reply (moved from 4th to 1st per user feedback 2.4.59) */}
         <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
@@ -317,12 +317,12 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书 · 自动互动' : 'XHS Auto Engage'}
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书 · 智能互动' : 'XHS Auto Engage'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '每日自动找最近一周高评论文章（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
-                : 'Daily: 0-6 random high-comment articles, AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
+                ? '智能寻找最近一周的爆款图文（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
+                : 'Smartly finds viral notes from the last 7 days (0-6 random), AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
             </p>
             <button
               type="button"
@@ -419,11 +419,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6 flex flex-wrap items-center gap-2">
         {[
           { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
-          { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
-          { icon: '🛡️', zh: '不封号', en: 'Safe' },
-          { icon: '🤖', zh: '全自动', en: 'Auto' },
-          { icon: '🚀', zh: '自动上传', en: 'Auto Upload' },
-          { icon: '🌊', zh: '爆款池', en: 'Viral Pool' },
+          { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
+          { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like, no ban risk' },
+          { icon: '🤖', zh: '全智能控制', en: 'Fully intelligent control' },
+          { icon: '🌊', zh: '1万+爆款文池', en: '10,000+ viral note pool' },
         ].map((p, i) => (
           <span key={i} className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-green-500/20 bg-green-500/5 text-gray-700 dark:text-gray-300">
             {p.icon} {i18nService.currentLanguage === 'zh' ? p.zh : p.en}

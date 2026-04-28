@@ -591,6 +591,74 @@ async function executeCommand(msg) {
         args: [params.selector],
       });
       data = results[0]?.result || { error: 'executeScript failed' };
+    } else if (command === 'upload_file_from_url') {
+      // v1.2.17: 移到 background.js + main world 跑,绕开 content script 的
+      // isolated world(isolated world 里给 binance 视频 modal 注入大文件,
+      // input.files = dt.files 触发 binance React "Maximum call stack" 爆栈)。
+      // v1.2.18: 拆两步 — fetch 必须在 BG 跑(binance.com 严格 CSP 拦
+      // localhost sidecar)。试过 Uint8Array 跨 world 但 chrome.scripting args
+      // 只接受 JSON-serializable,抛 "Unserializable argument passed"。
+      // v1.2.19: 改 base64 string 跨 world(JSON-safe),MAIN world atob 重建。
+      //          chunk-encode 避开 String.fromCharCode(...arr) 撑爆栈。
+      const tab = await resolveTab();
+      // Step A: BG fetch + base64 encode(无 page CSP 限制)
+      let base64Str;
+      try {
+        const resp = await fetch(params.fileUrl, { method: 'GET' });
+        if (!resp.ok) {
+          data = { error: 'bg_fetch_http_' + resp.status };
+        } else {
+          const ab = await resp.arrayBuffer();
+          if (!ab || ab.byteLength === 0) {
+            data = { error: 'bg_fetch_empty' };
+          } else {
+            // 大文件 (17MB+) 不能 String.fromCharCode(...uint8) 一把梭(stack overflow)
+            // 分块拼接,每块 8KB
+            const u8 = new Uint8Array(ab);
+            const chunks = [];
+            const CHUNK = 0x8000; // 32KB
+            for (let i = 0; i < u8.length; i += CHUNK) {
+              chunks.push(String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK)));
+            }
+            base64Str = btoa(chunks.join(''));
+          }
+        }
+      } catch (e) {
+        data = { error: 'bg_fetch_failed: ' + (e && e.message || String(e)).slice(0, 200) };
+      }
+      // Step B: base64 字符串作 arg 传 MAIN world,重建 File
+      if (base64Str) {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: (selector, base64, fileName, mimeType) => {
+            try {
+              const input = document.querySelector(selector);
+              if (!input || input.tagName !== 'INPUT' || input.type !== 'file') {
+                return { error: 'file_input_not_found', selector };
+              }
+              // base64 解回 Uint8Array
+              const bin = atob(base64);
+              const u8 = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+              if (u8.byteLength === 0) return { error: 'empty_bytes' };
+              const finalMime = mimeType || 'application/octet-stream';
+              const blob = new Blob([u8], { type: finalMime });
+              const file = new File([blob], fileName, { type: finalMime });
+              const dt = new DataTransfer();
+              dt.items.add(file);
+              input.files = dt.files;
+              input.dispatchEvent(new Event('change', { bubbles: true }));
+              input.dispatchEvent(new Event('input', { bubbles: true }));
+              return { ok: true, message: 'Uploaded ' + fileName + ' (' + u8.byteLength + ' bytes)', size: u8.byteLength, mimeType: finalMime };
+            } catch (err) {
+              return { error: 'main_world_inject_failed: ' + (err && err.message || String(err)).slice(0, 200) };
+            }
+          },
+          args: [params.selector || params.ref, base64Str, params.fileName, params.mimeType || 'application/octet-stream'],
+        });
+        data = results[0]?.result || { error: 'executeScript_failed' };
+      }
     } else if (command === 'fetch_image') {
       // ── fetch_image (v1.2.8+) ──
       // Fetch an image URL through the browser's own network stack so it
@@ -687,6 +755,90 @@ async function executeCommand(msg) {
             return { ok: inserted, method, textLen: text.length, editorTextLen: (editor.textContent || '').length };
           } catch (e) {
             return { error: 'insert_failed', message: String(e && e.message || e).slice(0, 200) };
+          }
+        },
+        args: [params || {}],
+      });
+      data = results[0]?.result || { error: 'executeScript_failed' };
+    } else if (command === 'editor_insert_text_strict') {
+      // ── editor_insert_text_strict (v1.2.20+) ──
+      // 强焦点版 editor_insert_text。execCommand('insertText') 操作的是
+      // document.activeElement 而不是我们传的 selector,如果页面同时有多个
+      // contenteditable(modal + 背景 inline 等),focus() 可能被 React 抢走,
+      // 字插到错的元素去。
+      //
+      // 这个命令做 3 件事保证 execCommand 必中目标:
+      //   1. 找目标 editor
+      //   2. 把页面上其他所有 contenteditable=true 临时设成 false(物理意义上不可抢焦点)
+      //   3. focus 目标 → 验 activeElement → execCommand → 还原其他元素
+      //
+      // 适用场景:已知页面有多个可编辑区(modal、drawer、嵌入富文本等)。
+      // 一般 editor_insert_text 够用时无需切到这个 — 它有不可逆副作用(虽然立即还原)。
+      //
+      // 用法: { command: 'editor_insert_text_strict', selector: '...', text: '...' }
+      // 返回: { ok, method, focusOk, focusForced, othersDisabled, textLen, editorTextLen }
+      const tab = await resolveTab();
+      const results = await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        world: 'MAIN',
+        func: (cfg) => {
+          const sel = cfg.selector;
+          const text = cfg.text;
+          if (!sel) return { error: 'selector_required' };
+          if (typeof text !== 'string') return { error: 'text_required' };
+          const editor = document.querySelector(sel);
+          if (!editor) return { error: 'editor_not_found', selector: sel };
+          const others = [];
+          let focusForced = false;
+          try {
+            editor.focus({ preventScroll: true });
+            if (document.activeElement !== editor) {
+              // 别的 contenteditable 抢焦点了 — 临时禁
+              const all = document.querySelectorAll('[contenteditable="true"]');
+              for (const el of all) {
+                if (el !== editor) {
+                  others.push(el);
+                  el.setAttribute('contenteditable', 'false');
+                }
+              }
+              editor.focus({ preventScroll: true });
+              focusForced = true;
+            }
+          } catch (_) {}
+          const focusOk = document.activeElement === editor;
+          try {
+            let method = 'unknown';
+            let inserted = false;
+            if (focusOk && typeof document.execCommand === 'function') {
+              try {
+                inserted = document.execCommand('insertText', false, text);
+                if (inserted) method = 'execCommand';
+              } catch (_) {}
+            }
+            if (!inserted) {
+              // execCommand 失败/未 focus → 直接 dispatch 到目标(不依赖 activeElement)
+              try {
+                editor.dispatchEvent(new InputEvent('beforeinput', {
+                  inputType: 'insertText', data: text, bubbles: true, cancelable: true,
+                }));
+                editor.dispatchEvent(new InputEvent('input', {
+                  inputType: 'insertText', data: text, bubbles: true,
+                }));
+                method = 'dispatchEvent';
+                inserted = true;
+              } catch (_) {}
+            }
+            return {
+              ok: inserted, method, focusOk, focusForced,
+              othersDisabled: others.length,
+              textLen: text.length,
+              editorTextLen: (editor.textContent || '').length,
+            };
+          } catch (e) {
+            return { error: 'insert_failed', message: String(e && e.message || e).slice(0, 200) };
+          } finally {
+            // 还原其他 contenteditable
+            for (const el of others) el.setAttribute('contenteditable', 'true');
           }
         },
         args: [params || {}],
@@ -1111,7 +1263,9 @@ async function executeCommand(msg) {
                 const tendencyEl = box.querySelector('.tendency-icon span');
                 if (tendencyEl) sentiment = (tendencyEl.textContent || '').trim();
                 out.push({
-                  index: i, text: text.slice(0, 1500),
+                  // v1.2.15: 不截断 text — 之前 1500 字符上限把币安长贴砍了,
+                  // 改写算源字数全错。原子任务原则:扩展返回原文,业务方决定。
+                  index: i, text: text,
                   comment_count: commentCount, likes, views,
                   nick, handle, post_url: postUrl, cashtags, sentiment,
                 });

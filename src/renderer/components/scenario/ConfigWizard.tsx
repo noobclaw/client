@@ -711,7 +711,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
             {isXAutoEngage
-              ? (isZh ? '配置 Twitter 自动互动' : 'Configure X Auto Engagement')
+              ? (isZh ? '配置 Twitter 智能互动' : 'Configure X Auto Engagement')
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
                 : isBinanceFromXRepost
@@ -720,7 +720,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
                     ? (isBinancePlatform
-                        ? (isZh ? '配置自动互动' : 'Configure Auto Engage')
+                        ? (isZh ? '配置智能互动' : 'Configure Auto Engage')
                         : (isZh ? '配置自动回复' : 'Configure Auto Reply'))
                     : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
@@ -1441,7 +1441,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {isXPostCreator && (
                 <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
                   <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
-                    {isZh ? '🎲 每日发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
+                    {isZh ? '🎲 自动发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
                   </div>
                   <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
                     <li>{isZh ? '· 40% 仿写：feed 找爆款长推（字数≥100 + 浏览≥1万） → AI 用同样钩子写一条新推' : '· 40% rewrite: find viral long tweet (≥100 chars + ≥10K views) → AI rewrites in your voice'}</li>
@@ -1641,7 +1641,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
             <div>
               <h3 className="text-lg font-bold dark:text-white mb-4">
                 {isXAutoEngage
-                  ? (isZh ? '确认并启用 Twitter 自动互动' : 'Confirm & Enable X Auto Engagement')
+                  ? (isZh ? '确认并启用 Twitter 智能互动' : 'Confirm & Enable X Auto Engagement')
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
                     : isBinanceFromXRepost
