@@ -211,7 +211,15 @@ function buildContext(
     // Track current step so ctx.report() logs to the right panel
     _currentStep: 1,
     report: (msg: string) => progress.stepLog(ctx._currentStep || 1, 'running', msg),
-    stepStart: (step: number) => { ctx._currentStep = step; progress.stepStart(step); },
+    // v4.31.34: stepStart 同时写一条启动 log,UI 立刻能看到这一步在跑,
+    //   不再卡"正在启动…(后端流式日志稍候)"。orchestrator 第一次 stepLog
+    //   之前可能有数秒的浏览器交互(get_url / navigate),这段时间用户原本
+    //   只能看到空 logs。
+    stepStart: (step: number) => {
+      ctx._currentStep = step;
+      progress.stepStart(step);
+      progress.stepLog(step, 'running', '▶ 步骤 ' + step + ' 开始');
+    },
     stepLog: (step: number, status: string, msg: string) => progress.stepLog(step, status as any, msg),
     stepDone: (step: number) => progress.stepDone(step),
     finish: (status: string, error?: string) => progress.finishProgress(status as any, error),
@@ -232,7 +240,15 @@ function buildContext(
               reject(new Error('user_stopped'));
             }
           }, 300);
-          setTimeout(() => clearInterval(check), t + 1000);
+          // v4.31.34: race 第二个 promise 之前只在 abort 时 reject,timer 仅
+          //   clearInterval。如果 sendBrowserCommand 内部的 setTimeout 因某种
+          //   原因没 fire(扩展 half-open / 进程被挂起 等),整个 await 永远
+          //   pending,orchestrator 卡在第一个 ctx.browser 上,后续 stepLog
+          //   永远不调,UI 卡 "正在启动…"。这里改成 t+2s 后强制 reject 兜底。
+          setTimeout(() => {
+            clearInterval(check);
+            reject(new Error('browser command "' + command + '" hard-timeout after ' + (t + 2000) + 'ms'));
+          }, t + 2000);
         }),
       ]);
     },
