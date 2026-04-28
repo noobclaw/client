@@ -490,7 +490,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-amber-500/30 border-amber-200 dark:bg-amber-500/5 bg-amber-50 hover:dark:bg-amber-500/10 hover:bg-amber-100 transition-colors cursor-pointer"
               >
                 <span className="text-2xl">🔶</span>
-                <span className="text-sm font-medium dark:text-amber-300 text-amber-700">币安广场涨粉</span>
+                <span className="text-sm font-medium dark:text-amber-300 text-amber-700">{i18nService.t('homeQuickEntryBinance')}</span>
               </button>
               <button
                 type="button"
@@ -498,7 +498,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-sky-500/30 border-sky-200 dark:bg-sky-500/5 bg-sky-50 hover:dark:bg-sky-500/10 hover:bg-sky-100 transition-colors cursor-pointer"
               >
                 <span className="text-2xl">🐦</span>
-                <span className="text-sm font-medium dark:text-sky-300 text-sky-700">推特涨粉</span>
+                <span className="text-sm font-medium dark:text-sky-300 text-sky-700">{i18nService.t('homeQuickEntryX')}</span>
               </button>
               <button
                 type="button"
@@ -506,7 +506,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-rose-500/30 border-rose-200 dark:bg-rose-500/5 bg-rose-50 hover:dark:bg-rose-500/10 hover:bg-rose-100 transition-colors cursor-pointer"
               >
                 <span className="text-2xl">📕</span>
-                <span className="text-sm font-medium dark:text-rose-300 text-rose-700">小红书涨粉</span>
+                <span className="text-sm font-medium dark:text-rose-300 text-rose-700">{i18nService.t('homeQuickEntryXhs')}</span>
               </button>
             </div>
           )}
