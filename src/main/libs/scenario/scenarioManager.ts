@@ -657,14 +657,19 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     + `currentlyBusy=${JSON.stringify(Array.from(runningByResource.entries()))}`);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    const holdingTaskId = runningByResource.get(busyKey)?.taskId;
-    // v4.31.37: 自占自直接抢占 —— 之前同一个 task 卡死(orchestrator 永远 pending,
-    //   runTask finally 没跑到)resources 没释放,scheduler 后续 tick 看到自己占
-    //   自己永远 SKIPPED 死循环。简单逻辑:持有者就是自己 = 旧实例僵尸,force
-    //   释放重新 mark,新实例直接跑。不同 task 占着才视为真并发避让。
-    if (holdingTaskId === task.id) {
+    const entry = runningByResource.get(busyKey);
+    const holdingTaskId = entry?.taskId;
+    // v4.31.38: 自占自抢占改保守 —— v4.31.37 简单 force release 抢占,但
+    //   如果旧 task 实际还在跑(某个 await 慢一点)只是 finally 没到,会
+    //   导致 race:旧那次发了帖,新这次又发一次,出现重复推/帖。
+    //   现在改:自占自时,只有持锁超过 stale 阈值(5min,远超正常 task
+    //   时长)才视为真僵尸 force release;否则 SKIPPED 让旧那次跑完。
+    //   不同 task 占着仍视为真并发避让。
+    const heldForMs = entry ? Date.now() - entry.markedAt : 0;
+    const STALE_SELF_PREEMPT_MS = 5 * 60 * 1000;
+    if (holdingTaskId === task.id && heldForMs > STALE_SELF_PREEMPT_MS) {
       coworkLog('WARN', 'scenarioManager',
-        `[runTask] 自占自抢占: task=${task.id} 旧实例占着 ${busyKey} 没释放(可能 orchestrator pending),force release 重启`);
+        `[runTask] 自占自抢占: task=${task.id} 持锁 ${Math.round(heldForMs / 60000)}min(>${STALE_SELF_PREEMPT_MS/60000}min)视为僵尸,force release 重启`);
       releaseResources(resources);
     } else {
       const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
@@ -682,9 +687,6 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
   markResourcesBusy(resources, task.id);
-  // v4.31.37: 抢占启动时把同 taskId 的旧 progress 主动清掉,避免 UI 看到上一次
-  //   遗留的 status='running' + 空 logs(initProgress 后续会重写,但旧 timer
-  //   设的 30s delete 还在 pending,中间窗口有歧义)。
   abortByTaskId.delete(task.id);
   initProgress(task.id);
   startTaskRecord(task, pack.manifest);
