@@ -65,83 +65,28 @@ function ensureLoaded(): void {
   }
 }
 
-// ── Helpers ──
-
-function isSameDay(a: number, b: number): boolean {
-  const da = new Date(a);
-  const db = new Date(b);
-  return (
-    da.getFullYear() === db.getFullYear() &&
-    da.getMonth() === db.getMonth() &&
-    da.getDate() === db.getDate()
-  );
-}
-
-function isSameWeek(a: number, b: number): boolean {
-  // ISO week: Monday start
-  const fromMonday = (d: Date) => {
-    const day = d.getDay();
-    const offset = day === 0 ? 6 : day - 1;
-    const res = new Date(d);
-    res.setDate(res.getDate() - offset);
-    res.setHours(0, 0, 0, 0);
-    return res.getTime();
-  };
-  return fromMonday(new Date(a)) === fromMonday(new Date(b));
-}
-
 // ── Public API ──
 
 export interface GateDecision {
   allowed: boolean;
-  reason?:
-    | 'disabled'
-    | 'daily_cap_reached'
-    | 'cooldown_active'
-    | 'interval_not_met'
-    | 'weekly_rest_enforced'
-    | 'out_of_window';
+  reason?: 'disabled';
   cooldown_ends_at?: number;
 }
 
 /**
  * Decide whether a task is allowed to run right now.
+ *
+ * v4.31.31: 全部预设 + 触发性风控砍掉 — 之前 manifest 写死 max_daily_runs=1
+ *   / min_interval_hours=24 / weekly_rest_days=1 + cooldown_*_hours,导致
+ *   wizard 给的 30min/1h/3h/6h 间隔形同虚设(scheduler 到点 → riskGuard
+ *   silent skip → 用户感知"到点不动")。现在只保留 task.enabled gate,
+ *   其余完全交给用户在 wizard 选的间隔。cooldown_active / daily_cap_reached
+ *   / interval_not_met / weekly_rest_enforced 已废弃(reason 类型保留以免
+ *   旧 UI 代码引用报错,但 canRunNow 永不返回它们)。
  */
-export function canRunNow(task: ScenarioTask, caps: RiskCaps): GateDecision {
+export function canRunNow(task: ScenarioTask, _caps: RiskCaps): GateDecision {
   ensureLoaded();
   if (!task.enabled) return { allowed: false, reason: 'disabled' };
-
-  const now = Date.now();
-  const runs = state.runs[task.id] || [];
-
-  // 1. Cooldown
-  const cooldown = state.cooldowns[task.id] || 0;
-  if (cooldown > now) {
-    return { allowed: false, reason: 'cooldown_active', cooldown_ends_at: cooldown };
-  }
-
-  // 2. Daily cap
-  const todayRuns = runs.filter(r => isSameDay(r.started_at, now));
-  if (todayRuns.length >= caps.max_daily_runs) {
-    return { allowed: false, reason: 'daily_cap_reached' };
-  }
-
-  // 3. Minimum interval
-  if (runs.length > 0) {
-    const latest = runs[runs.length - 1];
-    const hoursSince = (now - latest.started_at) / 3_600_000;
-    if (hoursSince < caps.min_interval_hours) {
-      return { allowed: false, reason: 'interval_not_met' };
-    }
-  }
-
-  // 4. Weekly rest
-  const weekRuns = runs.filter(r => isSameWeek(r.started_at, now));
-  const distinctDays = new Set(weekRuns.map(r => new Date(r.started_at).toDateString())).size;
-  if (distinctDays >= 7 - caps.weekly_rest_days) {
-    return { allowed: false, reason: 'weekly_rest_enforced' };
-  }
-
   return { allowed: true };
 }
 
@@ -191,32 +136,12 @@ export function markRunSkipped(task_id: string, reason: string): void {
   persist();
 }
 
-export function recordAnomaly(task_id: string, kind: AnomalyKind, caps: RiskCaps): void {
+export function recordAnomaly(task_id: string, kind: AnomalyKind, _caps: RiskCaps): void {
   ensureLoaded();
-  const hours = (() => {
-    switch (kind) {
-      case 'captcha':
-        return caps.cooldown_captcha_hours;
-      case 'rate_limited':
-        return caps.cooldown_rate_limit_hours;
-      case 'account_flag':
-        return caps.cooldown_account_flag_hours;
-      case 'dom_missing':
-        return 12;
-      case 'login_wall':
-      case 'upload_flagged':
-        return 0; // user must intervene, no automatic cooldown
-      default:
-        return 24;
-    }
-  })();
-
-  if (hours > 0) {
-    state.cooldowns[task_id] = Date.now() + hours * 3_600_000;
-    persist();
-  }
-
-  coworkLog('WARN', 'riskGuard', `anomaly recorded`, { task_id, kind, cooldown_hours: hours });
+  // v4.31.31: 风控砍光后,anomaly 不再写入 cooldown(canRunNow 也不再读它),
+  //   只保留 WARN log 让用户在日志里能看到"撞了 captcha / 被限流",由用户自己
+  //   决定是不是要手动停一下任务。state.cooldowns 不再增长。
+  coworkLog('WARN', 'riskGuard', `anomaly recorded (cooldown disabled, task continues)`, { task_id, kind });
 }
 
 export function getRuns(task_id: string): TaskRun[] {
