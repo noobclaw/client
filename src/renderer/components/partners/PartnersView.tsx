@@ -135,7 +135,7 @@ const ActivitiesTab: React.FC<{
   };
 
   return (
-    <div className="p-6 max-w-3xl mx-auto space-y-6">
+    <div className="p-6 max-w-5xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-4">
       {/* Card A: Daily Check-in */}
       <ActivityCard
         isZh={isZh}
@@ -161,10 +161,10 @@ const ActivitiesTab: React.FC<{
       <ActivityCard
         isZh={isZh}
         icon="✨"
-        titleZh="使用一次自动化运营任务"
-        titleEn="Run an automation task once"
-        descZh="点击进入自动化运营任意创建一个任务并跑一次，领取奖励"
-        descEn="Open Automation, create any task and run it once to earn your reward"
+        titleZh="使用一次涨粉任务"
+        titleEn="Run a follower-growth task once"
+        descZh="点击进入涨粉任意创建一个任务并跑一次，领取奖励"
+        descEn="Open Follower Growth, create any task and run it once to earn your reward"
         ctaZh="✨ 去创建任务"
         ctaEn="✨ Create a task"
         claimed={isClaimed('xhs_rewrite')}
