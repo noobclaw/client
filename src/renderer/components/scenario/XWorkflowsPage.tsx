@@ -38,6 +38,9 @@ interface Props {
   onOpenTask: (task_id: string, fromOverride?: 'create' | 'tasks' | 'history') => void;
   onConfigure: (scenario: Scenario) => void;
   onChanged?: () => void | Promise<void>;
+  /** Jump to the "My Tasks" page filtered to Twitter — used by the
+   *  "已达任务上限" modal CTA. */
+  onGoToMyTasks?: () => void;
 }
 
 export const XWorkflowsPage: React.FC<Props> = ({
@@ -48,10 +51,17 @@ export const XWorkflowsPage: React.FC<Props> = ({
   onOpenTask,
   onConfigure,
   onChanged,
+  onGoToMyTasks,
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
+
+  // v4.28: 跟 Binance / XHS workflow 页面对齐 —— 同平台任务上限 5 个,
+  // 超出弹「已达任务上限」modal。之前 X 页缺这个守卫,可以无限新建任务,
+  // 用户反馈"我再创建也没提示我"。
+  const MAX_TASKS = 5;
+  const [maxTasksModalOpen, setMaxTasksModalOpen] = useState(false);
 
   // ── x_link_rewrite quick-create modal (mirrors XHS link-mode flow) ──
   // The user's expectation: paste URLs → click run → done. No wizard, no
@@ -117,6 +127,11 @@ export const XWorkflowsPage: React.FC<Props> = ({
       alert(isZh ? '场景元数据还在加载中，请稍后再试' : 'Scenario metadata still loading');
       return;
     }
+    // v4.28: 平台任务上限 5 个 —— 超过弹 modal 不让继续。
+    if (tasks.length >= MAX_TASKS) {
+      setMaxTasksModalOpen(true);
+      return;
+    }
     if (!noobClawAuth.getState().isAuthenticated) {
       noobClawAuth.openWebsiteLogin();
       return;
@@ -129,10 +144,15 @@ export const XWorkflowsPage: React.FC<Props> = ({
       return;
     }
     onConfigure(scenario);
-  }, [onConfigure, isZh]);
+  }, [onConfigure, isZh, tasks.length]);
 
   const handleLinkSubmit = useCallback(async () => {
     if (linkSubmitting) return;
+    // v4.28: 同样的 5 任务上限守卫 —— link rewrite 也算一个任务。
+    if (tasks.length >= MAX_TASKS) {
+      setMaxTasksModalOpen(true);
+      return;
+    }
     const { ok, err } = validateTweetLinks(linksText);
     if (err) { alert(err); return; }
     if (!noobClawAuth.getState().isAuthenticated) {
@@ -290,6 +310,48 @@ export const XWorkflowsPage: React.FC<Props> = ({
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={() => setLoginModalReason(null)}
         />
+      )}
+
+      {/* v4.28: 任务上限弹窗 —— 跟 Binance / XHS 页面同款 */}
+      {maxTasksModalOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMaxTasksModalOpen(false)}>
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-2 text-center">
+              <div className="text-4xl mb-3">📋</div>
+              <h3 className="text-lg font-bold dark:text-white mb-1.5">
+                {isZh ? '已达任务上限' : 'Task Limit Reached'}
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                {isZh
+                  ? `推特已经有 ${tasks.length} 个任务了，最多支持 ${MAX_TASKS} 个`
+                  : `You already have ${tasks.length} Twitter tasks (max ${MAX_TASKS}).`}
+                <br />
+                {isZh
+                  ? '可以先去看看现有任务，停用一些不需要的，再创建新的。'
+                  : 'Open My Tasks to disable any you no longer need before creating a new one.'}
+              </p>
+            </div>
+            <div className="px-6 py-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setMaxTasksModalOpen(false)}
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                {isZh ? '知道了' : 'Got it'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMaxTasksModalOpen(false);
+                  if (onGoToMyTasks) onGoToMyTasks();
+                }}
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-sky-500 to-blue-500 text-white hover:opacity-90 transition-opacity shadow-sm">
+                {isZh ? '去看看现有任务 →' : 'View My Tasks →'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* x_link_rewrite quick-create modal (mirrors XHS link-mode UX).

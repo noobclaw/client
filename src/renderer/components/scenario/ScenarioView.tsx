@@ -481,6 +481,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onOpenTask={openTask}
           onConfigure={openWizardFor}
           onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'x' })}
         />
       );
     }
