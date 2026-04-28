@@ -118,6 +118,33 @@ function scheduleLabel(task: Task, isZh: boolean): string {
   return map[interval] || interval;
 }
 
+/** v4.31.43: 把 next_planned_run_at 渲染成简短的"还差多久 · 绝对时间",
+ *  跟 detail page 的"下次运行"显示一致。运行中 / once / link_rewrite 不
+ *  调用此函数(那些有专门的 pill)。 */
+function nextRunLabel(task: Task, isZh: boolean): string {
+  const planned = (task as any).next_planned_run_at as number | undefined;
+  if (planned && planned > Date.now()) {
+    const diff = planned - Date.now();
+    const mins = Math.round(diff / 60000);
+    let rel: string;
+    if (mins < 60) rel = mins + (isZh ? ' 分钟后' : 'm');
+    else if (mins < 24 * 60) rel = Math.round(mins / 60) + (isZh ? ' 小时后' : 'h');
+    else rel = Math.round(mins / (60 * 24)) + (isZh ? ' 天后' : 'd');
+    const d = new Date(planned);
+    const sameDay = (a: Date, b: Date) =>
+      a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    const now = new Date();
+    const tomorrow = new Date(now); tomorrow.setDate(tomorrow.getDate() + 1);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const datePart = sameDay(d, now) ? (isZh ? '今天' : 'today')
+                  : sameDay(d, tomorrow) ? (isZh ? '明天' : 'tmrw')
+                  : `${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}`;
+    return `${rel} · ${datePart} ${hh}:${mm}`;
+  }
+  return isZh ? '即将' : 'Soon';
+}
+
 export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
@@ -299,13 +326,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                         <span className="text-xs px-2 py-1 rounded bg-purple-500/10 text-purple-500 border border-purple-500/30">
                           ✋ {isZh ? '手动运行' : 'Manual'}
                         </span>
-                      ) : task.active ? (
-                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
-                          ⏰ {isZh ? '定时运行' : 'Scheduled'}
-                        </span>
                       ) : (
-                        <span className="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-800 text-gray-500">
-                          {isZh ? '待命' : 'Standby'}
+                        // v4.31.43: 取代"定时运行"/"待命"二态显示 —— scheduler
+                        // 实际不区分 active,所有 enabled 任务都到点跑,显示具体的
+                        // 下次运行时间更直观。
+                        <span className="text-xs px-2 py-1 rounded bg-blue-500/10 text-blue-500 border border-blue-500/30">
+                          ⏰ {nextRunLabel(task, isZh)}
                         </span>
                       )}
                     </div>

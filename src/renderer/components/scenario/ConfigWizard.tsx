@@ -1399,7 +1399,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     <div className="grid grid-cols-2 gap-3">
                       <div>
                         <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-pink-500">{likeMin}</span>
+                          {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{likeMin}</span>
                         </div>
                         <input
                           type="range" min={0} max={LIKE_HARDCAP} value={likeMin}
@@ -1409,7 +1409,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </div>
                       <div>
                         <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-pink-500">{likeMax}</span>
+                          {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{likeMax}</span>
                         </div>
                         <input
                           type="range" min={0} max={LIKE_HARDCAP} value={likeMax}
