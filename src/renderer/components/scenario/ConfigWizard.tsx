@@ -581,7 +581,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   };
 
   // Confirm
-  const [termsAccepted, setTermsAccepted] = useState([false, false]);
+  // v4.31.40: 使用条款默认勾选 —— UI 上仍保留 checkbox 让用户可见,但保存
+  //   按钮无需手动勾选即可点。用户反馈"上来就该可用"。
+  const [termsAccepted, setTermsAccepted] = useState([true, true]);
 
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);

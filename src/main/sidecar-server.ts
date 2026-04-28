@@ -1644,18 +1644,19 @@ const server = http.createServer(async (req, res) => {
           }
           case 'scenario:getRunProgress': {
             const scenarioManager = require('./libs/scenario/scenarioManager');
-            // Optional taskId — when provided we return that specific task's
-            // progress (needed when 2 tasks run concurrently on different
-            // platforms, otherwise the wrong task's progress could leak into
-            // the renderer's polling result).
-            // ⚠️ HISTORICAL BUG (fixed in v2.4.19+): used to read body?.taskId
-            // directly, but the actual envelope is { channel, args } where
-            // args = [{ taskId }] (set by ipcInvoke in tauriShim). So body
-            // .taskId was ALWAYS undefined → the fallback "any running task's
-            // progress" was returned instead → wrong progress leaked into
-            // the wrong detail page. Read from args[0].taskId now.
             const taskId = args?.[0]?.taskId || undefined;
             return writeJSON(res, 200, scenarioManager.getRunProgress(taskId));
+          }
+          case 'scenario:getLatestRunRecord': {
+            // v4.31.41: 给 UI 详情页用的 fallback 数据源 —— in-memory progress
+            //   被 30s timer 清掉后,UI 仍能从 runRecords 持久化数据展示上次
+            //   跑的步骤日志(随时进随时看,不依赖 polling 时机 / sidecar 进程
+            //   生命周期)。
+            const scenarioRunRecords = require('./libs/scenario/runRecords');
+            const taskId = args?.[0]?.taskId;
+            if (!taskId) return writeJSON(res, 200, null);
+            const records = scenarioRunRecords.listRecords({ task_id: taskId });
+            return writeJSON(res, 200, Array.isArray(records) && records.length > 0 ? records[0] : null);
           }
           case 'scenario:requestAbort': {
             const scenarioManager = require('./libs/scenario/scenarioManager');

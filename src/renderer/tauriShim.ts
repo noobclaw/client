@@ -265,6 +265,7 @@ export function createTauriElectronShim(): typeof window.electron {
       getRunRecord: (id: string) => ipcInvoke('scenario:getRunRecord', id).then(r => r ?? { record: null }),
       getTaskDir: (id: string) => ipcInvoke('scenario:getTaskDir', id).then(r => r ?? { dir: '' }),
       getRunProgress: (taskId?: string) => ipcInvoke('scenario:getRunProgress', { taskId }),
+      getLatestRunRecord: (taskId: string) => ipcInvoke('scenario:getLatestRunRecord', { taskId }),
       requestAbort: (taskId?: string) => ipcInvoke('scenario:requestAbort', { taskId }).then(r => r ?? { ok: true }),
       checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') =>
         ipcInvoke('scenario:checkXhsLogin', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),

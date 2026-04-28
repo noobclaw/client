@@ -308,6 +308,7 @@ interface IElectronAPI {
     getRunRecord: (id: string) => Promise<{ record: any | null }>;
     getTaskDir: (id: string) => Promise<{ dir: string }>;
     getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
+    getLatestRunRecord: (taskId: string) => Promise<any | null>;
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
     checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<XhsLoginStatus>;
     openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<{ ok: boolean; reason?: string }>;

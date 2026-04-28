@@ -209,6 +209,18 @@ class ScenarioService {
     }
   }
 
+  /** v4.31.41: Persistent fallback for the detail page —— in-memory progress
+   *  gets cleared 30s after task end, but runRecords keeps step_logs forever.
+   *  UI mounts: read latest record, show its step_logs as a baseline; live
+   *  polling overlays in-memory progress when task is actively running. */
+  async getLatestRunRecord(taskId: string): Promise<any | null> {
+    try {
+      return await (window.electron.scenario as any).getLatestRunRecord(taskId) || null;
+    } catch {
+      return null;
+    }
+  }
+
   async requestAbort(taskId?: string): Promise<void> {
     try {
       await window.electron.scenario.requestAbort(taskId);

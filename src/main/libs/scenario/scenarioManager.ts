@@ -372,13 +372,11 @@ export function isAbortRequested(taskId?: string): boolean {
 const MAX_CONCURRENT_TASKS = 3;
 
 /** resource key → { taskId, markedAt }
- *  v4.31.36: 加 markedAt 时间戳,scheduler tick 看到持锁 >30min 视为僵尸
- *  (上次跑卡死 / orchestrator 永远 pending 等)主动 release,避免后续
- *  task 永远 SKIPPED。之前用户场景:binance_from_x_repost 卡死占着 X+binance
- *  双 tab,把所有 X / 币安 task 全锁死,只 XHS 不受影响,要重启 sidecar
- *  才能 unblock。 */
+ *  v4.31.41: stale cleanup 已砍 —— 之前 30min 阈值是为了应对 orchestrator 卡死
+ *  finally 不跑造成的资源僵尸,但 ctx.* abort 严格化(2.5.8/2.5.9)+ stop 按钮
+ *  能让 orchestrator 真正退出后,死锁场景应该不存在。markedAt 字段保留作日志
+ *  诊断用,不再用作 reap 阈值。 */
 const runningByResource = new Map<string, { taskId: string; markedAt: number }>();
-const STALE_RESOURCE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
 // v4.25+ cross-tab scenarios (binance_from_x_repost) touch multiple tabs
 // in one run, so they claim ALL the tab resources they'll use. If any of
@@ -418,22 +416,8 @@ function resourceKeysForPack(
   return keys;
 }
 
-/** v4.31.36: 扫描整个 runningByResource,持锁 >30min 视为僵尸主动 release。
- *  在 findBusyResource / scheduler tick 入口都调,自我恢复用。 */
-function reapStaleResources(): void {
-  const now = Date.now();
-  for (const [k, v] of runningByResource) {
-    if (now - v.markedAt > STALE_RESOURCE_TIMEOUT_MS) {
-      coworkLog('WARN', 'scenarioManager',
-        `reaping stale resource: key=${k} task=${v.taskId} held for ${Math.round((now - v.markedAt) / 60000)}min — task likely stuck (orchestrator pending), force-releasing`);
-      runningByResource.delete(k);
-    }
-  }
-}
-
 /** Returns the first busy key (for error message) or null if all free. */
 function findBusyResource(keys: string[]): string | null {
-  reapStaleResources();
   for (const k of keys) if (runningByResource.has(k)) return k;
   return null;
 }
@@ -450,7 +434,6 @@ function humanizePlatformFromKey(key: string): string {
 }
 
 function atConcurrencyLimit(): boolean {
-  reapStaleResources();
   return runningByResource.size >= MAX_CONCURRENT_TASKS;
 }
 
@@ -469,7 +452,6 @@ function releaseResources(keys: string[]): void {
  * a time. New callers should prefer getRunningTaskIds().
  */
 export function getRunningTaskId(): string | null {
-  reapStaleResources();
   const first = runningByResource.values().next();
   return first.done ? null : first.value.taskId;
 }
@@ -477,7 +459,6 @@ export function getRunningTaskId(): string | null {
 /** All currently-running task ids. Lets the UI light up multiple "running"
  *  badges when XHS task + Twitter task are in flight at the same time. */
 export function getRunningTaskIds(): string[] {
-  reapStaleResources();
   return Array.from(runningByResource.values()).map(v => v.taskId);
 }
 
@@ -628,17 +609,13 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
 }
 
 export async function runTask(task: ScenarioTask, manual?: boolean): Promise<RunOutcome> {
-  // v4.25.4: 立即清除上一次 run 的所有 per-task 状态残留 — 防止"用户停掉旧任务,
-  // 立刻直接运行,UI 还显示旧进度 / token 累加上一次"。
-  // loadPack() 可能 200-500ms,这个窗口里 renderer 的轮询会 fetch 到老
-  // progress 然后渲染上去。先清掉,渲染层显示空步骤(loading 态)。
-  // 同时 tokens/cost 累加器也要重置 —— 之前 runTask finally 漏了删,
-  // 同任务跑两次成本就翻倍记录。
-  progressByTaskId.delete(task.id);
-  abortByTaskId.delete(task.id);
-  tokensByTaskId.delete(task.id);
-  costUsdByTaskId.delete(task.id);
-
+  // v4.31.40: 之前在 runTask 头部立即 progressByTaskId.delete(),但如果接下来
+  //   findBusyResource 自占自 SKIPPED return,旧那次 task 还在跑,progress
+  //   已经被清,旧 orchestrator 后续 stepLog 拿不到 entry → 静默失效。UI
+  //   拉到 progress=null 但 task 仍在 runningTaskIds → 显示"运行中"+
+  //   "正在启动…"。用户描述:"task A 在跑能看进度,task B 到点 SKIPPED
+  //   后回 task A 进度看不见了" —— 实际是 task A 自己 30min 后又被定时触
+  //   发,头部 delete 误伤。reset 移到确认接管之后(SKIPPED return 不动 progress)。
   // Per-resource concurrency: load pack first to derive its tab pattern(s),
   // then check the resource. Tasks targeting the same tab serialize; tasks
   // targeting different tabs (XHS vs Twitter) can run in parallel.
@@ -657,37 +634,31 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     + `currentlyBusy=${JSON.stringify(Array.from(runningByResource.entries()))}`);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    const entry = runningByResource.get(busyKey);
-    const holdingTaskId = entry?.taskId;
-    // v4.31.38: 自占自抢占改保守 —— v4.31.37 简单 force release 抢占,但
-    //   如果旧 task 实际还在跑(某个 await 慢一点)只是 finally 没到,会
-    //   导致 race:旧那次发了帖,新这次又发一次,出现重复推/帖。
-    //   现在改:自占自时,只有持锁超过 stale 阈值(5min,远超正常 task
-    //   时长)才视为真僵尸 force release;否则 SKIPPED 让旧那次跑完。
-    //   不同 task 占着仍视为真并发避让。
-    const heldForMs = entry ? Date.now() - entry.markedAt : 0;
-    const STALE_SELF_PREEMPT_MS = 5 * 60 * 1000;
-    if (holdingTaskId === task.id && heldForMs > STALE_SELF_PREEMPT_MS) {
-      coworkLog('WARN', 'scenarioManager',
-        `[runTask] 自占自抢占: task=${task.id} 持锁 ${Math.round(heldForMs / 60000)}min(>${STALE_SELF_PREEMPT_MS/60000}min)视为僵尸,force release 重启`);
-      releaseResources(resources);
-    } else {
-      const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
-      return {
-        status: 'skipped',
-        reason: 'resource_busy:' + busyKey,
-        busy_platforms: resources.map(humanizePlatformFromKey),
-        busy_task_name: holdingTask
-          ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
-          : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
-      };
-    }
+    // v4.31.41: 砍掉所有抢占 / stale cleanup 逻辑 —— 资源被占就 SKIPPED,
+    //   不区分自占自还是不同 task。死锁场景靠 stop 按钮 + 严格 abort
+    //   (2.5.8/2.5.9 的 ctx.* abortableCmd)解决,不再代码层面强制抢占。
+    //   这避免了"自占自抢占"造成的旧那次还在跑就被新一次接管→重复发推。
+    const holdingTaskId = runningByResource.get(busyKey)?.taskId;
+    const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
+    return {
+      status: 'skipped',
+      reason: 'resource_busy:' + busyKey,
+      busy_platforms: resources.map(humanizePlatformFromKey),
+      busy_task_name: holdingTask
+        ? `#${holdingTask.id.slice(0, 8)} (${holdingTask.track || holdingTask.scenario_id})`
+        : (holdingTaskId ? `#${holdingTaskId.slice(0, 8)}` : '未知任务'),
+    };
   }
   if (atConcurrencyLimit()) {
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
-  markResourcesBusy(resources, task.id);
+  // v4.31.40: 真正接管时才 reset(SKIPPED 路径在上面已 return,不会到这)。
+  //   保护旧那次还在跑的 task A 的 progress 不被同 id 新一次 SKIPPED 误删。
+  progressByTaskId.delete(task.id);
   abortByTaskId.delete(task.id);
+  tokensByTaskId.delete(task.id);
+  costUsdByTaskId.delete(task.id);
+  markResourcesBusy(resources, task.id);
   initProgress(task.id);
   startTaskRecord(task, pack.manifest);
 

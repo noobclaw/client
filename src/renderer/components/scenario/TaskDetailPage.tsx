@@ -284,33 +284,59 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     } catch {}
   }, [task.id]);
 
+  // v4.31.41: 把持久化 runRecord 的 step_logs 转成 UI 用的 ScenarioRunProgress
+  //   形状,详情页 mount 时如果内存 progress 已被清(task 跑完 30s 后)就用这个
+  //   fallback 展示上次跑的步骤日志。task 还在跑就用 in-memory 实时数据覆盖。
+  const recordToProgress = useCallback((rec: any): ScenarioRunProgress => {
+    const steps = STEP_NAMES.map(name => ({
+      name,
+      status: 'waiting' as 'waiting' | 'running' | 'done' | 'error',
+      logs: [] as { time: string; status: 'done' | 'running' | 'error'; message: string }[],
+    }));
+    const entries = Array.isArray(rec?.step_logs) ? rec.step_logs : [];
+    for (const e of entries) {
+      const idx = (e.step || 1) - 1;
+      if (idx < 0 || idx >= steps.length) continue;
+      steps[idx].logs.push({ time: e.time, status: e.status, message: e.message });
+    }
+    // 推算每步状态:从该步最后一条 log 的 status 取
+    for (const s of steps) {
+      if (s.logs.length === 0) continue;
+      const last = s.logs[s.logs.length - 1].status;
+      s.status = last === 'done' ? 'done' : last === 'error' ? 'error' : 'running';
+    }
+    const isRunning = rec?.status === 'running';
+    return {
+      taskId: rec?.task_id || task.id,
+      status: isRunning ? 'running' : (rec?.status === 'error' || rec?.status === 'stopped') ? 'error' : 'done',
+      currentStep: 0,
+      steps,
+    } as ScenarioRunProgress;
+  }, [STEP_NAMES, task.id]);
+
   // ── Check running state on mount (ONE TIME) ──
-  // v2.4.38: fetch progress DIRECTLY instead of going through
-  // getRunningTaskIds → setRunning → poll-effect → 2s wait → first
-  // progress fetch. That chain had a ~2-3s blind window where users
-  // landing on the detail page mid-run saw "等待前一步" and thought
-  // progress didn't load. Now we populate `progress` on mount so the
-  // step panel has real data before the user blinks.
   useEffect(() => {
     void refreshData();
+    // 1. 优先内存 progress(实时 polling 数据,task 还在跑时 freshest)
     scenarioService.getRunProgress(task.id).then(prog => {
       if (!mountedRef.current) return;
       if (prog && prog.taskId === task.id) {
         setProgress(prog);
         if (prog.status === 'running') setRunning(true);
+        return; // 拿到 live progress 不再走 fallback
       }
+      // 2. v4.31.41 fallback: in-memory progress 没了(task 结束 30s 后被清)
+      //    从持久化 runRecord 拉上次跑的步骤日志展示
+      scenarioService.getLatestRunRecord(task.id).then(rec => {
+        if (!mountedRef.current || !rec) return;
+        setProgress(recordToProgress(rec));
+      }).catch(() => {});
     }).catch(() => {});
-    // v2.4.67 fallback: getRunProgress() can return null even when the task
-    // is genuinely running (e.g. progress channel hasn't pushed yet, runner
-    // restarted while task was mid-flight, etc.). The list page reads
-    // getRunningTaskIds() as ground truth — mirror that here so the detail
-    // page doesn't show "等待前一步 / 24 小时后运行" while the list shows
-    // the same task as 运行中. Polled every 3s to match list cadence.
     scenarioService.getRunningTaskIds().then(ids => {
       if (!mountedRef.current) return;
       if (Array.isArray(ids) && ids.indexOf(task.id) >= 0) setRunning(true);
     }).catch(() => {});
-  }, [refreshData, task.id]);
+  }, [refreshData, task.id, recordToProgress]);
 
   // v2.4.67: ongoing sync — if list-side reports our task as running but
   // local state thinks otherwise, flip running=true so the step panel
