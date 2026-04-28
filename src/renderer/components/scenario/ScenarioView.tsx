@@ -49,6 +49,8 @@ interface ScenarioViewProps {
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
+  /** v4.31.44: 主页涨粉标签传入,初始选中对应 platform tab。undefined 时默认 binance */
+  initialPlatform?: PlatformId;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -68,9 +70,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onToggleSidebar,
   onNewChat,
   updateBadge,
+  initialPlatform,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: 'binance' });
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: initialPlatform || 'binance' });
 
   const [scenarios, setScenarios] = useState<Scenario[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);

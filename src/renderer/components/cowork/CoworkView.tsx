@@ -23,13 +23,15 @@ export interface CoworkViewProps {
   onRequestAppSettings?: (options?: SettingsOpenOptions) => void;
   onShowSkills?: () => void;
   onShowWallet?: () => void;
+  /** v4.31.44: 主页 3 个涨粉标签调用,可选 platform 直跳到对应平台 tab */
+  onShowQuickUse?: (platform?: 'xhs' | 'x' | 'binance') => void;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
 }
 
-const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSkills, onShowWallet, isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
+const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSkills, onShowWallet, onShowQuickUse, isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
   const dispatch = useDispatch();
   const isMac = window.electron.platform === 'darwin';
   const [isInitialized, setIsInitialized] = useState(false);
@@ -478,6 +480,36 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               {i18nService.t('coworkDescription')}
             </p>
           </div>
+
+          {/* v4.31.44: 三个涨粉入口标签,点击后跳"一键使用"对应平台 */}
+          {onShowQuickUse && (
+            <div className="grid grid-cols-3 gap-3">
+              <button
+                type="button"
+                onClick={() => onShowQuickUse('binance')}
+                className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-amber-500/30 border-amber-200 dark:bg-amber-500/5 bg-amber-50 hover:dark:bg-amber-500/10 hover:bg-amber-100 transition-colors cursor-pointer"
+              >
+                <span className="text-2xl">🔶</span>
+                <span className="text-sm font-medium dark:text-amber-300 text-amber-700">币安广场涨粉</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onShowQuickUse('x')}
+                className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-sky-500/30 border-sky-200 dark:bg-sky-500/5 bg-sky-50 hover:dark:bg-sky-500/10 hover:bg-sky-100 transition-colors cursor-pointer"
+              >
+                <span className="text-2xl">🐦</span>
+                <span className="text-sm font-medium dark:text-sky-300 text-sky-700">推特涨粉</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onShowQuickUse('xhs')}
+                className="group flex flex-col items-center justify-center gap-2 p-4 rounded-2xl border dark:border-rose-500/30 border-rose-200 dark:bg-rose-500/5 bg-rose-50 hover:dark:bg-rose-500/10 hover:bg-rose-100 transition-colors cursor-pointer"
+              >
+                <span className="text-2xl">📕</span>
+                <span className="text-sm font-medium dark:text-rose-300 text-rose-700">小红书涨粉</span>
+              </button>
+            </div>
+          )}
 
           {/* Prompt Input Area - Large version with folder selector */}
           <div className="space-y-3">

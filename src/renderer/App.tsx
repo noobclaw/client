@@ -41,6 +41,8 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners' | 'personality'>('cowork');
+  // v4.31.44: 主页 3 个涨粉标签可以指定打开"一键使用"时初选哪个平台
+  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -765,7 +767,10 @@ const App: React.FC = () => {
 
   const handleShowWallet = () => setMainView('wallet');
   const handleShowInvite = () => setMainView('invite');
-  const handleShowQuickUse = () => setMainView('quickuse');
+  const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance') => {
+    setQuickUseInitialPlatform(platform);
+    setMainView('quickuse');
+  };
   const handleShowWeb3News = () => setMainView('web3news');
   const handleShowPartners = () => setMainView('partners');
   const handleShowPersonality = () => setMainView('personality');
@@ -853,6 +858,7 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
+                initialPlatform={quickUseInitialPlatform}
               />
             ) : mainView === 'partners' ? (
               <PartnersView
@@ -883,6 +889,7 @@ const App: React.FC = () => {
                 onRequestAppSettings={handleShowSettings}
                 onShowSkills={handleShowSkills}
                 onShowWallet={handleShowWallet}
+                onShowQuickUse={handleShowQuickUse}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
