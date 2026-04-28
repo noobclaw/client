@@ -371,8 +371,14 @@ export function isAbortRequested(taskId?: string): boolean {
 
 const MAX_CONCURRENT_TASKS = 3;
 
-/** resource key → taskId currently occupying it */
-const runningByResource = new Map<string, string>();
+/** resource key → { taskId, markedAt }
+ *  v4.31.36: 加 markedAt 时间戳,scheduler tick 看到持锁 >30min 视为僵尸
+ *  (上次跑卡死 / orchestrator 永远 pending 等)主动 release,避免后续
+ *  task 永远 SKIPPED。之前用户场景:binance_from_x_repost 卡死占着 X+binance
+ *  双 tab,把所有 X / 币安 task 全锁死,只 XHS 不受影响,要重启 sidecar
+ *  才能 unblock。 */
+const runningByResource = new Map<string, { taskId: string; markedAt: number }>();
+const STALE_RESOURCE_TIMEOUT_MS = 30 * 60 * 1000; // 30 min
 
 // v4.25+ cross-tab scenarios (binance_from_x_repost) touch multiple tabs
 // in one run, so they claim ALL the tab resources they'll use. If any of
@@ -412,8 +418,22 @@ function resourceKeysForPack(
   return keys;
 }
 
+/** v4.31.36: 扫描整个 runningByResource,持锁 >30min 视为僵尸主动 release。
+ *  在 findBusyResource / scheduler tick 入口都调,自我恢复用。 */
+function reapStaleResources(): void {
+  const now = Date.now();
+  for (const [k, v] of runningByResource) {
+    if (now - v.markedAt > STALE_RESOURCE_TIMEOUT_MS) {
+      coworkLog('WARN', 'scenarioManager',
+        `reaping stale resource: key=${k} task=${v.taskId} held for ${Math.round((now - v.markedAt) / 60000)}min — task likely stuck (orchestrator pending), force-releasing`);
+      runningByResource.delete(k);
+    }
+  }
+}
+
 /** Returns the first busy key (for error message) or null if all free. */
 function findBusyResource(keys: string[]): string | null {
+  reapStaleResources();
   for (const k of keys) if (runningByResource.has(k)) return k;
   return null;
 }
@@ -430,11 +450,13 @@ function humanizePlatformFromKey(key: string): string {
 }
 
 function atConcurrencyLimit(): boolean {
+  reapStaleResources();
   return runningByResource.size >= MAX_CONCURRENT_TASKS;
 }
 
 function markResourcesBusy(keys: string[], taskId: string): void {
-  for (const k of keys) runningByResource.set(k, taskId);
+  const now = Date.now();
+  for (const k of keys) runningByResource.set(k, { taskId, markedAt: now });
 }
 
 function releaseResources(keys: string[]): void {
@@ -447,14 +469,16 @@ function releaseResources(keys: string[]): void {
  * a time. New callers should prefer getRunningTaskIds().
  */
 export function getRunningTaskId(): string | null {
+  reapStaleResources();
   const first = runningByResource.values().next();
-  return first.done ? null : first.value;
+  return first.done ? null : first.value.taskId;
 }
 
 /** All currently-running task ids. Lets the UI light up multiple "running"
  *  badges when XHS task + Twitter task are in flight at the same time. */
 export function getRunningTaskIds(): string[] {
-  return Array.from(runningByResource.values());
+  reapStaleResources();
+  return Array.from(runningByResource.values()).map(v => v.taskId);
 }
 
 // ── Main entry ──
@@ -489,7 +513,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
   const resources = resourceKeysForPack(pack);
   const busyKey = findBusyResource(resources);
   if (busyKey) {
-    const holdingTaskId = runningByResource.get(busyKey);
+    const holdingTaskId = runningByResource.get(busyKey)?.taskId;
     const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
     return {
       status: 'skipped',
@@ -634,7 +658,7 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   const busyKey = findBusyResource(resources);
   if (busyKey) {
     // v4.25.35: 占用提示加人话信息 — UI toast 能告诉用户具体是哪个任务卡了哪个平台。
-    const holdingTaskId = runningByResource.get(busyKey);
+    const holdingTaskId = runningByResource.get(busyKey)?.taskId;
     const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
     return {
       status: 'skipped',
