@@ -83,9 +83,6 @@
     },
     "windows": {
       "allowDowngrades": false,
-      "webviewInstallMode": {
-        "type": "offlineInstaller"
-      },
       "nsis": {
         "installMode": "perMachine",
         "installerIcon": "icons/icon.ico",
