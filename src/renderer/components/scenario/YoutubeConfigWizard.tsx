@@ -32,6 +32,30 @@ const LIKE_HARDCAP = 30;
 const SUBSCRIBE_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
+// ── YouTube tracks (curated from public 2026 trending categories) ──
+// Keywords 主要用于 orchestrator 在 youtube.com 搜索页采集候选视频。每次运行
+// 随机选 1 个 keyword 走搜索 → 采集结果做互动。英文为主因为 YouTube 全球
+// 算法更偏英文素材,中文搜索结果池子小。
+type YoutubeTrack = { id: string; icon: string; name_zh: string; keywords: string[] };
+const YOUTUBE_TRACKS: YoutubeTrack[] = [
+  { id: 'tech_review', icon: '💻', name_zh: '科技 · 数码评测',
+    keywords: ['iPhone review', 'tech 2026', 'gadget unboxing', 'laptop review', 'macbook', 'android review', 'pixel review', 'wearable tech', 'smart home', 'gaming gear'] },
+  { id: 'gaming', icon: '🎮', name_zh: '游戏 · 实况攻略',
+    keywords: ['gameplay walkthrough', 'minecraft', 'fortnite', 'valorant', 'speedrun', 'tier list', 'game review', 'genshin', 'roblox', 'pokemon'] },
+  { id: 'music_mv', icon: '🎵', name_zh: '音乐 · MV / 翻唱',
+    keywords: ['official music video', 'cover song', 'lyrics', 'live performance', 'kpop', 'jpop', 'piano cover', 'guitar acoustic', 'lofi mix', 'remix'] },
+  { id: 'tutorial', icon: '📚', name_zh: '教程 · How-To',
+    keywords: ['tutorial', 'how to', 'beginner guide', 'crash course', 'step by step', 'in 10 minutes', 'explained', 'masterclass', 'learn fast'] },
+  { id: 'vlog', icon: '📷', name_zh: '生活 · Vlog',
+    keywords: ['day in the life', 'morning routine', 'productivity', 'work from home', 'vlog', 'aesthetic vlog', 'minimalist lifestyle', 'wfh routine'] },
+  { id: 'fitness', icon: '💪', name_zh: '健身 · 运动',
+    keywords: ['home workout', 'hiit', 'yoga', 'pilates', 'fat loss', 'workout routine', 'pamela reif', 'chloe ting', '10 min workout', 'no equipment workout'] },
+  { id: 'finance', icon: '💰', name_zh: '理财 · 投资',
+    keywords: ['stock market', 'investing', 'crypto', 'personal finance', 'passive income', 'index fund', 'warren buffett', 'dividend stocks', 'real estate'] },
+  { id: 'ai_news', icon: '🤖', name_zh: 'AI · 资讯前沿',
+    keywords: ['chatgpt', 'claude ai', 'llm', 'ai tools', 'machine learning', 'ai news', 'gemini ai', 'sora video', 'ai agent', 'ai coding'] },
+];
+
 export const YoutubeConfigWizard: React.FC<Props> = ({
   scenario,
   initialTask,
@@ -44,10 +68,24 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
 
   const [step, setStep] = useState<WizardStep>(1);
 
-  // ── Persona ──
-  const [persona, setPersona] = useState<string>(
-    (initialTask?.persona as string) || defaults.persona || ''
+  // ── Track + keywords (replaces persona in v5.x) ──
+  const initialTrackId = ((initialTask as any)?.track as string)
+    || (YOUTUBE_TRACKS.find(t => t.id === 'tech_review')?.id || YOUTUBE_TRACKS[0].id);
+  const [trackId, setTrackId] = useState<string>(
+    YOUTUBE_TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : YOUTUBE_TRACKS[0].id
   );
+  const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
+    ? (initialTask as any).keywords
+    : (YOUTUBE_TRACKS.find(t => t.id === initialTrackId)?.keywords || YOUTUBE_TRACKS[0].keywords);
+  const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
+  const handleTrackChange = (newTrackId: string) => {
+    setTrackId(newTrackId);
+    const preset = YOUTUBE_TRACKS.find(t => t.id === newTrackId);
+    if (preset) setKeywordsText(preset.keywords.join(' '));
+  };
+  function parseKeywords(raw: string): string[] {
+    return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+  }
 
   // ── Slider state with auto-clamp setters (mirrors ConfigWizard pattern) ──
   const [likeMin, setLikeMinRaw] = useState<number>(
@@ -124,10 +162,11 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persona, likeMin, likeMax, subMin, subMax, cmtMin, cmtMax, commentPrompt, runInterval]);
+  }, [trackId, keywordsText, likeMin, likeMax, subMin, subMax, cmtMin, cmtMax, commentPrompt, runInterval]);
 
+  const parsedKeywords = parseKeywords(keywordsText);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: persona.trim().length > 0, reason: isZh ? '请填写人设' : 'Persona is required' },
+    1: { ok: parsedKeywords.length >= 1, reason: isZh ? '请至少填一个关键词' : 'Add at least one keyword' },
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
         : (cmtMax > 0 && !commentPrompt.trim())
@@ -146,9 +185,9 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     try {
       await onSave({
         scenario_id: scenario.id,
-        track: 'youtube_default',
-        keywords: [],
-        persona: persona.trim(),
+        track: trackId,
+        keywords: parsedKeywords,
+        persona: '',
         // legacy daily_count = sum of upper-bound quotas (informational only,
         // orchestrator drives off the per-action min/max ranges below).
         daily_count: Math.max(1, totalMaxActions),
@@ -211,28 +250,56 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
-          {/* ── Step 1: persona ── */}
+          {/* ── Step 1: track + keywords (v5.x replaces persona) ── */}
           {step === 1 && (
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                {isZh ? '人设 (用于 AI 生成评论的语气底色)' : 'Persona (sets the voice for AI-generated comments)'}
-              </label>
-              <textarea
-                value={persona}
-                onChange={e => setPersona(e.target.value)}
-                rows={8}
-                maxLength={800}
-                placeholder={defaults.persona || (isZh ? '例: 对科技 / Web3 / AI 内容感兴趣的普通观众,评论自然口语,不爹味、不拍马屁' : 'e.g. casual viewer interested in tech / Web3 / AI; natural comments, no flattery')}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-y"
-                disabled={saving}
-              />
-              <div className="text-[11px] text-gray-400 mt-1 text-right">{persona.length}/800</div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                {isZh
-                  ? '人设决定 AI 评论的语气。下一步设置每次运行点赞 / 订阅 / 评论的随机区间。'
-                  : 'Persona shapes the voice of AI-generated comments. Next step picks the per-run quotas for like / subscribe / comment.'}
-              </p>
-            </div>
+            <>
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                  {isZh ? '选择赛道' : 'Select Track'}
+                </label>
+                <div className="relative">
+                  <select
+                    value={trackId}
+                    onChange={e => handleTrackChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 cursor-pointer"
+                    disabled={saving}
+                  >
+                    {YOUTUBE_TRACKS.map(t => (
+                      <option key={t.id} value={t.id}>{t.icon} {t.name_zh}</option>
+                    ))}
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {isZh ? '关键词' : 'Keywords'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">
+                    {isZh ? '· 每次运行随机选 1 个搜索匹配视频去互动' : '· Each run picks 1 random keyword to search'}
+                  </span>
+                </label>
+                <div className="mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-indigo-500/30 bg-indigo-500/5 text-indigo-700 dark:text-indigo-300">
+                  ✨ {isZh
+                    ? <>关键词决定<strong>会去搜哪些视频做互动</strong>。预填的是各赛道高流量词,可按你账号定位增删。</>
+                    : <>Keywords decide <strong>which videos get engaged with</strong>. Pre-filled with each track's high-traffic terms.</>}
+                </div>
+                <textarea
+                  value={keywordsText}
+                  onChange={e => setKeywordsText(e.target.value)}
+                  placeholder={isZh ? '用空格或逗号分隔,越多越好' : 'Space or comma separated'}
+                  rows={5}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-y"
+                  disabled={saving}
+                />
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {isZh ? '当前 ' + parsedKeywords.length + ' 个关键词' : parsedKeywords.length + ' keywords'}
+                </div>
+              </div>
+            </>
           )}
 
           {/* ── Step 2: 3 sliders + comment_prompt + safety ── */}
@@ -331,7 +398,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
-                <SummaryRow label={isZh ? '人设' : 'Persona'} value={persona.split('\n')[0].slice(0, 60) + (persona.length > 60 ? '...' : '')} />
+                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(YOUTUBE_TRACKS.find(t => t.id === trackId)?.name_zh || trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
                 <SummaryRow label={isZh ? '点赞数' : 'Likes'} value={`${likeMin}-${likeMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '订阅数' : 'Subscribes'} value={`${subMin}-${subMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />

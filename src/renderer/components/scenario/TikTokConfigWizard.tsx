@@ -30,6 +30,27 @@ const LIKE_HARDCAP = 30;
 const FOLLOW_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
+// ── TikTok tracks (curated 2026 trending categories) ──
+type TiktokTrack = { id: string; icon: string; name_zh: string; keywords: string[] };
+const TIKTOK_TRACKS: TiktokTrack[] = [
+  { id: 'dance', icon: '💃', name_zh: '舞蹈 · 翻跳',
+    keywords: ['dance challenge', 'kpop dance', 'tiktok dance', 'choreography', 'dance trend', 'viral dance', '舞蹈翻跳'] },
+  { id: 'comedy', icon: '😂', name_zh: '搞笑 · 段子',
+    keywords: ['funny', 'comedy', 'meme', 'lol', 'reaction', 'prank', 'fyp', '搞笑'] },
+  { id: 'food', icon: '🍜', name_zh: '美食 · 探店',
+    keywords: ['food', 'restaurant review', 'foodie', 'street food', 'recipe', 'cooking', 'asmr food', '美食'] },
+  { id: 'travel_intl', icon: '✈️', name_zh: '海外旅行',
+    keywords: ['travel', 'thailand', 'japan', 'bali', 'tokyo', 'korea', 'backpacking', 'solo travel', 'vlog travel'] },
+  { id: 'diy_hacks', icon: '🔧', name_zh: '生活妙招',
+    keywords: ['life hack', 'diy', 'cleaning hack', 'organization', 'tips', 'kitchen hack', 'gadget review'] },
+  { id: 'pet', icon: '🐶', name_zh: '萌宠日常',
+    keywords: ['cat', 'dog', 'puppy', 'kitten', 'cute pet', 'cat lover', 'dog tricks', 'pet'] },
+  { id: 'fashion', icon: '👗', name_zh: '穿搭 · 时尚',
+    keywords: ['outfit', 'ootd', 'fashion', 'thrift haul', 'styling', 'street style', 'capsule wardrobe'] },
+  { id: 'tech_short', icon: '📱', name_zh: '科技 · 数码短视频',
+    keywords: ['tech', 'iphone tips', 'app review', 'gadget', 'productivity hack', 'phone tricks'] },
+];
+
 export const TikTokConfigWizard: React.FC<Props> = ({
   scenario,
   initialTask,
@@ -42,9 +63,24 @@ export const TikTokConfigWizard: React.FC<Props> = ({
 
   const [step, setStep] = useState<WizardStep>(1);
 
-  const [persona, setPersona] = useState<string>(
-    (initialTask?.persona as string) || defaults.persona || ''
+  // ── Track + keywords (replaces persona in v5.x) ──
+  const initialTrackId = ((initialTask as any)?.track as string)
+    || (TIKTOK_TRACKS.find(t => t.id === 'dance')?.id || TIKTOK_TRACKS[0].id);
+  const [trackId, setTrackId] = useState<string>(
+    TIKTOK_TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : TIKTOK_TRACKS[0].id
   );
+  const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
+    ? (initialTask as any).keywords
+    : (TIKTOK_TRACKS.find(t => t.id === initialTrackId)?.keywords || TIKTOK_TRACKS[0].keywords);
+  const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
+  const handleTrackChange = (newTrackId: string) => {
+    setTrackId(newTrackId);
+    const preset = TIKTOK_TRACKS.find(t => t.id === newTrackId);
+    if (preset) setKeywordsText(preset.keywords.join(' '));
+  };
+  function parseKeywords(raw: string): string[] {
+    return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
+  }
 
   const [likeMin, setLikeMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_like_min === 'number' ? (initialTask as any).daily_like_min : 1
@@ -119,10 +155,11 @@ export const TikTokConfigWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persona, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, commentPrompt, runInterval]);
+  }, [trackId, keywordsText, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, commentPrompt, runInterval]);
 
+  const parsedKeywords = parseKeywords(keywordsText);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: { ok: persona.trim().length > 0, reason: isZh ? '请填写人设' : 'Persona is required' },
+    1: { ok: parsedKeywords.length >= 1, reason: isZh ? '请至少填一个关键词' : 'Add at least one keyword' },
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
         : (cmtMax > 0 && !commentPrompt.trim())
@@ -141,9 +178,9 @@ export const TikTokConfigWizard: React.FC<Props> = ({
     try {
       await onSave({
         scenario_id: scenario.id,
-        track: 'tiktok_default',
-        keywords: [],
-        persona: persona.trim(),
+        track: trackId,
+        keywords: parsedKeywords,
+        persona: '',
         daily_count: Math.max(1, totalMaxActions),
         variants_per_post: 1,
         daily_time: dailyTime,
@@ -195,25 +232,54 @@ export const TikTokConfigWizard: React.FC<Props> = ({
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
 
           {step === 1 && (
-            <div>
-              <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                {isZh ? '人设 (用于 AI 生成评论的语气底色)' : 'Persona (sets the voice for AI-generated comments)'}
-              </label>
-              <textarea
-                value={persona}
-                onChange={e => setPersona(e.target.value)}
-                rows={8} maxLength={800}
-                placeholder={defaults.persona || (isZh ? '例: 对短视频 / 流行文化 / 旅行 感兴趣的普通观众,评论自然口语,不爹味、不拍马屁' : 'e.g. casual viewer interested in short-form / pop culture / travel; natural comments, no flattery')}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/40 resize-y"
-                disabled={saving}
-              />
-              <div className="text-[11px] text-gray-400 mt-1 text-right">{persona.length}/800</div>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">
-                {isZh
-                  ? '人设决定 AI 评论的语气。下一步设置每次运行点赞 / 关注 / 评论的随机区间。'
-                  : 'Persona shapes the voice of AI-generated comments. Next step picks the per-run quotas for like / follow / comment.'}
-              </p>
-            </div>
+            <>
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                  {isZh ? '选择赛道' : 'Select Track'}
+                </label>
+                <div className="relative">
+                  <select
+                    value={trackId}
+                    onChange={e => handleTrackChange(e.target.value)}
+                    className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/40 cursor-pointer"
+                    disabled={saving}
+                  >
+                    {TIKTOK_TRACKS.map(t => (
+                      <option key={t.id} value={t.id}>{t.icon} {t.name_zh}</option>
+                    ))}
+                  </select>
+                  <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                    fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
+                  {isZh ? '关键词' : 'Keywords'}
+                  <span className="text-xs text-gray-400 font-normal ml-1">
+                    {isZh ? '· 每次运行随机选 1 个搜索匹配视频去互动' : '· Each run picks 1 random keyword to search'}
+                  </span>
+                </label>
+                <div className="mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-cyan-500/30 bg-cyan-500/5 text-cyan-700 dark:text-cyan-300">
+                  ✨ {isZh
+                    ? <>关键词决定<strong>会去搜哪些视频做互动</strong>。预填的是各赛道高流量词,可按你账号定位增删。</>
+                    : <>Keywords decide <strong>which videos get engaged with</strong>. Pre-filled with each track's high-traffic terms.</>}
+                </div>
+                <textarea
+                  value={keywordsText}
+                  onChange={e => setKeywordsText(e.target.value)}
+                  placeholder={isZh ? '用空格或逗号分隔,越多越好' : 'Space or comma separated'}
+                  rows={5}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/40 resize-y"
+                  disabled={saving}
+                />
+                <div className="text-[11px] text-gray-400 mt-1">
+                  {isZh ? '当前 ' + parsedKeywords.length + ' 个关键词' : parsedKeywords.length + ' keywords'}
+                </div>
+              </div>
+            </>
           )}
 
           {step === 2 && (
@@ -308,7 +374,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
-                <SummaryRow label={isZh ? '人设' : 'Persona'} value={persona.split('\n')[0].slice(0, 60) + (persona.length > 60 ? '...' : '')} />
+                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(TIKTOK_TRACKS.find(t => t.id === trackId)?.name_zh || trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
                 <SummaryRow label={isZh ? '点赞数' : 'Likes'} value={`${likeMin}-${likeMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '关注数' : 'Follows'} value={`${folMin}-${folMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />
