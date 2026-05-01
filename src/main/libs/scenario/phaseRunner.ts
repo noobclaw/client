@@ -223,15 +223,39 @@ function buildContext(
   // extension. PLATFORM_TAB_GROUPS lives in platformLoginDriver — adding
   // a new platform now only requires updating that map (a client release)
   // and never another extension release.
+  //
+  // Cross-tab scenarios (e.g. binance_from_x_repost) switch the active
+  // tab via ctx.setActiveTab('primary' | 'secondary'). The secondary
+  // tab usually belongs to a different platform (X tab while doing a
+  // Binance repost). We compute both tabGroups up-front so getBridgeOpts
+  // can hand back the right one based on activePattern at the moment
+  // of the command. Without this, switching to the X tab would send the
+  // Binance group title and the new ext would mis-label the X tab.
   const platformId = (manifest as any).platform as string | undefined;
-  const tabGroup = (platformId && (PLATFORM_TAB_GROUPS as any)[platformId])
+  const primaryTabGroup = (platformId && (PLATFORM_TAB_GROUPS as any)[platformId])
     ? (PLATFORM_TAB_GROUPS as any)[platformId as LoginPlatform]
     : undefined;
+  // Infer secondary platform from its URL pattern (no need for a new
+  // manifest field — the pattern already encodes the domain).
+  const inferPlatformFromPattern = (pat?: string): LoginPlatform | undefined => {
+    if (!pat) return undefined;
+    if (/xiaohongshu/i.test(pat)) return 'xhs';
+    if (/binance/i.test(pat)) return 'binance';
+    if (/youtube/i.test(pat)) return 'youtube';
+    if (/tiktok/i.test(pat)) return 'tiktok';
+    if (/douyin/i.test(pat)) return 'douyin';
+    if (/twitter|x\\?\.com/i.test(pat)) return 'x';
+    return undefined;
+  };
+  const secondaryPlatform = inferPlatformFromPattern(secondaryPattern);
+  const secondaryTabGroup = secondaryPlatform ? PLATFORM_TAB_GROUPS[secondaryPlatform] : undefined;
   const getBridgeOpts = () => {
-    if (!activePattern && !tabGroup) return undefined;
+    const useSecondary = activePattern && activePattern === secondaryPattern;
+    const tg = useSecondary ? (secondaryTabGroup || primaryTabGroup) : primaryTabGroup;
+    if (!activePattern && !tg) return undefined;
     const opts: { tabPattern?: string; tabGroup?: { title: string; color: string } } = {};
     if (activePattern) opts.tabPattern = activePattern;
-    if (tabGroup) opts.tabGroup = tabGroup;
+    if (tg) opts.tabGroup = tg;
     return opts;
   };
 
