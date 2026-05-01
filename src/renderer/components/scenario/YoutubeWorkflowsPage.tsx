@@ -77,8 +77,15 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
       noobClawAuth.openWebsiteLogin();
       return;
     }
-    onConfigure(scenario);
-  }, [onConfigure, isZh, tasks.length]);
+    // Open pre-run check (extension + YouTube tab + login). After it
+    // passes, handleLoginConfirmed will hand off to ConfigWizard.
+    setLoginModalReason('configure');
+  }, [isZh, tasks.length]);
+
+  const handleLoginConfirmed = () => {
+    setLoginModalReason(null);
+    if (autoEngage) onConfigure(autoEngage);
+  };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
@@ -114,13 +121,13 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* Login modal */}
+      {/* Pre-run check modal — extension + YouTube tab + login state */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
           platform="youtube"
           onCancel={() => setLoginModalReason(null)}
-          onConfirmed={() => setLoginModalReason(null)}
+          onConfirmed={handleLoginConfirmed}
         />
       )}
 

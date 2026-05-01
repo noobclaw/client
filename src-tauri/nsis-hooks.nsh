@@ -49,7 +49,7 @@
 
     ; Delete 后文件还在 → NMH 持镜像锁,删不掉
     MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION \
-      "检测到 NoobClaw 后台服务正被浏览器占用,无法${OPERATION}。$\r$\n$\r$\n请完全退出 Chrome / Edge / Firefox(包含托盘图标和后台标签页),然后点击「重试」。$\r$\n$\r$\n点击「取消」放弃本次${OPERATION}。" \
+      "NoobClaw is in use by a browser.$\r$\n$\r$\nQuit Chrome / Edge / Firefox completely, then click Retry — or Cancel to abort the ${OPERATION}." \
       /SD IDCANCEL \
       IDRETRY nc_guard_retry_${TAG}
     Pop $0
@@ -64,9 +64,9 @@
 !macroend
 
 !macro NSIS_HOOK_PREINSTALL
-  !insertmacro NC_GUARD INSTALL "升级"
+  !insertmacro NC_GUARD INSTALL "install"
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  !insertmacro NC_GUARD UNINSTALL "卸载"
+  !insertmacro NC_GUARD UNINSTALL "uninstall"
 !macroend
