@@ -151,14 +151,18 @@ const STEP_NAMES_X_POST_CREATOR_EN = [
   'Generate and post the tweet',
   'Save this run report to disk',
 ];
+// v5.x+: 4 步,跟 binance_from_x_link 同款"按条端到端"结构 — 每条 URL 独立
+// 走完读源/仿写/发推三步,UI 进度条逐步推进。报告步落到第 4 步。
 const STEP_NAMES_X_LINK_REWRITE_ZH = [
-  '读取每条原推内容',
-  '逐条仿写并发布',
+  '打开链接读取原推',
+  'AI 改写 + 准备配图/视频',
+  '发布到推特',
   '保存本次报告到本地',
 ];
 const STEP_NAMES_X_LINK_REWRITE_EN = [
-  'Read each source tweet',
-  'Rewrite and post each',
+  'Open URL & read source tweet',
+  'AI rewrite + prep images/video',
+  'Post to X',
   'Save this run report to disk',
 ];
 const STEP_NAMES_BINANCE_AUTO_ENGAGE_ZH = [
