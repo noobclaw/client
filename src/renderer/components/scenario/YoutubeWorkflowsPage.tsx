@@ -185,10 +185,10 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
       <div className="relative flex flex-col flex-1">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-red-500 mb-2">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
-          {isZh ? '智能互动' : 'Daily engagement'}
+          {isZh ? '互动涨粉' : 'Engage & Grow'}
         </div>
         <h3 className="text-base font-bold dark:text-white mb-1.5">
-          📺 {isZh ? 'YouTube · 智能互动' : 'YouTube Auto Engagement'}
+          📺 {isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow'}
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh

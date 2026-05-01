@@ -150,8 +150,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_auto_reply_universal',
     workflow_type: 'auto_reply' as any,
-    name_zh: '小红书 · 智能互动',
-    name_en: 'XHS Auto Engage',
+    name_zh: '小红书 · 互动涨粉',
+    name_en: 'XHS Engage & Grow',
     description_zh: '按关键词找文章，AI 生成评论+用户回复，30-80 秒间隔安全发布。每次还会按 0~30% 概率关注作者。',
     description_en: 'Find articles by keyword, AI-reply + reply to comments, post on safe jitter. Optionally follow the author (0-30% chance).',
     icon: '💬',
@@ -305,8 +305,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Four-card grid — v2.4.59: 用户要求智能互动放第一(跟币安/推特页一致)。
-          顺序: 智能互动 · 批量仿写 · 指定链接 · 敏感词检测 */}
+      {/* Four-card grid — v2.4.59: 用户要求互动涨粉放第一(跟币安/推特页一致)。
+          顺序: 互动涨粉 · 批量仿写 · 指定链接 · 敏感词检测 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 1. Auto-reply (moved from 4th to 1st per user feedback 2.4.59) */}
         <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
@@ -314,10 +314,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           <div className="relative flex flex-col h-full">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '智能互动' : 'Auto Engage'}
+              {i18nService.currentLanguage === 'zh' ? '互动涨粉' : 'Engage & Grow'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💬 {i18nService.currentLanguage === 'zh' ? '小红书 · 智能互动' : 'XHS Auto Engage'}
+              💬 {i18nService.currentLanguage === 'zh' ? '小红书 · 互动涨粉' : 'XHS Engage & Grow'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'

@@ -69,8 +69,8 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
     platform: 'tiktok' as any,
     workflow_type: 'auto_reply' as any,
     category: 'engagement',
-    name_zh: 'TikTok · 智能互动',
-    name_en: 'TikTok Auto Engagement',
+    name_zh: 'TikTok · 互动涨粉',
+    name_en: 'TikTok Engage & Grow',
     description_zh: '每天定时刷 TikTok Explore，挑出若干视频按你配置的组合做点赞 / 关注 / 评论。三项动作可独立开关，评论由 AI 按视频与置顶评论的语言自动匹配生成，行为间隔随机模拟真人。',
     description_en: 'Browses TikTok Explore on schedule, picks videos and runs your configured mix of like / follow / comment. Each action toggles independently; comments are AI-generated and language-matched to the video & top comments.',
     icon: '🎵',
@@ -231,10 +231,10 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
       <div className="relative flex flex-col flex-1">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-pink-500 mb-2">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
-          {isZh ? '智能互动' : 'Daily engagement'}
+          {isZh ? '互动涨粉' : 'Engage & Grow'}
         </div>
         <h3 className="text-base font-bold dark:text-white mb-1.5">
-          🎵 {isZh ? 'TikTok · 智能互动' : 'TikTok Auto Engagement'}
+          🎵 {isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow'}
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh

@@ -546,10 +546,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
   const typeBadge = (() => {
     const sid = task.scenario_id;
-    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 自动互动' : 'Twitter Auto Engage', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
+    if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
     if (sid === 'x_post_creator')                 return { icon: '📝', label: isZh ? '推特 · 自动发推' : 'Twitter Auto Post', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'x_link_rewrite')                 return { icon: '✍️', label: isZh ? '推特 · 指定链接仿写' : 'Tweet Rewrite (URL)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
-    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场 · 自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+    if (sid === 'binance_square_auto_engage')     return { icon: '🤝', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
     if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
@@ -557,8 +557,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     // workflow_type fallback — guard by platform so Binance auto_reply
     // doesn't get mis-labeled as XHS auto_reply.
     if ((scenario?.workflow_type as any) === 'auto_reply') {
-      if (isBinanceTask) return { icon: '💬', label: isZh ? '币安广场 · 自动互动' : 'Binance Square Auto Engage', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
-      return { icon: '💬', label: isZh ? '小红书 · 自动互动' : 'XHS Auto Engage', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+      if (isBinanceTask) return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+      return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (isBinanceTask) return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isXTask)       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
@@ -573,7 +573,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       </button>
 
       {/* Header: badges so the task detail page identifies itself the same
-          way it appeared in the list — at a glance "this is the推特/自动互动
+          way it appeared in the list — at a glance "this is the推特/互动涨粉
           task you clicked on". For Twitter scenarios we ALSO show the
           language pill so users immediately see whether their language
           choice (中文 / English / 中英混合) is registered for this task —

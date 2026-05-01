@@ -94,6 +94,17 @@ export interface ScenarioTaskIPC {
   /** Twitter v2.4.27: Blue V flag — see main types.ts for full notes.
    *  false (default) = ≤140 char cap, true = AI free pick. */
   is_blue_v?: boolean;
+  /** Run frequency. Read by the scheduler in main process. Optional —
+   *  legacy tasks fall back to 'daily'. Used by YouTube / TikTok wizards. */
+  run_interval?: '30min' | '1h' | '3h' | '6h' | 'daily' | 'daily_random' | 'once' | 'weekdays_only' | 'manual';
+  /** YouTube / TikTok auto-engage toggles. Read by the orchestrator at run
+   *  time; missing values fall back to manifest.default_config.enable_*. */
+  enable_like?: boolean;
+  enable_subscribe?: boolean;   // YouTube
+  enable_follow?: boolean;       // TikTok
+  enable_comment?: boolean;
+  /** Free-form prompt that guides the AI comment composer. */
+  comment_prompt?: string;
   enabled: boolean;
   /** Only the active task gets auto-run by the scheduler. At most 1 task
    *  can be active at a time. User switches via "设为运行" button. */

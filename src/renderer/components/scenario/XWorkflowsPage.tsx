@@ -219,9 +219,9 @@ export const XWorkflowsPage: React.FC<Props> = ({
         <ScenarioCard
           color="emerald"
           emoji="🐦"
-          badge={isZh ? '智能互动' : 'Daily engagement'}
-          titleZh="推特 · 智能互动"
-          titleEn="X Auto Engagement"
+          badge={isZh ? '互动涨粉' : 'Engage & Grow'}
+          titleZh="推特 · 互动涨粉"
+          titleEn="X Engage & Grow"
           descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 30 秒-10 分钟随机。"
           descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 30s-10min between actions."
           loading={loading}

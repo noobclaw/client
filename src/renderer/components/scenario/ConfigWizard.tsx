@@ -11,6 +11,7 @@ import React, { useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
 import { YoutubeConfigWizard } from './YoutubeConfigWizard';
+import { TikTokConfigWizard } from './TikTokConfigWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -285,6 +286,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'youtube_auto_engage') {
     return (
       <YoutubeConfigWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // TikTok 走完全独立的 wizard,字段隔离 (subscribe → follow,主色由红改粉)。
+  if (scenario.id === 'tiktok_auto_engage') {
+    return (
+      <TikTokConfigWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}
@@ -732,7 +745,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
             {isXAutoEngage
-              ? (isZh ? '配置 Twitter 智能互动' : 'Configure X Auto Engagement')
+              ? (isZh ? '配置 Twitter 互动涨粉' : 'Configure X Engage & Grow')
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
                 : isBinanceFromXRepost
@@ -741,7 +754,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
                     ? (isBinancePlatform
-                        ? (isZh ? '配置智能互动' : 'Configure Auto Engage')
+                        ? (isZh ? '配置互动涨粉' : 'Configure Engage & Grow')
                         : (isZh ? '配置自动回复' : 'Configure Auto Reply'))
                     : (isZh ? '配置赛道' : 'Configure Track')}
           </div>
@@ -1649,7 +1662,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
             <div>
               <h3 className="text-lg font-bold dark:text-white mb-4">
                 {isXAutoEngage
-                  ? (isZh ? '确认并启用 Twitter 智能互动' : 'Confirm & Enable X Auto Engagement')
+                  ? (isZh ? '确认并启用 Twitter 互动涨粉' : 'Confirm & Enable X Engage & Grow')
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
                     : isBinanceFromXRepost

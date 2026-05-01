@@ -1,19 +1,17 @@
 /**
- * YoutubeConfigWizard — 独立 wizard,不复用 ConfigWizard 的 X/XHS/Binance
- * 字段。专门为 youtube_auto_engage 场景设计:
+ * TikTokConfigWizard — 独立 wizard,不复用 ConfigWizard 的 X/XHS/Binance
+ * 字段。专门为 tiktok_auto_engage 场景设计:
  *
  *   - persona (人设)
  *   - daily_count (每天处理几个视频, 1-30)
  *   - daily_time (HH:MM)
- *   - run_interval (daily / weekdays_only)
- *   - 三个 toggle: enable_like / enable_subscribe / enable_comment
+ *   - run_interval (daily / weekdays_only / manual)
+ *   - 三个 toggle: enable_like / enable_follow / enable_comment
  *   - comment_prompt (评论提示词 textarea)
  *
- * Props 接口与 ConfigWizard 一致,保证调用方(ScenarioView)不需要按平台
- * 分发。在 ConfigWizard.tsx 顶部做 if-return 路由到这里。
- *
- * 跟其他平台 wizard 的字段隔离 — 不读 X 的 KOL pool / Binance 的 track,
- * 也不写这些字段到 task,完全独立避免 UI 串台。
+ * 跟 YoutubeConfigWizard 同结构,只是 subscribe → follow,主色由红改粉。
+ * Props 接口与 ConfigWizard 一致,在 ConfigWizard.tsx 顶部做 if-return
+ * 路由到这里。
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -27,7 +25,7 @@ interface Props {
   onSave: (input: any) => Promise<void> | void;
 }
 
-export const YoutubeConfigWizard: React.FC<Props> = ({
+export const TikTokConfigWizard: React.FC<Props> = ({
   scenario,
   initialTask,
   onCancel,
@@ -37,14 +35,12 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   const defaults: any = scenario.default_config || {};
   const editing = !!initialTask;
 
-  // ── State (initialized from initialTask if editing, otherwise from defaults) ──
   const [persona, setPersona] = useState<string>(
     (initialTask?.persona as string) || defaults.persona || ''
   );
   const [dailyCount, setDailyCount] = useState<number>(
     (initialTask?.daily_count as number) || defaults.daily_count || 5
   );
-  // Default time = (now + 1h), HH:MM. Editing — use existing task's time.
   const defaultTime = useMemo(() => {
     if (initialTask?.daily_time) return String(initialTask.daily_time);
     const d = new Date(Date.now() + 60 * 60 * 1000);
@@ -60,10 +56,10 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
       ? initialTask.enable_like
       : (typeof defaults.enable_like === 'boolean' ? defaults.enable_like : true)
   );
-  const [enableSubscribe, setEnableSubscribe] = useState<boolean>(
-    typeof initialTask?.enable_subscribe === 'boolean'
-      ? initialTask.enable_subscribe
-      : (typeof defaults.enable_subscribe === 'boolean' ? defaults.enable_subscribe : false)
+  const [enableFollow, setEnableFollow] = useState<boolean>(
+    typeof initialTask?.enable_follow === 'boolean'
+      ? initialTask.enable_follow
+      : (typeof defaults.enable_follow === 'boolean' ? defaults.enable_follow : false)
   );
   const [enableComment, setEnableComment] = useState<boolean>(
     typeof initialTask?.enable_comment === 'boolean'
@@ -77,18 +73,17 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // 至少要开一个动作,否则 task 跑了什么都不做。disable 保存按钮提示用户。
-  const noActionEnabled = !enableLike && !enableSubscribe && !enableComment;
+  const noActionEnabled = !enableLike && !enableFollow && !enableComment;
 
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [persona, dailyCount, dailyTime, runInterval, enableLike, enableSubscribe, enableComment, commentPrompt]);
+  }, [persona, dailyCount, dailyTime, runInterval, enableLike, enableFollow, enableComment, commentPrompt]);
 
   const handleSave = async () => {
     if (saving) return;
     if (noActionEnabled) {
-      setSaveError(isZh ? '请至少开启一项互动 (点赞 / 订阅 / 评论)' : 'Please enable at least one action (like / subscribe / comment)');
+      setSaveError(isZh ? '请至少开启一项互动 (点赞 / 关注 / 评论)' : 'Please enable at least one action (like / follow / comment)');
       return;
     }
     if (enableComment && !commentPrompt.trim()) {
@@ -99,23 +94,23 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     try {
       await onSave({
         scenario_id: scenario.id,
-        // YouTube 没有 track / 关键词概念 — 传空但保留字段(后端 task store
+        // TikTok 没有 track / 关键词概念 — 传空但保留字段(后端 task store
         // 类型签名要求)。orchestrator 不读这两个字段。
-        track: 'youtube_default',
+        track: 'tiktok_default',
         keywords: [],
         persona: persona.trim(),
         daily_count: Math.max(1, Math.min(30, dailyCount)),
         variants_per_post: 1,
         daily_time: dailyTime,
         run_interval: runInterval,
-        // YouTube-specific fields — orchestrator.js reads these.
+        // TikTok-specific fields — orchestrator.js reads these.
         enable_like: enableLike,
-        enable_subscribe: enableSubscribe,
+        enable_follow: enableFollow,
         enable_comment: enableComment,
         comment_prompt: commentPrompt.trim(),
       });
     } catch (err) {
-      console.error('[YoutubeConfigWizard] save failed:', err);
+      console.error('[TikTokConfigWizard] save failed:', err);
       setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败,请重试' : 'Save failed, please retry'));
     } finally {
       setSaving(false);
@@ -128,9 +123,9 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
-            📺 {editing
-              ? (isZh ? '编辑 YouTube 互动任务' : 'Edit YouTube Engagement Task')
-              : (isZh ? '配置 YouTube 互动涨粉' : 'Configure YouTube Engage & Grow')}
+            🎵 {editing
+              ? (isZh ? '编辑 TikTok 互动任务' : 'Edit TikTok Engagement Task')
+              : (isZh ? '配置 TikTok 互动涨粉' : 'Configure TikTok Engage & Grow')}
           </div>
           <button
             type="button"
@@ -155,8 +150,8 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
               onChange={e => setPersona(e.target.value)}
               rows={3}
               maxLength={500}
-              placeholder={defaults.persona || (isZh ? '例: 对科技 / Web3 / AI 内容感兴趣的普通观众' : 'e.g. casual viewer interested in tech / Web3 / AI content')}
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 resize-y"
+              placeholder={defaults.persona || (isZh ? '例: 对短视频 / 流行文化 / 旅行 感兴趣的普通观众' : 'e.g. casual viewer interested in short-form content / pop culture / travel')}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40 resize-y"
               disabled={saving}
             />
             <div className="text-[11px] text-gray-400 mt-1 text-right">{persona.length}/500</div>
@@ -174,7 +169,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 max={30}
                 value={dailyCount}
                 onChange={e => setDailyCount(parseInt(e.target.value || '1', 10))}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40"
                 disabled={saving}
               />
               <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-30' : '1-30'}</div>
@@ -187,7 +182,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 type="time"
                 value={dailyTime}
                 onChange={e => setDailyTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40"
                 disabled={saving}
               />
               <div className="text-[11px] text-gray-400 mt-1">{isZh ? '本机时间' : 'Local time'}</div>
@@ -199,7 +194,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
               <select
                 value={runInterval}
                 onChange={e => setRunInterval(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40"
                 disabled={saving}
               >
                 <option value="daily">{isZh ? '每天' : 'Daily'}</option>
@@ -222,15 +217,15 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 emoji="👍"
                 title={isZh ? '点赞' : 'Like'}
                 desc={isZh ? '为视频点赞' : 'Like the video'}
-                color="red"
+                color="pink"
               />
               <ToggleCard
-                checked={enableSubscribe}
-                onChange={setEnableSubscribe}
+                checked={enableFollow}
+                onChange={setEnableFollow}
                 disabled={saving}
-                emoji="📌"
-                title={isZh ? '订阅' : 'Subscribe'}
-                desc={isZh ? '订阅频道 (谨慎)' : 'Subscribe (careful)'}
+                emoji="➕"
+                title={isZh ? '关注' : 'Follow'}
+                desc={isZh ? '关注作者 (谨慎)' : 'Follow author (careful)'}
                 color="amber"
               />
               <ToggleCard
@@ -239,7 +234,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 disabled={saving}
                 emoji="💬"
                 title={isZh ? '评论' : 'Comment'}
-                desc={isZh ? 'AI 生成一句评论' : 'AI-generated comment'}
+                desc={isZh ? 'AI 按视频语言生成' : 'AI matches video language'}
                 color="sky"
               />
             </div>
@@ -261,19 +256,24 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 onChange={e => setCommentPrompt(e.target.value)}
                 rows={3}
                 maxLength={400}
-                placeholder={defaults.comment_prompt || (isZh ? '例: 用一句自然口语化的中文写一句评论,不超过 30 字' : 'e.g. Write one casual short comment, under 30 chars')}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-red-500/40 resize-y"
+                placeholder={defaults.comment_prompt || (isZh ? '例: 用一句自然口语短评,语言匹配视频与评论区,不超过 30 字 / 20 词' : 'e.g. one casual short reaction; match video & comments language; under 30 chars / 20 words')}
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-500/40 resize-y"
                 disabled={saving}
               />
               <div className="text-[11px] text-gray-400 mt-1 text-right">{commentPrompt.length}/400</div>
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                {isZh
+                  ? '💡 评论语言会根据视频文案与置顶评论的主语言自动匹配（中文素材回中文，英文素材回英文，以此类推）'
+                  : '💡 Reply language auto-matches the video caption + top comments (Chinese in → Chinese out, English in → English out, etc.)'}
+              </div>
             </div>
           )}
 
           {/* Safety note */}
           <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed">
             ⚠️ {isZh
-              ? 'YouTube 对自动化行为审查严,建议: ① 评论一定开,但提示词要写得自然;② 订阅默认关,需要时再开;③ 每天处理 5-10 个视频比较稳妥,过多易触发风控。'
-              : 'YouTube enforces strict anti-automation rules. Tips: keep comments natural; leave subscribe off by default; 5-10 videos per day is the safe range.'}
+              ? 'TikTok 风控严格,建议: ① 评论提示词写得自然,不要硬塞品牌词;② 关注默认关,需要时再开;③ 每天处理 3-8 个视频比较稳妥,过多易触发风控。'
+              : 'TikTok enforces strict anti-automation. Tips: keep comment prompts natural; leave follow off by default; 3-8 videos per day is the safe range.'}
           </div>
 
           {saveError && (
@@ -297,11 +297,11 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
             type="button"
             onClick={handleSave}
             disabled={saving || noActionEnabled}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-pink-500 text-white hover:bg-pink-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {saving
               ? (isZh ? '保存中...' : 'Saving...')
-              : (editing ? (isZh ? '✓ 保存修改' : '✓ Save Changes') : '📺 ' + (isZh ? '创建任务' : 'Create Task'))}
+              : (editing ? (isZh ? '✓ 保存修改' : '✓ Save Changes') : '🎵 ' + (isZh ? '创建任务' : 'Create Task'))}
           </button>
         </div>
       </div>
@@ -318,12 +318,12 @@ type ToggleCardProps = {
   emoji: string;
   title: string;
   desc: string;
-  color: 'red' | 'amber' | 'sky';
+  color: 'pink' | 'amber' | 'sky';
 };
 
 const ToggleCard: React.FC<ToggleCardProps> = ({ checked, onChange, disabled, emoji, title, desc, color }) => {
   const palette: Record<typeof color, { border: string; bg: string }> = {
-    red: { border: 'border-red-500/50', bg: 'bg-red-500/10' },
+    pink: { border: 'border-pink-500/50', bg: 'bg-pink-500/10' },
     amber: { border: 'border-amber-500/50', bg: 'bg-amber-500/10' },
     sky: { border: 'border-sky-500/50', bg: 'bg-sky-500/10' },
   };
@@ -345,7 +345,7 @@ const ToggleCard: React.FC<ToggleCardProps> = ({ checked, onChange, disabled, em
         <span className="ml-auto">
           <span className={`inline-block w-3.5 h-3.5 rounded border ${
             checked
-              ? 'bg-red-500 border-red-500 text-white text-[10px] flex items-center justify-center leading-none'
+              ? 'bg-pink-500 border-pink-500 text-white text-[10px] flex items-center justify-center leading-none'
               : 'border-gray-400 dark:border-gray-600'
           }`}>
             {checked ? '✓' : ''}

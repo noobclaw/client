@@ -2,7 +2,7 @@
  * BinanceWorkflowsPage — 币安广场 (Binance Square) 平台工作流页面.
  *
  * 结构镜像 XWorkflowsPage:
- *   - 卡片 grid (目前 2 张: 智能互动 + 自动发帖)
+ *   - 卡片 grid (目前 2 张: 互动涨粉 + 自动发帖)
  *   - 底部特色 pills 条
  *   - 无 hero 介绍 (之前版本有,用户反馈冗余,与 X/XHS 页面对齐后去掉)
  *
@@ -10,7 +10,7 @@
  *   binance_square_auto_engage   — 关注 KOL + 热门帖互动 (敬请期待)
  *   binance_square_post_creator  — 每日 1 条加密快评带 cashtag
  *
- * Card order 按用户要求: 智能互动/回复 放前面,发帖 放后面。
+ * Card order 按用户要求: 互动涨粉/回复 放前面,发帖 放后面。
  */
 
 import React, { useState } from 'react';
@@ -92,8 +92,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     platform: 'binance' as any,
     workflow_type: 'auto_reply' as any,
     category: 'engagement',
-    name_zh: '币安广场 · 智能互动',
-    name_en: 'Binance Square Auto Engagement',
+    name_zh: '币安广场 · 互动涨粉',
+    name_en: 'Binance Square Engage & Grow',
     description_zh: '每次运行关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
     description_en: 'Daily follow Binance Square crypto KOLs + AI-drafted replies to hot posts.',
     icon: '🤝',
@@ -256,10 +256,10 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
         {/* Auto engage */}
         <BinanceCard
           emoji="💬"
-          badgeZh="智能互动"
-          badgeEn="Daily engagement"
-          titleZh="币安广场 · 智能互动"
-          titleEn="Binance Square Auto Engagement"
+          badgeZh="互动涨粉"
+          badgeEn="Engage & Grow"
+          titleZh="币安广场 · 互动涨粉"
+          titleEn="Binance Square Engage & Grow"
           descZh="关注币安广场加密 KOL +深度内容回复+点赞,每天 0-5 个动作随机打散,每个动作间 30 秒-10 分钟随机。"
           descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 30s-10min spacing."
           tagsLine={isZh ? '关注 · 回复 · 点赞 · 随机节奏' : 'Follow · Reply · Like · Randomized pacing'}
