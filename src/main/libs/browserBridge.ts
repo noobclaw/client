@@ -800,6 +800,13 @@ function fireConnectionListeners() {
  */
 export interface SendBrowserCommandOptions {
   tabPattern?: string;
+  /** v2.6+: explicit tab-group label/color for the chrome-extension to use
+   *  when grouping the resolved tab. The extension was previously
+   *  hardcoding URL→{title,color} mappings, which forced an extension
+   *  release every time we added a new platform. Now the client owns the
+   *  map (PLATFORM_TAB_GROUPS) and passes the right value with every
+   *  command. Old extensions simply ignore the field — backwards compat. */
+  tabGroup?: { title: string; color: string };
 }
 
 /** Pick the browser connection that should receive a command. */
@@ -847,10 +854,14 @@ export function sendBrowserCommand(
 
     pendingRequests.set(id, { resolve, reject, timer });
 
-    // Wire envelope. tabPattern is optional — old extensions that don't
-    // know about it simply ignore the field. New extensions route via it.
+    // Wire envelope. tabPattern + tabGroup are both optional — old
+    // extensions that don't know about either simply ignore the fields.
+    // New extensions (1.2.21+) prefer `tabGroup` for grouping and fall
+    // back to their hardcoded platformLabelForPattern when only
+    // tabPattern is sent.
     const envelope: Record<string, any> = { id, command, params };
     if (options.tabPattern) envelope.tabPattern = options.tabPattern;
+    if (options.tabGroup) envelope.tabGroup = options.tabGroup;
 
     conn.lastActivityAt = Date.now();
     conn.socket.write(JSON.stringify(envelope) + '\n');

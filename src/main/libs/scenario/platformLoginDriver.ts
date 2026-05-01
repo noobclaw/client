@@ -70,6 +70,29 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   douyin: 'https://www.douyin.com/jingxuan',
 };
 
+/** v2.6+: chrome-extension tab-group label/color per platform.
+ *
+ *  Used to be hardcoded inside chrome-extension/background.js (function
+ *  `platformLabelForPattern`), which forced an extension republish on
+ *  every new platform. Moved here so adding a new platform is a pure
+ *  client change. The browser bridge attaches this to every command's
+ *  envelope; chrome-extension v1.2.21+ uses it for grouping. Older
+ *  extensions ignore the field and fall back to their internal hardcoded
+ *  mapping (which still covers xhs / x / binance / youtube / tiktok /
+ *  douyin if their last release had them).
+ *
+ *  Colors are Chrome's tabGroup color enum:
+ *    grey, blue, red, yellow, green, pink, purple, cyan, orange.
+ */
+export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: string }> = {
+  xhs:     { title: '🤖 XHS · NoobClaw',     color: 'green'  },
+  x:       { title: '🤖 X · NoobClaw',       color: 'blue'   },
+  binance: { title: '🤖 Binance · NoobClaw', color: 'yellow' },
+  youtube: { title: '🤖 YouTube · NoobClaw', color: 'purple' },
+  tiktok:  { title: '🤖 TikTok · NoobClaw',  color: 'cyan'   },
+  douyin:  { title: '🤖 Douyin · NoobClaw',  color: 'pink'   },
+};
+
 export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<PlatformLoginStatus> {
   // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];

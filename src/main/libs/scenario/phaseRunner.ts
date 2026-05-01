@@ -13,6 +13,7 @@
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand } from '../browserBridge';
+import { PLATFORM_TAB_GROUPS, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -216,7 +217,23 @@ function buildContext(
   const primaryPattern = (manifest as any).tab_url_pattern as string | undefined;
   const secondaryPattern = (manifest as any).secondary_tab_url_pattern as string | undefined;
   let activePattern: string | undefined = primaryPattern;
-  const getBridgeOpts = () => activePattern ? { tabPattern: activePattern } : undefined;
+  // v2.6+: also attach the per-platform tabGroup (title + color) so that
+  // chrome-extension v1.2.21+ groups the tab into the right labeled
+  // group without needing a hardcoded URL→{title,color} map inside the
+  // extension. PLATFORM_TAB_GROUPS lives in platformLoginDriver — adding
+  // a new platform now only requires updating that map (a client release)
+  // and never another extension release.
+  const platformId = (manifest as any).platform as string | undefined;
+  const tabGroup = (platformId && (PLATFORM_TAB_GROUPS as any)[platformId])
+    ? (PLATFORM_TAB_GROUPS as any)[platformId as LoginPlatform]
+    : undefined;
+  const getBridgeOpts = () => {
+    if (!activePattern && !tabGroup) return undefined;
+    const opts: { tabPattern?: string; tabGroup?: { title: string; color: string } } = {};
+    if (activePattern) opts.tabPattern = activePattern;
+    if (tabGroup) opts.tabGroup = tabGroup;
+    return opts;
+  };
 
   // v4.31.39: 统一 abortable browser command —— 所有 ctx.* 浏览器操作经此入口,
   //   abort flag 设置后立即 throw 'user_stopped',不等浏览器响应。
