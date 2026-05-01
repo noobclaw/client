@@ -10,6 +10,7 @@
 import React, { useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
+import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -278,6 +279,20 @@ function parseKeywords(raw: string): string[] {
 }
 
 export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel, onSave }) => {
+  // YouTube 走完全独立的 wizard,字段隔离,避免 X / XHS / Binance 的 KOL pool /
+  // track / follow ranges 等串到 YouTube 表单上。短路必须在任何 hook 调用之前,
+  // 这样 React 不会因为不同路径的 hook 数量不同报错。
+  if (scenario.id === 'youtube_auto_engage') {
+    return (
+      <YoutubeConfigWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
   const isZh = i18nService.currentLanguage === 'zh';
   const defaults = scenario.default_config;
   const [step, setStep] = useState<1 | 2 | 3>(1);

@@ -15,12 +15,13 @@ interface Props {
   mode: 'create' | 'run';
   /** Which platform's login state we're checking. Default 'xhs' for
    *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
-   *  mainland China users. 'binance' opens binance.com/square. */
-  platform?: 'xhs' | 'x' | 'binance';
+   *  mainland China users. 'binance' opens binance.com/square. 'tiktok'
+   *  opens tiktok.com/explore (also needs proxy in mainland China). */
+  platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
   /** v4.25.4 Cross-tab scenarios (binance_from_x_repost) need both platforms
    *  open + logged in. Pass the secondary platform here — modal will render
    *  an extra row and gate the "下一步" button until BOTH check pass. */
-  secondaryPlatform?: 'xhs' | 'x' | 'binance';
+  secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
   onCancel: () => void;
   onConfirmed: () => void;
 }
@@ -30,22 +31,30 @@ type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
 
+  type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
+
   // Per-platform label/url helpers (primary AND secondary use these).
   // VPN reminders below check both primary and secondary so cross-tab
   // scenarios surface the warning if either platform needs a proxy.
-  function platformLabelOf(p: 'xhs' | 'x' | 'binance'): string {
+  function platformLabelOf(p: LoginPlatform): string {
     if (p === 'x') return 'Twitter (x.com)';
     if (p === 'binance') return isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)';
+    if (p === 'tiktok') return 'TikTok (tiktok.com)';
+    if (p === 'youtube') return 'YouTube (youtube.com)';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
-  function platformShortOf(p: 'xhs' | 'x' | 'binance'): string {
+  function platformShortOf(p: LoginPlatform): string {
     if (p === 'x') return 'Twitter';
     if (p === 'binance') return isZh ? '币安广场' : 'Binance Square';
+    if (p === 'tiktok') return 'TikTok';
+    if (p === 'youtube') return 'YouTube';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
-  function platformUrlOf(p: 'xhs' | 'x' | 'binance'): string {
+  function platformUrlOf(p: LoginPlatform): string {
     if (p === 'x') return 'https://x.com/home';
     if (p === 'binance') return 'https://www.binance.com/square';
+    if (p === 'tiktok') return 'https://www.tiktok.com/explore';
+    if (p === 'youtube') return 'https://www.youtube.com';
     return 'https://www.xiaohongshu.com';
   }
   // Back-compat aliases — primary platform's label/url, used by step ① UI
@@ -59,6 +68,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // both flags separately.
   const isX = platform === 'x' || secondaryPlatform === 'x';
   const isBinance = platform === 'binance' || secondaryPlatform === 'binance';
+  const isTiktok = platform === 'tiktok' || secondaryPlatform === 'tiktok';
+  const isYoutube = platform === 'youtube' || secondaryPlatform === 'youtube';
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [secondaryTabStatus, setSecondaryTabStatus] = useState<StepStatus>(secondaryPlatform ? 'checking' : 'pass');
@@ -452,11 +463,13 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               <li>🌐 {isZh ? <>运行期间请<strong>不要切换浏览器标签页</strong></> : <><strong>Do not switch browser tabs</strong> during a run</>}</li>
               <li>🔐 {isZh ? <>请<strong>不要退出 {platformLabel} 登录</strong></> : <><strong>Do not log out</strong> of {platformLabel}</>}</li>
               <li>⏰ {isZh ? '可以正常使用电脑，保持浏览器打开即可' : 'You can use your computer normally, just keep the browser open'}</li>
-              {(isX || isBinance) && (() => {
+              {(isX || isBinance || isTiktok || isYoutube) && (() => {
                 // 跨 tab 任务时两个站点合并成一句,免得连出两条 ⚠️ 警告占屏。
                 const sites = [
                   isX ? 'x.com' : null,
                   isBinance ? (isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)') : null,
+                  isTiktok ? 'tiktok.com' : null,
+                  isYoutube ? 'youtube.com' : null,
                 ].filter(Boolean).join(' + ');
                 return (
                   <li className="text-amber-600 dark:text-amber-400">

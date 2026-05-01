@@ -73,6 +73,8 @@ function inferPlatformFromTask(task: ScenarioTask): string {
   if (sid.startsWith('xhs_')) return 'xhs';
   if (sid.startsWith('x_')) return 'x';
   if (sid.startsWith('binance_')) return 'binance';
+  if (sid.startsWith('tiktok_')) return 'tiktok';
+  if (sid.startsWith('youtube_')) return 'youtube';
   return 'xhs';
 }
 

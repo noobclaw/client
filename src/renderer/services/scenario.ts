@@ -229,17 +229,17 @@ class ScenarioService {
 
   // ── XHS login gate ──
 
-  async checkXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): Promise<XhsLoginStatus> {
+  async checkXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' = 'xhs'): Promise<XhsLoginStatus> {
     try {
-      return await window.electron.scenario.checkXhsLogin(platform);
+      return await window.electron.scenario.checkXhsLogin(platform as any);
     } catch (err) {
       return { loggedIn: false, reason: 'browser_not_connected' };
     }
   }
 
-  async openXhsLogin(platform: 'xhs' | 'x' | 'binance' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
+  async openXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
     try {
-      return await window.electron.scenario.openXhsLogin(platform);
+      return await window.electron.scenario.openXhsLogin(platform as any);
     } catch (err) {
       return { ok: false, reason: String(err) };
     }

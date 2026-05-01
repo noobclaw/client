@@ -1081,7 +1081,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       {loginModalOpen && (
         <LoginRequiredModal
           mode="run"
-          platform={(scenario?.platform === 'x' ? 'x' : scenario?.platform === 'binance' ? 'binance' : 'xhs') as 'x' | 'xhs' | 'binance'}
+          platform={(scenario?.platform === 'x' ? 'x'
+            : scenario?.platform === 'binance' ? 'binance'
+            : scenario?.platform === 'tiktok' ? 'tiktok'
+            : scenario?.platform === 'youtube' ? 'youtube'
+            : 'xhs') as 'x' | 'xhs' | 'binance' | 'tiktok' | 'youtube'}
           secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
           onCancel={() => setLoginModalOpen(false)}
           onConfirmed={handleLoginConfirmed}

@@ -25,6 +25,8 @@ import { MyTasksPage } from './MyTasksPage';
 import { RunHistoryPage } from './RunHistoryPage';
 import { RunRecordDetailPage } from './RunRecordDetailPage';
 import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
+import { YoutubeWorkflowsPage } from './YoutubeWorkflowsPage';
+import { TikTokWorkflowsPage } from './TikTokWorkflowsPage';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
 
@@ -57,6 +59,8 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
+  { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
+  { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
 ];
 
 const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
@@ -141,7 +145,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           const t = tasks.find(t => t.id === id);
           if (!t) continue;
           const s = scenarioById.get(t.scenario_id);
-          const platform = s?.platform === 'x' ? '推特' : s?.platform === 'xhs' ? '小红书' : s?.platform === 'binance' ? '币安广场' : (s?.platform || '');
+          const platform = s?.platform === 'x' ? '推特'
+            : s?.platform === 'xhs' ? '小红书'
+            : s?.platform === 'binance' ? '币安广场'
+            : s?.platform === 'tiktok' ? 'TikTok'
+            : s?.platform === 'youtube' ? 'YouTube'
+            : (s?.platform || '');
           // Get this task's progress to know which step it's in
           const prog = await scenarioService.getRunProgress(id).catch(() => null);
           if (prog && prog.status === 'running' && prog.currentStep > 0) {
@@ -504,7 +513,37 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
-    // Other platforms (douyin / tiktok / youtube) — placeholder only
+    if (currentPlatform === 'youtube') {
+      return (
+        <YoutubeWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'youtube')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'youtube' })}
+        />
+      );
+    }
+
+    if (currentPlatform === 'tiktok') {
+      return (
+        <TikTokWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'tiktok')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'tiktok' })}
+        />
+      );
+    }
+
+    // Other platforms (douyin) — placeholder only
     return <PlatformPlaceholder platform={currentPlatform} />;
   })();
 
