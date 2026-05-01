@@ -443,7 +443,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         return otherPlatform === myPlatform;
       });
       if (samePlatformBusy) {
-        const platformLabel = myPlatform === 'x' ? '推特' : myPlatform === 'xhs' ? '小红书' : myPlatform === 'binance' ? '币安广场' : '该平台';
+        const platformLabel = myPlatform === 'x' ? '推特'
+          : myPlatform === 'xhs' ? '小红书'
+          : myPlatform === 'binance' ? '币安广场'
+          : myPlatform === 'youtube' ? 'YouTube'
+          : myPlatform === 'tiktok' ? 'TikTok'
+          : myPlatform === 'douyin' ? '抖音'
+          : '该平台';
         // Close the just-opened modal — the user can't proceed anyway.
         setLoginModalOpen(false);
         showToast('warn', `${platformLabel}已有任务在运行，同平台同时只能跑一个。请先停掉另一个，或运行其它平台的任务。`);
@@ -541,9 +547,18 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (scenario?.platform === 'x') return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
     if (scenario?.platform === 'xhs') return { icon: '📕', label: isZh ? '小红书' : 'XHS' };
     if (scenario?.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场' : 'Binance Square' };
+    if ((scenario?.platform as any) === 'youtube') return { icon: '📺', label: 'YouTube' };
+    if ((scenario?.platform as any) === 'tiktok') return { icon: '🎵', label: 'TikTok' };
+    if ((scenario?.platform as any) === 'douyin') return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
+  // YouTube/TikTok/Douyin tasks should never fall into the XHS auto_reply or
+  // XHS Batch Viral fallback branches below — they have nothing in common with
+  // those flows. Compute platform guard once.
+  const isYoutubeTask = (scenario?.platform as any) === 'youtube' || task.scenario_id?.startsWith('youtube_');
+  const isTiktokTask = (scenario?.platform as any) === 'tiktok' || task.scenario_id?.startsWith('tiktok_');
+  const isDouyinTask = (scenario?.platform as any) === 'douyin' || task.scenario_id?.startsWith('douyin_');
   const typeBadge = (() => {
     const sid = task.scenario_id;
     if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
@@ -553,15 +568,24 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
-    if (isLinkModeForBadge && !isXTask && !isBinanceTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-    // workflow_type fallback — guard by platform so Binance auto_reply
-    // doesn't get mis-labeled as XHS auto_reply.
+    if (sid === 'youtube_auto_engage')            return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
+    // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.
     if ((scenario?.workflow_type as any) === 'auto_reply') {
       if (isBinanceTask) return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+      if (isYoutubeTask) return { icon: '💬', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+      if (isTiktokTask)  return { icon: '💬', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if (isDouyinTask)  return { icon: '💬', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
       return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (isBinanceTask) return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (isXTask)       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if (isYoutubeTask) return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (isTiktokTask)  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isDouyinTask)  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 

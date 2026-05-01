@@ -27,6 +27,7 @@ import { RunRecordDetailPage } from './RunRecordDetailPage';
 import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
 import { YoutubeWorkflowsPage } from './YoutubeWorkflowsPage';
 import { TikTokWorkflowsPage } from './TikTokWorkflowsPage';
+import { DouyinWorkflowsPage } from './DouyinWorkflowsPage';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
 
@@ -61,6 +62,7 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
   { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
   { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
+  { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎶', enabled: true },
 ];
 
 const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
@@ -150,6 +152,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             : s?.platform === 'binance' ? '币安广场'
             : s?.platform === 'tiktok' ? 'TikTok'
             : s?.platform === 'youtube' ? 'YouTube'
+            : s?.platform === 'douyin' ? '抖音'
             : (s?.platform || '');
           // Get this task's progress to know which step it's in
           const prog = await scenarioService.getRunProgress(id).catch(() => null);
@@ -434,6 +437,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     const platformLabel = currentPlatform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
       : currentPlatform === 'x' ? (isZh ? '推特' : 'Twitter')
       : currentPlatform === 'binance' ? (isZh ? '币安广场' : 'Binance Square')
+      : currentPlatform === 'tiktok' ? 'TikTok'
+      : currentPlatform === 'youtube' ? 'YouTube'
+      : currentPlatform === 'douyin' ? (isZh ? '抖音' : 'Douyin')
       : currentPlatform;
 
     if (currentSection === 'tasks') {
@@ -543,7 +549,22 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
-    // Other platforms (douyin) — placeholder only
+    if (currentPlatform === 'douyin') {
+      return (
+        <DouyinWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'douyin')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'douyin' })}
+        />
+      );
+    }
+
+    // No remaining platforms — keep placeholder for future expansion.
     return <PlatformPlaceholder platform={currentPlatform} />;
   })();
 

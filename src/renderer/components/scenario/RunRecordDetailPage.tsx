@@ -130,6 +130,9 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
   const platform = sc.platform === 'x' ? (isZh ? '推特' : 'Twitter')
     : sc.platform === 'xhs' ? (isZh ? '小红书' : 'Xiaohongshu')
     : sc.platform === 'binance' ? (isZh ? '币安广场' : 'Binance Square')
+    : (sc.platform as any) === 'youtube' ? 'YouTube'
+    : (sc.platform as any) === 'tiktok' ? 'TikTok'
+    : (sc.platform as any) === 'douyin' ? (isZh ? '抖音' : 'Douyin')
     : (sc.platform || '');
   // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
   // the detail page header matches the row the user clicked on. Inlined
@@ -173,14 +176,24 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'youtube_auto_engage')          return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (sid === 'tiktok_auto_engage')           return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'douyin_auto_engage')           return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
-    // Platform-guarded fallback so Binance auto_reply doesn't show 小红书 label
+    // Platform-guarded fallback so Binance / YouTube / TikTok / Douyin auto_reply
+    // don't get mis-labeled as 小红书.
     if (wf === 'auto_reply') {
       if (sc.platform === 'binance') return { icon: '💬', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+      if ((sc.platform as any) === 'youtube') return { icon: '💬', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+      if ((sc.platform as any) === 'tiktok')  return { icon: '💬', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if ((sc.platform as any) === 'douyin')  return { icon: '💬', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
       return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (sc.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (sc.platform === 'x')       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+    if ((sc.platform as any) === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if ((sc.platform as any) === 'tiktok')  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 

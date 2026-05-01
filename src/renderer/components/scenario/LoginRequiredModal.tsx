@@ -17,11 +17,11 @@ interface Props {
    *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
    *  mainland China users. 'binance' opens binance.com/square. 'tiktok'
    *  opens tiktok.com/explore (also needs proxy in mainland China). */
-  platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
+  platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
   /** v4.25.4 Cross-tab scenarios (binance_from_x_repost) need both platforms
    *  open + logged in. Pass the secondary platform here — modal will render
    *  an extra row and gate the "下一步" button until BOTH check pass. */
-  secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
+  secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
   onCancel: () => void;
   onConfirmed: () => void;
 }
@@ -31,7 +31,7 @@ type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
 
-  type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube';
+  type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
 
   // Per-platform label/url helpers (primary AND secondary use these).
   // VPN reminders below check both primary and secondary so cross-tab
@@ -41,6 +41,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'binance') return isZh ? '币安广场 (binance.com/square)' : 'Binance Square (binance.com/.../square)';
     if (p === 'tiktok') return 'TikTok (tiktok.com)';
     if (p === 'youtube') return 'YouTube (youtube.com)';
+    if (p === 'douyin') return isZh ? '抖音 (douyin.com)' : 'Douyin (douyin.com)';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
   function platformShortOf(p: LoginPlatform): string {
@@ -48,6 +49,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'binance') return isZh ? '币安广场' : 'Binance Square';
     if (p === 'tiktok') return 'TikTok';
     if (p === 'youtube') return 'YouTube';
+    if (p === 'douyin') return isZh ? '抖音' : 'Douyin';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
   function platformUrlOf(p: LoginPlatform): string {
@@ -55,6 +57,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'binance') return 'https://www.binance.com/square';
     if (p === 'tiktok') return 'https://www.tiktok.com/explore';
     if (p === 'youtube') return 'https://www.youtube.com';
+    if (p === 'douyin') return 'https://www.douyin.com/jingxuan';
     return 'https://www.xiaohongshu.com';
   }
   // Back-compat aliases — primary platform's label/url, used by step ① UI
@@ -70,6 +73,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   const isBinance = platform === 'binance' || secondaryPlatform === 'binance';
   const isTiktok = platform === 'tiktok' || secondaryPlatform === 'tiktok';
   const isYoutube = platform === 'youtube' || secondaryPlatform === 'youtube';
+  // 抖音 (douyin) 是大陆站点,不参与 VPN 提示。
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [secondaryTabStatus, setSecondaryTabStatus] = useState<StepStatus>(secondaryPlatform ? 'checking' : 'pass');
@@ -119,6 +123,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         status.reason === 'xhs_tab_not_reachable' ||
         status.reason === 'x_tab_not_reachable' ||
         status.reason === 'binance_tab_not_reachable' ||
+        status.reason === 'tiktok_tab_not_reachable' ||
+        status.reason === 'youtube_tab_not_reachable' ||
+        status.reason === 'douyin_tab_not_reachable' ||
         status.reason === 'tab_not_reachable'
       ) {
         setExtensionStatus('pass');
@@ -137,6 +144,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
             sStatus.reason === 'xhs_tab_not_reachable' ||
             sStatus.reason === 'x_tab_not_reachable' ||
             sStatus.reason === 'binance_tab_not_reachable' ||
+            sStatus.reason === 'tiktok_tab_not_reachable' ||
+            sStatus.reason === 'youtube_tab_not_reachable' ||
+            sStatus.reason === 'douyin_tab_not_reachable' ||
             sStatus.reason === 'tab_not_reachable'
           ) {
             setSecondaryTabStatus('fail');

@@ -52,6 +52,9 @@ function platformMeta(platformId: string, isZh: boolean): { icon: string; label:
   if (platformId === 'xhs')     return { icon: '📕', label: isZh ? '小红书' : 'Xiaohongshu' };
   if (platformId === 'x')       return { icon: '🐦', label: isZh ? '推特' : 'Twitter' };
   if (platformId === 'binance') return { icon: '🔶', label: isZh ? '币安广场' : 'Binance Square' };
+  if (platformId === 'youtube') return { icon: '📺', label: 'YouTube' };
+  if (platformId === 'tiktok')  return { icon: '🎵', label: 'TikTok' };
+  if (platformId === 'douyin')  return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
   return { icon: '🤖', label: platformId };
 }
 
@@ -260,18 +263,28 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_square_post_creator')    return { icon: '🔶', zh: '币安广场 · 自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'binance_from_x_repost')          return { icon: '🔁', zh: '币安广场 · 推特批量搬运', en: 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', zh: '币安广场 · 推特链接仿写', en: 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'youtube_auto_engage')          return { icon: '📺', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                if (sid === 'tiktok_auto_engage')           return { icon: '🎵', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'douyin_auto_engage')           return { icon: '🎵', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
-                // otherwise Binance scenarios with workflow_type='auto_reply' fall
-                // into the XHS branch and get tagged 小红书 · 互动涨粉 (bug observed
-                // in 2.4.56). Platform-first guard fixes it.
+                // otherwise Binance / YouTube / TikTok / Douyin scenarios with
+                // workflow_type='auto_reply' fall into the XHS branch and get
+                // tagged 小红书 · 互动涨粉 (bug observed in 2.4.56). Platform-
+                // first guard fixes it.
                 const plat = scenario?.platform;
                 if ((scenario?.workflow_type as any) === 'auto_reply') {
                   if (plat === 'binance') return { icon: '💬', zh: '币安广场 · 互动涨粉', en: 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
+                  if ((plat as any) === 'youtube') return { icon: '💬', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                  if ((plat as any) === 'tiktok')  return { icon: '💬', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  if ((plat as any) === 'douyin')  return { icon: '💬', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                   return { icon: '💬', zh: '小红书 · 互动涨粉', en: 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 }
                 if (plat === 'binance') return { icon: '🔶', zh: '币安广场发帖', en: 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (plat === 'x')       return { icon: '🐦', zh: '推特任务', en: 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if ((plat as any) === 'youtube') return { icon: '📺', zh: 'YouTube 任务', en: 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                if ((plat as any) === 'tiktok')  return { icon: '🎵', zh: 'TikTok 任务', en: 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'douyin')  return { icon: '🎵', zh: '抖音任务', en: 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 return { icon: '🔥', zh: '小红书 · 爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name

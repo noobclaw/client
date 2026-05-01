@@ -12,6 +12,7 @@ import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
 import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 import { TikTokConfigWizard } from './TikTokConfigWizard';
+import { DouyinConfigWizard } from './DouyinConfigWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -298,6 +299,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'tiktok_auto_engage') {
     return (
       <TikTokConfigWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // 抖音也走独立 wizard (TikTok 的中国版,但 DOM / 入口 / 登录都不同)。
+  if (scenario.id === 'douyin_auto_engage') {
+    return (
+      <DouyinConfigWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}

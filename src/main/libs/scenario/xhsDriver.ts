@@ -1,14 +1,31 @@
 /**
- * xhsDriver.ts — XHS-specific utilities (login check, draft upload).
+ * xhsDriver.ts — XHS-only draft upload helper.
  *
- * The main orchestration logic has been moved to the server's orchestrator.js
- * and is executed by phaseRunner.ts. This file only contains standalone
- * operations called directly from the UI (not from the orchestrator).
+ * Used to also house the multi-platform login check (checkXhsLogin /
+ * openXhsLogin) — those moved to platformLoginDriver.ts in v5.x because
+ * they had grown to cover X / Binance / TikTok / YouTube and the xhs name
+ * was misleading. This file is now strictly the XHS draft-upload flow:
+ * navigates to the publish page, uploads images, fills title + body +
+ * hashtags, scrolls to the "save draft" button (left for the user to
+ * confirm). No other platform calls into this file.
  */
 
 import { coworkLog } from '../coworkLogger';
-import { sendBrowserCommand, getBrowserBridgeStatus } from '../browserBridge';
+import { sendBrowserCommand } from '../browserBridge';
 import type { ScenarioManifest, ComposedVariant } from './types';
+
+// Re-export login helpers from their new home so any caller still importing
+// from xhsDriver keeps compiling. New code should import from
+// platformLoginDriver directly.
+export {
+  checkPlatformLogin,
+  openPlatformLogin,
+  checkXhsLogin,
+  openXhsLogin,
+  type LoginPlatform,
+  type PlatformLoginStatus,
+  type XhsLoginStatus,
+} from './platformLoginDriver';
 
 // ── Utilities ──
 
@@ -20,93 +37,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));
 }
 
-// ── Login state check ──
-
-export interface XhsLoginStatus {
-  loggedIn: boolean;
-  reason?: string;
-}
-
-// Platform-aware tab matchers. Twitter v1: when the wizard / login modal
-// targets x_*, it passes platform='x' so we look for x.com / twitter.com
-// tabs instead of xiaohongshu.com.
-//
-// ⚠️ The previous attempt was `(?:^|\.)(?:twitter|x)\.com` — required the
-// domain to be preceded by start-of-string or a literal dot. That broke on
-// real URLs like `https://x.com/home` (the char before `x` is `/`, neither).
-// `\b` (word boundary) handles every case: `/` before `x` is a boundary;
-// `https://www.x.com` has `.` before `x` which is also a boundary; meanwhile
-// `https://mybox.com` doesn't get a false-positive because there's no word
-// boundary between `o` and `x`.
-type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok';
-
-const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
-  xhs: /xiaohongshu\.com/i,
-  x: /\b(?:twitter|x)\.com\b/i,
-  // Binance Square lives under binance.com/*/square (locale prefix like
-  // /zh-CN/square, /en/square). Match the path segment to avoid false
-  // positives from other binance.com subsites (spot trading, futures etc.).
-  binance: /binance\.com\/[a-z-]+\/square/i,
-  // TikTok web — match anywhere on tiktok.com (Explore, video pages, profile).
-  tiktok: /tiktok\.com/i,
-};
-
-const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
-  xhs: 'xhs_tab_not_reachable',
-  x: 'x_tab_not_reachable',
-  binance: 'binance_tab_not_reachable',
-  tiktok: 'tiktok_tab_not_reachable',
-};
-
-export async function checkXhsLogin(platform: LoginPlatform = 'xhs'): Promise<XhsLoginStatus> {
-  // Always do a live check — don't trust cached connection status
-  let tabs: any[] = [];
-  try {
-    // Short timeout: if browser is closed, this will fail fast
-    const res = await sendBrowserCommand('tab_list', {}, 3000);
-    tabs = Array.isArray(res?.tabs) ? res.tabs : [];
-    if (!res || (!res.tabs && !Array.isArray(res))) {
-      return { loggedIn: false, reason: 'browser_not_connected' };
-    }
-  } catch (err) {
-    coworkLog('WARN', 'xhsDriver', 'tab_list failed — browser likely closed', { err: String(err) });
-    return { loggedIn: false, reason: 'browser_not_connected' };
-  }
-
-  const pattern = TAB_PATTERNS[platform] || TAB_PATTERNS.xhs;
-  const matchTab = tabs.find(
-    (t: any) => typeof t.url === 'string' && pattern.test(t.url)
-  );
-  if (!matchTab || typeof matchTab.id !== 'number') {
-    return { loggedIn: false, reason: NOT_REACHABLE_REASON[platform] || 'tab_not_reachable' };
-  }
-
-  return { loggedIn: true };
-}
-
-const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
-  xhs: 'https://www.xiaohongshu.com',
-  x: 'https://x.com/home',
-  binance: 'https://www.binance.com/square',
-  tiktok: 'https://www.tiktok.com/explore',
-};
-
-export async function openXhsLogin(platform: LoginPlatform = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
-  const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
-  try {
-    await sendBrowserCommand('tab_create', { url }, 8000);
-    return { ok: true };
-  } catch {
-    try {
-      await sendBrowserCommand('navigate', { url }, 8000);
-      return { ok: true };
-    } catch (err2) {
-      return { ok: false, reason: String(err2) };
-    }
-  }
-}
-
-// ── Draft upload ──
+// ── Draft upload (XHS only) ──
 
 export interface DraftUploadInput {
   manifest: ScenarioManifest;
