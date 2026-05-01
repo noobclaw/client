@@ -352,17 +352,27 @@ function platformLabelForPattern(patternStr) {
   // v1.2.14:
   //   - binance 正则改成 /binance/i (老 /binance\.com/i 匹不上转义的 \.com)
   //   - 标签改成英文短名 + 品牌后缀,Chrome tab group 显示空间有限
-  const color = 'green';
+  // v5.x: + youtube / tiktok / douyin 三个新平台 group。每个独立颜色帮用户
+  // 一眼区分多平台并行任务在哪个 tab。
   if (/xiaohongshu/i.test(patternStr)) {
-    return { title: '🤖 XHS · NoobClaw', color };
+    return { title: '🤖 XHS · NoobClaw', color: 'green' };
   }
   if (/twitter|x\\.com|x\.com/i.test(patternStr)) {
-    return { title: '🤖 X · NoobClaw', color };
+    return { title: '🤖 X · NoobClaw', color: 'blue' };
   }
   if (/binance/i.test(patternStr)) {
-    return { title: '🤖 Binance · NoobClaw', color };
+    return { title: '🤖 Binance · NoobClaw', color: 'yellow' };
   }
-  return { title: '🤖 NoobClaw', color };
+  if (/youtube|youtube-nocookie/i.test(patternStr)) {
+    return { title: '🤖 YouTube · NoobClaw', color: 'purple' };
+  }
+  if (/tiktok/i.test(patternStr)) {
+    return { title: '🤖 TikTok · NoobClaw', color: 'cyan' };
+  }
+  if (/douyin/i.test(patternStr)) {
+    return { title: '🤖 Douyin · NoobClaw', color: 'pink' };
+  }
+  return { title: '🤖 NoobClaw', color: 'green' };
 }
 
 // Per-window cache of "platform label → groupId" so we don't recreate

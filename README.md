@@ -1,11 +1,15 @@
 # NoobClaw — The world's first plug-and-play Web3 AI assistant!
 
 <p align="center">
+  <strong>Official site: <a href="https://www.noobclaw.com/">https://www.noobclaw.com/</a></strong>
+</p>
+
+<p align="center">
   <img src="public/logo.png" alt="NoobClaw" width="120">
 </p>
 
 <p align="center">
-  <strong>Your Web3-native AI Agent — work, earn, and stay connected across the decentralized world.</strong>
+  <strong>Your Web3-native AI Agent — work, earn, and grow your social presence across the decentralized world.</strong>
 </p>
 
 <p align="center">
@@ -13,7 +17,7 @@
   <br>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux%20%7C%20Mobile-brightgreen?style=for-the-badge" alt="Platform">
   <br>
-  <img src="https://img.shields.io/badge/Electron-40-47848F?style=for-the-badge&logo=electron&logoColor=white" alt="Electron">
+  <img src="https://img.shields.io/badge/Tauri-2-FFC131?style=for-the-badge&logo=tauri&logoColor=white" alt="Tauri">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React">
 </p>
 
@@ -25,9 +29,9 @@
 
 ## What Is NoobClaw?
 
-**NoobClaw** is a Web3-native AI Assistant built by [NoobClaw](https://www.noobclaw.com/). It is the world's first plug-and-play Web3 AI assistant, combining the power of an autonomous AI Agent with a full Web3 ecosystem — wallet integration, token economics, crypto market tracking, and decentralized identity — all in one desktop app. Use it and mine $NoobCoin along the way.
+**NoobClaw** is a Web3-native AI Assistant built by [NoobClaw](https://www.noobclaw.com/). It is the world's first plug-and-play Web3 AI assistant, combining the power of an autonomous AI Agent with a full Web3 ecosystem **and** a six-platform social-growth toolkit — wallet integration, token economics, crypto market tracking, decentralized identity, plus one-click viral engagement on Xiaohongshu, X (Twitter), Binance Square, YouTube, TikTok and Douyin — all in one desktop app. Use it and mine $NoobCoin along the way.
 
-Tell NoobClaw what you need — analyze data, draft a report, create a video, search the web, send an email — and it gets it done. Connect your wallet to access the built-in AI service with no API key required, earn NoobCoin through usage and referrals, and stay on top of the Web3 world with real-time news, KOL tracking, job listings, and exchange discovery.
+Tell NoobClaw what you need — analyze data, draft a report, create a video, search the web, send an email, or grow your account on six major platforms — and it gets it done. Connect your wallet to access the built-in AI service with no API key required, earn NoobCoin through usage and referrals, and stay on top of the Web3 world with real-time news, KOL tracking, job listings, and exchange discovery.
 
 At its core is **Cowork mode**: the Agent executes tools, manipulates files, and runs commands in a local or sandboxed environment, all under your explicit approval. You stay in control; NoobClaw does the heavy lifting.
 
@@ -35,6 +39,7 @@ At its core is **Cowork mode**: the Agent executes tools, manipulates files, and
 
 | | Feature | What It Means |
 |---|---------|---------------|
+| **6-Platform Auto-Engage** | Xiaohongshu, X (Twitter), Binance Square, YouTube, TikTok, Douyin | One click to like / follow / comment with human-like pacing |
 | **Web3 Wallet** | Wallet-based auth, BNB payments, token balance, order management | No accounts, no passwords — connect your wallet and go |
 | **NoobCoin Economy** | Earn tokens through usage, referrals, and airdrops | The more you use it, the more you earn |
 | **Web3 Hub** | Crypto news feed, KOL tracking, Web3 job board, exchange directory | Your Web3 information center |
@@ -56,6 +61,27 @@ At its core is **Cowork mode**: the Agent executes tools, manipulates files, and
 <p align="center">
   <img src="docs/res/architecture_en.png" alt="Architecture" width="500">
 </p>
+
+## Social Growth Suite (NEW)
+
+NoobClaw bundles a full **six-platform engagement engine** for creators and Web3 KOLs. Each platform has its own configuration wizard with a consistent flow: pick a track, set your per-round quotas, hit start.
+
+| Platform | Theme | What It Does |
+|----------|------:|--------------|
+| 🔶 Binance Square | amber | Auto-publish posts (text + AI-generated images), comment, like |
+| 🐦 X (Twitter) | sky | Search → like / reply / follow with quota loops |
+| 📕 Xiaohongshu | rose | Discover by track, auto-reply with on-brand persona |
+| ▶️ YouTube | indigo | Keyword search → like / subscribe / comment |
+| 🎵 TikTok | cyan | Keyword search → like / follow / comment |
+| 🎬 Douyin | violet | Keyword search → like / follow / comment |
+
+**Designed to look human.** Quota-based loops use configurable random min–max ranges per round, replies are LLM-generated and language-matched to the source post (Chinese in → Chinese out, English in → English out).
+
+**Track presets, server-driven.** Each platform ships with curated tracks (8 for YouTube, 14 for TikTok, 16 for Douyin, plus Xiaohongshu / X / Binance presets). Track names and keywords are bilingual (ZH + EN) and auto-pick by your client language. Track lists live on the server, so we can ship new ones without a client update.
+
+**Browser tab groups.** The bundled Chrome extension auto-tags tabs into per-platform groups (YouTube purple, TikTok cyan, Douyin pink, X sky, Xiaohongshu red, Binance amber) so a busy session stays readable.
+
+**Homepage quick entry.** A 2×3 card grid on the home view drops you straight into any of the six platform configurators.
 
 ## Web3 Features
 
@@ -95,19 +121,16 @@ Dedicated view for Web3 partnership announcements, community events, and ecosyst
 
 - **Node.js** >= 24 < 25
 - **npm**
+- **Rust toolchain** (Tauri build dependency)
 
 ### Install & Develop
 
 ```bash
-# Clone the repository
-git clone https://github.com/noobclaw-noobclaw/NoobClaw.git
-cd noobclaw
-
 # Install dependencies
 npm install
 
-# Start development (Vite dev server + Electron with hot reload)
-npm run electron:dev
+# Start development (Vite dev server + Tauri with hot reload)
+npm run tauri:dev
 ```
 
 The dev server runs at `http://localhost:5175` by default.
@@ -120,36 +143,21 @@ npm run build
 
 # ESLint check
 npm run lint
+
+# Build native installers
+npm run tauri:build
 ```
 
 ## Packaging & Distribution
 
-Uses [electron-builder](https://www.electron.build/) to produce platform-specific installers. Output goes to `release/`.
+NoobClaw uses **Tauri 2** to produce platform-specific installers. Output goes to `src-tauri/target/release/bundle/`.
 
 ```bash
-# macOS
-npm run dist:mac              # Universal .dmg (auto-detect)
-npm run dist:mac:x64          # Intel only
-npm run dist:mac:arm64        # Apple Silicon only
-npm run dist:mac:universal    # Fat binary (both architectures)
-
-# Windows (.exe NSIS installer)
-npm run dist:win
-
-# Linux (.AppImage & .deb)
-npm run dist:linux
+# macOS / Windows / Linux installers
+npm run tauri:build
 ```
 
-**Windows Python Runtime** — Windows builds bundle a portable Python runtime under `resources/python-win`. Skill-specific Python packages are installed on demand at runtime.
-
-<details>
-<summary>Offline / CI packaging options</summary>
-
-- `NOOBCLAW_PORTABLE_PYTHON_ARCHIVE` — Local prebuilt runtime archive path (recommended for offline CI/CD)
-- `NOOBCLAW_PORTABLE_PYTHON_URL` — Download URL for the prebuilt runtime archive
-- `NOOBCLAW_WINDOWS_EMBED_PYTHON_VERSION` / `NOOBCLAW_WINDOWS_EMBED_PYTHON_URL` / `NOOBCLAW_WINDOWS_GET_PIP_URL` — Optional overrides for Windows-host bootstrap sources
-
-</details>
+Cross-platform CI uses the **Build Tauri** GitHub Actions workflow.
 
 ## Supported AI Providers
 
@@ -253,74 +261,56 @@ NoobClaw automatically learns your preferences from conversations and remembers 
 
 ## Architecture
 
-NoobClaw uses Electron's strict process isolation. All cross-process communication goes through IPC.
+NoobClaw is a Tauri 2 desktop application with a React frontend, a Rust core, and a bundled Chrome extension for browser automation.
 
 ```
-Main Process (src/main/main.ts)
+Tauri Core (src-tauri/)
 ├── Window lifecycle & SQLite persistence
 ├── CoworkRunner — Claude Agent SDK execution engine
 ├── OpenAI-compatible proxy — multi-provider API translation
 ├── IM Gateways — Telegram, Discord, DingTalk, Feishu
 ├── Scheduler — cron-based task execution
 ├── Skill Manager & MCP Server management
-└── Security: context isolation ON, node integration OFF, sandbox ON
+├── Platform Login Driver — multi-platform login state tracking
+└── Bundled Chrome extension — tab group management & DOM bridge
 
-Preload Script (src/main/preload.ts)
-└── contextBridge → window.electron API (cowork + electron namespaces)
-
-Renderer Process (src/renderer/)
+Renderer (src/renderer/)
 ├── React 18 + Redux Toolkit + Tailwind CSS
 ├── Web3 wallet auth & token economy
-├── All UI and business logic
-└── IPC-only communication with main
+├── 6-platform engagement wizards
+└── Tauri IPC for cross-process calls
 ```
 
 ### Directory Structure
 
 ```
 src/
-├── main/                           # Electron main process
-│   ├── main.ts                     # Entry point, IPC handlers
-│   ├── preload.ts                  # Security bridge
-│   ├── sqliteStore.ts              # SQLite storage
-│   ├── coworkStore.ts              # Session/message CRUD
-│   ├── skillManager.ts             # Skill management
-│   ├── im/                         # IM gateways
-│   └── libs/
-│       ├── coworkRunner.ts         # Agent SDK executor
-│       ├── coworkVmRunner.ts       # Sandbox VM execution
-│       ├── coworkSandboxRuntime.ts # Sandbox lifecycle
-│       ├── coworkOpenAICompatProxy.ts # Multi-provider API proxy
-│       └── coworkMemoryExtractor.ts # Memory extraction
+├── main/                           # Tauri main process glue
+│   ├── libs/scenario/              # Multi-platform login driver, runner glue
+│   ├── coworkRunner.ts             # Agent SDK executor
+│   └── coworkOpenAICompatProxy.ts  # Multi-provider API proxy
 │
 ├── renderer/                        # React frontend
 │   ├── App.tsx                     # Root component
-│   ├── types/                      # TypeScript definitions
-│   ├── store/slices/               # Redux state slices
 │   ├── services/
 │   │   ├── noobclawAuth.ts        # Wallet authentication
 │   │   ├── noobclawApi.ts         # Backend API (payments, tokens, referrals)
-│   │   └── ...                    # Other services
+│   │   └── i18n.ts                # i18n service (zh / en / zh-TW / ko / ja / ru / fr / de)
 │   └── components/
-│       ├── cowork/                 # Cowork UI
+│       ├── cowork/                 # Cowork UI (incl. 6-platform homepage entry)
+│       ├── scenario/               # Engagement wizards (xhs / x / binance / youtube / tiktok / douyin)
 │       ├── wallet/                 # Wallet & payment UI
 │       ├── web3/                   # Web3 news, KOL, jobs, exchanges
-│       ├── skills/                 # Skill management UI
-│       ├── scheduledTasks/         # Scheduled task UI
-│       ├── mcp/                    # MCP configuration UI
-│       ├── im/                     # IM integration UI
 │       └── Settings.tsx            # Settings panel
 │
-SKILLs/                              # Skill definitions
-├── skills.config.json              # Skill enable/disable & ordering
-└── ...                             # 21 built-in skills
+├── chrome-extension/                # Browser DOM bridge + tab grouping
+└── src-tauri/                       # Tauri / Rust shell
 ```
 
 ## Security
 
 | Layer | Mechanism |
 |-------|-----------|
-| Process Isolation | Context isolation ON, node integration OFF |
 | Permission Gating | User approval required for all sensitive tool calls |
 | Sandbox Execution | Optional Alpine Linux VM isolation |
 | Content Security | HTML sandbox, DOMPurify, Mermaid strict mode |
@@ -332,7 +322,7 @@ SKILLs/                              # Skill definitions
 
 | Layer | Technology |
 |-------|-----------|
-| Framework | Electron 40 |
+| Shell | Tauri 2 (Rust) |
 | Frontend | React 18 + TypeScript 5 |
 | Build | Vite 5 |
 | Styling | Tailwind CSS 3 |
@@ -342,6 +332,7 @@ SKILLs/                              # Skill definitions
 | Markdown | react-markdown + remark-gfm + rehype-katex |
 | Diagrams | Mermaid |
 | Security | DOMPurify |
+| Browser Bridge | Chrome Extension (Manifest V3) |
 | IM | grammY · discord.js · dingtalk-stream · @larksuiteoapi/node-sdk |
 
 ## Development
@@ -350,8 +341,8 @@ SKILLs/                              # Skill definitions
 - 2-space indentation, single quotes, semicolons
 - Components: `PascalCase`; functions/variables: `camelCase`; Redux slices: `*Slice.ts`
 - Tailwind CSS preferred; avoid custom CSS
-- Commit format: `type: imperative summary` (e.g., `feat: add artifact toolbar`)
-- Languages: Chinese, English, and multiple other languages — switch in Settings
+- Commit format: `type: imperative summary` in English (e.g., `feat: add youtube engagement wizard`)
+- Languages: Chinese, English, and several other locales — switch in Settings
 
 ## Contributing
 
@@ -361,7 +352,7 @@ SKILLs/                              # Skill definitions
 4. Push to the branch (`git push origin feature/your-feature`)
 5. Open a Pull Request
 
-Please include: a summary of changes, linked issue (if any), screenshots for UI changes, and notes on Electron-specific behavior.
+Please include: a summary of changes, linked issue (if any), screenshots for UI changes, and notes on Tauri-specific behavior.
 
 ## License
 
@@ -373,4 +364,6 @@ Please include: a summary of changes, linked issue (if any), screenshots for UI 
 
 ---
 
-Built and maintained by [NoobClaw](https://www.noobclaw.com/). Authors: Taylor / Chris. Based on OpenClaw / NoobClaw.
+Built and maintained by [NoobClaw](https://www.noobclaw.com/). Based on OpenClaw / NoobClaw.
+
+**Authors: Taylor / Chris / WEN TAO**

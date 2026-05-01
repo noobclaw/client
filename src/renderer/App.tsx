@@ -41,8 +41,8 @@ const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners' | 'personality'>('cowork');
-  // v4.31.44: 主页 3 个涨粉标签可以指定打开"一键使用"时初选哪个平台
-  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | undefined>(undefined);
+  // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
+  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -789,7 +789,7 @@ const App: React.FC = () => {
 
   const handleShowWallet = () => setMainView('wallet');
   const handleShowInvite = () => setMainView('invite');
-  const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance') => {
+  const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin') => {
     setQuickUseInitialPlatform(platform);
     setMainView('quickuse');
   };
