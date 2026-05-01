@@ -55,12 +55,14 @@ export const TikTokConfigWizard: React.FC<Props> = ({
   const [dailyCount, setDailyCount] = useState<number>(
     (initialTask?.daily_count as number) || defaults.daily_count || 5
   );
-  const defaultTime = useMemo(() => {
+  // daily_time is no longer user-editable in the new wizard (run-interval
+  // pills replace the fixed HH:MM picker). Keep the field on the saved task
+  // payload for back-compat with the scheduler; compute as memo, no setter.
+  const dailyTime = useMemo(() => {
     if (initialTask?.daily_time) return String(initialTask.daily_time);
     const d = new Date(Date.now() + 60 * 60 * 1000);
     return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
   }, [initialTask]);
-  const [dailyTime, setDailyTime] = useState<string>(defaultTime);
   const [runInterval, setRunInterval] = useState<string>(
     ((initialTask as any)?.run_interval as string) || 'daily_random'
   );
