@@ -57,8 +57,10 @@ Desktop.ini
 *.swo
 chrome-extension.zip
 
-# Browser extension lives in private repo noobclaw/chrome-extension.
-# Local dev + CI fetch a fresh snapshot via scripts/fetch-chrome-extension.js,
-# which prepare-tauri-resources.js then copies into src-tauri/resources/.
+# Browser extension is no longer bundled — users install the NoobClaw
+# Browser Assistant from the Chrome / Firefox / Edge stores. Source for
+# the extension lives in the private noobclaw/chrome-extension repo.
+# The two paths below are kept ignored so that an accidental local clone
+# of the extension repo or a stale build artifact doesn't sneak back in.
 chrome-extension/
 src-tauri/resources/chrome-extension/

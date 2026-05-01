@@ -394,15 +394,6 @@ export function createTauriElectronShim(): typeof window.electron {
       },
     },
 
-    // ── Browser Bridge — exposes local extension install helper. Renderer
-    //    calls this from the 本地安装 button; main process copies the
-    //    bundled chrome-extension path to the clipboard and opens
-    //    chrome://extensions in the user's default browser.
-    browserBridge: {
-      installLocal: () => ipcInvoke('browser-bridge:install-local')
-        .then((r: any) => r ?? { success: false }),
-    },
-
     // ── Auto Launch — bridged to tauri-plugin-autostart ──
     // Settings.tsx talks to `window.electron.autoLaunch.{get,set}` which
     // on Electron hits the autoLaunchManager IPC. Under Tauri we route
@@ -537,9 +528,12 @@ export function createTauriElectronShim(): typeof window.electron {
   } as any;
 }
 
-// ── Extension Install Modal (3 options like Electron version) ──
+// ── Extension Install Modal (Store + Cancel only) ──
+// Local-install path was retired once the extension shipped on the
+// Chrome / Firefox / Edge stores. The standalone chrome-extension folder
+// is no longer bundled in the app package.
 
-function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'local' | 'cancel'> {
+function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'cancel'> {
   return new Promise((resolve) => {
     const isZh = navigator.language.startsWith('zh');
 
@@ -558,7 +552,6 @@ function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'local
       }</p>
       <div style="display:flex;flex-direction:column;gap:8px;">
         <button id="nc-ext-store" style="padding:10px 16px;border-radius:8px;border:none;background:#6366f1;color:white;font-size:14px;cursor:pointer;font-weight:500;">${isZh ? '从 Chrome 商店安装' : 'Install from Chrome Store'}</button>
-        <button id="nc-ext-local" style="padding:10px 16px;border-radius:8px;border:1px solid #555;background:transparent;color:#e8e8ff;font-size:14px;cursor:pointer;">${isZh ? '安装本地扩展（国内推荐）' : 'Install Local Extension'}</button>
         <button id="nc-ext-cancel" style="padding:10px 16px;border-radius:8px;border:none;background:transparent;color:#888;font-size:13px;cursor:pointer;">${isZh ? '暂不安装' : 'Not Now'}</button>
       </div>
     `;
@@ -580,17 +573,6 @@ function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'local
         if (tauri?.opener?.openUrl) tauri.opener.openUrl(storeUrl);
         else window.open(storeUrl, '_blank');
       } catch { window.open(storeUrl, '_blank'); }
-      resolve('install');
-    });
-
-    modal.querySelector('#nc-ext-local')!.addEventListener('click', () => {
-      cleanup();
-      // Open local chrome-extension path guide
-      const isZhLang = navigator.language.startsWith('zh');
-      const guideMsg = isZhLang
-        ? '请按以下步骤操作：\n1. 打开 Chrome，地址栏输入 chrome://extensions/ 回车\n2. 打开右上角「开发者模式」\n3. 点击「加载已解压的扩展程序」\n4. 选择 NoobClaw 安装目录下的 chrome-extension 文件夹'
-        : 'Steps:\n1. Open Chrome, go to chrome://extensions/\n2. Enable "Developer mode"\n3. Click "Load unpacked"\n4. Select the chrome-extension folder in NoobClaw install directory';
-      alert(guideMsg);
       resolve('install');
     });
 

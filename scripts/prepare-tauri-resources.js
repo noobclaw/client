@@ -1,6 +1,6 @@
 /**
  * Prepare resources for Tauri bundling.
- * Copies SKILLs, chrome-extension, tray icons, system prompt, and WASM
+ * Copies SKILLs, tray icons, system prompt, and WASM
  * into src-tauri/resources/ so Tauri can bundle them without ../  paths
  * (which create _up_ directories in NSIS installers).
  */
@@ -50,19 +50,14 @@ function main() {
   const skillCount = copyDirRecursive(skillsSrc, skillsDest);
   console.log(`  SKILLs: ${skillCount} files`);
 
-  // 2. Chrome extension
-  const chromeSrc = path.join(ROOT, 'chrome-extension');
-  const chromeDest = path.join(RESOURCES_DIR, 'chrome-extension');
-  const chromeCount = copyDirRecursive(chromeSrc, chromeDest);
-  console.log(`  chrome-extension: ${chromeCount} files`);
-
-  // 3. Tray icons
+  // 2. Tray icons (chrome-extension is no longer bundled — users install
+  //    the NoobClaw Browser Assistant from Chrome / Firefox / Edge stores)
   const traySrc = path.join(ROOT, 'resources', 'tray');
   const trayDest = path.join(RESOURCES_DIR, 'tray');
   const trayCount = copyDirRecursive(traySrc, trayDest);
   console.log(`  tray: ${trayCount} files`);
 
-  // 4. System prompt
+  // 3. System prompt
   const promptSrc = path.join(ROOT, 'sandbox', 'agent-runner', 'AGENT_SYSTEM_PROMPT.md');
   if (fs.existsSync(promptSrc)) {
     const promptDest = path.join(RESOURCES_DIR, 'AGENT_SYSTEM_PROMPT.md');
@@ -70,14 +65,14 @@ function main() {
     console.log('  AGENT_SYSTEM_PROMPT.md: copied');
   }
 
-  // 5. sql-wasm.wasm (from sidecar build)
+  // 4. sql-wasm.wasm (from sidecar build)
   const wasmSrc = path.join(ROOT, 'src-tauri', 'binaries', 'sql-wasm.wasm');
   if (fs.existsSync(wasmSrc)) {
     fs.copyFileSync(wasmSrc, path.join(RESOURCES_DIR, 'sql-wasm.wasm'));
     console.log('  sql-wasm.wasm: copied');
   }
 
-  // 5b. macOS native desktop addon (compiled by node-gyp before this step
+  // 4b. macOS native desktop addon (compiled by node-gyp before this step
   //     runs; see .github/workflows/build-tauri.yml). The .node file is
   //     only built on macOS — Windows and Linux skip silently. The
   //     sidecar loader in src/main/libs/nativeDesktopMac.ts looks for
@@ -106,7 +101,7 @@ function main() {
     }
   }
 
-  // 5c. Windows native desktop addon — same pattern as 5b but for the
+  // 4c. Windows native desktop addon — same pattern as 4b but for the
   //     C++ BitBlt/SendInput addon built from native/win-desktop/. The
   //     sidecar loader at src/main/libs/nativeDesktopWin.ts looks for
   //     the .node file in the same <resources>/native/ directory.
@@ -134,7 +129,7 @@ function main() {
     }
   }
 
-  // 6. Native messaging host JS source only. The .bat / .sh wrappers are
+  // 5. Native messaging host JS source only. The .bat / .sh wrappers are
   //    generated at runtime by registerNativeMessagingHost() using absolute
   //    paths derived from the actual install location, and in Tauri mode
   //    the wrapper just calls `noobclaw-server.exe --native-messaging-host`

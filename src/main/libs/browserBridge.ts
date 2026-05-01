@@ -419,70 +419,40 @@ const extensionPromptTexts: Record<string, Record<string, string>> = {
     installMsg: 'Enable AI Browser Automation',
     installDetail: 'Install the NoobClaw Browser Assistant to let AI control your browser just like a human — clicking, typing, scrolling, and navigating websites using your real browser with all your login sessions.\n\n• AI operates your browser like a real person — no bot detection\n• Works with your logged-in accounts (social media, email, etc.)\n• 24/7 automated browsing, data collection, and form filling\n• All data stays local, nothing is sent to external servers',
     btnStore: 'Install from Chrome Store',
-    btnLocal: 'Install Local Extension',
     btnNotNow: 'Not now',
     btnCancel: 'Cancel',
-    noBrowserMsg: 'No supported browser found',
-    noBrowserDetail: 'NoobClaw Browser Assistant requires Chrome, Edge, or Firefox. Please install Google Chrome first.',
-    btnDownloadChrome: 'Download Chrome',
-    guideMsg: 'Install Browser Extension',
-    guideDetail: 'The NoobClaw extension folder path has been copied to your clipboard.\n\nPlease follow these steps:\n1. Open Chrome browser, type chrome://extensions/ in the address bar and press Enter\n2. Turn on "Developer mode" (top right corner)\n3. Click "Load unpacked"\n4. Paste the copied path into the file dialog\'s address bar and press Enter\n5. Select the chrome-extension folder to load it\n\nPath: {path}',
   },
   zh: {
     title: 'NoobClaw 浏览器助手',
     installMsg: '启用 AI 浏览器自动化',
     installDetail: '安装 NoobClaw 浏览器助手，让 AI 像真人一样操控您的浏览器 — 点击、输入、滚动、导航网页，使用您真实的浏览器及所有登录状态。\n\n• AI 像真人一样操作浏览器 — 不会被网站检测\n• 使用您已登录的账号（社交媒体、邮箱等）\n• 全天候 24 小时自动化浏览、数据采集和表单填写\n• 所有数据留在本地，不会发送到外部服务器',
     btnStore: '从Chrome商店安装',
-    btnLocal: '安装本地扩展',
     btnNotNow: '暂不安装',
     btnCancel: '取消',
-    noBrowserMsg: '未检测到支持的浏览器',
-    noBrowserDetail: 'NoobClaw 浏览器助手需要 Chrome、Edge 或 Firefox。请先下载安装 Google Chrome。',
-    btnDownloadChrome: '下载 Chrome',
-    guideMsg: '安装浏览器扩展',
-    guideDetail: 'NoobClaw 插件目录已复制到剪贴板。\n\n请按以下步骤操作：\n1. 打开 Chrome 浏览器，在地址栏输入 chrome://extensions/ 并回车\n2. 打开右上角「开发者模式」开关\n3. 点击「加载已解压的扩展程序」\n4. 在弹出的文件选择框地址栏粘贴刚复制的路径并回车\n5. 点进 chrome-extension 文件夹进行加载\n\n路径：{path}',
   },
   'zh-TW': {
     title: 'NoobClaw 瀏覽器助手',
     installMsg: '啟用 AI 瀏覽器自動化',
     installDetail: '安裝 NoobClaw 瀏覽器助手，讓 AI 像真人一樣操控您的瀏覽器。\n\n• 不會被網站偵測\n• 使用您已登入的帳號\n• 全天候自動化\n• 資料留在本地',
     btnStore: '從Chrome商店安裝',
-    btnLocal: '安裝本地擴充功能',
     btnNotNow: '暫不安裝',
     btnCancel: '取消',
-    noBrowserMsg: '未偵測到支援的瀏覽器',
-    noBrowserDetail: '請先下載安裝 Google Chrome。',
-    btnDownloadChrome: '下載 Chrome',
-    guideMsg: '擴充功能頁面已開啟',
-    guideDetail: 'NoobClaw 插件目錄已複製到剪貼簿。\n\n請按以下步驟操作：\n1. 打開 Chrome 瀏覽器，在地址欄輸入 chrome://extensions/ 並按 Enter\n2. 開啟右上角「開發人員模式」\n3. 點擊「載入未封裝項目」\n4. 在彈出的檔案選擇框地址欄貼上剛複製的路徑並按 Enter\n5. 點進 chrome-extension 資料夾進行載入\n\n路徑：{path}',
   },
   ja: {
     title: 'NoobClaw ブラウザアシスタント',
     installMsg: 'AIブラウザ自動化を有効にする',
     installDetail: 'AIにブラウザを操作させましょう。\n\n• ボット検知なし\n• ログイン済みアカウントで動作\n• 24時間自動化\n• データはローカル',
     btnStore: 'Chromeストアからインストール',
-    btnLocal: 'ローカル拡張機能をインストール',
     btnNotNow: '後で',
     btnCancel: 'キャンセル',
-    noBrowserMsg: '対応ブラウザが見つかりません',
-    noBrowserDetail: 'Google Chromeをインストールしてください。',
-    btnDownloadChrome: 'Chromeをダウンロード',
-    guideMsg: '拡張機能ページを開きました',
-    guideDetail: 'パスはクリップボードにコピー済みです。\n\n手順：\n1. Chrome ブラウザを開き、アドレスバーに chrome://extensions/ と入力して Enter\n2. 右上の「デベロッパーモード」をオン\n3. 「パッケージ化されていない拡張機能を読み込む」をクリック\n4. パスを貼り付けて確認\n\nパス：{path}',
   },
   ko: {
     title: 'NoobClaw 브라우저 어시스턴트',
     installMsg: 'AI 브라우저 자동화 활성화',
     installDetail: 'AI가 브라우저를 사람처럼 제어합니다.\n\n• 봇 탐지 없음\n• 로그인 계정으로 작동\n• 24시간 자동화\n• 로컬 저장',
     btnStore: 'Chrome 스토어에서 설치',
-    btnLocal: '로컬 확장 프로그램 설치',
     btnNotNow: '나중에',
     btnCancel: '취소',
-    noBrowserMsg: '지원 브라우저를 찾을 수 없습니다',
-    noBrowserDetail: 'Google Chrome을 설치해 주세요.',
-    btnDownloadChrome: 'Chrome 다운로드',
-    guideMsg: '확장 프로그램 페이지 열림',
-    guideDetail: '경로가 클립보드에 복사되었습니다.\n\n다음 단계를 따르세요:\n1. Chrome 브라우저를 열고 주소창에 chrome://extensions/ 입력 후 Enter\n2. 오른쪽 상단 "개발자 모드" 활성화\n3. "압축해제된 확장 프로그램을 로드합니다" 클릭\n4. 경로 붙여넣기(이미 복사됨) 후 확인\n\n경로: {path}',
   },
 };
 
@@ -588,86 +558,6 @@ export function isExtensionInstalled(): boolean {
     }
     return false;
   } catch { return false; }
-}
-
-export async function installLocalExtension(): Promise<{ extensionPath: string; browserFound: boolean }> {
-  let clipboard: any = null;
-  try { clipboard = require('electron').clipboard; } catch {}
-  const browsers = detectBrowsers();
-  const win = BrowserWindow?.getFocusedWindow?.();
-  const t = getPromptTexts();
-
-  // Always compute the extension path so the renderer can copy it to the
-  // clipboard via navigator.clipboard.writeText even when we're running
-  // inside a Tauri sidecar (where require('electron') isn't available and
-  // the old clipboard write silently no-op'd — this was the root of
-  // '已复制' being a lie for Tauri users).
-  //
-  // ⭐ v2.4.31 — return the PARENT folder (resources/), not the
-  // chrome-extension folder itself. Reason: when the user pastes this
-  // path into Chrome's "加载已解压的扩展程序" / "Load unpacked" file
-  // dialog, the picker navigates INTO that folder and shows its
-  // contents. If we put `.../resources/chrome-extension` on the
-  // clipboard, the dialog opens INSIDE chrome-extension (showing
-  // background.js / content.js / etc.) and the user has to click "Up"
-  // before they can select chrome-extension itself — confusing. By
-  // putting `.../resources` on the clipboard, the dialog opens at the
-  // parent → user sees `chrome-extension` folder visible → clicks it
-  // once → "Select Folder". Cleaner one-click selection.
-  const extensionPath = getResourcesPath();
-
-  if (browsers.length === 0) {
-    if (win) {
-      const result = await dialog.showMessageBox(win, {
-        type: 'warning',
-        title: t.title,
-        message: t.noBrowserMsg,
-        detail: t.noBrowserDetail,
-        buttons: [t.btnDownloadChrome, t.btnCancel],
-        defaultId: 0,
-        cancelId: 1,
-      });
-      if (result.response === 0) {
-        shell.openExternal('https://www.google.com/chrome/');
-      }
-    }
-    return { extensionPath, browserFound: false };
-  }
-
-  // Electron has clipboard; Tauri doesn't — we return the path so the
-  // renderer does the clipboard write itself using navigator.clipboard.
-  clipboard?.writeText?.(extensionPath);
-
-  // Open chrome://extensions page
-  const browser = browsers[0];
-  const extensionsUrl = browser.type === 'firefox'
-    ? 'about:debugging#/runtime/this-firefox'
-    : browser.type === 'edge'
-      ? 'edge://extensions'
-      : 'chrome://extensions';
-
-  if (process.platform === 'win32') {
-    const { execFile } = require('child_process');
-    execFile(browser.path, [extensionsUrl], { detached: true, stdio: 'ignore' });
-  } else if (process.platform === 'darwin') {
-    const { execSync } = require('child_process');
-    try { execSync(`open -a "${browser.path}" "${extensionsUrl}"`, { stdio: 'ignore' }); } catch {}
-  } else {
-    const { execFile } = require('child_process');
-    try { execFile(browser.path, [extensionsUrl], { detached: true, stdio: 'ignore' }); } catch {}
-  }
-
-  // Show instructions
-  if (win) {
-    await dialog.showMessageBox(win, {
-      type: 'info',
-      title: t.title,
-      message: t.guideMsg,
-      detail: t.guideDetail.replace('{path}', extensionPath),
-      buttons: ['OK'],
-    });
-  }
-  return { extensionPath, browserFound: true };
 }
 
 // --- TCP Server (for native messaging host connection) ---

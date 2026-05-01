@@ -43,15 +43,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Fetch chrome extension from private repo
-        # The browser extension source lives in private repo
-        # noobclaw/chrome-extension. This step pulls a shallow snapshot
-        # of its main branch into ./chrome-extension/ so the later
-        # "Prepare Tauri resources" step can bundle it.
-        env:
-          CHROME_EXTENSION_TOKEN: ${{ secrets.CHROME_EXTENSION_TOKEN }}
-        run: node scripts/fetch-chrome-extension.js
-
       - name: Sync version from package.json
         # Single source of truth is package.json. This writes the same
         # version into src-tauri/tauri.conf.json, src-tauri/Cargo.toml,
