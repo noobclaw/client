@@ -50,6 +50,22 @@ const DOUYIN_TRACKS: DouyinTrack[] = [
     keywords: ['搞笑', '段子', '反转', '沙雕日常', '抖音笑话', '剧情', '恶搞', '神回复', '配音'] },
   { id: 'parenting', icon: '👶', name_zh: '母婴 · 亲子',
     keywords: ['宝宝日常', '亲子', '辅食', '育儿', '早教', '幼儿园', '萌娃', '孕期', '产后'] },
+  { id: 'games', icon: '🎮', name_zh: '游戏',
+    keywords: ['游戏直播', '王者荣耀', '原神', '和平精英', '手游推荐', '游戏攻略', '主机游戏', '单机游戏', '游戏剪辑', 'lol'] },
+  { id: 'anime', icon: '🍥', name_zh: '二次元',
+    keywords: ['二次元', '动漫推荐', 'cosplay', '国漫', '日漫', '番剧', '手办', '萌系', '动画剪辑'] },
+  { id: 'movies_tv', icon: '🎬', name_zh: '影视 · 解说',
+    keywords: ['电影解说', '电视剧推荐', '影评', '看片', '国产剧', '韩剧', '美剧', '影视剪辑', '高分电影', '热播剧'] },
+  { id: 'short_drama', icon: '🎭', name_zh: '小剧场',
+    keywords: ['短剧', '沙雕短剧', '反转剧情', '校园剧', '都市情感', '古装短剧', '搞笑短剧', '悬疑短剧'] },
+  { id: 'sports', icon: '⚽', name_zh: '体育',
+    keywords: ['篮球', '足球', '健身', '跑步', '羽毛球', '乒乓球', '体育赛事', '运动技巧', 'NBA', '世界杯'] },
+  { id: 'travel', icon: '✈️', name_zh: '旅行',
+    keywords: ['旅行vlog', '国内旅游', '自驾游', '周末游', '民宿推荐', '景点打卡', '小众目的地', '城市攻略', 'citywalk'] },
+  { id: 'car', icon: '🚗', name_zh: '汽车',
+    keywords: ['汽车测评', '新车试驾', 'SUV', '新能源汽车', '改装车', '二手车', '汽车文化', '比亚迪', '特斯拉'] },
+  { id: 'beauty_outfit', icon: '💄', name_zh: '美妆穿搭',
+    keywords: ['美妆教程', '穿搭', '护肤', '口红试色', '平价好物', '通勤穿搭', 'ootd', '气质穿搭', '彩妆'] },
 ];
 
 export const DouyinConfigWizard: React.FC<Props> = ({
