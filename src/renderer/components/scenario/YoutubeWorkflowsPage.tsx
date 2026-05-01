@@ -192,8 +192,8 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后浏览首页推荐流自动按配额完成。评论由 AI 按你的人设生成,行为间隔随机模拟真人。'
-            : 'Each run picks per-action counts from your random ranges, then browses the home feed and works through the quota. Comments are AI-generated from your persona with humanized timing.'}
+            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后按你的赛道关键词搜索 YouTube 视频自动按配额完成。评论由 AI 按视频上下文 + 关键词自动生成,行为间隔随机模拟真人。'
+            : 'Each run rolls per-action counts from your random ranges, then searches YouTube with your track keywords and works through the quota. Comments are AI-generated from video context + keyword.'}
         </p>
         <button
           type="button"

@@ -132,7 +132,7 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
       {/* Single scenario card. 用 max-w-3xl 让单卡片不被拉到全宽 — 跟
           YoutubeWorkflowsPage 视觉一致。未来加 card 时把 max-w-3xl 拿掉
           换成跟 XhsWorkflowsPage 一样的 grid-cols-2 即可。 */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-3xl mx-auto">
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md md:max-w-md mx-auto">
         <TikTokScenarioCard
           loading={loading}
           scenario={autoEngage}
@@ -238,8 +238,8 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '每天定时刷 TikTok Explore，挑出若干视频按你配置的组合做点赞 / 关注 / 评论。三项动作可独立开关，评论由 AI 自动匹配视频语言生成，行为间隔随机模拟真人。'
-            : 'Browses TikTok Explore on schedule, picks videos and runs your configured mix of like / follow / comment. Each action toggles independently; comments are AI-generated and language-matched.'}
+            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 关注 / 评论各做几次,然后按你的赛道关键词搜索 TikTok 视频自动按配额完成。评论由 AI 按视频文案 + 置顶评论自动匹配语言生成,行为间隔随机模拟真人。'
+            : 'Each run rolls per-action counts from your random ranges, then searches TikTok with your track keywords and works through the quota. Comments are AI-generated, auto-matched to the video language.'}
         </p>
         <button
           type="button"
