@@ -174,7 +174,10 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     ((initialTask as any)?.run_interval as string) || 'daily_random'
   );
 
-  const [agreed, setAgreed] = useState(false);
+  // v5.x+: 使用条款默认勾选 — UI 上仍保留 checkbox 让用户可见,但保存时
+  // 把勾选状态当作"已确认"。
+  const [termsAccepted, setTermsAccepted] = useState<boolean[]>([true, true]);
+  const allTermsAccepted = termsAccepted.every(Boolean);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -191,7 +194,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
         : { ok: true },
-    3: { ok: agreed, reason: isZh ? '请确认了解风险 + 同意条款' : 'Please confirm and agree' },
+    3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
   };
 
   const handleSave = async () => {
@@ -356,7 +359,6 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 <ul className="list-disc list-inside space-y-0.5">
                   <li>{isZh ? '订阅默认 0-3 — YouTube 对自动订阅检测最严,长期跑建议保守' : 'Subscribe defaults to 0-3 — YouTube flags auto-subscribe most aggressively, keep low for long-term'}</li>
                   <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏;视频数会按需采集' : 'Random 30s-3min between actions; video count auto-derived from quotas'}</li>
-                  <li>{isZh ? '所有动作都基于真实 click(不发合成事件),YouTube 看到的是合法 user gesture' : 'All actions use native click — YouTube sees legitimate user gestures'}</li>
                 </ul>
               </div>
             </>
@@ -406,20 +408,34 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
               </div>
 
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={e => setAgreed(e.target.checked)}
-                  disabled={saving}
-                  className="mt-0.5 h-4 w-4 accent-indigo-500 cursor-pointer shrink-0"
-                />
-                <span className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-                  {isZh
-                    ? '我了解 YouTube 自动化有账号风险,会按上面配置的频率 + 间隔模拟真人节奏。任务可随时停止,运行记录可在「运行记录」查看。'
-                    : 'I understand YouTube automation carries account risk. The bot will follow the configured cadence with humanized timing. I can stop the task anytime; runs are visible in Run History.'}
-                </span>
-              </label>
+              <div className="space-y-2">
+                <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  {isZh ? '使用条款' : 'Terms'}
+                </div>
+                {[
+                  isZh
+                    ? '我理解 NoobClaw 会在我本地浏览器代我浏览 youtube.com,所有行为使用我自己的 IP 和账号'
+                    : 'I understand NoobClaw browses youtube.com inside my own browser using my IP and my account.',
+                  isZh
+                    ? '我理解平台账号风险由我自己承担'
+                    : 'I accept that account risk on the platform is my own responsibility.',
+                ].map((term, i) => (
+                  <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={termsAccepted[i]}
+                      onChange={e => {
+                        const next = [...termsAccepted];
+                        next[i] = e.target.checked;
+                        setTermsAccepted(next);
+                      }}
+                      disabled={saving}
+                      className="mt-0.5 h-4 w-4 accent-indigo-500 cursor-pointer shrink-0"
+                    />
+                    <span className="leading-relaxed">{term}</span>
+                  </label>
+                ))}
+              </div>
 
               {saveError && (
                 <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2.5 text-xs text-red-600 dark:text-red-400">
@@ -466,7 +482,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleSave}
-              disabled={saving || !agreed}
+              disabled={saving || !allTermsAccepted}
               className="px-5 py-2 rounded-lg text-sm font-semibold bg-indigo-500 text-white hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >{saving
               ? (isZh ? '保存中...' : 'Saving...')
