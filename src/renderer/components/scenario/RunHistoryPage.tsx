@@ -308,9 +308,18 @@ export const RunHistoryPage: React.FC<Props> = ({
                     <span>{isZh ? '记录id:' : 'record:'} #{rec.id.slice(0, 8)}</span>
                   </div>
                   {/* Result summary + error reason */}
-                  {(rec.error || rec.result) && (
+                  {(rec.error || (rec as any).summary || rec.result) && (
                     <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                      {rec.error && (
+                      {/* v5.x+: 成功摘要走绿色,失败/中止走橙色 — 之前都进 amber 字段
+                          导致 "成功" 卡片下挂着橙色摘要,容易被误认为警告。 */}
+                      {(rec as any).summary && rec.status !== 'error' && (
+                        <span className="text-green-600 dark:text-green-400 mr-2">
+                          {((rec as any).summary as string).length > 100
+                            ? ((rec as any).summary as string).slice(0, 100) + '...'
+                            : (rec as any).summary}
+                        </span>
+                      )}
+                      {rec.error && (rec.status === 'error' || rec.status === 'stopped') && (
                         <span className="text-amber-600 dark:text-amber-400 mr-2">
                           {rec.error.length > 100 ? rec.error.slice(0, 100) + '...' : rec.error}
                         </span>

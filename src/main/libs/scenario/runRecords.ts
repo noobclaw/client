@@ -70,6 +70,11 @@ export interface RunRecord {
   finished_at?: number;
   status: 'running' | 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
+  /** v5.x+: 成功摘要 — orchestrator `ctx.finish('done', msg)` 传的 msg
+   *  会落到这里(而不是 error),让 UI 在 status=done 时显示绿色成功摘要、
+   *  status=error 时才显示红色错误。之前所有都进 error,导致"成功"卡片
+   *  顶着"错误: 1/1 条搬运发布成功"这种自相矛盾的文案。 */
+  summary?: string;
   step_logs: StepLogEntry[];
   result?: {
     collected_count?: number;
@@ -247,6 +252,8 @@ export function finishRecord(recordId: string, args: {
    *  patching result counts after the status was already finalized). */
   status?: 'done' | 'partial' | 'error' | 'stopped';
   error?: string;
+  /** v5.x+: 成功摘要(对应 orchestrator 的 ctx.finish('done', msg))。 */
+  summary?: string;
   result?: RunRecord['result'];
   output_dir?: string;
 }): void {
@@ -258,6 +265,7 @@ export function finishRecord(recordId: string, args: {
     rec.finished_at = Date.now();
   }
   if (args.error) rec.error = args.error;
+  if (args.summary) rec.summary = args.summary;
   if (args.result) rec.result = { ...rec.result, ...args.result };
   if (args.output_dir) rec.output_dir = args.output_dir;
   // Force-flush any pending debounced step-log writes too, so the

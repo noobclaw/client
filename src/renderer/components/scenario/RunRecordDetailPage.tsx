@@ -278,11 +278,23 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       </div>
 
       {/* Result + output dir */}
-      {(rec.result || rec.output_dir || rec.error) && (
+      {(rec.result || rec.output_dir || rec.error || (rec as any).summary) && (
         <div className="mb-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 space-y-2 text-sm">
-          {rec.error && (
+          {/* v5.x+: 成功摘要走绿色,跟顶部 status badge 视觉一致;之前所有终态
+              消息都进 error 字段挂红"错误:"前缀,跟 status='done' 自相矛盾。 */}
+          {(rec as any).summary && rec.status !== 'error' && (
+            <div className="text-green-500">
+              <strong>{isZh ? '摘要: ' : 'Summary: '}</strong>{(rec as any).summary}
+            </div>
+          )}
+          {rec.error && rec.status === 'error' && (
             <div className="text-red-500">
               <strong>{isZh ? '错误: ' : 'Error: '}</strong>{rec.error}
+            </div>
+          )}
+          {rec.error && rec.status === 'stopped' && (
+            <div className="text-amber-500">
+              <strong>{isZh ? '已停止: ' : 'Stopped: '}</strong>{rec.error}
             </div>
           )}
           {rec.result && (

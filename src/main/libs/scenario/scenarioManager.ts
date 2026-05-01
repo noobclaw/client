@@ -197,7 +197,14 @@ function finishProgress(taskId: string, status: 'done' | 'error' | 'partial', er
   // Map 'partial' → 'done' for the live progress panel (it only knows
   // happy/sad). The history record below preserves the distinction.
   p.status = status === 'error' ? 'error' : 'done';
-  if (error) p.error = error;
+  // v5.x+: orchestrator 调 ctx.finish('done', msg) 时,msg 是成功摘要不是
+  // 错误。之前无脑写到 p.error → UI "成功" 卡片下方挂着 "错误: 1/1 条搬运
+  // 发布成功" 这种自相矛盾的红字。改成只在真正失败时写 error,成功路径
+  // 留给 summary 字段。
+  if (error) {
+    if (status === 'error') p.error = error;
+    // 'done' / 'partial' 的 msg 不写到 p.error;summary 走 finishRecord 持久化
+  }
   // Mirror into the persistent run record. user_stopped → 'stopped' so
   // the history page can distinguish "I cancelled it" from "it errored".
   const recordId = recordIdByTaskId.get(taskId);
@@ -209,7 +216,13 @@ function finishProgress(taskId: string, status: 'done' | 'error' | 'partial', er
       else if (status === 'partial') recStatus = 'partial';
       else if (error === 'user_stopped') recStatus = 'stopped';
       else recStatus = 'error';
-      runRecords.finishRecord(recordId, { status: recStatus, error });
+      // 路由:成功状态(done/partial) → summary;失败/中止(error/stopped) → error
+      const isSuccess = recStatus === 'done' || recStatus === 'partial';
+      runRecords.finishRecord(recordId, {
+        status: recStatus,
+        error: isSuccess ? undefined : error,
+        summary: isSuccess ? error : undefined,
+      });
     } catch { /* non-fatal */ }
   }
 }
