@@ -75,7 +75,6 @@ export const DouyinConfigWizard: React.FC<Props> = ({
   onSave,
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
-  const defaults: any = scenario.default_config || {};
   const editing = !!initialTask;
 
   const [step, setStep] = useState<WizardStep>(1);
