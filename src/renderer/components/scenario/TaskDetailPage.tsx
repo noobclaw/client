@@ -779,6 +779,25 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           if (lStr) summary += ` · ${isZh ? '点赞' : 'Like'} ${lStr}`;
                           return summary;
                         }
+                        // youtube/tiktok/douyin 互动: 跟 X auto_engage 同款 — 各动作 min-max 区间
+                        // YouTube 用 subscribe，TikTok/Douyin 用 follow，配额字段名同步
+                        if (sid === 'youtube_auto_engage' || sid === 'tiktok_auto_engage' || sid === 'douyin_auto_engage') {
+                          const sMin = t.daily_subscribe_min, sMax = t.daily_subscribe_max;
+                          const cmMin = t.daily_comment_min, cmMax = t.daily_comment_max;
+                          const fmtRange = (mn: any, mx: any, fb: number): string => {
+                            if (typeof mn === 'number' && typeof mx === 'number') return mn === mx ? String(mn) : `${mn}-${mx}`;
+                            return String(fb);
+                          };
+                          const lStr = fmtRange(lMin, lMax, 3);
+                          const cmStr = fmtRange(cmMin, cmMax, 1);
+                          if (sid === 'youtube_auto_engage') {
+                            const sStr = fmtRange(sMin, sMax, 1);
+                            return `${intervalLabel} · ${isZh ? '点赞' : 'Like'} ${lStr} · ${isZh ? '订阅' : 'Subscribe'} ${sStr} · ${isZh ? '评论' : 'Comment'} ${cmStr}`;
+                          }
+                          // tiktok / douyin 用 follow
+                          const fStr2 = fmtRange(fMin, fMax, 1);
+                          return `${intervalLabel} · ${isZh ? '点赞' : 'Like'} ${lStr} · ${isZh ? '关注' : 'Follow'} ${fStr2} · ${isZh ? '评论' : 'Comment'} ${cmStr}`;
+                        }
                         // v4.31.27: binance_from_x_repost 也走 daily_post_min/max(批量搬运同样按"每次 N 条")
                         // v4.31.30: 频次摘要文案对齐 wizard step3 — 之前只有数字+"条/次",
                         //   旧任务 daily_post_min/max 缺失时回落 daily_count(常为 1),
