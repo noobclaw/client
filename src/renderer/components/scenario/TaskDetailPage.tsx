@@ -1142,19 +1142,34 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       })()}
 
 
-      {loginModalOpen && (
-        <LoginRequiredModal
-          mode="run"
-          platform={(scenario?.platform === 'x' ? 'x'
-            : scenario?.platform === 'binance' ? 'binance'
-            : scenario?.platform === 'tiktok' ? 'tiktok'
-            : scenario?.platform === 'youtube' ? 'youtube'
-            : 'xhs') as 'x' | 'xhs' | 'binance' | 'tiktok' | 'youtube'}
-          secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
-          onCancel={() => setLoginModalOpen(false)}
-          onConfirmed={handleLoginConfirmed}
-        />
-      )}
+      {loginModalOpen && (() => {
+        // v5.x+ fix: scenario 可能是 null(scenarios 列表还在后台拉)。这种
+        // race 下原版三元表达式 fallthrough 到 'xhs',导致币安/抖音任务的
+        // 运行前检查 modal 显示"小红书"字样。改成 scenario.platform 优先,
+        // 缺失时按 task.scenario_id 前缀兜底推断。顺带把 'douyin' 补上。
+        type LP = 'x' | 'xhs' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+        const sid = String(task.scenario_id || '');
+        const inferFromId: LP = sid.startsWith('binance_') ? 'binance'
+          : sid.startsWith('x_') ? 'x'
+          : sid.startsWith('youtube_') ? 'youtube'
+          : sid.startsWith('tiktok_') ? 'tiktok'
+          : sid.startsWith('douyin_') ? 'douyin'
+          : 'xhs';
+        const sp = scenario?.platform;
+        const platform: LP = (sp === 'x' || sp === 'xhs' || sp === 'binance'
+          || sp === 'tiktok' || sp === 'youtube' || sp === 'douyin')
+          ? sp
+          : inferFromId;
+        return (
+          <LoginRequiredModal
+            mode="run"
+            platform={platform}
+            secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
+            onCancel={() => setLoginModalOpen(false)}
+            onConfirmed={handleLoginConfirmed}
+          />
+        );
+      })()}
     </div>
   );
 };
