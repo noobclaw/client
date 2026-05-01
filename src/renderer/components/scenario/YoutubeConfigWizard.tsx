@@ -32,12 +32,12 @@ const LIKE_HARDCAP = 30;
 const SUBSCRIBE_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
-// ── YouTube tracks (curated from public 2026 trending categories) ──
-// 双语 keywords:中文客户端 (zh / zh-TW) 用 keywords_zh,其他语言客户端用
-// keywords_en (YouTube 英文搜索池最大,小语种用户搜英文反而结果更全)。每次
-// 运行 orchestrator 在 youtube.com/results?search_query=KW 搜随机选 1 个。
-type YoutubeTrack = { id: string; icon: string; name_zh: string; keywords_zh: string[]; keywords_en: string[] };
-const YOUTUBE_TRACKS: YoutubeTrack[] = [
+// ── YouTube tracks ──
+// v5.x+: tracks 从 backend manifest.tracks 下发(支持热更新关键词不需要打新版
+// 客户端)。下面的硬编码列表是 fallback,scenario.tracks 缺失/空时使用,保证
+// 老 backend 部署 + 新 client 仍能跑;未来若想强制走 backend 可移除 fallback。
+type YoutubeTrack = { id: string; icon: string; name_zh: string; name_en?: string; keywords_zh: string[]; keywords_en?: string[] };
+const YOUTUBE_TRACKS_FALLBACK: YoutubeTrack[] = [
   { id: 'tech_review', icon: '💻', name_zh: '科技 · 数码评测',
     keywords_zh: ['iPhone 评测', '科技数码', '开箱视频', '笔电评测', 'macbook 评测', '安卓评测', '智能手表', '游戏装备', '智能家居'],
     keywords_en: ['iPhone review', 'tech 2026', 'gadget unboxing', 'laptop review', 'macbook', 'android review', 'pixel review', 'wearable tech', 'smart home', 'gaming gear'] },
@@ -77,21 +77,26 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
 
   // ── Track + keywords (replaces persona in v5.x) ──
   // i18n: zh / zh-TW 客户端默认填中文 keywords,其他语言 (en/ko/ja/ru/fr/de) 填英文。
+  // tracks 优先取 backend 下发的 scenario.tracks,缺失时用本地 fallback 列表。
   const lang = i18nService.currentLanguage;
   const langKey: 'zh' | 'en' = (lang === 'zh' || lang === 'zh-TW') ? 'zh' : 'en';
-  const trackKeywords = (t: YoutubeTrack): string[] => langKey === 'zh' ? t.keywords_zh : t.keywords_en;
+  const TRACKS: YoutubeTrack[] = (scenario as any).tracks && (scenario as any).tracks.length > 0
+    ? (scenario as any).tracks as YoutubeTrack[]
+    : YOUTUBE_TRACKS_FALLBACK;
+  const trackName = (t: YoutubeTrack): string => langKey === 'en' ? (t.name_en || t.name_zh) : t.name_zh;
+  const trackKeywords = (t: YoutubeTrack): string[] => langKey === 'en' ? (t.keywords_en || t.keywords_zh) : t.keywords_zh;
   const initialTrackId = ((initialTask as any)?.track as string)
-    || (YOUTUBE_TRACKS.find(t => t.id === 'tech_review')?.id || YOUTUBE_TRACKS[0].id);
+    || (TRACKS.find(t => t.id === 'tech_review')?.id || TRACKS[0].id);
   const [trackId, setTrackId] = useState<string>(
-    YOUTUBE_TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : YOUTUBE_TRACKS[0].id
+    TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : TRACKS[0].id
   );
   const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
     ? (initialTask as any).keywords
-    : trackKeywords(YOUTUBE_TRACKS.find(t => t.id === initialTrackId) || YOUTUBE_TRACKS[0]);
+    : trackKeywords(TRACKS.find(t => t.id === initialTrackId) || TRACKS[0]);
   const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
   const handleTrackChange = (newTrackId: string) => {
     setTrackId(newTrackId);
-    const preset = YOUTUBE_TRACKS.find(t => t.id === newTrackId);
+    const preset = TRACKS.find(t => t.id === newTrackId);
     if (preset) setKeywordsText(trackKeywords(preset).join(' '));
   };
   function parseKeywords(raw: string): string[] {
@@ -273,8 +278,8 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                     className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 cursor-pointer"
                     disabled={saving}
                   >
-                    {YOUTUBE_TRACKS.map(t => (
-                      <option key={t.id} value={t.id}>{t.icon} {t.name_zh}</option>
+                    {TRACKS.map(t => (
+                      <option key={t.id} value={t.id}>{t.icon} {trackName(t)}</option>
                     ))}
                   </select>
                   <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -389,7 +394,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
-                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(YOUTUBE_TRACKS.find(t => t.id === trackId)?.name_zh || trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
+                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(TRACKS.find(t => t.id === trackId) ? trackName(TRACKS.find(t => t.id === trackId)!) : trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
                 <SummaryRow label={isZh ? '点赞数' : 'Likes'} value={`${likeMin}-${likeMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '订阅数' : 'Subscribes'} value={`${subMin}-${subMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />

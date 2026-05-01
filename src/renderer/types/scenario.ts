@@ -31,6 +31,27 @@ export interface ScenarioRiskCapsIPC {
   cooldown_account_flag_hours: number;
 }
 
+/** Per-track preset surfaced to the wizard's "选择赛道" dropdown.
+ *  Bilingual: zh/zh-TW clients show *_zh, others show *_en. Backend
+ *  ships these via manifest.tracks so the list can be edited without
+ *  rebuilding the client. */
+export interface ScenarioTrackIPC {
+  id: string;
+  icon: string;
+  name_zh: string;
+  /** Optional English label. Falls back to name_zh when missing —
+   *  Chinese-only platforms (Douyin, XHS) typically omit. */
+  name_en?: string;
+  keywords_zh: string[];
+  /** Optional English keywords. Falls back to keywords_zh when missing.
+   *  Same rationale as name_en — Douyin / XHS searches accept Chinese
+   *  terms so an English-locale wizard can still use the zh list. */
+  keywords_en?: string[];
+  /** Optional reply-persona hint — only XHS viral_production scenarios
+   *  use this; other platforms can omit. */
+  reply_persona_hint?: string;
+}
+
 export interface ScenarioManifestIPC {
   id: string;
   version: string;
@@ -57,6 +78,11 @@ export interface ScenarioManifestIPC {
   /** Tab URL regex for multi-tab concurrency. Optional — see main-process
    *  ScenarioManifest docstring. */
   tab_url_pattern?: string;
+  /** Track presets surfaced to the wizard. Backend can edit + redeploy
+   *  to update tracks/keywords without shipping a new client build.
+   *  Optional for back-compat with old scenarios; wizard falls back to
+   *  empty when absent. */
+  tracks?: ScenarioTrackIPC[];
 }
 
 export interface ScenarioTaskIPC {

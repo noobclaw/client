@@ -30,42 +30,45 @@ const LIKE_HARDCAP = 30;
 const FOLLOW_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
-// ── Douyin tracks (curated 2026 trending categories, 中文为主) ──
-// 海外直播必须放第一位 — 用户特别要求,这是抖音 2026 新增的高流量品类。
-type DouyinTrack = { id: string; icon: string; name_zh: string; keywords: string[] };
-const DOUYIN_TRACKS: DouyinTrack[] = [
-  { id: 'overseas_live', icon: '🌍', name_zh: '海外直播',
-    keywords: ['海外直播', '海外华人', '海外生活', '海外探店', '海外街景', '海外吃播', '海外日常', 'TikTok直播', '海外购物', '海外旅游'] },
-  { id: 'food', icon: '🍜', name_zh: '美食 · 探店',
-    keywords: ['美食探店', '本地美食', '街边小吃', '网红餐厅', '探店打卡', '吃播', '夜市', '深夜食堂', '人均消费', '私房菜'] },
-  { id: 'daily_vlog', icon: '📷', name_zh: '生活 · vlog',
-    keywords: ['vlog', '日常分享', '一人居', '工作日常', '生活记录', '周末vlog', '搬家', '装修日记', '城市vlog'] },
-  { id: 'pet', icon: '🐶', name_zh: '萌宠日常',
-    keywords: ['宠物日常', '猫咪', '狗子', '田园猫', '柯基', '布偶', '橘猫', '萌宠', '养宠新手'] },
-  { id: 'music_dance', icon: '🎵', name_zh: '音乐 · 舞蹈',
-    keywords: ['翻唱', '抖音神曲', '舞蹈翻跳', 'kpop舞', '原创歌曲', '吉他弹唱', '钢琴', '电音', '街舞'] },
-  { id: 'knowledge', icon: '🧠', name_zh: '知识 · 科普',
-    keywords: ['知识分享', '科普', '冷知识', '一分钟讲透', '历史', '心理学', '健康知识', '财经科普', '科技'] },
-  { id: 'comedy', icon: '😂', name_zh: '搞笑 · 段子',
-    keywords: ['搞笑', '段子', '反转', '沙雕日常', '抖音笑话', '剧情', '恶搞', '神回复', '配音'] },
-  { id: 'parenting', icon: '👶', name_zh: '母婴 · 亲子',
-    keywords: ['宝宝日常', '亲子', '辅食', '育儿', '早教', '幼儿园', '萌娃', '孕期', '产后'] },
-  { id: 'games', icon: '🎮', name_zh: '游戏',
-    keywords: ['游戏直播', '王者荣耀', '原神', '和平精英', '手游推荐', '游戏攻略', '主机游戏', '单机游戏', '游戏剪辑', 'lol'] },
-  { id: 'anime', icon: '🍥', name_zh: '二次元',
-    keywords: ['二次元', '动漫推荐', 'cosplay', '国漫', '日漫', '番剧', '手办', '萌系', '动画剪辑'] },
-  { id: 'movies_tv', icon: '🎬', name_zh: '影视 · 解说',
-    keywords: ['电影解说', '电视剧推荐', '影评', '看片', '国产剧', '韩剧', '美剧', '影视剪辑', '高分电影', '热播剧'] },
-  { id: 'short_drama', icon: '🎭', name_zh: '小剧场',
-    keywords: ['短剧', '沙雕短剧', '反转剧情', '校园剧', '都市情感', '古装短剧', '搞笑短剧', '悬疑短剧'] },
-  { id: 'sports', icon: '⚽', name_zh: '体育',
-    keywords: ['篮球', '足球', '健身', '跑步', '羽毛球', '乒乓球', '体育赛事', '运动技巧', 'NBA', '世界杯'] },
-  { id: 'travel', icon: '✈️', name_zh: '旅行',
-    keywords: ['旅行vlog', '国内旅游', '自驾游', '周末游', '民宿推荐', '景点打卡', '小众目的地', '城市攻略', 'citywalk'] },
-  { id: 'car', icon: '🚗', name_zh: '汽车',
-    keywords: ['汽车测评', '新车试驾', 'SUV', '新能源汽车', '改装车', '二手车', '汽车文化', '比亚迪', '特斯拉'] },
-  { id: 'beauty_outfit', icon: '💄', name_zh: '美妆穿搭',
-    keywords: ['美妆教程', '穿搭', '护肤', '口红试色', '平价好物', '通勤穿搭', 'ootd', '气质穿搭', '彩妆'] },
+// ── Douyin tracks ──
+// v5.x+: 优先从 backend manifest.tracks 下发(可热更不需打新版)。下面的 fallback
+// 在 scenario.tracks 缺失时使用,确保新 client 装到老 backend 也能工作。
+// 海外直播必须放第一位 — 用户要求,抖音 2026 高流量新品类。
+// 抖音几乎全中文素材,keywords_en 不必填(英文用户搜中文也能命中)。
+type DouyinTrack = { id: string; icon: string; name_zh: string; name_en?: string; keywords_zh: string[]; keywords_en?: string[] };
+const DOUYIN_TRACKS_FALLBACK: DouyinTrack[] = [
+  { id: 'overseas_live', icon: '🌍', name_zh: '海外直播', name_en: 'Overseas Live',
+    keywords_zh: ['海外直播', '海外华人', '海外生活', '海外探店', '海外街景', '海外吃播', '海外日常', 'TikTok直播', '海外购物', '海外旅游'] },
+  { id: 'food', icon: '🍜', name_zh: '美食 · 探店', name_en: 'Food',
+    keywords_zh: ['美食探店', '本地美食', '街边小吃', '网红餐厅', '探店打卡', '吃播', '夜市', '深夜食堂', '人均消费', '私房菜'] },
+  { id: 'daily_vlog', icon: '📷', name_zh: '生活 · vlog', name_en: 'Daily Vlog',
+    keywords_zh: ['vlog', '日常分享', '一人居', '工作日常', '生活记录', '周末vlog', '搬家', '装修日记', '城市vlog'] },
+  { id: 'pet', icon: '🐶', name_zh: '萌宠日常', name_en: 'Pets',
+    keywords_zh: ['宠物日常', '猫咪', '狗子', '田园猫', '柯基', '布偶', '橘猫', '萌宠', '养宠新手'] },
+  { id: 'music_dance', icon: '🎵', name_zh: '音乐 · 舞蹈', name_en: 'Music & Dance',
+    keywords_zh: ['翻唱', '抖音神曲', '舞蹈翻跳', 'kpop舞', '原创歌曲', '吉他弹唱', '钢琴', '电音', '街舞'] },
+  { id: 'knowledge', icon: '🧠', name_zh: '知识 · 科普', name_en: 'Knowledge',
+    keywords_zh: ['知识分享', '科普', '冷知识', '一分钟讲透', '历史', '心理学', '健康知识', '财经科普', '科技'] },
+  { id: 'comedy', icon: '😂', name_zh: '搞笑 · 段子', name_en: 'Comedy',
+    keywords_zh: ['搞笑', '段子', '反转', '沙雕日常', '抖音笑话', '剧情', '恶搞', '神回复', '配音'] },
+  { id: 'parenting', icon: '👶', name_zh: '母婴 · 亲子', name_en: 'Parenting',
+    keywords_zh: ['宝宝日常', '亲子', '辅食', '育儿', '早教', '幼儿园', '萌娃', '孕期', '产后'] },
+  { id: 'games', icon: '🎮', name_zh: '游戏', name_en: 'Gaming',
+    keywords_zh: ['游戏直播', '王者荣耀', '原神', '和平精英', '手游推荐', '游戏攻略', '主机游戏', '单机游戏', '游戏剪辑', 'lol'] },
+  { id: 'anime', icon: '🍥', name_zh: '二次元', name_en: 'Anime',
+    keywords_zh: ['二次元', '动漫推荐', 'cosplay', '国漫', '日漫', '番剧', '手办', '萌系', '动画剪辑'] },
+  { id: 'movies_tv', icon: '🎬', name_zh: '影视 · 解说', name_en: 'Movie & TV',
+    keywords_zh: ['电影解说', '电视剧推荐', '影评', '看片', '国产剧', '韩剧', '美剧', '影视剪辑', '高分电影', '热播剧'] },
+  { id: 'short_drama', icon: '🎭', name_zh: '小剧场', name_en: 'Mini Drama',
+    keywords_zh: ['短剧', '沙雕短剧', '反转剧情', '校园剧', '都市情感', '古装短剧', '搞笑短剧', '悬疑短剧'] },
+  { id: 'sports', icon: '⚽', name_zh: '体育', name_en: 'Sports',
+    keywords_zh: ['篮球', '足球', '健身', '跑步', '羽毛球', '乒乓球', '体育赛事', '运动技巧', 'NBA', '世界杯'] },
+  { id: 'travel', icon: '✈️', name_zh: '旅行', name_en: 'Travel',
+    keywords_zh: ['旅行vlog', '国内旅游', '自驾游', '周末游', '民宿推荐', '景点打卡', '小众目的地', '城市攻略', 'citywalk'] },
+  { id: 'car', icon: '🚗', name_zh: '汽车', name_en: 'Cars',
+    keywords_zh: ['汽车测评', '新车试驾', 'SUV', '新能源汽车', '改装车', '二手车', '汽车文化', '比亚迪', '特斯拉'] },
+  { id: 'beauty_outfit', icon: '💄', name_zh: '美妆穿搭', name_en: 'Beauty & Outfit',
+    keywords_zh: ['美妆教程', '穿搭', '护肤', '口红试色', '平价好物', '通勤穿搭', 'ootd', '气质穿搭', '彩妆'] },
 ];
 
 export const DouyinConfigWizard: React.FC<Props> = ({
@@ -80,19 +83,29 @@ export const DouyinConfigWizard: React.FC<Props> = ({
   const [step, setStep] = useState<WizardStep>(1);
 
   // ── Track + keywords (replaces persona in v5.x) ──
+  // tracks 优先取 backend 下发的 scenario.tracks,缺失时用本地 fallback。
+  // i18n: zh/zh-TW 用 keywords_zh,其他语言用 keywords_en (抖音几乎全中文,
+  // keywords_en 多半 fallback 到 keywords_zh)。
+  const lang = i18nService.currentLanguage;
+  const langKey: 'zh' | 'en' = (lang === 'zh' || lang === 'zh-TW') ? 'zh' : 'en';
+  const TRACKS: DouyinTrack[] = (scenario as any).tracks && (scenario as any).tracks.length > 0
+    ? (scenario as any).tracks as DouyinTrack[]
+    : DOUYIN_TRACKS_FALLBACK;
+  const trackName = (t: DouyinTrack): string => langKey === 'en' ? (t.name_en || t.name_zh) : t.name_zh;
+  const trackKeywords = (t: DouyinTrack): string[] => langKey === 'en' ? (t.keywords_en || t.keywords_zh) : t.keywords_zh;
   const initialTrackId = ((initialTask as any)?.track as string)
-    || (DOUYIN_TRACKS.find(t => t.id === 'overseas_live')?.id || DOUYIN_TRACKS[0].id);
+    || (TRACKS.find(t => t.id === 'overseas_live')?.id || TRACKS[0].id);
   const [trackId, setTrackId] = useState<string>(
-    DOUYIN_TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : DOUYIN_TRACKS[0].id
+    TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : TRACKS[0].id
   );
   const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
     ? (initialTask as any).keywords
-    : (DOUYIN_TRACKS.find(t => t.id === initialTrackId)?.keywords || DOUYIN_TRACKS[0].keywords);
+    : trackKeywords(TRACKS.find(t => t.id === initialTrackId) || TRACKS[0]);
   const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
   const handleTrackChange = (newTrackId: string) => {
     setTrackId(newTrackId);
-    const preset = DOUYIN_TRACKS.find(t => t.id === newTrackId);
-    if (preset) setKeywordsText(preset.keywords.join(' '));
+    const preset = TRACKS.find(t => t.id === newTrackId);
+    if (preset) setKeywordsText(trackKeywords(preset).join(' '));
   };
   function parseKeywords(raw: string): string[] {
     return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
@@ -256,8 +269,8 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                     className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 cursor-pointer"
                     disabled={saving}
                   >
-                    {DOUYIN_TRACKS.map(t => (
-                      <option key={t.id} value={t.id}>{t.icon} {t.name_zh}</option>
+                    {TRACKS.map(t => (
+                      <option key={t.id} value={t.id}>{t.icon} {trackName(t)}</option>
                     ))}
                   </select>
                   <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -369,7 +382,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
-                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(DOUYIN_TRACKS.find(t => t.id === trackId)?.name_zh || trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
+                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(TRACKS.find(t => t.id === trackId) ? trackName(TRACKS.find(t => t.id === trackId)!) : trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
                 <SummaryRow label={isZh ? '点赞数' : 'Likes'} value={`${likeMin}-${likeMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '关注数' : 'Follows'} value={`${folMin}-${folMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />

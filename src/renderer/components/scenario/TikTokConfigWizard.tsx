@@ -30,10 +30,11 @@ const LIKE_HARDCAP = 30;
 const FOLLOW_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
-// ── TikTok tracks (curated 2026 trending categories) ──
-// 双语 keywords:zh / zh-TW 客户端用 keywords_zh,其他语言用 keywords_en。
-type TiktokTrack = { id: string; icon: string; name_zh: string; keywords_zh: string[]; keywords_en: string[] };
-const TIKTOK_TRACKS: TiktokTrack[] = [
+// ── TikTok tracks ──
+// v5.x+: tracks 优先从 backend manifest.tracks 下发(可热更新关键词不需打新版)。
+// 下面是 fallback,scenario.tracks 缺失时用,确保新 client 装到老 backend 仍能跑。
+type TiktokTrack = { id: string; icon: string; name_zh: string; name_en?: string; keywords_zh: string[]; keywords_en?: string[] };
+const TIKTOK_TRACKS_FALLBACK: TiktokTrack[] = [
   { id: 'dance', icon: '💃', name_zh: '舞蹈 · 翻跳',
     keywords_zh: ['舞蹈翻跳', 'kpop 舞蹈', '抖音舞蹈', '编舞', '热门舞蹈', '街舞'],
     keywords_en: ['dance challenge', 'kpop dance', 'tiktok dance', 'choreography', 'dance trend', 'viral dance'] },
@@ -91,21 +92,26 @@ export const TikTokConfigWizard: React.FC<Props> = ({
 
   // ── Track + keywords (replaces persona in v5.x) ──
   // i18n: zh / zh-TW 客户端默认填中文 keywords,其他语言填英文。
+  // tracks 优先取 backend 下发的 scenario.tracks,缺失时用本地 fallback。
   const lang = i18nService.currentLanguage;
   const langKey: 'zh' | 'en' = (lang === 'zh' || lang === 'zh-TW') ? 'zh' : 'en';
-  const trackKeywords = (t: TiktokTrack): string[] => langKey === 'zh' ? t.keywords_zh : t.keywords_en;
+  const TRACKS: TiktokTrack[] = (scenario as any).tracks && (scenario as any).tracks.length > 0
+    ? (scenario as any).tracks as TiktokTrack[]
+    : TIKTOK_TRACKS_FALLBACK;
+  const trackName = (t: TiktokTrack): string => langKey === 'en' ? (t.name_en || t.name_zh) : t.name_zh;
+  const trackKeywords = (t: TiktokTrack): string[] => langKey === 'en' ? (t.keywords_en || t.keywords_zh) : t.keywords_zh;
   const initialTrackId = ((initialTask as any)?.track as string)
-    || (TIKTOK_TRACKS.find(t => t.id === 'dance')?.id || TIKTOK_TRACKS[0].id);
+    || (TRACKS.find(t => t.id === 'dance')?.id || TRACKS[0].id);
   const [trackId, setTrackId] = useState<string>(
-    TIKTOK_TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : TIKTOK_TRACKS[0].id
+    TRACKS.find(t => t.id === initialTrackId) ? initialTrackId : TRACKS[0].id
   );
   const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
     ? (initialTask as any).keywords
-    : trackKeywords(TIKTOK_TRACKS.find(t => t.id === initialTrackId) || TIKTOK_TRACKS[0]);
+    : trackKeywords(TRACKS.find(t => t.id === initialTrackId) || TRACKS[0]);
   const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
   const handleTrackChange = (newTrackId: string) => {
     setTrackId(newTrackId);
-    const preset = TIKTOK_TRACKS.find(t => t.id === newTrackId);
+    const preset = TRACKS.find(t => t.id === newTrackId);
     if (preset) setKeywordsText(trackKeywords(preset).join(' '));
   };
   function parseKeywords(raw: string): string[] {
@@ -270,8 +276,8 @@ export const TikTokConfigWizard: React.FC<Props> = ({
                     className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/40 cursor-pointer"
                     disabled={saving}
                   >
-                    {TIKTOK_TRACKS.map(t => (
-                      <option key={t.id} value={t.id}>{t.icon} {t.name_zh}</option>
+                    {TRACKS.map(t => (
+                      <option key={t.id} value={t.id}>{t.icon} {trackName(t)}</option>
                     ))}
                   </select>
                   <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
@@ -383,7 +389,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
-                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(TIKTOK_TRACKS.find(t => t.id === trackId)?.name_zh || trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
+                <SummaryRow label={isZh ? '赛道' : 'Track'} value={(TRACKS.find(t => t.id === trackId) ? trackName(TRACKS.find(t => t.id === trackId)!) : trackId) + (isZh ? ' · ' + parsedKeywords.length + ' 关键词' : ' · ' + parsedKeywords.length + ' kw')} />
                 <SummaryRow label={isZh ? '点赞数' : 'Likes'} value={`${likeMin}-${likeMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '关注数' : 'Follows'} value={`${folMin}-${folMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />
