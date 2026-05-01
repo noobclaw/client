@@ -717,7 +717,21 @@ function buildContext(
           const errText = await resp.text().catch(() => '');
           throw new Error('API ' + resp.status + ': ' + errText.slice(0, 200));
         }
-        return await resp.json();
+        const json = await resp.json() as any;
+        // 累加图片生成的 token 到任务统计 — chat 路径在 ctx.aiCall 内部走
+        // progress.addTokensUsed(usage.total_tokens, _noobclaw.costUsd),但 imageGen
+        // 走通用 apiCall 不经过那条路径,导致图的 token 不在任务"💎 X tokens"里显示。
+        // sync /api/image/generate 和 async /api/image/status/<id>(done) 都返回
+        // token_cost + _noobclaw.costUsd,在这里统一累加。同一 jobId 只会 done 一次,
+        // 不会重复累加。
+        try {
+          const tokenCost = Number(json?.token_cost) || 0;
+          if (tokenCost > 0 && progress.addTokensUsed) {
+            const cost = Number(json?._noobclaw?.costUsd) || 0;
+            progress.addTokensUsed(tokenCost, cost);
+          }
+        } catch { /* non-fatal */ }
+        return json;
       } catch (err: any) {
         if (err?.name === 'AbortError' || progress.isAbortRequested()) {
           throw new Error('user_stopped');
