@@ -34,7 +34,7 @@ try {
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf';
-const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/noobclaw-browser-assistant/';
+const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd';
 const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
 const EXTENSION_IDS = [
   // New Chrome Web Store listing ID (current, 2026-04)
