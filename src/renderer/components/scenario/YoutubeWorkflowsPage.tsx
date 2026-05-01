@@ -99,10 +99,10 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '👍', zh: '点赞 / 订阅 / 评论 三项数量随机区间可调', en: 'Per-action min/max ranges for like / subscribe / comment' },
-            { icon: '💬', zh: 'AI 评论按你的人设生成,自然口语', en: 'AI comments in your voice, casual & non-flattering' },
-            { icon: '🛡️', zh: '严风控 — 行为间隔随机 + native click 模拟真人', en: 'Strict anti-detection — randomized intervals + native clicks' },
-            { icon: '⏰', zh: '到点自动 / 也可手动触发', en: 'Schedule-driven or manual trigger' },
+            { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like behavior — no ban risk' },
+            { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement scales)' },
+            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
+            { icon: '🤖', zh: '全智能控制', en: 'Fully AI-driven' },
           ].map((p, i) => (
             <span
               key={i}

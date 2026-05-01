@@ -142,10 +142,10 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '👍', zh: '点赞 / 关注 / 评论 三项可独立开关', en: 'Like / follow / comment toggles each independent' },
-            { icon: '💬', zh: 'AI 评论按视频文案 + 置顶评论自动生成,默认中文', en: 'AI comments from caption + top comments (default Chinese)' },
-            { icon: '🛡️', zh: '严风控 — 行为间隔随机 + 每日上限', en: 'Strict anti-detection — randomized intervals + daily caps' },
-            { icon: '⏰', zh: '到点自动 / 也可手动触发', en: 'Schedule-driven or manual trigger' },
+            { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like behavior — no ban risk' },
+            { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement scales)' },
+            { icon: '💰', zh: '成本超低', en: 'Ultra-low cost' },
+            { icon: '🤖', zh: '全智能控制', en: 'Fully AI-driven' },
           ].map((p, i) => (
             <span
               key={i}
