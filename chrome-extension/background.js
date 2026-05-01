@@ -565,7 +565,7 @@ async function executeCommand(msg) {
       const results = await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         world: 'MAIN',
-        func: (sel) => {
+        func: (sel, clickOnce) => {
           const el = document.querySelector(sel);
           if (!el) return { error: 'not found: ' + sel };
           // Only scroll if element is outside viewport
@@ -585,10 +585,14 @@ async function executeCommand(msg) {
           if (el.focus) el.focus({ preventScroll: true });
           el.dispatchEvent(new MouseEvent('mouseup', init));
           el.dispatchEvent(new MouseEvent('click', init));
-          el.click();
+          // 调 native el.click() 作为兜底,触发那些只监听 native click 的元素。
+          // 但对推特 tweetButton 这种"click 后异步 API、按钮短时间不 disable"
+          // 的 React 按钮,合成 click + native click 会被 onClick 收两次,
+          // 等于发两条相同帖。这种场景显式传 clickOnce: true 跳过兜底。
+          if (!clickOnce) el.click();
           return { message: 'Clicked ' + el.tagName.toLowerCase(), tag: el.tagName, w: Math.round(rect.width), h: Math.round(rect.height) };
         },
-        args: [params.selector],
+        args: [params.selector, !!params.clickOnce],
       });
       data = results[0]?.result || { error: 'executeScript failed' };
     } else if (command === 'upload_file_from_url') {
