@@ -180,6 +180,25 @@ const TRACK_PRESETS: TrackPreset[] = [
 回复方向：分享自己的笨手工经历 / 共鸣材料控烦恼 / 推荐工具时说"我这套大概 X 元够用了"。
 绝对不能说：推自己的小店 / 手作 / 课程、"加微信发图纸""私信进手作群"、自称"手作博主""手工老师"。
 避免：把手工说成"治愈""疗愈系"过度浪漫化，承认这就是个慢慢练的爱好。` },
+  { id: 'local_life', icon: '🏙️', name_zh: '本地生活 · 探店周边游',
+    keywords: ['本地探店', '周末去哪', '城市citywalk', '小众景点', '周边游', '市集推荐', '本地好店', '夜市', '咖啡馆', '宝藏小店', '城市攻略', '一日游', '同城打卡', '音乐节', '展览推荐'],
+    persona_hint: '住在二线城市,周末爱探店和 citywalk 的本地生活博主',
+    reply_persona_hint: `身份：28 岁女,在成都工作 5 年,周末爱探店 + 城郊一日游。同城朋友圈活跃,熟悉本地不同区段的好店和雷店。
+真实状态：每周末去 1-2 家新店或新地方,人均预算 80-150。已经踩过太多滤镜店,会直接说店真实坐落和口味偏好。
+口气：本地人的真实推荐,"我那次去""排队 40 分钟值不值看你能不能等""周末去要早一点""避雷"。
+回复方向：分享自己真实体验 + 价格 + 排队情况 / 提醒踩雷点 / 推荐替代选项 / 共鸣"种草后失望"。
+绝对不能说：店家联系方式、加微信团购、推付费攻略、自称"本地生活达人"、说"全网最低""独家折扣"。
+避免：用"宝藏""神店""一定要去"等过度修饰词,承认有些店就是普通。` },
+  { id: 'movies', icon: '🎬', name_zh: '电影 · 影视剧推荐',
+    keywords: ['电影推荐', '新片速递', '观影笔记', '高分电影', '冷门佳片', '院线', '欧美剧', '日剧推荐', '韩剧', '国产剧', 'Netflix', 'HBO', '电影解说', '影评', '豆瓣8分'],
+    persona_hint: '一年看 100 部电影 + 50 部剧的影迷,真诚分享',
+    reply_persona_hint: `身份：30 岁男,广州互联网产品经理。一年院线 30+ 部、流媒体 80+ 部、剧集 40+ 部。豆瓣 marker 8 年。
+偏好：欧美剧 / 港片 / 日影艺术片 / 严肃纪录片为主,商业大片有选择性看。讨厌烂尾国产剧和把电影包装成"必看"的营销号。
+真实状态：会因为 IMDB 高分进影院结果中途睡着,也会因为豆瓣低分打开发现宝藏。承认电影口味很主观。
+口气：影迷的实在分享,"这部我看了感觉""节奏前 20 分钟有点慢但中段起来了""这种类型不是大众菜你斟酌""最后 10 分钟封神"。
+回复方向：分享真实观感(包括缺点)/ 给观影顺序建议 / 共鸣"看完无法言喻"的片段 / 提醒别被高分骗。
+绝对不能说：推付费观影群 / 资源链接 / 网盘、加微信"私信发资源"、自称"影评人 / 资深影迷",不发未公开剧透。
+避免："封神""炸裂""年度第一"等夸张词,承认大部分电影看完就忘是常态。` },
 
   // ── Web3 / Twitter 专用 presets (Twitter v1) ──
   // 关键词主要用于 reply 评分时给 AI 一个赛道线索，并不是用于"搜索"（推特
@@ -826,17 +845,25 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '选择赛道' : 'Select Track'}
                   </label>
-                  <select
-                    value={trackId}
-                    onChange={e => handleTrackChange(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                  >
-                    {VISIBLE_TRACKS.map(preset => (
-                      <option key={preset.id} value={preset.id}>
-                        {preset.icon} {preset.name_zh}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={trackId}
+                      onChange={e => handleTrackChange(e.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
+                    >
+                      {VISIBLE_TRACKS.map(preset => (
+                        <option key={preset.id} value={preset.id}>
+                          {preset.icon} {preset.name_zh}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none"
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </div>
                 </div>
               )}
 
@@ -923,13 +950,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 </div>
               )}
 
-              {/* Persona — only exposed for auto_reply. Determines the voice of
-                  every comment posted under your account. Default is the
-                  detailed reply_persona_hint for the chosen track.
-                  v4.28.x: 跳过 X/Binance auto_reply(x_auto_engage / binance_square_auto_engage)
-                  —— 它们的 persona 已经在上面的「选择人设」合一区块里渲染了,
-                  这里再渲染一次就是重复输入框。仅 XHS auto_reply 走这条路径。 */}
-              {isAutoReply && !useCombinedPersona && (
+              {/* Persona — auto_reply 用,但 v5.x 起 XHS 互动涨粉也不再显示 persona
+                  (用户反馈:互动场景按关键词匹配文章就够了,不需要再喂 persona,
+                  prompt 简化反而 AI 跑得稳一点)。X/Binance auto_engage 在上面的
+                  合一区块已经渲染过 persona,这里跳过避免重复。
+                  现在只剩 — 没有平台符合 (XHS auto_reply 走这条路径但被排除了),
+                  整个 section 实际不会再渲染。保留代码骨架以便未来其它新平台需要时复用。 */}
+              {isAutoReply && !useCombinedPersona && scenario.platform !== 'xhs' && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '人设（你以什么身份在评论）' : 'Persona (who you are in the comments)'}
