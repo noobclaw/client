@@ -27,10 +27,12 @@ interface Props {
 
 type WizardStep = 1 | 2 | 3;
 
-// Per-action hard caps. YouTube 风控比 Twitter 更紧,subscribe 尤其敏感。
+// Per-action hard caps — 跟 Twitter (x_auto_engage) ConfigWizard 看齐:
+// like 30 / subscribe 20 / comment 50。之前 5 / 15 是过度保守,跟 Twitter 不
+// 对齐用户配多平台时区间感会很别扭。
 const LIKE_HARDCAP = 30;
-const SUBSCRIBE_HARDCAP = 5;
-const COMMENT_HARDCAP = 15;
+const SUBSCRIBE_HARDCAP = 20;
+const COMMENT_HARDCAP = 50;
 
 // ── YouTube tracks ──
 // v5.x+: tracks 从 backend manifest.tracks 下发(支持热更新关键词不需要打新版
@@ -104,8 +106,9 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   }
 
   // ── Slider state with auto-clamp setters (mirrors ConfigWizard pattern) ──
+  // v5.x+: 默认值跟 Twitter (ConfigWizard.tsx:685-691) 看齐 — like 0/5
   const [likeMin, setLikeMinRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_like_min === 'number' ? (initialTask as any).daily_like_min : 1
+    typeof (initialTask as any)?.daily_like_min === 'number' ? (initialTask as any).daily_like_min : 0
   );
   const [likeMax, setLikeMaxRaw] = useState<number>(
     typeof (initialTask as any)?.daily_like_max === 'number' ? (initialTask as any).daily_like_max : 5
@@ -121,11 +124,12 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     setLikeMinRaw(prev => (prev > n ? n : prev));
   };
 
+  // v5.x+: 默认值跟 Twitter follow 0/3 看齐
   const [subMin, setSubMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_subscribe_min === 'number' ? (initialTask as any).daily_subscribe_min : 0
   );
   const [subMax, setSubMaxRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_subscribe_max === 'number' ? (initialTask as any).daily_subscribe_max : 1
+    typeof (initialTask as any)?.daily_subscribe_max === 'number' ? (initialTask as any).daily_subscribe_max : 3
   );
   const setSubMin = (v: number) => {
     const n = Math.max(0, Math.min(SUBSCRIBE_HARDCAP, v));
@@ -138,11 +142,12 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     setSubMinRaw(prev => (prev > n ? n : prev));
   };
 
+  // v5.x+: 默认值跟 Twitter reply 2/2 看齐
   const [cmtMin, setCmtMinRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 1
+    typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 2
   );
   const [cmtMax, setCmtMaxRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_comment_max === 'number' ? (initialTask as any).daily_comment_max : 3
+    typeof (initialTask as any)?.daily_comment_max === 'number' ? (initialTask as any).daily_comment_max : 2
   );
   const setCmtMin = (v: number) => {
     const n = Math.max(0, Math.min(COMMENT_HARDCAP, v));
@@ -349,7 +354,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
-                  <li>{isZh ? '订阅默认上限 1 — YouTube 对自动订阅检测最严,长期跑建议 0-2' : 'Subscribe is capped low — YouTube flags auto-subscribe most aggressively'}</li>
+                  <li>{isZh ? '订阅默认 0-3 — YouTube 对自动订阅检测最严,长期跑建议保守' : 'Subscribe defaults to 0-3 — YouTube flags auto-subscribe most aggressively, keep low for long-term'}</li>
                   <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏;视频数会按需采集' : 'Random 30s-3min between actions; video count auto-derived from quotas'}</li>
                   <li>{isZh ? '所有动作都基于真实 click(不发合成事件),YouTube 看到的是合法 user gesture' : 'All actions use native click — YouTube sees legitimate user gestures'}</li>
                 </ul>

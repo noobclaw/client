@@ -26,9 +26,12 @@ interface Props {
 
 type WizardStep = 1 | 2 | 3;
 
+// Per-action hard caps — 跟 Twitter (x_auto_engage) ConfigWizard 看齐:
+// like 30 / follow 20 / comment 50。之前 5 / 15 是过度保守,跟 Twitter 不
+// 对齐用户配多平台时区间感会很别扭。
 const LIKE_HARDCAP = 30;
-const FOLLOW_HARDCAP = 5;
-const COMMENT_HARDCAP = 15;
+const FOLLOW_HARDCAP = 20;
+const COMMENT_HARDCAP = 50;
 
 // ── TikTok tracks ──
 // v5.x+: tracks 优先从 backend manifest.tracks 下发(可热更新关键词不需打新版)。
@@ -118,8 +121,9 @@ export const TikTokConfigWizard: React.FC<Props> = ({
     return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
   }
 
+  // v5.x+: 默认值跟 Twitter (ConfigWizard.tsx:685-691) 看齐 — like 0/5
   const [likeMin, setLikeMinRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_like_min === 'number' ? (initialTask as any).daily_like_min : 1
+    typeof (initialTask as any)?.daily_like_min === 'number' ? (initialTask as any).daily_like_min : 0
   );
   const [likeMax, setLikeMaxRaw] = useState<number>(
     typeof (initialTask as any)?.daily_like_max === 'number' ? (initialTask as any).daily_like_max : 5
@@ -135,11 +139,12 @@ export const TikTokConfigWizard: React.FC<Props> = ({
     setLikeMinRaw(prev => (prev > n ? n : prev));
   };
 
+  // v5.x+: 默认值跟 Twitter follow 0/3 看齐
   const [folMin, setFolMinRaw] = useState<number>(
     typeof (initialTask as any)?.daily_follow_min === 'number' ? (initialTask as any).daily_follow_min : 0
   );
   const [folMax, setFolMaxRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_follow_max === 'number' ? (initialTask as any).daily_follow_max : 1
+    typeof (initialTask as any)?.daily_follow_max === 'number' ? (initialTask as any).daily_follow_max : 3
   );
   const setFolMin = (v: number) => {
     const n = Math.max(0, Math.min(FOLLOW_HARDCAP, v));
@@ -152,11 +157,12 @@ export const TikTokConfigWizard: React.FC<Props> = ({
     setFolMinRaw(prev => (prev > n ? n : prev));
   };
 
+  // v5.x+: 默认值跟 Twitter reply 2/2 看齐
   const [cmtMin, setCmtMinRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 1
+    typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 2
   );
   const [cmtMax, setCmtMaxRaw] = useState<number>(
-    typeof (initialTask as any)?.daily_comment_max === 'number' ? (initialTask as any).daily_comment_max : 3
+    typeof (initialTask as any)?.daily_comment_max === 'number' ? (initialTask as any).daily_comment_max : 2
   );
   const setCmtMin = (v: number) => {
     const n = Math.max(0, Math.min(COMMENT_HARDCAP, v));
@@ -346,7 +352,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
-                  <li>{isZh ? '关注默认上限 1 — TikTok 对自动关注检测最严,长期跑建议 0-2' : 'Follow is capped low — TikTok flags auto-follow most aggressively'}</li>
+                  <li>{isZh ? '关注默认 0-3 — TikTok 对自动关注检测最严,长期跑建议保守' : 'Follow defaults to 0-3 — TikTok flags auto-follow most aggressively, keep low for long-term'}</li>
                   <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏' : 'Random 30s-3min between actions to mimic human cadence'}</li>
                   <li>{isZh ? '所有动作都基于真实 click(不发合成事件),TikTok 看到的是合法 user gesture' : 'All actions use native click — TikTok sees legitimate user gestures'}</li>
                 </ul>
