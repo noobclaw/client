@@ -366,10 +366,16 @@ export function isAbortRequested(taskId?: string): boolean {
 // we won't melt the user's machine. v4.23.x bumps this from 2 → 3 so
 // users can run XHS + X + Binance Square in parallel (one task per
 // platform), since each platform has a distinct tab_url_pattern and
-// therefore its own resource lane. If we add a 4th text-content
-// platform in the future, bump again.
+// therefore its own resource lane.
+//
+// v5.x+: bumped 3 → 6 to cover the full platform set (XHS / X / Binance /
+// YouTube / TikTok / Douyin). Per-resource lock already prevents two tasks
+// from fighting over the same browser tab; this cap is just a machine-load
+// safety. With 6 separate platforms each on their own tab, 6 parallel runs
+// is the design intent — at 3 the user couldn't even have one task per
+// platform running at once, which is what they reported as the bug.
 
-const MAX_CONCURRENT_TASKS = 3;
+const MAX_CONCURRENT_TASKS = 6;
 
 /** resource key → { taskId, markedAt }
  *  v4.31.41: stale cleanup 已砍 —— 之前 30min 阈值是为了应对 orchestrator 卡死
@@ -424,11 +430,16 @@ function findBusyResource(keys: string[]): string | null {
 
 // v4.25.35: 把 'tab:^https?://...' 这种内部 key 翻译成用户看得懂的平台名,
 // 让"resource_busy"提示能直接说"推特 + 币安广场",而不是甩一坨 regex。
+// v5.x+: 补上 youtube / tiktok / douyin —— 之前漏了,导致这三个平台被资源
+// 锁/并发上限拦下时 toast 显示原始 regex 字符串,用户以为没提示。
 function humanizePlatformFromKey(key: string): string {
   const lc = key.toLowerCase();
   if (lc.indexOf('binance') >= 0) return '币安广场';
   if (lc.indexOf('twitter') >= 0 || lc.indexOf('x.com') >= 0 || lc.indexOf('x\\.com') >= 0) return '推特';
   if (lc.indexOf('xiaohongshu') >= 0) return '小红书';
+  if (lc.indexOf('youtube') >= 0) return 'YouTube';
+  if (lc.indexOf('tiktok') >= 0) return 'TikTok';
+  if (lc.indexOf('douyin') >= 0) return '抖音';
   if (key === 'tab:default') return '默认浏览器标签';
   return key;
 }
