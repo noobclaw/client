@@ -30,9 +30,9 @@ type WizardStep = 1 | 2 | 3;
 // Per-action hard caps — 跟 Twitter (x_auto_engage) ConfigWizard 看齐:
 // like 30 / subscribe 20 / comment 50。之前 5 / 15 是过度保守,跟 Twitter 不
 // 对齐用户配多平台时区间感会很别扭。
-const LIKE_HARDCAP = 30;
-const SUBSCRIBE_HARDCAP = 20;
-const COMMENT_HARDCAP = 50;
+const LIKE_HARDCAP = 100;
+const SUBSCRIBE_HARDCAP = 100;
+const COMMENT_HARDCAP = 100;
 
 // ── YouTube tracks ──
 // v5.x+: tracks 从 backend manifest.tracks 下发(支持热更新关键词不需要打新版
