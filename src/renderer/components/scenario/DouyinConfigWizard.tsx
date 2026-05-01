@@ -134,9 +134,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
     setCmtMinRaw(prev => (prev > n ? n : prev));
   };
 
-  const [commentPrompt, setCommentPrompt] = useState<string>(
-    ((initialTask as any)?.comment_prompt as string) || defaults.comment_prompt || ''
-  );
+  // commentPrompt 已从 wizard 移除 (v5.x): AI 按 video metadata + track + keyword 自动写。
 
   const dailyTime = useMemo(() => {
     if (initialTask?.daily_time) return String(initialTask.daily_time);
@@ -156,16 +154,14 @@ export const DouyinConfigWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackId, keywordsText, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, commentPrompt, runInterval]);
+  }, [trackId, keywordsText, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, runInterval]);
 
   const parsedKeywords = parseKeywords(keywordsText);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: parsedKeywords.length >= 1, reason: isZh ? '请至少填一个关键词' : 'Add at least one keyword' },
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
-        : (cmtMax > 0 && !commentPrompt.trim())
-          ? { ok: false, reason: isZh ? '评论数 > 0 时必须填写评论提示词' : 'Comment prompt required when comments > 0' }
-          : { ok: true },
+        : { ok: true },
     3: { ok: agreed, reason: isZh ? '请确认了解风险 + 同意条款' : 'Please confirm and agree' },
   };
 
@@ -192,7 +188,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
         daily_follow_max: folMax,
         daily_comment_min: cmtMin,
         daily_comment_max: cmtMax,
-        comment_prompt: commentPrompt.trim(),
+        comment_prompt: '',
       });
     } catch (err) {
       console.error('[DouyinConfigWizard] save failed:', err);
@@ -308,26 +304,9 @@ export const DouyinConfigWizard: React.FC<Props> = ({
               <RangeSlider
                 label={isZh ? '每次运行评论数量' : 'Comments per run'}
                 min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax}
-                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按下方提示词生成)` : `Random ${cmtMin}-${cmtMax} comments (0-${COMMENT_HARDCAP}, AI writes from prompt below)`}
+                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文 + 关键词自动写)` : `Random ${cmtMin}-${cmtMax} comments (0-${COMMENT_HARDCAP}, AI auto-writes from video context + keyword)`}
                 disabled={saving}
               />
-
-              {cmtMax > 0 && (
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    💬 {isZh ? '评论提示词 (引导 AI 怎么写评论)' : 'Comment prompt (guides AI how to write)'}
-                  </label>
-                  <textarea
-                    value={commentPrompt}
-                    onChange={e => setCommentPrompt(e.target.value)}
-                    rows={3} maxLength={400}
-                    placeholder={defaults.comment_prompt || (isZh ? '例: 用一句自然口语化的中文短评,不超过 30 字,不要拍马屁' : 'e.g. one casual short comment in Chinese, under 30 chars, no flattery')}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 resize-y"
-                    disabled={saving}
-                  />
-                  <div className="text-[11px] text-gray-400 mt-1 text-right">{commentPrompt.length}/400</div>
-                </div>
-              )}
 
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
@@ -380,9 +359,6 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 <SummaryRow label={isZh ? '关注数' : 'Follows'} value={`${folMin}-${folMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
-                {cmtMax > 0 && commentPrompt.trim() && (
-                  <SummaryRow label={isZh ? '评论提示' : 'Prompt'} value={commentPrompt.trim().slice(0, 60) + (commentPrompt.length > 60 ? '...' : '')} />
-                )}
               </div>
 
               <label className="flex items-start gap-2.5 cursor-pointer">

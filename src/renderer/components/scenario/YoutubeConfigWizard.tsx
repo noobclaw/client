@@ -33,27 +33,35 @@ const SUBSCRIBE_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
 // ── YouTube tracks (curated from public 2026 trending categories) ──
-// Keywords 主要用于 orchestrator 在 youtube.com 搜索页采集候选视频。每次运行
-// 随机选 1 个 keyword 走搜索 → 采集结果做互动。英文为主因为 YouTube 全球
-// 算法更偏英文素材,中文搜索结果池子小。
-type YoutubeTrack = { id: string; icon: string; name_zh: string; keywords: string[] };
+// 双语 keywords:中文客户端 (zh / zh-TW) 用 keywords_zh,其他语言客户端用
+// keywords_en (YouTube 英文搜索池最大,小语种用户搜英文反而结果更全)。每次
+// 运行 orchestrator 在 youtube.com/results?search_query=KW 搜随机选 1 个。
+type YoutubeTrack = { id: string; icon: string; name_zh: string; keywords_zh: string[]; keywords_en: string[] };
 const YOUTUBE_TRACKS: YoutubeTrack[] = [
   { id: 'tech_review', icon: '💻', name_zh: '科技 · 数码评测',
-    keywords: ['iPhone review', 'tech 2026', 'gadget unboxing', 'laptop review', 'macbook', 'android review', 'pixel review', 'wearable tech', 'smart home', 'gaming gear'] },
+    keywords_zh: ['iPhone 评测', '科技数码', '开箱视频', '笔电评测', 'macbook 评测', '安卓评测', '智能手表', '游戏装备', '智能家居'],
+    keywords_en: ['iPhone review', 'tech 2026', 'gadget unboxing', 'laptop review', 'macbook', 'android review', 'pixel review', 'wearable tech', 'smart home', 'gaming gear'] },
   { id: 'gaming', icon: '🎮', name_zh: '游戏 · 实况攻略',
-    keywords: ['gameplay walkthrough', 'minecraft', 'fortnite', 'valorant', 'speedrun', 'tier list', 'game review', 'genshin', 'roblox', 'pokemon'] },
+    keywords_zh: ['游戏实况', '游戏攻略', '我的世界', '原神', '王者荣耀', '手游推荐', 'speedrun', '游戏评测', '吃鸡'],
+    keywords_en: ['gameplay walkthrough', 'minecraft', 'fortnite', 'valorant', 'speedrun', 'tier list', 'game review', 'genshin', 'roblox', 'pokemon'] },
   { id: 'music_mv', icon: '🎵', name_zh: '音乐 · MV / 翻唱',
-    keywords: ['official music video', 'cover song', 'lyrics', 'live performance', 'kpop', 'jpop', 'piano cover', 'guitar acoustic', 'lofi mix', 'remix'] },
+    keywords_zh: ['官方 MV', '翻唱', '歌词版', 'live 现场', '华语流行', 'kpop', '钢琴翻奏', '吉他弹唱', 'lofi'],
+    keywords_en: ['official music video', 'cover song', 'lyrics', 'live performance', 'kpop', 'jpop', 'piano cover', 'guitar acoustic', 'lofi mix', 'remix'] },
   { id: 'tutorial', icon: '📚', name_zh: '教程 · How-To',
-    keywords: ['tutorial', 'how to', 'beginner guide', 'crash course', 'step by step', 'in 10 minutes', 'explained', 'masterclass', 'learn fast'] },
+    keywords_zh: ['教程', '入门指南', '新手教学', '速成课', '一步步教', '10 分钟学会', '深度讲解'],
+    keywords_en: ['tutorial', 'how to', 'beginner guide', 'crash course', 'step by step', 'in 10 minutes', 'explained', 'masterclass', 'learn fast'] },
   { id: 'vlog', icon: '📷', name_zh: '生活 · Vlog',
-    keywords: ['day in the life', 'morning routine', 'productivity', 'work from home', 'vlog', 'aesthetic vlog', 'minimalist lifestyle', 'wfh routine'] },
+    keywords_zh: ['日常 vlog', '一天 vlog', '晨间 routine', '生产力', '远程办公', '极简生活', '居家 vlog'],
+    keywords_en: ['day in the life', 'morning routine', 'productivity', 'work from home', 'vlog', 'aesthetic vlog', 'minimalist lifestyle', 'wfh routine'] },
   { id: 'fitness', icon: '💪', name_zh: '健身 · 运动',
-    keywords: ['home workout', 'hiit', 'yoga', 'pilates', 'fat loss', 'workout routine', 'pamela reif', 'chloe ting', '10 min workout', 'no equipment workout'] },
+    keywords_zh: ['居家健身', 'hiit', '瑜伽', '普拉提', '减脂', '健身教程', '帕梅拉', '徒手训练', '10 分钟燃脂'],
+    keywords_en: ['home workout', 'hiit', 'yoga', 'pilates', 'fat loss', 'workout routine', 'pamela reif', 'chloe ting', '10 min workout', 'no equipment workout'] },
   { id: 'finance', icon: '💰', name_zh: '理财 · 投资',
-    keywords: ['stock market', 'investing', 'crypto', 'personal finance', 'passive income', 'index fund', 'warren buffett', 'dividend stocks', 'real estate'] },
+    keywords_zh: ['股票投资', '理财入门', '加密货币', '基金定投', '被动收入', '指数基金', '巴菲特', '股息投资'],
+    keywords_en: ['stock market', 'investing', 'crypto', 'personal finance', 'passive income', 'index fund', 'warren buffett', 'dividend stocks', 'real estate'] },
   { id: 'ai_news', icon: '🤖', name_zh: 'AI · 资讯前沿',
-    keywords: ['chatgpt', 'claude ai', 'llm', 'ai tools', 'machine learning', 'ai news', 'gemini ai', 'sora video', 'ai agent', 'ai coding'] },
+    keywords_zh: ['ChatGPT 教程', 'Claude AI', 'AI 工具', '机器学习', 'AI 资讯', 'Gemini', 'Sora', 'AI 编程', 'AI 工作流'],
+    keywords_en: ['chatgpt', 'claude ai', 'llm', 'ai tools', 'machine learning', 'ai news', 'gemini ai', 'sora video', 'ai agent', 'ai coding'] },
 ];
 
 export const YoutubeConfigWizard: React.FC<Props> = ({
@@ -69,6 +77,10 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   const [step, setStep] = useState<WizardStep>(1);
 
   // ── Track + keywords (replaces persona in v5.x) ──
+  // i18n: zh / zh-TW 客户端默认填中文 keywords,其他语言 (en/ko/ja/ru/fr/de) 填英文。
+  const lang = i18nService.currentLanguage;
+  const langKey: 'zh' | 'en' = (lang === 'zh' || lang === 'zh-TW') ? 'zh' : 'en';
+  const trackKeywords = (t: YoutubeTrack): string[] => langKey === 'zh' ? t.keywords_zh : t.keywords_en;
   const initialTrackId = ((initialTask as any)?.track as string)
     || (YOUTUBE_TRACKS.find(t => t.id === 'tech_review')?.id || YOUTUBE_TRACKS[0].id);
   const [trackId, setTrackId] = useState<string>(
@@ -76,12 +88,12 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   );
   const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
     ? (initialTask as any).keywords
-    : (YOUTUBE_TRACKS.find(t => t.id === initialTrackId)?.keywords || YOUTUBE_TRACKS[0].keywords);
+    : trackKeywords(YOUTUBE_TRACKS.find(t => t.id === initialTrackId) || YOUTUBE_TRACKS[0]);
   const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
   const handleTrackChange = (newTrackId: string) => {
     setTrackId(newTrackId);
     const preset = YOUTUBE_TRACKS.find(t => t.id === newTrackId);
-    if (preset) setKeywordsText(preset.keywords.join(' '));
+    if (preset) setKeywordsText(trackKeywords(preset).join(' '));
   };
   function parseKeywords(raw: string): string[] {
     return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
@@ -139,9 +151,9 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
     setCmtMinRaw(prev => (prev > n ? n : prev));
   };
 
-  const [commentPrompt, setCommentPrompt] = useState<string>(
-    ((initialTask as any)?.comment_prompt as string) || defaults.comment_prompt || ''
-  );
+  // commentPrompt 已从 wizard 移除 (v5.x): AI 按 video metadata + track + keyword
+  // 自己写评论,不需要用户写额外提示词。orchestrator 仍接受 task.comment_prompt
+  // 字段保持向后兼容,但 wizard 不再设值,默认空。
 
   // daily_time not user-editable — pills replace HH:MM picker. Compute as memo.
   const dailyTime = useMemo(() => {
@@ -162,16 +174,14 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackId, keywordsText, likeMin, likeMax, subMin, subMax, cmtMin, cmtMax, commentPrompt, runInterval]);
+  }, [trackId, keywordsText, likeMin, likeMax, subMin, subMax, cmtMin, cmtMax, runInterval]);
 
   const parsedKeywords = parseKeywords(keywordsText);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: parsedKeywords.length >= 1, reason: isZh ? '请至少填一个关键词' : 'Add at least one keyword' },
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
-        : (cmtMax > 0 && !commentPrompt.trim())
-          ? { ok: false, reason: isZh ? '评论数 > 0 时必须填写评论提示词' : 'Comment prompt required when comments > 0' }
-          : { ok: true },
+        : { ok: true },
     3: { ok: agreed, reason: isZh ? '请确认了解风险 + 同意条款' : 'Please confirm and agree' },
   };
 
@@ -201,7 +211,7 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
         daily_subscribe_max: subMax,
         daily_comment_min: cmtMin,
         daily_comment_max: cmtMax,
-        comment_prompt: commentPrompt.trim(),
+        comment_prompt: '',
       });
     } catch (err) {
       console.error('[YoutubeConfigWizard] save failed:', err);
@@ -328,27 +338,9 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
               <RangeSlider
                 label={isZh ? '每次运行评论数量' : 'Comments per run'}
                 min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax}
-                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按下方提示词生成)` : `Random ${cmtMin}-${cmtMax} comments (0-${COMMENT_HARDCAP}, AI writes from the prompt below)`}
+                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文 + 关键词自动写)` : `Random ${cmtMin}-${cmtMax} comments (0-${COMMENT_HARDCAP}, AI auto-writes from video context + keyword)`}
                 disabled={saving}
               />
-
-              {cmtMax > 0 && (
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    💬 {isZh ? '评论提示词 (引导 AI 怎么写评论)' : 'Comment prompt (guides AI how to write)'}
-                  </label>
-                  <textarea
-                    value={commentPrompt}
-                    onChange={e => setCommentPrompt(e.target.value)}
-                    rows={3}
-                    maxLength={400}
-                    placeholder={defaults.comment_prompt || (isZh ? '例: 用一句自然口语化的中文写一句评论,不超过 30 字' : 'e.g. Write one casual short comment, under 30 chars')}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/40 resize-y"
-                    disabled={saving}
-                  />
-                  <div className="text-[11px] text-gray-400 mt-1 text-right">{commentPrompt.length}/400</div>
-                </div>
-              )}
 
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
@@ -403,9 +395,6 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 <SummaryRow label={isZh ? '订阅数' : 'Subscribes'} value={`${subMin}-${subMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
-                {cmtMax > 0 && commentPrompt.trim() && (
-                  <SummaryRow label={isZh ? '评论提示' : 'Prompt'} value={commentPrompt.trim().slice(0, 60) + (commentPrompt.length > 60 ? '...' : '')} />
-                )}
               </div>
 
               <label className="flex items-start gap-2.5 cursor-pointer">

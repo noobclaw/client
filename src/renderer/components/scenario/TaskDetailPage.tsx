@@ -195,6 +195,30 @@ const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
   'Write to Binance + upload images/video',
   'Publish to Binance Square',
 ];
+const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [
+  '准备本次动作清单',
+  '逐个执行点赞 / 订阅 / 评论',
+];
+const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN = [
+  'Plan this run',
+  'Execute like / subscribe / comment one by one',
+];
+const STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH = [
+  '准备本次动作清单',
+  '逐个执行点赞 / 关注 / 评论',
+];
+const STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN = [
+  'Plan this run',
+  'Execute like / follow / comment one by one',
+];
+const STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH = [
+  '准备本次动作清单',
+  '逐个执行点赞 / 关注 / 评论',
+];
+const STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN = [
+  'Plan this run',
+  'Execute like / follow / comment one by one',
+];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
   'AI 改写为币安风格 + 下载原图/视频',
@@ -238,7 +262,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     ? 'Twitter'
     : isBinanceTask
       ? (isZh ? '币安广场' : 'Binance Square')
-      : (isZh ? '小红书' : 'Xiaohongshu');
+      : (scenario?.platform as any) === 'youtube'
+        ? 'YouTube'
+        : (scenario?.platform as any) === 'tiktok'
+          ? 'TikTok'
+          : (scenario?.platform as any) === 'douyin'
+            ? (isZh ? '抖音' : 'Douyin')
+            : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
@@ -251,6 +281,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
     if (sid === 'binance_from_x_repost') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
     if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_LINK_ZH : STEP_NAMES_BINANCE_FROM_X_LINK_EN;
+    if (sid === 'youtube_auto_engage') return isZh ? STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH : STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN;
+    if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
+    if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);

@@ -31,24 +31,33 @@ const FOLLOW_HARDCAP = 5;
 const COMMENT_HARDCAP = 15;
 
 // ── TikTok tracks (curated 2026 trending categories) ──
-type TiktokTrack = { id: string; icon: string; name_zh: string; keywords: string[] };
+// 双语 keywords:zh / zh-TW 客户端用 keywords_zh,其他语言用 keywords_en。
+type TiktokTrack = { id: string; icon: string; name_zh: string; keywords_zh: string[]; keywords_en: string[] };
 const TIKTOK_TRACKS: TiktokTrack[] = [
   { id: 'dance', icon: '💃', name_zh: '舞蹈 · 翻跳',
-    keywords: ['dance challenge', 'kpop dance', 'tiktok dance', 'choreography', 'dance trend', 'viral dance', '舞蹈翻跳'] },
+    keywords_zh: ['舞蹈翻跳', 'kpop 舞蹈', '抖音舞蹈', '编舞', '热门舞蹈', '街舞'],
+    keywords_en: ['dance challenge', 'kpop dance', 'tiktok dance', 'choreography', 'dance trend', 'viral dance'] },
   { id: 'comedy', icon: '😂', name_zh: '搞笑 · 段子',
-    keywords: ['funny', 'comedy', 'meme', 'lol', 'reaction', 'prank', 'fyp', '搞笑'] },
+    keywords_zh: ['搞笑', '段子', '反转', '神回复', '整蛊', '沙雕日常', 'fyp'],
+    keywords_en: ['funny', 'comedy', 'meme', 'lol', 'reaction', 'prank', 'fyp'] },
   { id: 'food', icon: '🍜', name_zh: '美食 · 探店',
-    keywords: ['food', 'restaurant review', 'foodie', 'street food', 'recipe', 'cooking', 'asmr food', '美食'] },
+    keywords_zh: ['美食', '探店', '吃货', '街边小吃', '食谱', '做饭', 'asmr 美食'],
+    keywords_en: ['food', 'restaurant review', 'foodie', 'street food', 'recipe', 'cooking', 'asmr food'] },
   { id: 'travel_intl', icon: '✈️', name_zh: '海外旅行',
-    keywords: ['travel', 'thailand', 'japan', 'bali', 'tokyo', 'korea', 'backpacking', 'solo travel', 'vlog travel'] },
+    keywords_zh: ['海外旅行', '泰国', '日本', '巴厘岛', '东京', '韩国', '背包客', '一人旅行', '旅行 vlog'],
+    keywords_en: ['travel', 'thailand', 'japan', 'bali', 'tokyo', 'korea', 'backpacking', 'solo travel', 'vlog travel'] },
   { id: 'diy_hacks', icon: '🔧', name_zh: '生活妙招',
-    keywords: ['life hack', 'diy', 'cleaning hack', 'organization', 'tips', 'kitchen hack', 'gadget review'] },
+    keywords_zh: ['生活妙招', 'diy', '清洁妙招', '收纳', '小技巧', '厨房妙招'],
+    keywords_en: ['life hack', 'diy', 'cleaning hack', 'organization', 'tips', 'kitchen hack', 'gadget review'] },
   { id: 'pet', icon: '🐶', name_zh: '萌宠日常',
-    keywords: ['cat', 'dog', 'puppy', 'kitten', 'cute pet', 'cat lover', 'dog tricks', 'pet'] },
+    keywords_zh: ['猫咪', '狗子', '小狗', '小猫', '萌宠', '猫奴', '狗狗才艺'],
+    keywords_en: ['cat', 'dog', 'puppy', 'kitten', 'cute pet', 'cat lover', 'dog tricks', 'pet'] },
   { id: 'fashion', icon: '👗', name_zh: '穿搭 · 时尚',
-    keywords: ['outfit', 'ootd', 'fashion', 'thrift haul', 'styling', 'street style', 'capsule wardrobe'] },
+    keywords_zh: ['穿搭', 'ootd', '时尚', '二手淘货', '风格分享', '街头风'],
+    keywords_en: ['outfit', 'ootd', 'fashion', 'thrift haul', 'styling', 'street style', 'capsule wardrobe'] },
   { id: 'tech_short', icon: '📱', name_zh: '科技 · 数码短视频',
-    keywords: ['tech', 'iphone tips', 'app review', 'gadget', 'productivity hack', 'phone tricks'] },
+    keywords_zh: ['科技', 'iPhone 技巧', 'app 推荐', '数码', '效率工具'],
+    keywords_en: ['tech', 'iphone tips', 'app review', 'gadget', 'productivity hack', 'phone tricks'] },
 ];
 
 export const TikTokConfigWizard: React.FC<Props> = ({
@@ -64,6 +73,10 @@ export const TikTokConfigWizard: React.FC<Props> = ({
   const [step, setStep] = useState<WizardStep>(1);
 
   // ── Track + keywords (replaces persona in v5.x) ──
+  // i18n: zh / zh-TW 客户端默认填中文 keywords,其他语言填英文。
+  const lang = i18nService.currentLanguage;
+  const langKey: 'zh' | 'en' = (lang === 'zh' || lang === 'zh-TW') ? 'zh' : 'en';
+  const trackKeywords = (t: TiktokTrack): string[] => langKey === 'zh' ? t.keywords_zh : t.keywords_en;
   const initialTrackId = ((initialTask as any)?.track as string)
     || (TIKTOK_TRACKS.find(t => t.id === 'dance')?.id || TIKTOK_TRACKS[0].id);
   const [trackId, setTrackId] = useState<string>(
@@ -71,12 +84,12 @@ export const TikTokConfigWizard: React.FC<Props> = ({
   );
   const initialKeywords: string[] = Array.isArray((initialTask as any)?.keywords) && (initialTask as any).keywords.length > 0
     ? (initialTask as any).keywords
-    : (TIKTOK_TRACKS.find(t => t.id === initialTrackId)?.keywords || TIKTOK_TRACKS[0].keywords);
+    : trackKeywords(TIKTOK_TRACKS.find(t => t.id === initialTrackId) || TIKTOK_TRACKS[0]);
   const [keywordsText, setKeywordsText] = useState<string>(initialKeywords.join(' '));
   const handleTrackChange = (newTrackId: string) => {
     setTrackId(newTrackId);
     const preset = TIKTOK_TRACKS.find(t => t.id === newTrackId);
-    if (preset) setKeywordsText(preset.keywords.join(' '));
+    if (preset) setKeywordsText(trackKeywords(preset).join(' '));
   };
   function parseKeywords(raw: string): string[] {
     return raw.split(/[,，\s]+/).map(s => s.trim()).filter(Boolean);
@@ -133,9 +146,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
     setCmtMinRaw(prev => (prev > n ? n : prev));
   };
 
-  const [commentPrompt, setCommentPrompt] = useState<string>(
-    ((initialTask as any)?.comment_prompt as string) || defaults.comment_prompt || ''
-  );
+  // commentPrompt 已从 wizard 移除 (v5.x): AI 按 video metadata + track + keyword 自动写,不需要用户填提示词。
 
   const dailyTime = useMemo(() => {
     if (initialTask?.daily_time) return String(initialTask.daily_time);
@@ -155,16 +166,14 @@ export const TikTokConfigWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackId, keywordsText, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, commentPrompt, runInterval]);
+  }, [trackId, keywordsText, likeMin, likeMax, folMin, folMax, cmtMin, cmtMax, runInterval]);
 
   const parsedKeywords = parseKeywords(keywordsText);
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: { ok: parsedKeywords.length >= 1, reason: isZh ? '请至少填一个关键词' : 'Add at least one keyword' },
     2: totalMaxActions === 0
         ? { ok: false, reason: isZh ? '至少配置一项动作 (max > 0)' : 'Configure at least one action (max > 0)' }
-        : (cmtMax > 0 && !commentPrompt.trim())
-          ? { ok: false, reason: isZh ? '评论数 > 0 时必须填写评论提示词' : 'Comment prompt required when comments > 0' }
-          : { ok: true },
+        : { ok: true },
     3: { ok: agreed, reason: isZh ? '请确认了解风险 + 同意条款' : 'Please confirm and agree' },
   };
 
@@ -191,7 +200,7 @@ export const TikTokConfigWizard: React.FC<Props> = ({
         daily_follow_max: folMax,
         daily_comment_min: cmtMin,
         daily_comment_max: cmtMax,
-        comment_prompt: commentPrompt.trim(),
+        comment_prompt: '',
       });
     } catch (err) {
       console.error('[TikTokConfigWizard] save failed:', err);
@@ -311,23 +320,6 @@ export const TikTokConfigWizard: React.FC<Props> = ({
                 disabled={saving}
               />
 
-              {cmtMax > 0 && (
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    💬 {isZh ? '评论提示词 (引导 AI 怎么写评论)' : 'Comment prompt (guides AI how to write)'}
-                  </label>
-                  <textarea
-                    value={commentPrompt}
-                    onChange={e => setCommentPrompt(e.target.value)}
-                    rows={3} maxLength={400}
-                    placeholder={defaults.comment_prompt || (isZh ? '例: 用一句自然口语短评,语言匹配视频与评论区,不超过 30 字 / 20 词' : 'e.g. one casual short reaction; match video & comments language; under 30 chars / 20 words')}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/40 resize-y"
-                    disabled={saving}
-                  />
-                  <div className="text-[11px] text-gray-400 mt-1 text-right">{commentPrompt.length}/400</div>
-                </div>
-              )}
-
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
@@ -379,9 +371,6 @@ export const TikTokConfigWizard: React.FC<Props> = ({
                 <SummaryRow label={isZh ? '关注数' : 'Follows'} value={`${folMin}-${folMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '评论数' : 'Comments'} value={`${cmtMin}-${cmtMax} / ${isZh ? '次' : 'run'}`} />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
-                {cmtMax > 0 && commentPrompt.trim() && (
-                  <SummaryRow label={isZh ? '评论提示' : 'Prompt'} value={commentPrompt.trim().slice(0, 60) + (commentPrompt.length > 60 ? '...' : '')} />
-                )}
               </div>
 
               <label className="flex items-start gap-2.5 cursor-pointer">
