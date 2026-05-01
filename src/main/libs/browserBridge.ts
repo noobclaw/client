@@ -504,25 +504,23 @@ export async function showExtensionPrompt(): Promise<'installed' | 'cancelled'> 
   const win = BrowserWindow?.getFocusedWindow?.();
 
   if (win && dialog) {
-    // Electron mode: use native dialog
+    // Electron mode: use native dialog. The extension ships in all 3 stores
+    // (Chrome / Firefox / Edge), so we no longer offer a local-install path.
     const t = getPromptTexts();
     const result = await dialog.showMessageBox(win, {
       type: 'info',
       title: t.title,
       message: t.installMsg,
       detail: t.installDetail,
-      buttons: [t.btnStore, t.btnLocal, t.btnNotNow],
+      buttons: [t.btnStore, t.btnNotNow],
       defaultId: 0,
-      cancelId: 2,
+      cancelId: 1,
     });
 
     if (result.response === 0) {
       const browsers = detectBrowsers();
       const storeUrl = browsers.length > 0 ? browsers[0].storeUrl : CHROME_STORE_URL;
       shell?.openExternal?.(storeUrl) ?? openExternal(storeUrl);
-      return 'installed';
-    } else if (result.response === 1) {
-      await installLocalExtension();
       return 'installed';
     }
     return 'cancelled';

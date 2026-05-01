@@ -97,8 +97,6 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // grace expires so the outdated warning surfaces without a manual click.
   const [handshakePending, setHandshakePending] = useState(false);
   // Secondary modal: step-by-step guide for loading the unpacked extension
-  const [localInstallOpen, setLocalInstallOpen] = useState(false);
-  const [localInstallMsg, setLocalInstallMsg] = useState<string | null>(null);
 
   const compareVersion = (a: string, b: string): number => {
     const pa = a.split('.').map(n => parseInt(n, 10) || 0);
@@ -269,10 +267,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // connected" (red) and "extension outdated" (yellow) states. Logically
   // they're the same problem (need to install a new build), so the
   // buttons should be identical; only the surrounding header copy differs.
-  // Pre-2.4.29 the outdated branch had only Chrome + Edge store links and
-  // was missing the "📁 本地安装" path that the not-connected branch had,
-  // which left users with locally-developed installs no way to update
-  // without knowing chrome://extensions by heart.
+  // The extension is published in all three stores (Chrome / Firefox / Edge),
+  // so users always install from a store — no local-install path.
   const installActionButtons = (
     <>
       <div className="flex flex-col gap-1.5">
@@ -287,13 +283,6 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         <button type="button" onClick={() => window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank')}
           className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-500 hover:bg-blue-500/10 transition-colors text-left">
           {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
-        </button>
-        <button type="button" onClick={() => {
-          setLocalInstallOpen(true);
-          setLocalInstallMsg(null);
-        }}
-          className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-500/10 transition-colors text-left">
-          {isZh ? '📁 本地安装' : '📁 Local Install'}
         </button>
       </div>
       <button type="button" onClick={runCheck} disabled={checking}
@@ -516,98 +505,6 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         </div>
       </div>
 
-      {/* Secondary modal: local install step-by-step guide. Clicking
-          "📂 打开扩展目录 & chrome://extensions/" runs the main-process
-          helper which copies the bundled chrome-extension path to the
-          clipboard and opens chrome://extensions in the default browser. */}
-      {localInstallOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
-            <h3 className="text-lg font-bold dark:text-white mb-4">
-              📁 {isZh ? '本地安装浏览器插件' : 'Install Local Extension'}
-            </h3>
-            <ol className="text-xs text-gray-700 dark:text-gray-300 space-y-2 mb-4 list-decimal list-inside leading-relaxed">
-              <li>{isZh ? '点下方 📂 按钮，会自动打开 chrome://extensions/ 并把 NoobClaw 的插件目录复制到剪贴板' : 'Click 📂 below — opens chrome://extensions/ and copies the NoobClaw extension folder path to clipboard'}</li>
-              <li>{isZh ? '在浏览器的插件页右上角打开「开发者模式」' : 'Enable "Developer mode" in the top-right of the browser extensions page'}</li>
-              <li>{isZh ? '点「加载已解压的扩展程序」，在弹出的文件选择框地址栏粘贴刚才复制的路径回车，然后选中里面的 chrome-extension 文件夹进行加载' : 'Click "Load unpacked", paste the copied path into the file dialog\'s address bar, then select the chrome-extension folder to load it'}</li>
-              <li>{isZh ? '回到本页面点「重新检测」，检测到绿色 ✓ 即安装成功' : 'Return here and click "Re-check" — ✓ means success'}</li>
-            </ol>
-            {localInstallMsg && (
-              <div className="text-xs text-green-500 mb-3 px-3 py-2 bg-green-500/10 border border-green-500/30 rounded-lg whitespace-pre-line break-all">
-                {localInstallMsg}
-              </div>
-            )}
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    const r = await window.electron?.browserBridge?.installLocal?.();
-                    if (!r?.success) {
-                      setLocalInstallMsg((isZh ? '❌ 操作失败：' : '❌ Failed: ')
-                        + (r?.error || (isZh ? '未知错误' : 'unknown error')));
-                      return;
-                    }
-                    // Main/sidecar has already opened chrome://extensions
-                    // in the default browser. Renderer must do the actual
-                    // clipboard write — electron.clipboard doesn't exist
-                    // inside Tauri's sidecar process, so the returned path
-                    // is the single source of truth.
-                    let copied = false;
-                    if (r.extensionPath) {
-                      try {
-                        await navigator.clipboard.writeText(r.extensionPath);
-                        copied = true;
-                      } catch {
-                        copied = false;
-                      }
-                    }
-                    if (!r.browserFound) {
-                      setLocalInstallMsg(isZh
-                        ? '⚠️ 未检测到 Chrome/Edge 浏览器，请先安装浏览器。路径：' + (r.extensionPath || '')
-                        : '⚠️ No Chrome/Edge detected. Install a browser first. Path: ' + (r.extensionPath || ''));
-                      return;
-                    }
-                    if (copied) {
-                      setLocalInstallMsg(isZh
-                        ? '✅ 已打开浏览器扩展页，插件目录已复制到剪贴板。粘贴后选中里面的 chrome-extension 文件夹即可。'
-                        : '✅ Opened extensions page, extension folder path copied. After pasting, click into the chrome-extension folder and select it.');
-                    } else {
-                      // Clipboard write failed — give user the path to copy manually
-                      setLocalInstallMsg((isZh
-                        ? '✅ 已打开扩展页，但剪贴板复制失败。请手动复制下方路径：'
-                        : '✅ Opened extensions page, but clipboard write failed. Copy this path manually:')
-                        + '\n' + (r.extensionPath || ''));
-                    }
-                  } catch (e) {
-                    setLocalInstallMsg((isZh ? '❌ 调用失败：' : '❌ Call failed: ')
-                      + String(e).slice(0, 100));
-                  }
-                }}
-                className="w-full py-2.5 rounded-lg text-sm font-semibold bg-purple-500 text-white hover:bg-purple-600 transition-colors"
-              >
-                📂 {isZh ? '打开扩展目录 & chrome://extensions/' : 'Open extension folder & chrome://extensions/'}
-              </button>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setLocalInstallOpen(false)}
-                  className="flex-1 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                >
-                  {isZh ? '关闭' : 'Close'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setLocalInstallOpen(false); void runCheck(); }}
-                  className="flex-1 py-2 rounded-lg text-sm bg-green-500 text-white hover:bg-green-600"
-                >
-                  🔄 {isZh ? '我已安装，重新检测' : 'I installed, re-check'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

@@ -469,14 +469,19 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
       <TickerMarquee />
       {/* Main Content */}
       <div className="flex-1 overflow-y-auto min-h-0">
-        <div className="max-w-3xl mx-auto px-4 py-16 space-y-12">
+        {/* v4.31.45: 第一屏要塞 6 张涨粉卡 + 输入框 + 开源徽标,
+            原本 py-16 / space-y-12 / w-16 logo / text-3xl 标题
+            合起来超过 850px,主流 720p 屏会出滚动条。整体收缩:
+            py-8 / space-y-6,welcome 区减小 logo + 标题字号,
+            6 卡 padding 也压一档。 */}
+        <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
           {/* Welcome Section */}
-          <div className="text-center space-y-5">
-            <img src="logo.png" alt="logo" className="w-16 h-16 mx-auto rounded-2xl" />
-            <h2 className="text-3xl font-bold tracking-tight dark:text-claude-darkText text-claude-text">
+          <div className="text-center space-y-3">
+            <img src="logo.png" alt="logo" className="w-12 h-12 mx-auto rounded-2xl" />
+            <h2 className="text-2xl font-bold tracking-tight dark:text-claude-darkText text-claude-text">
               {i18nService.t('coworkWelcome')}
             </h2>
-            <p className="text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary max-w-md mx-auto">
+            <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary max-w-md mx-auto">
               {i18nService.t('coworkDescription')}
             </p>
           </div>
@@ -490,49 +495,49 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               <button
                 type="button"
                 onClick={() => onShowQuickUse('binance')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-amber-500/10 hover:bg-amber-50 hover:dark:border-amber-500/40 hover:border-amber-300 hover:shadow-md hover:dark:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-amber-500/10 hover:bg-amber-50 hover:dark:border-amber-500/40 hover:border-amber-300 hover:shadow-md hover:dark:shadow-amber-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-amber-500/15 bg-amber-100 text-base shrink-0 group-hover:scale-105 transition-transform">🔶</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-amber-500/15 bg-amber-100 text-base shrink-0 group-hover:scale-105 transition-transform">🔶</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-amber-200 group-hover:text-amber-700 transition-colors truncate">{i18nService.t('homeQuickEntryBinance')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onShowQuickUse('x')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-sky-500/10 hover:bg-sky-50 hover:dark:border-sky-500/40 hover:border-sky-300 hover:shadow-md hover:dark:shadow-sky-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-sky-500/10 hover:bg-sky-50 hover:dark:border-sky-500/40 hover:border-sky-300 hover:shadow-md hover:dark:shadow-sky-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-sky-500/15 bg-sky-100 text-base shrink-0 group-hover:scale-105 transition-transform">🐦</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-sky-500/15 bg-sky-100 text-base shrink-0 group-hover:scale-105 transition-transform">🐦</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-sky-200 group-hover:text-sky-700 transition-colors truncate">{i18nService.t('homeQuickEntryX')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onShowQuickUse('xhs')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-rose-500/10 hover:bg-rose-50 hover:dark:border-rose-500/40 hover:border-rose-300 hover:shadow-md hover:dark:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-rose-500/10 hover:bg-rose-50 hover:dark:border-rose-500/40 hover:border-rose-300 hover:shadow-md hover:dark:shadow-rose-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-rose-500/15 bg-rose-100 text-base shrink-0 group-hover:scale-105 transition-transform">📕</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-rose-500/15 bg-rose-100 text-base shrink-0 group-hover:scale-105 transition-transform">📕</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-rose-200 group-hover:text-rose-700 transition-colors truncate">{i18nService.t('homeQuickEntryXhs')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onShowQuickUse('youtube')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-indigo-500/10 hover:bg-indigo-50 hover:dark:border-indigo-500/40 hover:border-indigo-300 hover:shadow-md hover:dark:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-indigo-500/10 hover:bg-indigo-50 hover:dark:border-indigo-500/40 hover:border-indigo-300 hover:shadow-md hover:dark:shadow-indigo-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-indigo-500/15 bg-indigo-100 text-base shrink-0 group-hover:scale-105 transition-transform">▶️</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-indigo-500/15 bg-indigo-100 text-base shrink-0 group-hover:scale-105 transition-transform">▶️</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-indigo-200 group-hover:text-indigo-700 transition-colors truncate">{i18nService.t('homeQuickEntryYoutube')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onShowQuickUse('tiktok')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-cyan-500/10 hover:bg-cyan-50 hover:dark:border-cyan-500/40 hover:border-cyan-300 hover:shadow-md hover:dark:shadow-cyan-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-cyan-500/10 hover:bg-cyan-50 hover:dark:border-cyan-500/40 hover:border-cyan-300 hover:shadow-md hover:dark:shadow-cyan-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-cyan-500/15 bg-cyan-100 text-base shrink-0 group-hover:scale-105 transition-transform">🎵</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-cyan-500/15 bg-cyan-100 text-base shrink-0 group-hover:scale-105 transition-transform">🎵</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-cyan-200 group-hover:text-cyan-700 transition-colors truncate">{i18nService.t('homeQuickEntryTiktok')}</span>
               </button>
               <button
                 type="button"
                 onClick={() => onShowQuickUse('douyin')}
-                className="group flex items-center gap-2.5 py-2.5 pl-2.5 pr-3 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-violet-500/10 hover:bg-violet-50 hover:dark:border-violet-500/40 hover:border-violet-300 hover:shadow-md hover:dark:shadow-violet-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
+                className="group flex items-center gap-2 py-2 pl-2 pr-2.5 rounded-xl border dark:border-white/10 border-gray-200/80 dark:bg-white/[0.03] bg-white hover:dark:bg-violet-500/10 hover:bg-violet-50 hover:dark:border-violet-500/40 hover:border-violet-300 hover:shadow-md hover:dark:shadow-violet-500/10 hover:-translate-y-0.5 transition-all duration-150 cursor-pointer"
               >
-                <span className="flex items-center justify-center w-8 h-8 rounded-lg dark:bg-violet-500/15 bg-violet-100 text-base shrink-0 group-hover:scale-105 transition-transform">🎬</span>
+                <span className="flex items-center justify-center w-7 h-7 rounded-lg dark:bg-violet-500/15 bg-violet-100 text-base shrink-0 group-hover:scale-105 transition-transform">🎬</span>
                 <span className="text-sm font-medium dark:text-gray-100 text-gray-800 group-hover:dark:text-violet-200 group-hover:text-violet-700 transition-colors truncate">{i18nService.t('homeQuickEntryDouyin')}</span>
               </button>
             </div>
