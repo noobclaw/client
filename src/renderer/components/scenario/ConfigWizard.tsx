@@ -573,11 +573,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
 
   // Twitter-specific fields (only rendered when scenario.platform === 'x')
   // (isXPlatform / isLinkRewriteScenario are declared at the top — see comment there)
-  const [language, setLanguage] = useState<'zh' | 'en' | 'mixed'>(() => {
+  // language picker dropped (2026-05): Twitter scenarios always follow the
+  // original tweet's language. Keep the value pinned to 'mixed' (zh→zh / en→en
+  // matching) and propagate it on save so the orchestrator gets a stable
+  // contract — old tasks with explicitly stored 'zh' / 'en' still win.
+  const language: 'zh' | 'en' | 'mixed' = (() => {
     const initLang = (initialTask as any)?.language;
     if (initLang === 'zh' || initLang === 'en' || initLang === 'mixed') return initLang;
-    return 'mixed'; // default for Twitter — most NoobClaw users are zh-en bilingual
-  });
+    return 'mixed';
+  })();
   // v4.31.9: userContext 字段移除 — UI 不显示,save 不发,backend prompt 不读
   // Blue V flag — drives the AI length cap (140 chars for non-Blue, free
   // for Blue). Default false (most users aren't Blue subscribers).
@@ -1073,43 +1077,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {/* v4.31.27: media filter for binance_from_x_repost 已经移到 step 1 顶部,
                       此处不再渲染(其他 isXOrBinance 场景目前都不需要 media filter)。 */}
 
-                  {/* Language mode — Twitter-only, also skipped for x_link_rewrite
-                      AND x_auto_engage (per user request 2026-04: 互动场景一律
-                      follow 原推语言,跟币安互动一致,不需要显式 toggle)。
-                      Binance Square 同理无需 toggle。
-                      → 实际只在 x_post_creator 显示。 */}
-                  {!isLinkRewriteScenario && !isXAutoEngage && isXPlatform && (
-                    <div>
-                      <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                        {isZh ? '🌐 内容语言' : '🌐 Content language'}
-                      </label>
-                      <div className="flex gap-2">
-                        {([
-                          { v: 'zh' as const, label: isZh ? '中文' : 'Chinese' },
-                          { v: 'en' as const, label: isZh ? '英文' : 'English' },
-                          { v: 'mixed' as const, label: isZh ? '中英混合（推荐）' : 'Mixed (recommended)' },
-                        ]).map(opt => (
-                          <button
-                            key={opt.v}
-                            type="button"
-                            onClick={() => setLanguage(opt.v)}
-                            className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
-                              language === opt.v
-                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
-                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                        {isZh
-                          ? '中英混合 = 回复语言跟原推匹配（中文推回中文 / 英文推回英文）'
-                          : 'Mixed = reply language matches the original tweet (zh→zh, en→en).'}
-                      </p>
-                    </div>
-                  )}
+                  {/* Language mode — removed from ALL Twitter scenarios per
+                      user feedback (2026-05): 推特场景一律 follow 原推语言,
+                      跟币安互动 / YouTube / TikTok / Douyin 一致,不再有显式
+                      toggle。`language` state defaults to 'mixed' (zh→zh,
+                      en→en) and that's the behavior the orchestrator gets. */}
 
                   {/* Blue V flag — Twitter-only. Drives per-tweet length cap.
                       Binance Square has no equivalent concept (no verified tier
