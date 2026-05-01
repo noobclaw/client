@@ -56,3 +56,9 @@ Desktop.ini
 *.swp
 *.swo
 chrome-extension.zip
+
+# Browser extension lives in private repo noobclaw/chrome-extension.
+# Local dev + CI fetch a fresh snapshot via scripts/fetch-chrome-extension.js,
+# which prepare-tauri-resources.js then copies into src-tauri/resources/.
+chrome-extension/
+src-tauri/resources/chrome-extension/
