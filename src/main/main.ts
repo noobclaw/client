@@ -2719,6 +2719,10 @@ if (!gotTheLock) {
     const scenarioViralPool = require('./libs/scenario/viralPoolClient');
     scenarioRiskGuard.initRiskGuard(userData);
     scenarioTaskStore.initTaskStore(userData);
+    // v5.x+: 让 scenarioManager 能拿到 app_config.language,送进 orchestrator
+    // 的 ctx.appLocale。orchestrator 用它替代 navigator.language 决定输出语言,
+    // 解决"中文 noobclaw + 英文 Chrome → 推特发出来全英文"的问题。
+    scenarioManager.setAppConfigGetter(() => getStore().get('app_config'));
 
     ipcMain.handle('scenario:listTasks', () => scenarioTaskStore.listTasks());
     ipcMain.handle('scenario:getTask', (_e, id: string) => scenarioTaskStore.getTask(id));

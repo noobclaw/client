@@ -23,6 +23,25 @@ import type {
 
 const packCache = new Map<string, ScenarioPack>();
 
+// v5.x+: app_config 访问器(由 main.ts 初始化时注入)。orchestrator 启动时
+// 把 app_config.language 送进 ctx.appLocale,让 x_post_creator / x_link_rewrite
+// /  binance_from_x_repost 等用客户端 i18n 决定输出语言,不再被浏览器 locale
+// 牵着走。中文客户端 + 英文 Chrome 这种很常见的组合下,之前 navigator.language
+// 检出 en → 推特发出来全英文,跟用户预期反着。
+let appConfigGetter: (() => any) | null = null;
+
+export function setAppConfigGetter(fn: () => any): void {
+  appConfigGetter = fn;
+}
+
+function readAppLocale(): string {
+  if (!appConfigGetter) return '';
+  try {
+    const cfg = appConfigGetter();
+    return (cfg && typeof cfg.language === 'string') ? cfg.language : '';
+  } catch { return ''; }
+}
+
 async function loadPack(scenario_id: string): Promise<ScenarioPack | null> {
   // Always fetch fresh from backend — scripts, prompts, config
   // can be hot-updated on the server without client rebuild.
@@ -603,7 +622,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
         tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
         costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
       },
-    }, { scriptOverride: script, targetDraft });
+    }, { scriptOverride: script, targetDraft, appLocale: readAppLocale() });
 
     // Update draft status on successful upload
     const cur = progressByTaskId.get(tid);
@@ -769,7 +788,7 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
         tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
         costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
       },
-    });
+    }, { appLocale: readAppLocale() });
 
     const cur = progressByTaskId.get(tid);
     if (result.status === 'ok') {

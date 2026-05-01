@@ -201,6 +201,7 @@ function buildContext(
   task: ScenarioTask,
   seenPostIds: Set<string>,
   progress: ProgressFns,
+  appLocale?: string,
 ): Record<string, any> {
   const { manifest, scripts, config } = pack;
 
@@ -278,6 +279,11 @@ function buildContext(
     config,
     manifest,
     seenPostIds,
+    /** v5.x+: noobclaw 客户端 i18n 设置 ('zh' | 'en' | 'zh-TW' | 'ko' | 'ja'
+     *  | 'ru' | 'fr' | 'de' | undefined)。orchestrator 用这个判断"这个用户
+     *  想看什么语言的内容/输出"——比 navigator.language 准,因为浏览器经常
+     *  跟客户端 UI 语言不一致(用户用中文 noobclaw 但 Chrome 是英文)。 */
+    appLocale: appLocale || '',
 
     // ── Progress ──
     // Track current step so ctx.report() logs to the right panel
@@ -1714,14 +1720,14 @@ export async function runOrchestrator(
   task: ScenarioTask,
   seenPostIds: Set<string>,
   progress: ProgressFns,
-  options?: { scriptOverride?: string; targetDraft?: any },
+  options?: { scriptOverride?: string; targetDraft?: any; appLocale?: string },
 ): Promise<RunResult> {
   const orchestratorCode = options?.scriptOverride || pack.orchestrator;
   if (!orchestratorCode) {
     return { status: 'failed', reason: 'no_orchestrator_in_pack' };
   }
 
-  const ctx = buildContext(pack, task, seenPostIds, progress);
+  const ctx = buildContext(pack, task, seenPostIds, progress, options?.appLocale);
   // Inject target draft for the upload_draft.js path
   if (options?.targetDraft) {
     (ctx as any)._targetDraft = options.targetDraft;
