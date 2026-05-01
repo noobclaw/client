@@ -152,7 +152,7 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
           ].map((p, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-pink-500/20 bg-pink-500/5 text-gray-700 dark:text-gray-300"
+              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-cyan-500/20 bg-cyan-500/5 text-gray-700 dark:text-gray-300"
             >
               {p.icon} {isZh ? p.zh : p.en}
             </span>
@@ -204,7 +204,7 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
                   setMaxTasksModalOpen(false);
                   if (onGoToMyTasks) onGoToMyTasks();
                 }}
-                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-pink-500 to-rose-500 text-white hover:opacity-90 transition-opacity shadow-sm">
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white hover:opacity-90 transition-opacity shadow-sm">
                 {isZh ? '去看看现有任务 →' : 'View My Tasks →'}
               </button>
             </div>
@@ -226,11 +226,11 @@ type CardProps = {
 
 const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
   return (
-    <div className="relative rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-500/10 via-rose-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
-      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-pink-500/10 blur-3xl pointer-events-none" />
+    <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
       <div className="relative flex flex-col flex-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-pink-500 mb-2">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-pink-500 animate-pulse" />
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
           {isZh ? '互动涨粉' : 'Engage & Grow'}
         </div>
         <h3 className="text-base font-bold dark:text-white mb-1.5">
@@ -245,7 +245,7 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
           type="button"
           onClick={onConfigure}
           disabled={loading || !scenario}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-pink-500 hover:bg-pink-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-pink-500/25 transition-all active:scale-95"
+          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
         >
           🎵 {isZh ? '开始互动' : 'Start'} →
         </button>

@@ -99,14 +99,14 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6">
         <div className="flex flex-wrap gap-2 justify-center">
           {[
-            { icon: '👍', zh: '点赞 / 订阅 / 评论 三项可独立开关', en: 'Like / subscribe / comment toggles each independent' },
-            { icon: '💬', zh: 'AI 评论自然口语,不拍马屁', en: 'AI-generated comments, casual & non-flattering' },
-            { icon: '🛡️', zh: '严风控 — 行为间隔随机 + 每日上限', en: 'Strict anti-detection — randomized intervals + daily caps' },
+            { icon: '👍', zh: '点赞 / 订阅 / 评论 三项数量随机区间可调', en: 'Per-action min/max ranges for like / subscribe / comment' },
+            { icon: '💬', zh: 'AI 评论按你的人设生成,自然口语', en: 'AI comments in your voice, casual & non-flattering' },
+            { icon: '🛡️', zh: '严风控 — 行为间隔随机 + native click 模拟真人', en: 'Strict anti-detection — randomized intervals + native clicks' },
             { icon: '⏰', zh: '到点自动 / 也可手动触发', en: 'Schedule-driven or manual trigger' },
           ].map((p, i) => (
             <span
               key={i}
-              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-red-500/20 bg-red-500/5 text-gray-700 dark:text-gray-300"
+              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-indigo-500/20 bg-indigo-500/5 text-gray-700 dark:text-gray-300"
             >
               {p.icon} {isZh ? p.zh : p.en}
             </span>
@@ -158,7 +158,7 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
                   setMaxTasksModalOpen(false);
                   if (onGoToMyTasks) onGoToMyTasks();
                 }}
-                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-red-500 to-rose-500 text-white hover:opacity-90 transition-opacity shadow-sm">
+                className="flex-1 text-sm font-medium px-4 py-2 rounded-lg bg-gradient-to-r from-indigo-500 to-blue-500 text-white hover:opacity-90 transition-opacity shadow-sm">
                 {isZh ? '去看看现有任务 →' : 'View My Tasks →'}
               </button>
             </div>
@@ -180,11 +180,11 @@ type CardProps = {
 
 const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
   return (
-    <div className="relative rounded-2xl border border-red-500/30 bg-gradient-to-br from-red-500/10 via-rose-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
-      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-red-500/10 blur-3xl pointer-events-none" />
+    <div className="relative rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
       <div className="relative flex flex-col flex-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-red-500 mb-2">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-500 mb-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse" />
           {isZh ? '互动涨粉' : 'Engage & Grow'}
         </div>
         <h3 className="text-base font-bold dark:text-white mb-1.5">
@@ -192,14 +192,14 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '每天定时浏览 YouTube 首页推荐流,挑出若干视频按你配置的组合做点赞 / 订阅 / 评论。三项动作可独立开关,评论由 AI 按你的人设生成,行为间隔随机模拟真人。'
-            : 'Browses your YouTube home feed on schedule, picks recommended videos and runs your configured mix of like / subscribe / comment. Each action toggles independently; comments are AI-generated in your voice with humanized timing.'}
+            ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后浏览首页推荐流自动按配额完成。评论由 AI 按你的人设生成,行为间隔随机模拟真人。'
+            : 'Each run picks per-action counts from your random ranges, then browses the home feed and works through the quota. Comments are AI-generated from your persona with humanized timing.'}
         </p>
         <button
           type="button"
           onClick={onConfigure}
           disabled={loading || !scenario}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-red-500 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-red-500/25 transition-all active:scale-95"
+          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-indigo-500/25 transition-all active:scale-95"
         >
           📺 {isZh ? '开始互动' : 'Start'} →
         </button>
