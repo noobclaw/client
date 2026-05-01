@@ -196,28 +196,34 @@ const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
   'Publish to Binance Square',
 ];
 const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [
-  '准备本次动作清单',
-  '逐个执行点赞 / 订阅 / 评论',
+  '搜索关键词 + 采集候选视频',
+  '逐个进视频执行点赞 / 订阅 / 评论',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN = [
-  'Plan this run',
-  'Execute like / subscribe / comment one by one',
+  'Search keyword + collect candidate videos',
+  'Open each video, execute like / subscribe / comment',
+  'Save this run report to disk',
 ];
 const STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH = [
-  '准备本次动作清单',
-  '逐个执行点赞 / 关注 / 评论',
+  '搜索关键词 + 采集候选视频',
+  '逐个进视频执行点赞 / 关注 / 评论',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN = [
-  'Plan this run',
-  'Execute like / follow / comment one by one',
+  'Search keyword + collect candidate videos',
+  'Open each video, execute like / follow / comment',
+  'Save this run report to disk',
 ];
 const STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH = [
-  '准备本次动作清单',
-  '逐个执行点赞 / 关注 / 评论',
+  '搜索关键词 + 采集候选视频',
+  '逐个进视频执行点赞 / 关注 / 评论',
+  '保存本次报告到本地',
 ];
 const STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN = [
-  'Plan this run',
-  'Execute like / follow / comment one by one',
+  'Search keyword + collect candidate videos',
+  'Open each video, execute like / follow / comment',
+  'Save this run report to disk',
 ];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
