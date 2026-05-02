@@ -81,6 +81,72 @@ if (!document.getElementById('typing-anim-style')) {
   document.head.appendChild(typingStyle);
 }
 
+// Step-log container with smart auto-scroll. Auto-scrolls to bottom only
+// while the user is already pinned at the bottom. The moment they drag the
+// scrollbar up to read older messages we release the auto-scroll so new
+// log lines don't yank them back down. Coming back to the bottom (scroll
+// down past the threshold) re-engages auto-scroll.
+const StepLogBox: React.FC<{
+  logs: Array<{ time: string; status: string; message: string }>;
+  isActive: boolean;
+  renderLogMessage: (m: string) => React.ReactNode;
+}> = ({ logs, isActive, renderLogMessage }) => {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  // stickToBottom: true means we should auto-scroll on new logs. Defaults to
+  // true (initial render lands at the bottom — newest log visible) and only
+  // flips to false once the user scrolls up past the threshold.
+  const stickRef = useRef(true);
+  const NEAR_BOTTOM_THRESHOLD = 24; // px slack so a 1-2px reflow jitter doesn't release sticky
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (stickRef.current && isActive) {
+      el.scrollTop = el.scrollHeight;
+    }
+    // Note: we deliberately depend on logs.length (and message identity) so
+    // typing-animation re-renders of the last running line don't trigger
+    // an extra scroll — only new entries do.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [logs.length, isActive]);
+
+  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+    const el = e.currentTarget;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    stickRef.current = distanceFromBottom <= NEAR_BOTTOM_THRESHOLD;
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      onScroll={handleScroll}
+      className="overflow-y-auto p-3 space-y-1"
+      style={{ maxHeight: '160px' }}
+    >
+      {logs.map((log, li) => {
+        const isLast = li === logs.length - 1 && isActive;
+        return (
+          <div key={li} className="text-xs flex items-start gap-2">
+            <span className={`shrink-0 font-medium ${
+              log.status === 'done' ? 'text-green-500' : log.status === 'error' ? 'text-red-500' : 'text-amber-500'
+            }`}>
+              {log.status === 'done' ? '✓' : log.status === 'error' ? '✗' : '›'}
+            </span>
+            <span className={`flex-1 ${log.status === 'done' ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-300'}`}>
+              {isLast && log.status === 'running' ? (
+                <span className="typing-animation">{renderLogMessage(log.message)}</span>
+              ) : (
+                renderLogMessage(log.message)
+              )}
+            </span>
+            <span className="text-gray-500 dark:text-gray-600 shrink-0 tabular-nums text-[10px]">{log.time}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 // Render log message — make file paths clickable
 function renderLogMessage(message: string) {
   // Match paths like /Users/.../NoobClaw/... or C:\Users\...\NoobClaw\...
@@ -1077,32 +1143,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     </button>
                   </div>
                 ) : logs.length > 0 ? (
-                  <div
-                    className="overflow-y-auto p-3 space-y-1"
-                    style={{ maxHeight: '160px' }}
-                    ref={(el) => { if (el && isActive) el.scrollTop = el.scrollHeight; }}
-                  >
-                    {logs.map((log, li) => {
-                      const isLast = li === logs.length - 1 && isActive;
-                      return (
-                        <div key={li} className="text-xs flex items-start gap-2">
-                          <span className={`shrink-0 font-medium ${
-                            log.status === 'done' ? 'text-green-500' : log.status === 'error' ? 'text-red-500' : 'text-amber-500'
-                          }`}>
-                            {log.status === 'done' ? '✓' : log.status === 'error' ? '✗' : '›'}
-                          </span>
-                          <span className={`flex-1 ${log.status === 'done' ? 'text-gray-500 dark:text-gray-400' : 'dark:text-gray-300'}`}>
-                            {isLast && log.status === 'running' ? (
-                              <span className="typing-animation">{renderLogMessage(log.message)}</span>
-                            ) : (
-                              renderLogMessage(log.message)
-                            )}
-                          </span>
-                          <span className="text-gray-500 dark:text-gray-600 shrink-0 tabular-nums text-[10px]">{log.time}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <StepLogBox logs={logs} isActive={isActive} renderLogMessage={renderLogMessage} />
                 ) : (
                   <div className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">
                     {running ? (
