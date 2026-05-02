@@ -30,7 +30,7 @@ type WizardStep = 1 | 2 | 3;
 // Per-action hard caps — 跟 Twitter (x_auto_engage) ConfigWizard 看齐:
 // like 30 / subscribe 20 / comment 50。之前 5 / 15 是过度保守,跟 Twitter 不
 // 对齐用户配多平台时区间感会很别扭。
-const LIKE_HARDCAP = 100;
+const LIKE_HARDCAP = 500;
 const SUBSCRIBE_HARDCAP = 100;
 const COMMENT_HARDCAP = 100;
 

@@ -28,7 +28,7 @@ type WizardStep = 1 | 2 | 3;
 
 // Per-action hard caps — 跟 Twitter (x_auto_engage) ConfigWizard 看齐:
 // like 30 / follow 20 / comment 50。
-const LIKE_HARDCAP = 100;
+const LIKE_HARDCAP = 500;
 const FOLLOW_HARDCAP = 100;
 const COMMENT_HARDCAP = 100;
 
