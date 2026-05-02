@@ -40,9 +40,20 @@ class NoobClawApiService {
     return noobClawAuth.getAuthHeaders();
   }
 
+  // All authenticated requests funnel through here. On 401 we route the
+  // response into noobClawAuth.handleAuthExpired() which clears local state +
+  // dispatches `noobclaw:need-login` for App.tsx → LoginWall. The handler
+  // self-gates on `isAuthenticated` so a 401 from a never-logged-in user
+  // (which is the normal case for these endpoints) does NOT pop the modal.
+  private async authedFetch(input: string, init?: RequestInit): Promise<Response> {
+    const res = await fetch(input, init);
+    if (res.status === 401) noobClawAuth.handleAuthExpired();
+    return res;
+  }
+
   async getTokenBalance(): Promise<TokenInfo | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/ai/balance`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/ai/balance`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return null;
@@ -54,7 +65,7 @@ class NoobClawApiService {
 
   async getPaymentInfo(): Promise<PaymentInfo | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/payment/info`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/payment/info`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return null;
@@ -66,7 +77,7 @@ class NoobClawApiService {
 
   async createOrder(bnbAmount: number): Promise<{ order?: any; error?: string; code?: string } | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/payment/create`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ bnbAmount }),
@@ -80,7 +91,7 @@ class NoobClawApiService {
   }
 
   async confirmOrder(orderNo: string, txHash: string): Promise<any> {
-    const res = await fetch(`${this.backendUrl}/api/payment/confirm`, {
+    const res = await this.authedFetch(`${this.backendUrl}/api/payment/confirm`, {
       method: 'POST',
       headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderNo, txHash }),
@@ -90,7 +101,7 @@ class NoobClawApiService {
 
   async pollOrderStatus(orderNo: string): Promise<{ order: any; tokenBalance?: number } | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/payment/status/${orderNo}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/payment/status/${orderNo}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return null;
@@ -122,7 +133,7 @@ class NoobClawApiService {
 
   async cancelOrder(orderNo: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/payment/cancel`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/payment/cancel`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ orderNo }),
@@ -137,7 +148,7 @@ class NoobClawApiService {
 
   async getUserProfile(): Promise<any | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/user/profile`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/profile`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return null;
@@ -149,7 +160,7 @@ class NoobClawApiService {
 
   async getInviteList(page = 1, pageSize = 20): Promise<{ list: Array<{ wallet: string; createdAt: string }>; total: number }> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/user/referral/list?page=${page}&pageSize=${pageSize}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/list?page=${page}&pageSize=${pageSize}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0 };
@@ -161,7 +172,7 @@ class NoobClawApiService {
 
   async getReferralRewards(page = 1, pageSize = 20): Promise<{ list: Array<{ noobAmount: number; reason: string; status: string; createdAt: string; contributorWallet?: string; level?: number }>; total: number; totalEarned: number }> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/user/referral/rewards?page=${page}&pageSize=${pageSize}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/rewards?page=${page}&pageSize=${pageSize}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0, totalEarned: 0 };
@@ -173,7 +184,7 @@ class NoobClawApiService {
 
   async getAirdropRecords(): Promise<{ airdrops: any[] }> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/user/airdrops`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/airdrops`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { airdrops: [] };
@@ -189,7 +200,7 @@ class NoobClawApiService {
       if (reason) params.set('reason', reason);
       if (from) params.set('from', from);
       if (to) params.set('to', to);
-      const res = await fetch(`${this.backendUrl}/api/user/noob/earnings?${params}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/noob/earnings?${params}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0, stats: {} };
@@ -204,7 +215,7 @@ class NoobClawApiService {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) params.set('from', from);
       if (to) params.set('to', to);
-      const res = await fetch(`${this.backendUrl}/api/user/credits/history?${params}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/credits/history?${params}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0, stats: {} };
@@ -219,7 +230,7 @@ class NoobClawApiService {
       const params = new URLSearchParams({ page: String(page), limit: String(limit) });
       if (from) params.set('from', from);
       if (to) params.set('to', to);
-      const res = await fetch(`${this.backendUrl}/api/user/noob/sends?${params}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/noob/sends?${params}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0 };
@@ -233,7 +244,7 @@ class NoobClawApiService {
       const formData = new FormData();
       formData.append('avatar', file);
       const authHeaders = this.getAuthHeaders();
-      const res = await fetch(`${this.backendUrl}/api/user/avatar`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/avatar`, {
         method: 'POST',
         headers: authHeaders,
         body: formData,
@@ -248,7 +259,7 @@ class NoobClawApiService {
 
   async claimLuckyBag(): Promise<{ hit: boolean; reward: number } | null> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/ai/lucky-bag/claim`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/ai/lucky-bag/claim`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -262,7 +273,7 @@ class NoobClawApiService {
 
   async getNoobConfig(): Promise<{ tokenSymbol: string; totalSupply: string; contractAddress: string; taxRate: string }> {
     try {
-      const res = await fetch(`${this.backendUrl}/api/user/noob/config`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/noob/config`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { tokenSymbol: 'Noob', totalSupply: '1000000000', contractAddress: '', taxRate: '2' };
@@ -285,7 +296,7 @@ class NoobClawApiService {
   }> {
     try {
       const deviceId = this.getDeviceId();
-      const res = await fetch(`${this.backendUrl}/api/user/checkin/status`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/checkin/status`, {
         headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId },
       });
       if (!res.ok) return { checked_in: false, noob_remaining: 0, noob_cap: 0, points_remaining: 0, points_cap: 0, pool_exhausted: false, last_reward: null };
@@ -306,7 +317,7 @@ class NoobClawApiService {
   }> {
     try {
       const deviceId = this.getDeviceId();
-      const res = await fetch(`${this.backendUrl}/api/user/checkin`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/checkin`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId, 'Content-Type': 'application/json' },
         body: '{}',
@@ -329,7 +340,7 @@ class NoobClawApiService {
     };
     try {
       const deviceId = this.getDeviceId();
-      const res = await fetch(`${this.backendUrl}/api/user/activity/status`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/activity/status`, {
         headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId },
       });
       if (!res.ok) return empty;
@@ -351,7 +362,7 @@ class NoobClawApiService {
   }> {
     try {
       const deviceId = this.getDeviceId();
-      const res = await fetch(`${this.backendUrl}/api/user/activity/claim`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/activity/claim`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'x-device-id': deviceId, 'Content-Type': 'application/json' },
         body: JSON.stringify({ activity_type: activityType }),

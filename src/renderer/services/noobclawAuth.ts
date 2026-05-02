@@ -126,7 +126,7 @@ class NoobClawAuthService {
         return data.tokenBalance;
       }
       if (res.status === 401) {
-        this.logout();
+        this.handleAuthExpired();
       }
     } catch (err) {
       console.error('Failed to refresh balance:', err);
@@ -149,8 +149,25 @@ class NoobClawAuthService {
           // Cache to local disk in background for instant loading next time
           this.cacheAvatarToDisk(data.avatar_url);
         }
+        return;
+      }
+      if (res.status === 401) {
+        this.handleAuthExpired();
       }
     } catch { /* ignore */ }
+  }
+
+  // Central 401 handler — invoked whenever any authenticated request comes
+  // back as 401. Only acts if the user was previously logged in (so we don't
+  // pop the login modal at boot for never-logged-in users whose unauthed
+  // requests get rejected). Clears local state, then fires the
+  // `noobclaw:need-login` event that App.tsx listens for to show LoginWall.
+  handleAuthExpired() {
+    if (!this.state.isAuthenticated) return;
+    this.logout();
+    try {
+      window.dispatchEvent(new CustomEvent('noobclaw:need-login', { detail: { reason: 'expired' } }));
+    } catch { /* SSR / non-window contexts — never hits in renderer */ }
   }
 
   setAvatarUrl(url: string) {
