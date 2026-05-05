@@ -361,6 +361,50 @@ function buildContext(
       await abortableCmd('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000);
     },
 
+    // ── chargeAction ───────────────────────────────────────────────
+    // Non-AI 互动动作扣费(点赞 / 关注 / 订阅)。AI 评论已经走 /api/ai 的
+    // token 计费链路;这里只扣点赞和关注。
+    //
+    // 服务端定价(防伪造):
+    //   like      : random 300-700 tokens
+    //   follow    : random 500-800 tokens
+    //   subscribe : 同 follow
+    //
+    // 用法: const r = await ctx.chargeAction('like', 'douyin', refId)
+    //   返回 { ok, charged, balance_after } 或 { ok: false, reason }
+    //   balance 不够时不抛异常,返回 ok:false 让 orchestrator 自决(继续 or 停)
+    chargeAction: async (
+      actionType: 'like' | 'follow' | 'subscribe',
+      platform: 'youtube' | 'tiktok' | 'douyin' | 'x' | 'binance' | 'xhs',
+      refId?: string
+    ): Promise<{ ok: boolean; charged?: number; balance_after?: number; reason?: string }> => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+      const nbAuthToken = getNoobClawAuthToken();
+      if (!nbAuthToken) return { ok: false, reason: 'auth_missing' };
+      try {
+        const res = await fetch('https://api.noobclaw.com/api/charge/action', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${nbAuthToken}`,
+          },
+          body: JSON.stringify({ action_type: actionType, platform, ref_id: refId || null }),
+        });
+        const data: any = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          // 402 insufficient_balance / 422 bad input / 500 server
+          return { ok: false, reason: String(data?.error || `http_${res.status}`) };
+        }
+        return {
+          ok: true,
+          charged: typeof data?.charged === 'number' ? data.charged : 0,
+          balance_after: typeof data?.balance_after === 'number' ? data.balance_after : undefined,
+        };
+      } catch (err: any) {
+        return { ok: false, reason: 'network_error: ' + String(err?.message || err).slice(0, 80) };
+      }
+    },
+
     sleep: async (min: number, max?: number) => {
       // Interruptible sleep — checks abort every 200ms (was 500ms)
       const total = max ? randInt(min, max) : min;
