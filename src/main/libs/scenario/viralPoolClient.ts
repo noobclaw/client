@@ -135,3 +135,105 @@ export async function fetchScenarioPack(id: string): Promise<any | null> {
 export function clearScenarioPackCache(): void {
   lastGood.clear();
 }
+
+// ──────────────── AI Rescue (v5.6.2+) ────────────────
+//
+// Two thin wrappers for the failure-fallback path in scenarioManager.
+// `triggerRescue` posts the live DOM + failure context and returns either
+// a candidate orchestrator (drop-in replacement) or a skip-reason.
+// `reportRescueEvent` is fire-and-forget telemetry — we never block the
+// main flow on it.
+//
+// Both endpoints are user-authenticated: we send the noobclaw auth token
+// so the backend can bill the user for the LLM call (B-mode billing) and
+// dedup tier alerts by wallet address.
+
+import { getNoobClawAuthToken } from '../claudeSettings';
+
+export interface RescueCandidateResponse {
+  ok: true;
+  candidate_orchestrator: string;
+  candidate_md5: string;
+  source: 'cache' | 'fresh';
+  tokens_billed?: number;
+}
+
+export interface RescueSkippedResponse {
+  ok: false;
+  reason: string;
+}
+
+export type TriggerRescueResult = RescueCandidateResponse | RescueSkippedResponse | null;
+
+export async function triggerRescue(opts: {
+  scenarioId: string;
+  domElements: unknown[];
+  failedStep?: string;
+  failedSelector?: string;
+  url?: string;
+}): Promise<TriggerRescueResult> {
+  const authToken = getNoobClawAuthToken();
+  if (!authToken) {
+    coworkLog('WARN', 'viralPoolClient', 'triggerRescue: no auth token, skipping rescue');
+    return { ok: false, reason: 'no_auth_token' };
+  }
+  try {
+    const res = await fetch(
+      `${baseUrl()}/api/viral/scenarios/${encodeURIComponent(opts.scenarioId)}/rescue/trigger`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          dom_elements: opts.domElements,
+          failed_step: opts.failedStep,
+          failed_selector: opts.failedSelector,
+          url: opts.url,
+        }),
+      },
+    );
+    if (!res.ok) {
+      coworkLog('WARN', 'viralPoolClient', 'triggerRescue non-2xx', { status: res.status });
+      return null;
+    }
+    return (await res.json()) as TriggerRescueResult;
+  } catch (err) {
+    coworkLog('WARN', 'viralPoolClient', 'triggerRescue failed', { err: String(err) });
+    return null;
+  }
+}
+
+export async function reportRescueEvent(opts: {
+  scenarioId: string;
+  candidateMd5: string;
+  outcome: 'success' | 'failure';
+  taskId?: string;
+  failedStep?: string;
+  errorMsg?: string;
+}): Promise<void> {
+  const authToken = getNoobClawAuthToken();
+  if (!authToken) return; // silent — no auth, no event log
+  try {
+    await fetch(
+      `${baseUrl()}/api/viral/scenarios/${encodeURIComponent(opts.scenarioId)}/rescue/event`,
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'authorization': `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          candidate_md5: opts.candidateMd5,
+          task_id: opts.taskId,
+          outcome: opts.outcome,
+          failed_step: opts.failedStep,
+          error_msg: opts.errorMsg,
+        }),
+      },
+    );
+  } catch (err) {
+    coworkLog('WARN', 'viralPoolClient', 'reportRescueEvent failed', { err: String(err) });
+  }
+}

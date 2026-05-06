@@ -14,12 +14,24 @@ import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
 import { runOrchestrator } from './phaseRunner';
+import { sendBrowserCommand } from '../browserBridge';
 import type {
   Draft,
   ScenarioManifest,
   ScenarioPack,
   ScenarioTask,
 } from './types';
+
+// AI rescue (v5.6.2+): only attempt for failures that smell like a
+// DOM/selector breakage. Network, abort, balance, and AI-quota failures
+// are exempt — they have nothing to do with website redesigns.
+function shouldAttemptRescue(reason?: string): boolean {
+  if (!reason) return false;
+  if (/user_stopped|aborted|scenario_pack_not_found|no_local_images|insufficient_balance|quota|rate_limit|ECONN|fetch_failed|AI_PARSE_FAIL|AI_EMPTY|BROWSER_NOT_CONNECTED/i.test(reason)) {
+    return false;
+  }
+  return /selector|element|not[\s_-]?found|not[\s_-]?visible|TIMEOUT|missing|click.*fail|type.*fail|fill.*fail/i.test(reason);
+}
 
 const packCache = new Map<string, ScenarioPack>();
 
@@ -777,18 +789,83 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
     // runs don't bleed into each other's progress map.
     const tid = task.id;
 
-    const result = await runOrchestrator(pack, task, seen, {
-      stepStart: (step) => stepStart(tid, step),
-      stepLog: (step, status, message) => stepLog(tid, step, status, message),
-      stepDone: (step) => stepDone(tid, step),
-      stepError: (step, error) => stepError(tid, step, error),
-      finishProgress: (status, error) => finishProgress(tid, status, error),
+    // Hoist callbacks so the rescue retry can reuse the SAME closures
+    // (single tid, single tokens accumulator, no double-counting).
+    const callbacks = {
+      stepStart: (step: number) => stepStart(tid, step),
+      stepLog: (step: number, status: 'done' | 'running' | 'error', message: string) =>
+        stepLog(tid, step, status, message),
+      stepDone: (step: number) => stepDone(tid, step),
+      stepError: (step: number, error: string) => stepError(tid, step, error),
+      finishProgress: (status: 'done' | 'error', error?: string) =>
+        finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
-      addTokensUsed: (tokensDelta, costDeltaUsd) => {
+      addTokensUsed: (tokensDelta: number, costDeltaUsd?: number) => {
         tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
         costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
       },
-    }, { appLocale: readAppLocale() });
+    };
+
+    let result = await runOrchestrator(pack, task, seen, callbacks, {
+      appLocale: readAppLocale(),
+    });
+
+    // ── AI rescue: try ONCE with a candidate orchestrator if the failure
+    //    looks like a selector / DOM-shape problem (v5.6.2+).
+    if (result.status === 'failed' && shouldAttemptRescue(result.reason)) {
+      try {
+        const tabPattern = pack.manifest?.tab_url_pattern;
+        // Dump the current DOM via the chrome-extension. Read-page already
+        // strips invisible nodes and gives us role/aria/text/selector — the
+        // backend serializer just trims further and indexes for the LLM.
+        const dom = await sendBrowserCommand(
+          'read_page',
+          { filter: 'interactive' },
+          15_000,
+          tabPattern ? { tabPattern } : {},
+        ).catch(() => null);
+        const urlInfo = await sendBrowserCommand(
+          'get_url',
+          {},
+          5_000,
+          tabPattern ? { tabPattern } : {},
+        ).catch(() => null);
+
+        if (dom && Array.isArray((dom as any).elements)) {
+          coworkLog('INFO', 'scenarioManager', `[rescue] triggering for ${task.scenario_id} (reason: ${result.reason})`);
+          const trig = await viralPoolClient.triggerRescue({
+            scenarioId: task.scenario_id,
+            domElements: (dom as any).elements,
+            failedStep: result.reason,
+            url: urlInfo ? (urlInfo as any).url : undefined,
+          });
+
+          if (trig && trig.ok) {
+            coworkLog('INFO', 'scenarioManager', `[rescue] candidate ${trig.source} (md5=${trig.candidate_md5.slice(0, 8)}), running once`);
+            const rescueResult = await runOrchestrator(pack, task, seen, callbacks, {
+              scriptOverride: trig.candidate_orchestrator,
+              appLocale: readAppLocale(),
+            });
+            // Fire-and-forget event report — don't block the main flow.
+            void viralPoolClient.reportRescueEvent({
+              scenarioId: task.scenario_id,
+              candidateMd5: trig.candidate_md5,
+              outcome: rescueResult.status === 'ok' ? 'success' : 'failure',
+              taskId: task.id,
+              failedStep: rescueResult.reason,
+              errorMsg: rescueResult.status === 'ok' ? undefined : rescueResult.reason,
+            });
+            result = rescueResult;
+          } else if (trig) {
+            coworkLog('INFO', 'scenarioManager', `[rescue] skipped: ${trig.reason}`);
+          }
+        }
+      } catch (err) {
+        // Rescue is best-effort — never let its failures escalate. Old
+        // result stands as the final outcome.
+        coworkLog('WARN', 'scenarioManager', '[rescue] threw, ignoring', { err: String(err) });
+      }
+    }
 
     const cur = progressByTaskId.get(tid);
     if (result.status === 'ok') {
