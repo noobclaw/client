@@ -514,8 +514,8 @@ export function createTauriElectronShim(): typeof window.electron {
     },
 
     // ── Auth ──
-    onAuthCallback: (cb: (token: string, wallet: string) => void) =>
-      onSSE('auth:callback', (data: any) => cb(data?.token, data?.wallet)),
+    onAuthCallback: (cb: (token: string, wallet: string, email?: string, socialProvider?: string) => void) =>
+      onSSE('auth:callback', (data: any) => cb(data?.token, data?.wallet, data?.email, data?.socialProvider)),
 
     // ── NoobClaw Platform ──
     noobclaw: {
@@ -640,14 +640,15 @@ export function initTauriShim(): void {
     }).catch(() => {});
   });
 
-  // Listen for deep link auth callback from Tauri (noobclaw://auth?token=xxx&wallet=xxx)
+  // Listen for deep link auth callback from Tauri
+  // (noobclaw://auth?token=xxx&wallet=xxx&email=...&socialProvider=...)
   window.addEventListener('noobclaw-auth', ((e: CustomEvent) => {
-    const { token, wallet } = e.detail || {};
+    const { token, wallet, email, socialProvider } = e.detail || {};
     if (token && wallet) {
       console.log('[TauriShim] Auth callback received from deep link');
       const listeners = eventListeners.get('auth:callback');
       if (listeners) {
-        for (const fn of listeners) fn({ token, wallet });
+        for (const fn of listeners) fn({ token, wallet, email, socialProvider });
       }
     }
   }) as EventListener);

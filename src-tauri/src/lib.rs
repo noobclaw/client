@@ -621,23 +621,32 @@ fn handle_deep_link(app: &AppHandle, raw: &str) {
     if parsed.host_str() != Some("auth") {
         return;
     }
-    let token = parsed
-        .query_pairs()
-        .find(|(k, _)| k == "token")
-        .map(|(_, v)| v.to_string());
-    let wallet = parsed
-        .query_pairs()
-        .find(|(k, _)| k == "wallet")
-        .map(|(_, v)| v.to_string());
+    let mut token: Option<String> = None;
+    let mut wallet: Option<String> = None;
+    let mut email: Option<String> = None;
+    let mut social_provider: Option<String> = None;
+    for (k, v) in parsed.query_pairs() {
+        match k.as_ref() {
+            "token" => token = Some(v.to_string()),
+            "wallet" => wallet = Some(v.to_string()),
+            "email" => email = Some(v.to_string()),
+            "socialProvider" => social_provider = Some(v.to_string()),
+            _ => {}
+        }
+    }
     let (Some(t), Some(w)) = (token, wallet) else { return };
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
+        // Escape single-quotes in every value before embedding in JS literal.
+        let esc = |s: &str| s.replace('\\', "\\\\").replace('\'', "\\'");
         let js = format!(
-            "window.dispatchEvent(new CustomEvent('noobclaw-auth', {{detail: {{token: '{}', wallet: '{}'}}}}));",
-            t.replace('\'', "\\'"),
-            w.replace('\'', "\\'")
+            "window.dispatchEvent(new CustomEvent('noobclaw-auth', {{detail: {{token: '{}', wallet: '{}', email: '{}', socialProvider: '{}'}}}}));",
+            esc(&t),
+            esc(&w),
+            esc(email.as_deref().unwrap_or("")),
+            esc(social_provider.as_deref().unwrap_or(""))
         );
         let _ = window.eval(&js);
     }

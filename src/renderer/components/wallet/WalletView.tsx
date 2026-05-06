@@ -990,6 +990,15 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   {i18nService.t('walletCopy')}
                 </button>
               </div>
+              {/* Web3Auth social login provenance — shown only when user signed in via Google/X/Discord */}
+              {authState.socialEmail && (
+                <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  {authState.socialProvider === 'google' && <span style={{ color: '#ea4335' }}>●</span>}
+                  {authState.socialProvider === 'twitter' && <span style={{ color: '#000', filter: 'invert(1)' }}>●</span>}
+                  {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
+                  <span className="truncate">{authState.socialEmail}</span>
+                </div>
+              )}
               {avatarError && <p className="text-xs text-red-400 mt-1">{avatarError}</p>}
             </div>
           </div>

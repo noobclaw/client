@@ -7,6 +7,9 @@ export interface AuthState {
   tokenBalance: number;
   authToken: string | null;
   avatarUrl: string | null;
+  // Web3Auth social login provenance (null when user signed in with their own wallet)
+  socialEmail: string | null;
+  socialProvider: string | null; // 'google' | 'twitter' | 'discord'
 }
 
 class NoobClawAuthService {
@@ -16,6 +19,8 @@ class NoobClawAuthService {
     tokenBalance: 0,
     authToken: null,
     avatarUrl: null,
+    socialEmail: null,
+    socialProvider: null,
   };
 
   private listeners: Array<(state: AuthState) => void> = [];
@@ -32,6 +37,8 @@ class NoobClawAuthService {
       this.state.walletAddress = savedWallet;
       this.state.isAuthenticated = true;
       this.state.avatarUrl = savedAvatar || null;
+      this.state.socialEmail = localStorage.getItem('noobclaw_social_email') || null;
+      this.state.socialProvider = localStorage.getItem('noobclaw_social_provider') || null;
       // Sync token to main process and refresh balance in background
       // Use setTimeout to ensure window.electron is available
       setTimeout(() => {
@@ -86,13 +93,22 @@ class NoobClawAuthService {
     window.electron?.noobclaw?.setAuthToken(token).catch(() => {});
   }
 
-  // Called from website after wallet connect
-  setAuthFromWebsite(token: string, walletAddress: string) {
+  // Called from website after wallet connect (or social login via web3auth).
+  // socialEmail/socialProvider are passed through the noobclaw:// deep link
+  // when the user signed in via Google/X/Discord; pass empty string for plain
+  // wallet logins so we know to clear stale social state.
+  setAuthFromWebsite(token: string, walletAddress: string, socialEmail = '', socialProvider = '') {
     this.state.authToken = token;
     this.state.walletAddress = walletAddress;
     this.state.isAuthenticated = true;
+    this.state.socialEmail = socialEmail || null;
+    this.state.socialProvider = socialProvider || null;
     localStorage.setItem('noobclaw_auth_token', token);
     localStorage.setItem('noobclaw_wallet_address', walletAddress);
+    if (socialEmail) localStorage.setItem('noobclaw_social_email', socialEmail);
+    else localStorage.removeItem('noobclaw_social_email');
+    if (socialProvider) localStorage.setItem('noobclaw_social_provider', socialProvider);
+    else localStorage.removeItem('noobclaw_social_provider');
     this.syncTokenToMain(token);
     this.refreshBalance();
     this.refreshAvatar();
@@ -191,10 +207,14 @@ class NoobClawAuthService {
       tokenBalance: 0,
       authToken: null,
       avatarUrl: null,
+      socialEmail: null,
+      socialProvider: null,
     };
     localStorage.removeItem('noobclaw_auth_token');
     localStorage.removeItem('noobclaw_wallet_address');
     localStorage.removeItem('noobclaw_avatar_url');
+    localStorage.removeItem('noobclaw_social_email');
+    localStorage.removeItem('noobclaw_social_provider');
     this.syncTokenToMain(null);
     this.notify();
   }

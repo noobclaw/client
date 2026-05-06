@@ -624,8 +624,8 @@ const App: React.FC = () => {
   // Listen for auth token from website (via electron IPC or deep link)
   useEffect(() => {
     if (typeof window !== 'undefined' && (window as any).electron) {
-      (window as any).electron.onAuthCallback?.((token: string, wallet: string) => {
-        noobClawAuth.setAuthFromWebsite(token, wallet);
+      (window as any).electron.onAuthCallback?.((token: string, wallet: string, email?: string, socialProvider?: string) => {
+        noobClawAuth.setAuthFromWebsite(token, wallet, email || '', socialProvider || '');
       });
     }
   }, []);

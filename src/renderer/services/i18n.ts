@@ -792,7 +792,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // Wallet page
     walletConnectTitle: '连接钱包以查看',
     walletConnectDesc: '连接您的 BSC 钱包以管理积分和充值',
-    walletConnectBtn: '连接钱包 →',
+    walletConnectBtn: '登录 →',
     walletMyWalletBsc: '我的钱包（BSC）',
     walletConnected: '已连接',
     walletCopy: '复制',
@@ -1216,7 +1216,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: '最高送100万积分免费试用',
     loginWallDescAfter: '！更可边玩边挖项目平台代币',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 连接钱包',
+    loginWallConnectBtn: '🔗 登录',
     loginWallSupports: '支持 OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: '仅需签名验证，无需 Gas 费用',
     loginWallSkipBtn: '⚙️ 不登录，使用自己的 API Key',
@@ -1254,7 +1254,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: '开源认证项目 · 安全无毒放心使用 · 查看源码',
     coworkTokenBalance: '积分: {n}',
     coworkLowBalance: '余额不足 · 充值',
-    coworkConnectWallet: '连接钱包',
+    coworkConnectWallet: '登录',
   },
   en: {
     // Common
@@ -2042,7 +2042,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // Wallet page
     walletConnectTitle: 'Connect Wallet to View',
     walletConnectDesc: 'Connect your BSC wallet to manage credits and top up',
-    walletConnectBtn: 'Connect Wallet →',
+    walletConnectBtn: 'Login →',
     walletMyWalletBsc: 'My Wallet (BSC)',
     walletConnected: 'Connected',
     walletCopy: 'Copy',
@@ -2456,7 +2456,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: 'up to 1M free credits',
     loginWallDescAfter: '! Play and earn platform coin ',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 Connect Wallet',
+    loginWallConnectBtn: '🔗 Login',
     loginWallSupports: 'Supports OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: 'Sign a message to verify ownership. No gas fees.',
     loginWallSkipBtn: '⚙️ Skip login, use my own API Key',
@@ -2494,7 +2494,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: 'Open Source · Safe & Verified · View Source',
     coworkTokenBalance: 'Credits: {n}',
     coworkLowBalance: 'Low Balance · Top Up',
-    coworkConnectWallet: 'Connect Wallet',
+    coworkConnectWallet: 'Login',
   },
 
   // ── Traditional Chinese ──────────────────────────────────────────────────
@@ -2928,7 +2928,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningExpired: '該任務已過期，啟用後將不會執行',
     // Wallet
     walletConnectTitle: '連接錢包以查看', walletConnectDesc: '連接您的 BSC 錢包以管理積分和充值',
-    walletConnectBtn: '連接錢包 →', walletMyWalletBsc: '我的錢包（BSC）',
+    walletConnectBtn: '登入 →', walletMyWalletBsc: '我的錢包（BSC）',
     walletConnected: '已連接', walletCopy: '複製',
     walletTokenBalance: '💎 積分餘額（AI使用消耗）', walletTokenUnit: '',
     walletTotalSpent: '累計消費', walletTotalUsed: '累計使用', walletMTokenUnit: 'M 積分',
@@ -3102,7 +3102,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: '最高送100萬積分免費試用',
     loginWallDescAfter: '！更可邊玩邊挖項目平台代幣',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 連接錢包',
+    loginWallConnectBtn: '🔗 登入',
     loginWallSupports: '支援 OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: '僅需簽名驗證，無需 Gas 費用',
     loginWallSkipBtn: '⚙️ 不登入，使用自己的 API Key',
@@ -3140,7 +3140,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: '開源認證項目 · 安全無毒放心使用 · 查看原始碼',
     coworkTokenBalance: '積分: {n}',
     coworkLowBalance: '餘額不足 · 充值',
-    coworkConnectWallet: '連接錢包',
+    coworkConnectWallet: '登入',
   },
 
   // ── Korean ────────────────────────────────────────────────────
@@ -3574,7 +3574,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningExpired: '이 작업이 만료되었습니다. 활성화해도 실행되지 않습니다',
     // Wallet
     walletConnectTitle: '지갑 연결하여 보기', walletConnectDesc: 'BSC 지갑을 연결하여 크레딧을 관리하고 충전하세요',
-    walletConnectBtn: '지갑 연결 →', walletMyWalletBsc: '내 지갑 (BSC)',
+    walletConnectBtn: '로그인 →', walletMyWalletBsc: '내 지갑 (BSC)',
     walletConnected: '연결됨', walletCopy: '복사',
     walletTokenBalance: '💎 크레딧 잔액 (AI 사용 소모)', walletTokenUnit: '',
     walletTotalSpent: '총 소비', walletTotalUsed: '총 사용', walletMTokenUnit: 'M 크레딧',
@@ -3748,7 +3748,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: '최대 100만 무료 크레딧',
     loginWallDescAfter: ' 제공! 플레이하며 플랫폼 코인 ',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 지갑 연결',
+    loginWallConnectBtn: '🔗 로그인',
     loginWallSupports: 'OKX Wallet · Binance Wallet · MetaMask 지원',
     loginWallNoGas: '서명 인증만 필요, Gas 비용 없음',
     loginWallSkipBtn: '⚙️ 로그인 없이 내 API Key 사용',
@@ -3786,7 +3786,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: '오픈소스 · 안전 인증 · 소스 보기',
     coworkTokenBalance: '포인트: {n}',
     coworkLowBalance: '잔액 부족 · 충전',
-    coworkConnectWallet: '지갑 연결',
+    coworkConnectWallet: '로그인',
   },
 
   // ── Japanese ────────────────────────────────────────────────────
@@ -4220,7 +4220,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningExpired: 'このタスクは期限切れです。有効化しても実行されません',
     // Wallet
     walletConnectTitle: 'ウォレットを接続して表示', walletConnectDesc: 'BSCウォレットを接続してクレジットを管理・チャージ',
-    walletConnectBtn: 'ウォレットを接続 →', walletMyWalletBsc: 'マイウォレット (BSC)',
+    walletConnectBtn: 'ログイン →', walletMyWalletBsc: 'マイウォレット (BSC)',
     walletConnected: '接続済み', walletCopy: 'コピー',
     walletTokenBalance: '💎 クレジット残高（AI使用で消費）', walletTokenUnit: '',
     walletTotalSpent: '累計消費', walletTotalUsed: '累計使用', walletMTokenUnit: 'Mクレジット',
@@ -4394,7 +4394,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: '最大100万無料クレジット',
     loginWallDescAfter: 'をプレゼント！プレイしながらプラットフォームコイン',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 ウォレット接続',
+    loginWallConnectBtn: '🔗 ログイン',
     loginWallSupports: 'OKX Wallet · Binance Wallet · MetaMask 対応',
     loginWallNoGas: '署名認証のみ、Gas不要',
     loginWallSkipBtn: '⚙️ ログインせず自分のAPI Keyを使用',
@@ -4432,7 +4432,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: 'オープンソース · 安全認証済み · ソースを見る',
     coworkTokenBalance: 'ポイント: {n}',
     coworkLowBalance: '残高不足 · チャージ',
-    coworkConnectWallet: 'ウォレット接続',
+    coworkConnectWallet: 'ログイン',
   },
 
   // ── Russian ───────────────────────────────────────────────────
@@ -4816,7 +4816,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotifyNone: 'Нет', scheduledTasksFormNotifyNotConfigured: 'Не настроено',
     scheduledTasksDetailNotify: 'Уведомление',
     walletConnectTitle: 'Подключите кошелёк', walletConnectDesc: 'BSC-кошелёк для управления кредитами',
-    walletConnectBtn: 'Подключить →', walletMyWalletBsc: 'Кошелёк (BSC)',
+    walletConnectBtn: 'Войти →', walletMyWalletBsc: 'Кошелёк (BSC)',
     walletConnected: 'Подключён', walletCopy: 'Копировать',
     walletTokenBalance: '💎 Баланс кредитов (AI)', walletTokenUnit: '',
     walletTotalSpent: 'Потрачено', walletTotalUsed: 'Использовано', walletMTokenUnit: 'M кредитов',
@@ -4989,7 +4989,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: 'до 1М бесплатных кредитов',
     loginWallDescAfter: '! Играйте и зарабатывайте монету платформы ',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 Подключить кошелёк',
+    loginWallConnectBtn: '🔗 Войти',
     loginWallSupports: 'OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: 'Только подпись, без Gas',
     loginWallSkipBtn: '⚙️ Без входа, свой API Key',
@@ -5027,7 +5027,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: 'Открытый код · Безопасно · Исходники',
     coworkTokenBalance: 'Баланс: {n}',
     coworkLowBalance: 'Мало средств · Пополнить',
-    coworkConnectWallet: 'Подключить кошелёк',
+    coworkConnectWallet: 'Войти',
   },
 
   // ── French ──────────────────────────────────────────────────
@@ -5410,7 +5410,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotifyNone: 'Aucune', scheduledTasksFormNotifyNotConfigured: 'Non configuré',
     scheduledTasksDetailNotify: 'Notification',
     walletConnectTitle: 'Connectez le portefeuille', walletConnectDesc: 'Portefeuille BSC pour gérer les crédits',
-    walletConnectBtn: 'Connecter →', walletMyWalletBsc: 'Portefeuille (BSC)',
+    walletConnectBtn: 'Connexion →', walletMyWalletBsc: 'Portefeuille (BSC)',
     walletConnected: 'Connecté', walletCopy: 'Copier',
     walletTokenBalance: '💎 Solde crédits (IA)', walletTokenUnit: '',
     walletTotalSpent: 'Total dépensé', walletTotalUsed: 'Total utilisé', walletMTokenUnit: 'M crédits',
@@ -5583,7 +5583,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: "jusqu'à 1M de crédits gratuits",
     loginWallDescAfter: ' ! Jouez et gagnez le coin de la plateforme ',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 Connecter le portefeuille',
+    loginWallConnectBtn: '🔗 Connexion',
     loginWallSupports: 'OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: 'Signature uniquement, pas de frais Gas',
     loginWallSkipBtn: '⚙️ Sans connexion, utiliser ma clé API',
@@ -5621,7 +5621,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: 'Open Source · Sûr & Vérifié · Voir le code',
     coworkTokenBalance: 'Solde : {n}',
     coworkLowBalance: 'Solde bas · Recharger',
-    coworkConnectWallet: 'Connecter le portefeuille',
+    coworkConnectWallet: 'Connexion',
   },
 
   // ── German ───────────────────────────────────────────────────
@@ -6003,7 +6003,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotifyNone: 'Keine', scheduledTasksFormNotifyNotConfigured: 'Nicht konfiguriert',
     scheduledTasksDetailNotify: 'Benachrichtigung',
     walletConnectTitle: 'Wallet verbinden', walletConnectDesc: 'BSC-Wallet für Guthaben',
-    walletConnectBtn: 'Verbinden →', walletMyWalletBsc: 'Wallet (BSC)',
+    walletConnectBtn: 'Anmelden →', walletMyWalletBsc: 'Wallet (BSC)',
     walletConnected: 'Verbunden', walletCopy: 'Kopieren',
     walletTokenBalance: '💎 Guthaben (KI)', walletTokenUnit: '',
     walletTotalSpent: 'Ausgegeben', walletTotalUsed: 'Verbraucht', walletMTokenUnit: 'M Credits',
@@ -6176,7 +6176,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     loginWallDescHighlight: 'bis zu 1M kostenlose Credits',
     loginWallDescAfter: '! Spielen und den Plattform-Coin verdienen ',
     loginWallDescHighlight2: '$NOOB',
-    loginWallConnectBtn: '🔗 Wallet verbinden',
+    loginWallConnectBtn: '🔗 Anmelden',
     loginWallSupports: 'OKX Wallet · Binance Wallet · MetaMask',
     loginWallNoGas: 'Nur Signatur, keine Gas-Gebühren',
     loginWallSkipBtn: '⚙️ Ohne Anmeldung, eigenen API Key nutzen',
@@ -6214,7 +6214,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     coworkOpenSource: 'Open Source · Sicher & Verifiziert · Quellcode',
     coworkTokenBalance: 'Guthaben: {n}',
     coworkLowBalance: 'Niedrig · Aufladen',
-    coworkConnectWallet: 'Wallet verbinden',
+    coworkConnectWallet: 'Anmelden',
   },
 };
 

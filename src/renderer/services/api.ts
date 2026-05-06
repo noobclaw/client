@@ -393,7 +393,7 @@ class ApiService {
       provider = 'noobclawAI';
       if (!noobClawAuth.getState().isAuthenticated) {
         window.dispatchEvent(new CustomEvent('noobclaw:need-login'));
-        throw new ApiError('请先连接钱包后使用', 401);
+        throw new ApiError('请先登录后使用', 401);
       }
     } else if (provider === 'noobclawAI') {
       // When server mode is off, don't use NoobClaw providers — fall back to detected provider
