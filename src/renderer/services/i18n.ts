@@ -790,8 +790,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningExpired: '该任务已过期，启用后将不会运行',
 
     // Wallet page
-    walletConnectTitle: '连接钱包以查看',
-    walletConnectDesc: '连接您的 BSC 钱包以管理积分和充值',
+    walletConnectTitle: '登录账号，以管理积分和充值',
+    walletConnectDesc: '支持 Google / X / Discord / OKX / Binance / MetaMask 等主流登录方式',
     walletConnectBtn: '登录 →',
     walletMyWalletBsc: '我的钱包（BSC）',
     walletConnected: '已连接',
@@ -2040,8 +2040,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningExpired: 'This task has expired. It will not run after enabling',
 
     // Wallet page
-    walletConnectTitle: 'Connect Wallet to View',
-    walletConnectDesc: 'Connect your BSC wallet to manage credits and top up',
+    walletConnectTitle: 'Sign in to manage credits and top up',
+    walletConnectDesc: 'Sign in with Google / X / Discord / OKX / Binance / MetaMask',
     walletConnectBtn: 'Login →',
     walletMyWalletBsc: 'My Wallet (BSC)',
     walletConnected: 'Connected',
@@ -2927,7 +2927,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningAtPast: '該任務的執行時間已過，啟用後將不會執行',
     scheduledTasksToggleWarningExpired: '該任務已過期，啟用後將不會執行',
     // Wallet
-    walletConnectTitle: '連接錢包以查看', walletConnectDesc: '連接您的 BSC 錢包以管理積分和充值',
+    walletConnectTitle: '登入帳號，以管理積分和充值', walletConnectDesc: '支援 Google / X / Discord / OKX / Binance / MetaMask 等主流登入方式',
     walletConnectBtn: '登入 →', walletMyWalletBsc: '我的錢包（BSC）',
     walletConnected: '已連接', walletCopy: '複製',
     walletTokenBalance: '💎 積分餘額（AI使用消耗）', walletTokenUnit: '',
@@ -3573,7 +3573,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningAtPast: '이 작업의 실행 시간이 지났습니다. 활성화해도 실행되지 않습니다',
     scheduledTasksToggleWarningExpired: '이 작업이 만료되었습니다. 활성화해도 실행되지 않습니다',
     // Wallet
-    walletConnectTitle: '지갑 연결하여 보기', walletConnectDesc: 'BSC 지갑을 연결하여 크레딧을 관리하고 충전하세요',
+    walletConnectTitle: '로그인하여 크레딧 관리 및 충전', walletConnectDesc: 'Google / X / Discord / OKX / Binance / MetaMask 등 다양한 로그인 지원',
     walletConnectBtn: '로그인 →', walletMyWalletBsc: '내 지갑 (BSC)',
     walletConnected: '연결됨', walletCopy: '복사',
     walletTokenBalance: '💎 크레딧 잔액 (AI 사용 소모)', walletTokenUnit: '',
@@ -4219,7 +4219,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksToggleWarningAtPast: 'このタスクの実行時刻は過ぎています。有効化しても実行されません',
     scheduledTasksToggleWarningExpired: 'このタスクは期限切れです。有効化しても実行されません',
     // Wallet
-    walletConnectTitle: 'ウォレットを接続して表示', walletConnectDesc: 'BSCウォレットを接続してクレジットを管理・チャージ',
+    walletConnectTitle: 'ログインしてクレジットを管理・チャージ', walletConnectDesc: 'Google / X / Discord / OKX / Binance / MetaMask などの主要ログインに対応',
     walletConnectBtn: 'ログイン →', walletMyWalletBsc: 'マイウォレット (BSC)',
     walletConnected: '接続済み', walletCopy: 'コピー',
     walletTokenBalance: '💎 クレジット残高（AI使用で消費）', walletTokenUnit: '',
@@ -4815,7 +4815,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotify: 'IM-уведомление', scheduledTasksFormNotifyHint: 'Отправить результат через IM',
     scheduledTasksFormNotifyNone: 'Нет', scheduledTasksFormNotifyNotConfigured: 'Не настроено',
     scheduledTasksDetailNotify: 'Уведомление',
-    walletConnectTitle: 'Подключите кошелёк', walletConnectDesc: 'BSC-кошелёк для управления кредитами',
+    walletConnectTitle: 'Войдите, чтобы управлять кредитами и пополнять', walletConnectDesc: 'Поддержка Google / X / Discord / OKX / Binance / MetaMask',
     walletConnectBtn: 'Войти →', walletMyWalletBsc: 'Кошелёк (BSC)',
     walletConnected: 'Подключён', walletCopy: 'Копировать',
     walletTokenBalance: '💎 Баланс кредитов (AI)', walletTokenUnit: '',
@@ -5409,7 +5409,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotify: 'Notification IM', scheduledTasksFormNotifyHint: 'Envoyer le résultat via IM',
     scheduledTasksFormNotifyNone: 'Aucune', scheduledTasksFormNotifyNotConfigured: 'Non configuré',
     scheduledTasksDetailNotify: 'Notification',
-    walletConnectTitle: 'Connectez le portefeuille', walletConnectDesc: 'Portefeuille BSC pour gérer les crédits',
+    walletConnectTitle: 'Connectez-vous pour gérer crédits et recharges', walletConnectDesc: 'Google / X / Discord / OKX / Binance / MetaMask pris en charge',
     walletConnectBtn: 'Connexion →', walletMyWalletBsc: 'Portefeuille (BSC)',
     walletConnected: 'Connecté', walletCopy: 'Copier',
     walletTokenBalance: '💎 Solde crédits (IA)', walletTokenUnit: '',
@@ -6002,7 +6002,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     scheduledTasksFormNotify: 'IM-Benachrichtigung', scheduledTasksFormNotifyHint: 'Ergebnis per IM senden',
     scheduledTasksFormNotifyNone: 'Keine', scheduledTasksFormNotifyNotConfigured: 'Nicht konfiguriert',
     scheduledTasksDetailNotify: 'Benachrichtigung',
-    walletConnectTitle: 'Wallet verbinden', walletConnectDesc: 'BSC-Wallet für Guthaben',
+    walletConnectTitle: 'Anmelden, um Guthaben zu verwalten und aufzuladen', walletConnectDesc: 'Google / X / Discord / OKX / Binance / MetaMask werden unterstützt',
     walletConnectBtn: 'Anmelden →', walletMyWalletBsc: 'Wallet (BSC)',
     walletConnected: 'Verbunden', walletCopy: 'Kopieren',
     walletTokenBalance: '💎 Guthaben (KI)', walletTokenUnit: '',
