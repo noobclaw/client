@@ -104,6 +104,46 @@ function keywordMatch(text: string, keywords: string[]): boolean {
   return keywords.some(k => lowered.includes(k.toLowerCase()));
 }
 
+// ── Universal AI boilerplate / refusal / meta-talk detector ──
+//
+// Every scenario that calls ctx.aiCall() runs through this. The model
+// occasionally returns one of:
+//   - polite refusals ("I cannot fulfill...")
+//   - ask-back boilerplate ("I'd be happy to help, but you haven't
+//     provided the actual text...")
+//   - meta-self-talk ("Here's the rewrite of your post:" / "改写后:")
+// A real social-platform user post NEVER contains these. Posting them
+// gets the account flagged as a bot. Detect → retry once → still bad →
+// abort the call by throwing AI_BOILERPLATE_AFTER_RETRY so the
+// orchestrator skips the send instead of publishing junk.
+export function looksLikeAIRefusal(text: string): boolean {
+  if (!text) return false;
+  // English refusals
+  if (/I (cannot|can't|am unable to|won't|will not) (fulfill|help|provide|do|complete|generate|write|comply)/i.test(text)) return true;
+  if (/I'?m sorry,?\s*but\b/i.test(text)) return true;
+  if (/I apologize,?\s*but/i.test(text)) return true;
+  if (/no (source|reference) (text|material|content) (was )?provided/i.test(text)) return true;
+  if (/please (provide|include) (the |a )?(source|reference|text|material|content)/i.test(text)) return true;
+  if (/as an? (AI|language model|assistant)/i.test(text)) return true;
+  // English ask-back
+  if (/(I'?d|I would) be (happy|glad) to help/i.test(text)) return true;
+  if (/(you )?(haven'?t|did ?n'?t|have not) (yet )?(provided|shared|given|included)/i.test(text)) return true;
+  if (/could you (please )?(share|send|paste|provide|post)/i.test(text)) return true;
+  if (/(you'?d|you would) like (me to )?(rewrite|rewritten|paraphrase|reword)/i.test(text)) return true;
+  if (/it seems (you|like you) (haven'?t|did ?n'?t) /i.test(text)) return true;
+  // English meta-talk — real user posts never use these self-referential words
+  if (/\b(rewrite|rewritten|rewriting|rewrote|rewording|reworded|paraphrase|paraphrased|paraphrasing)\b/i.test(text)) return true;
+  if (/here'?s? (the |a |my |an )?(rewrite|rewritten|paraphrased|reworded|version|attempt|take)\b/i.test(text)) return true;
+  // Chinese refusals
+  if (/我(无法|不能|没法|不会)(为|帮|完成|提供|生成|写)/.test(text)) return true;
+  if (/抱歉[,，]?\s*我(无法|不能|没法)/.test(text)) return true;
+  if (/作为(一个|一名)?(AI|人工智能|语言模型|助手)/.test(text)) return true;
+  if (/请(提供|给我|附上)(原文|参考|素材|内容|文本)/.test(text)) return true;
+  // Chinese meta-talk
+  if (/(改写后|改写版本|这是改写|帮你改写|帮我改写|重写后|重写版本|这是我的改写)/.test(text)) return true;
+  return false;
+}
+
 // ── Quality gate (v2.4.58+) ──
 //
 // Deterministic post-AI checks. Used by post-creator orchestrators (XHS,
@@ -697,6 +737,41 @@ function buildContext(
           }
           textForGate = (parsed && (parsed.text || parsed.content)) || (typeof parsed === 'string' ? parsed : '');
           returnValue = parsed;
+        }
+
+        // v5.x Universal boilerplate guard — runs on EVERY aiCall, not just
+        // post composers. Catches model meta-talk / refusal templates before
+        // they hit replies, comments, captions, or post bodies. Retry once;
+        // still bad → throw so the orchestrator skips this send.
+        const BOILERPLATE_MAX_RETRIES = 1; // 1 retry → 2 total attempts
+        if (looksLikeAIRefusal(String(textForGate))) {
+          if (attempt <= BOILERPLATE_MAX_RETRIES) {
+            ctx.report('   ⚠️ AI 返回元描述/拒绝模板,重试中(' + attempt + '/' + (BOILERPLATE_MAX_RETRIES + 1) + '): ' + String(textForGate).slice(0, 80));
+            const _hint = '\n\n⚠️ 上次输出包含 "rewrite/rewritten/改写/抱歉/I cannot" 等 AI 元描述/拒绝模板。**绝对禁止**这些词出现 — 直接输出真实用户口吻的内容,不要描述"自己在做什么"。';
+            const newRawInput = (rawInput || userMessage) + _hint;
+            if (promptNameOrRaw === '__raw__') {
+              return await ctx.aiCall(promptNameOrRaw, prompt, newRawInput, {
+                ...(opts || {}), _attempt: attempt + 1,
+              } as any);
+            } else {
+              return await ctx.aiCall(promptNameOrRaw, userMessage + _hint, undefined, {
+                ...(opts || {}), _attempt: attempt + 1,
+              } as any);
+            }
+          } else {
+            coworkLog('WARN', 'phaseRunner', 'AI boilerplate after retries — aborting call', {
+              attempts: attempt, head: String(textForGate).slice(0, 200),
+            });
+            ctx.report('   🚫 AI 重试 ' + attempt + ' 次仍返回元描述/拒绝模板,放弃这次调用以免暴露身份');
+            const err: any = new Error('AI_BOILERPLATE_AFTER_RETRY — AI 多次返回元描述/拒绝模板');
+            err.code = 'AI_BOILERPLATE_AFTER_RETRY';
+            // Deliberately NOT setting err.rawText. Some orchestrators have
+            // catch blocks that fall back to err.rawText as the post body
+            // when AI_PARSE_FAIL happens; if we set it here, the boilerplate
+            // text would be published exactly the way we're trying to
+            // prevent.
+            throw err;
+          }
         }
 
         // v2.4.58+ Quality gate(post composers opt in via opts.qualityGate)
