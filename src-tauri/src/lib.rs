@@ -707,7 +707,7 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
 
-            // Register the macOS deep-link listener. Without this, clicking
+            // Register the deep-link listener. Without this, clicking
             // `noobclaw://auth?...` from the system browser never reaches
             // the running app — macOS would silently drop the URL (or, in
             // some launch paths, appear to spawn a duplicate process).
@@ -719,6 +719,19 @@ pub fn run() {
                         handle_deep_link(&dl_handle, url.as_str());
                     }
                 });
+
+                // ── Windows/Linux: write the OS protocol-handler entry on
+                // every launch. The NSIS installer does NOT do this for us
+                // (Tauri v2 deep-link plugin does NOT hook the installer);
+                // without an explicit register() call here, HKCU\Software\
+                // Classes\noobclaw\shell\open\command stays empty and
+                // browsers report "找不到应用程序" / "could not find app".
+                // macOS uses Info.plist CFBundleURLTypes (set via tauri.conf
+                // bundle config), so we skip the runtime call there.
+                #[cfg(any(target_os = "windows", target_os = "linux"))]
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("Failed to register deep-link protocol: {}", e);
+                }
             }
 
             // ── Global shortcut registration ─────────────────────────
