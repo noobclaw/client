@@ -113,34 +113,67 @@ function keywordMatch(text: string, keywords: string[]): boolean {
 //     provided the actual text...")
 //   - meta-self-talk ("Here's the rewrite of your post:" / "改写后:")
 // A real social-platform user post NEVER contains these. Posting them
-// gets the account flagged as a bot. Detect → retry once → still bad →
-// abort the call by throwing AI_BOILERPLATE_AFTER_RETRY so the
-// orchestrator skips the send instead of publishing junk.
+// gets the account flagged as a bot.
+//
+// **Rules live on the backend** at src/services/aiBoilerplate.ts and
+// are served at GET /api/ai/boilerplate-patterns. The client pulls them
+// once on startup and caches in memory; that means tweaking the regex
+// list is a backend-restart away — no client rebuild / user reinstall.
+// We keep a tiny built-in fallback list so detection still works during
+// the brief startup window before the fetch completes (or if the
+// endpoint is unreachable).
+
+interface BoilerplateRule { pattern: string; flags?: string }
+
+const FALLBACK_RULES: BoilerplateRule[] = [
+  { pattern: "I (cannot|can't|am unable to|won't|will not) (fulfill|help|provide|do|complete|generate|write|comply)", flags: 'i' },
+  { pattern: "(I'?d|I would) be (happy|glad) to help", flags: 'i' },
+  { pattern: "(you )?(haven'?t|did ?n'?t|have not) (yet )?(provided|shared|given|included)", flags: 'i' },
+  { pattern: "\\b(rewrite|rewritten|paraphrase|paraphrased)\\b", flags: 'i' },
+  { pattern: '我(无法|不能|没法|不会)(为|帮|完成|提供|生成|写)' }, // 我无法/不能/没法/不会 ...
+  { pattern: '(改写后|改写版本|这是改写|帮你改写|帮我改写)' }, // 改写后/改写版本/...
+];
+
+function compileRules(rules: BoilerplateRule[]): RegExp[] {
+  const out: RegExp[] = [];
+  for (const r of rules) {
+    try { out.push(new RegExp(r.pattern, r.flags || '')); }
+    catch { /* skip malformed regex from the wire */ }
+  }
+  return out;
+}
+
+let _activeRules: RegExp[] = compileRules(FALLBACK_RULES);
+let _rulesFetchPromise: Promise<void> | null = null;
+
+async function fetchRulesOnce(): Promise<void> {
+  if (_rulesFetchPromise) return _rulesFetchPromise;
+  _rulesFetchPromise = (async () => {
+    try {
+      const resp = await fetch('https://api.noobclaw.com/api/ai/boilerplate-patterns', {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!resp.ok) return;
+      const data = await resp.json() as { rules?: BoilerplateRule[] };
+      if (Array.isArray(data.rules) && data.rules.length > 0) {
+        const compiled = compileRules(data.rules);
+        if (compiled.length > 0) _activeRules = compiled;
+      }
+    } catch { /* keep fallback rules on any error */ }
+  })();
+  return _rulesFetchPromise;
+}
+
+// Kick off the fetch as soon as this module loads. Subsequent calls to
+// looksLikeAIRefusal() see the wider rule set within ~100ms-2s of app
+// startup; until then the FALLBACK list catches the most common cases.
+fetchRulesOnce();
+
 export function looksLikeAIRefusal(text: string): boolean {
   if (!text) return false;
-  // English refusals
-  if (/I (cannot|can't|am unable to|won't|will not) (fulfill|help|provide|do|complete|generate|write|comply)/i.test(text)) return true;
-  if (/I'?m sorry,?\s*but\b/i.test(text)) return true;
-  if (/I apologize,?\s*but/i.test(text)) return true;
-  if (/no (source|reference) (text|material|content) (was )?provided/i.test(text)) return true;
-  if (/please (provide|include) (the |a )?(source|reference|text|material|content)/i.test(text)) return true;
-  if (/as an? (AI|language model|assistant)/i.test(text)) return true;
-  // English ask-back
-  if (/(I'?d|I would) be (happy|glad) to help/i.test(text)) return true;
-  if (/(you )?(haven'?t|did ?n'?t|have not) (yet )?(provided|shared|given|included)/i.test(text)) return true;
-  if (/could you (please )?(share|send|paste|provide|post)/i.test(text)) return true;
-  if (/(you'?d|you would) like (me to )?(rewrite|rewritten|paraphrase|reword)/i.test(text)) return true;
-  if (/it seems (you|like you) (haven'?t|did ?n'?t) /i.test(text)) return true;
-  // English meta-talk — real user posts never use these self-referential words
-  if (/\b(rewrite|rewritten|rewriting|rewrote|rewording|reworded|paraphrase|paraphrased|paraphrasing)\b/i.test(text)) return true;
-  if (/here'?s? (the |a |my |an )?(rewrite|rewritten|paraphrased|reworded|version|attempt|take)\b/i.test(text)) return true;
-  // Chinese refusals
-  if (/我(无法|不能|没法|不会)(为|帮|完成|提供|生成|写)/.test(text)) return true;
-  if (/抱歉[,，]?\s*我(无法|不能|没法)/.test(text)) return true;
-  if (/作为(一个|一名)?(AI|人工智能|语言模型|助手)/.test(text)) return true;
-  if (/请(提供|给我|附上)(原文|参考|素材|内容|文本)/.test(text)) return true;
-  // Chinese meta-talk
-  if (/(改写后|改写版本|这是改写|帮你改写|帮我改写|重写后|重写版本|这是我的改写)/.test(text)) return true;
+  for (const re of _activeRules) {
+    if (re.test(text)) return true;
+  }
   return false;
 }
 
