@@ -298,6 +298,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     source_segments?: string[];
     /** douyin_image_text / xhs viral_production: 自动上传草稿 vs 仅生成 */
     auto_upload?: boolean;
+    /** douyin_image_text: true=直接发布,false=存草稿(仅 auto_upload=true 时生效) */
+    auto_publish?: boolean;
   }) => {
     let landingTaskId: string | null = null;
     let createdLinkRewrite = false;

@@ -200,6 +200,10 @@ export interface ScenarioTask {
   /** douyin_image_text: 用户填的 3 段灵感来源。每次任务运行随机抽 1 段交给
    *  AI 改写。允许少于 3 段（最少 1 段）。空段被 orchestrator 过滤掉。 */
   source_segments?: string[];
+  /** douyin_image_text: true → 跑完直接走"发布"按钮; false → 走"存草稿"。
+   *  仅当 auto_upload=true 时生效。默认 true(抖音图文草稿只 1 篇上限,
+   *  多篇任务用草稿模式只剩最后一篇)。 */
+  auto_publish?: boolean;
   /** Twitter v1.x: x_auto_engage daily action ranges (min/max). System
    *  picks random in [min,max] each day. Optional — old tasks default to
    *  (0,3) follows / (1,daily_count) replies. */

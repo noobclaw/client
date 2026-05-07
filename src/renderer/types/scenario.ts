@@ -118,6 +118,10 @@ export interface ScenarioTaskIPC {
    *  随机抽 1 段交给 AI 改写成抖音图文笔记草稿。Optional —— 仅
    *  douyin_image_text 场景使用。 */
   source_segments?: string[];
+  /** douyin_image_text: 跑完每篇是否直接发布(true)还是存草稿(false)。
+   *  仅当 auto_upload=true 时有效。Optional;douyin_image_text 默认 true
+   *  (因为抖音图文草稿只 1 篇上限,多篇任务存草稿会被覆盖)。 */
+  auto_publish?: boolean;
   /** Twitter v1.x: x_auto_engage daily action ranges. System picks random
    *  values inside each range. Optional — backwards-compat tasks fall back
    *  to (0,3) follows + (1, daily_count) replies. */

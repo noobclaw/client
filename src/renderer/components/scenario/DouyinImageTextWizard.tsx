@@ -67,12 +67,20 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
       : 1
   );
 
-  // ── 生成后处理：自动上传 vs 仅生成 ──
-  const [autoUpload, setAutoUpload] = useState<boolean>(
-    (initialTask as any)?.auto_upload !== undefined
-      ? !!(initialTask as any).auto_upload
-      : true
-  );
+  // ── 生成后处理：3 选 1 ──
+  //   'publish' (default) — 跑完直接发布。抖音图文草稿只能存 1 篇,后存的会
+  //                          覆盖之前的,多篇任务用草稿就没意义,所以默认走发布。
+  //   'draft'             — 跑完存到抖音草稿(抖音侧只 1 篇上限,会覆盖)。
+  //   'local'             — 仅生成保存到本地,用户去任务详情页手动逐条上传。
+  type UploadMode = 'publish' | 'draft' | 'local';
+  const initialMode: UploadMode = (() => {
+    const t: any = initialTask;
+    if (!t) return 'publish';
+    if (t.auto_upload === false) return 'local';
+    if (t.auto_publish === false) return 'draft';
+    return 'publish';
+  })();
+  const [uploadMode, setUploadMode] = useState<UploadMode>(initialMode);
 
   // ── 调度 ──
   const dailyTime = useMemo(() => {
@@ -93,7 +101,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seg1, seg2, seg3, persona, dailyCount, autoUpload, runInterval]);
+  }, [seg1, seg2, seg3, persona, dailyCount, uploadMode, runInterval]);
 
   const validSegments = [seg1, seg2, seg3]
     .map(s => s.trim())
@@ -122,6 +130,12 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
     }
     setSaving(true);
     try {
+      // uploadMode → orchestrator 看 (auto_upload, auto_publish) 两个 flag:
+      //   publish: auto_upload=true,  auto_publish=true (默认,直接发布)
+      //   draft:   auto_upload=true,  auto_publish=false(进抖音草稿,1 篇上限)
+      //   local:   auto_upload=false (压根不上传,只本地存)
+      const auto_upload = uploadMode !== 'local';
+      const auto_publish = uploadMode === 'publish';
       await onSave({
         scenario_id: scenario.id,
         track: 'image_text',
@@ -131,7 +145,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
         variants_per_post: 1,
         daily_time: dailyTime,
         run_interval: runInterval,
-        auto_upload: autoUpload,
+        auto_upload,
+        auto_publish,
         source_segments: [seg1, seg2, seg3].map(s => s.trim()).filter(s => s.length > 0),
       });
     } catch (err) {
@@ -265,38 +280,73 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   {isZh ? '生成后的处理' : 'After generation'}
                 </label>
                 <div className="space-y-2">
-                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${autoUpload ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
-                    <input type="radio" name="dy_auto_upload" checked={autoUpload} onChange={() => setAutoUpload(true)} className="mt-0.5" disabled={saving} />
-                    <div className="flex-1 text-xs leading-relaxed">
-                      <div className="font-semibold dark:text-white mb-0.5">
-                        📤 {isZh ? '自动上传到抖音图文草稿' : 'Auto-upload to Douyin image-text drafts'}
-                      </div>
-                      <div className="text-gray-500 dark:text-gray-400">
-                        {isZh
-                          ? '全流程无人值守,生成完直接进创作者中心草稿。⚠️ 单日 >5 篇有封号风险。'
-                          : 'Unattended. Goes straight to creator-center drafts. ⚠️ >5/day risks ban.'}
-                      </div>
-                    </div>
-                  </label>
-                  <label className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${!autoUpload ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}>
-                    <input type="radio" name="dy_auto_upload" checked={!autoUpload} onChange={() => setAutoUpload(false)} className="mt-0.5" disabled={saving} />
-                    <div className="flex-1 text-xs leading-relaxed">
-                      <div className="font-semibold dark:text-white mb-0.5">
-                        📁 {isZh ? '仅生成保存到本地（更安全）' : 'Generate only (safer)'}
-                      </div>
-                      <div className="text-gray-500 dark:text-gray-400">
-                        {isZh ? '存盘后手动审核上传,封号风险最低。' : 'Review and upload manually later.'}
-                      </div>
-                    </div>
-                  </label>
+                  {([
+                    {
+                      mode: 'publish' as UploadMode,
+                      icon: '📤',
+                      titleZh: '直接发布到抖音(推荐)',
+                      titleEn: 'Auto-publish to Douyin (recommended)',
+                      descZh: '生成完每篇直接走抖音「发布」按钮。⚠️ 一旦发出无法撤回,且单日 >5 篇有封号风险,建议先用「仅本地」模式跑一次审核质量。',
+                      descEn: 'Each post hits Douyin Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent; >5/day risks ban. Recommend running "Local only" first to review quality.',
+                    },
+                    {
+                      mode: 'draft' as UploadMode,
+                      icon: '📋',
+                      titleZh: '存到抖音草稿(只能 1 篇,会被覆盖)',
+                      titleEn: 'Save to Douyin drafts (1-only, gets overwritten)',
+                      descZh: '抖音创作者中心的图文草稿只能存 1 篇,新草稿会覆盖旧的 — 多篇任务用这个模式只剩最后一篇。',
+                      descEn: 'Douyin creator-center keeps only 1 image-text draft — newer overwrites older. Multi-post runs end up with just the last one.',
+                    },
+                    {
+                      mode: 'local' as UploadMode,
+                      icon: '📁',
+                      titleZh: '仅生成保存到本地(最安全)',
+                      titleEn: 'Generate only, save locally (safest)',
+                      descZh: '不动浏览器,只把改写文本和配图存盘。任务详情页可以逐条手动上传。',
+                      descEn: 'Touches no browser tab; saves rewrite + images to disk. Upload one-by-one from the task detail page.',
+                    },
+                  ]).map((opt) => {
+                    const active = uploadMode === opt.mode;
+                    return (
+                      <label
+                        key={opt.mode}
+                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                      >
+                        <input
+                          type="radio"
+                          name="dy_upload_mode"
+                          checked={active}
+                          onChange={() => setUploadMode(opt.mode)}
+                          className="mt-0.5"
+                          disabled={saving}
+                        />
+                        <div className="flex-1 text-xs leading-relaxed">
+                          <div className="font-semibold dark:text-white mb-0.5">
+                            {opt.icon} {isZh ? opt.titleZh : opt.titleEn}
+                          </div>
+                          <div className="text-gray-500 dark:text-gray-400">
+                            {isZh ? opt.descZh : opt.descEn}
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
-                  <li>{isZh ? '抖音图文草稿不会自动发布,只暂存到创作者中心,你手动审核后再发' : 'Drafts are saved to creator center — never auto-published. You review and post manually.'}</li>
-                  <li>{isZh ? '同账号一日新建草稿建议 ≤ 5 篇' : '≤ 5 new drafts per day per account recommended'}</li>
+                  {uploadMode === 'publish' && (
+                    <li>{isZh ? '直接发布模式 — 跑完立即可见,慎用,日 >5 篇有封号风险' : 'Publish mode — posts go live immediately; >5/day risks ban'}</li>
+                  )}
+                  {uploadMode === 'draft' && (
+                    <li>{isZh ? '抖音侧只保留最新 1 篇草稿,daily_count > 1 时只剩最后一篇' : 'Douyin keeps only 1 draft — multi-post runs leave just the last'}</li>
+                  )}
+                  {uploadMode === 'local' && (
+                    <li>{isZh ? '只本地保存,不动浏览器,可在任务详情页手动逐条审核 + 上传' : 'Local only — no browser action; review + upload one-by-one from task detail'}</li>
+                  )}
+                  <li>{isZh ? '每篇文章会生成 3 张内容图(同色调不同视角),不是封面海报' : '3 content images per post (same palette, different angles); not poster covers'}</li>
                 </ul>
               </div>
             </>
@@ -342,7 +392,13 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   value={`${validSegments.length} ${isZh ? '段（每次随机抽 1 段）' : 'segments (1 picked at random per run)'}`} />
                 <SummaryRow label={isZh ? '每次生成' : 'Per run'} value={`${dailyCount} ${isZh ? '篇' : 'posts'}`} />
                 <SummaryRow label={isZh ? '配图' : 'Image'} value={isZh ? '每篇 1 张 AI 内容图' : '1 AI content image per post'} />
-                <SummaryRow label={isZh ? '生成后' : 'After gen'} value={autoUpload ? (isZh ? '自动暂存到抖音图文草稿' : 'Auto-save to Douyin drafts') : (isZh ? '仅本地保存,人工审核' : 'Local only, manual review')} />
+                <SummaryRow label={isZh ? '生成后' : 'After gen'} value={
+                  uploadMode === 'publish'
+                    ? (isZh ? '直接发布到抖音' : 'Auto-publish to Douyin')
+                    : uploadMode === 'draft'
+                      ? (isZh ? '存抖音草稿(只 1 篇,会覆盖)' : 'Douyin draft (1-only, overwrites)')
+                      : (isZh ? '仅本地保存,人工审核' : 'Local only, manual review')
+                } />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
               </div>
 
