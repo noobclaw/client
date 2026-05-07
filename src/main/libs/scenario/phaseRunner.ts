@@ -333,10 +333,91 @@ function buildContext(
     return opts;
   };
 
+  // ── Anchor URL pre-flight (v5.x+) ─────────────────────────────────
+  // Replaces the chrome-extension's hardcoded anchorUrlFor table. Before
+  // any routed command runs, we make sure SOME tab matches the active
+  // tab_url_pattern; if none does, we open `manifest.anchor_url` (or
+  // `secondary_anchor_url` when active pattern is the secondary one)
+  // via tab_create. After this, the extension's findOrOpenTabByPattern
+  // will succeed for navigate / scroll / browser routed commands.
+  //
+  // Why client-side: extension's anchorUrlFor only knows xhs / x / binance.
+  // douyin / tiktok / youtube manifests now ship anchor_url and the runner
+  // uses it without an extension republish. Adding a new platform = add
+  // anchor_url to its manifest, no client release either (manifest is
+  // hot-fetched per run).
+  //
+  // anchorPreflightDone tracks per-pattern so we don't re-check 50 times
+  // during a long task. setActiveTab() resets the active key when switching.
+  const anchorPreflightDone = new Set<string>();
+  const anchorUrlForPattern = (pat: string | undefined): string | undefined => {
+    if (!pat) return undefined;
+    const m: any = manifest;
+    if (pat === primaryPattern && typeof m.anchor_url === 'string') return m.anchor_url;
+    if (pat === secondaryPattern && typeof m.secondary_anchor_url === 'string') return m.secondary_anchor_url;
+    return undefined;
+  };
+  const ensureTabExistsForPattern = async (pat: string | undefined): Promise<void> => {
+    if (!pat) return;
+    if (anchorPreflightDone.has(pat)) return;
+    let regex: RegExp;
+    try { regex = new RegExp(pat); }
+    catch { anchorPreflightDone.add(pat); return; }
+    let tabs: any[] = [];
+    try {
+      const res: any = await sendBrowserCommand('tab_list', {}, 5000);
+      tabs = (res && Array.isArray(res.tabs)) ? res.tabs
+        : ((res && res.data && Array.isArray(res.data.tabs)) ? res.data.tabs : []);
+    } catch {
+      // bridge / extension issue — let the original command surface the
+      // real error; mark done so we don't retry tab_list on every call.
+      anchorPreflightDone.add(pat);
+      return;
+    }
+    const has = tabs.some(t => typeof t?.url === 'string' && regex.test(t.url));
+    if (has) {
+      anchorPreflightDone.add(pat);
+      return;
+    }
+    const anchor = anchorUrlForPattern(pat);
+    if (!anchor) {
+      // No anchor declared — fall through and let the extension's legacy
+      // anchorUrlFor (xhs / x / binance) try its hand. New platforms that
+      // omit anchor_url will fail loudly with the existing "no anchor URL
+      // known" error, which is the correct signal to add the field.
+      anchorPreflightDone.add(pat);
+      return;
+    }
+    coworkLog('INFO', 'phaseRunner', 'anchor pre-flight: opening', { pattern: pat, anchor });
+    try {
+      await sendBrowserCommand('tab_create', { url: anchor }, 12000);
+      // Give the new tab a moment to commit a URL the regex can match.
+      // tab_create returns immediately after chrome.tabs.create resolves,
+      // but the URL may still be about:blank for ~50-200ms.
+      await new Promise<void>(r => setTimeout(r, 800));
+    } catch (e) {
+      coworkLog('WARN', 'phaseRunner', 'anchor pre-flight tab_create failed', { err: String(e) });
+    }
+    anchorPreflightDone.add(pat);
+  };
+  // Commands that don't depend on a routed tab — skip pre-flight for them.
+  // tab_list / tab_create / tab_close / tab_switch operate on the global
+  // tab list; check_anomaly is internal; bridge_health is a ping.
+  const PREFLIGHT_SKIP = new Set([
+    'tab_list', 'tab_create', 'tab_close', 'tab_switch',
+    'bridge_health', 'extension_version',
+  ]);
+
   // v4.31.39: 统一 abortable browser command —— 所有 ctx.* 浏览器操作经此入口,
   //   abort flag 设置后立即 throw 'user_stopped',不等浏览器响应。
+  // v5.x+: 加一道 anchor 预检 —— 路由命令(带 tabPattern)前先确保有匹配 tab,
+  //   否则按 manifest.anchor_url 自启,绕开 chrome-extension anchorUrlFor 缺
+  //   douyin / tiktok / youtube 分支的问题。
   const abortableCmd = async (command: string, params: any, timeout: number): Promise<any> => {
     if (progress.isAbortRequested()) throw new Error('user_stopped');
+    if (activePattern && !PREFLIGHT_SKIP.has(command)) {
+      await ensureTabExistsForPattern(activePattern);
+    }
     return Promise.race([
       sendBrowserCommand(command, params, timeout, getBridgeOpts()),
       abortPoll(progress.isAbortRequested),
@@ -382,6 +463,10 @@ function buildContext(
     browser: async (command: string, params?: any, timeout?: number) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const t = timeout || 10000;
+      // v5.x+: anchor 预检 — 路由命令前确保有匹配 tab(参考 abortableCmd)。
+      if (activePattern && !PREFLIGHT_SKIP.has(command)) {
+        await ensureTabExistsForPattern(activePattern);
+      }
       return Promise.race([
         sendBrowserCommand(command, params || {}, t, getBridgeOpts()),
         new Promise<never>((_, reject) => {

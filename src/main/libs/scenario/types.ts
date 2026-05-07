@@ -51,6 +51,40 @@ export interface ScenarioManifest {
    * this field existed. Backward compatible.
    */
   tab_url_pattern?: string;
+  /**
+   * Anchor URL for `tab_url_pattern`. Used by phaseRunner's pre-flight: if
+   * NO open tab matches `tab_url_pattern` when about to send a routed
+   * command (navigate / scroll / browser), the runner first opens this
+   * URL via `tab_create`, waits, then proceeds with the original command.
+   * Replaces the chrome-extension's hardcoded `anchorUrlFor` table — new
+   * platforms (douyin / tiktok / youtube) ship a manifest with
+   * `anchor_url` and don't need an extension republish to work without
+   * a pre-opened tab.
+   *
+   * Optional but recommended whenever `tab_url_pattern` is set. Without
+   * it, the extension's legacy `anchorUrlFor` is the only fallback (only
+   * covers xhs / x / binance — other platforms throw "no anchor URL
+   * known" if the user runs the task with no matching tab open).
+   */
+  anchor_url?: string;
+  /**
+   * Cross-tab scenarios (binance_from_x_repost / binance_from_x_link)
+   * declare a secondary tab via `secondary_tab_url_pattern` /
+   * `additional_tab_patterns`. This is its anchor — same role as
+   * `anchor_url` but for the secondary pattern.
+   */
+  secondary_anchor_url?: string;
+  /**
+   * v4.25+ multi-tab patterns this scenario also touches. The pre-flight
+   * walks each one and ensures a matching tab exists before the run.
+   * Read by resourceKeysForPack today; pre-flight uses the same field.
+   */
+  additional_tab_patterns?: string[];
+  /**
+   * Single-string variant of additional_tab_patterns (used by
+   * binance_from_x_repost). Kept here so types match runtime shape.
+   */
+  secondary_tab_url_pattern?: string;
 }
 
 export interface ScenarioDefaultConfig {

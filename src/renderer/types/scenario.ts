@@ -78,6 +78,13 @@ export interface ScenarioManifestIPC {
   /** Tab URL regex for multi-tab concurrency. Optional — see main-process
    *  ScenarioManifest docstring. */
   tab_url_pattern?: string;
+  /** Fallback URL phaseRunner opens via tab_create when no tab matches
+   *  `tab_url_pattern` before a routed command. See main-process
+   *  ScenarioManifest docstring. */
+  anchor_url?: string;
+  secondary_anchor_url?: string;
+  additional_tab_patterns?: string[];
+  secondary_tab_url_pattern?: string;
   /** Track presets surfaced to the wizard. Backend can edit + redeploy
    *  to update tracks/keywords without shipping a new client build.
    *  Optional for back-compat with old scenarios; wizard falls back to
