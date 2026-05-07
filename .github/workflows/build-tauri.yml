@@ -11,13 +11,18 @@ jobs:
         include:
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-          # macOS: arm64 only. Universal builds kept failing in CI (sidecar
-          # lipo missing → "binaries/noobclaw-server-universal-apple-darwin
-          # doesn't exist"), and Intel macs are now <10% of the userbase.
-          # If Intel demand picks up, add a second matrix entry with
-          # target: x86_64-apple-darwin and a separate runner.
+          # macOS arm64 — Apple Silicon native build on the default
+          # macos-latest runner (M-series).
           - platform: macos-latest
             target: aarch64-apple-darwin
+          # macOS Intel — built on macos-13 (last GitHub-hosted Intel
+          # runner) so node-gyp produces a native x86_64 .node addon and
+          # pkg picks node20-macos-x64 without cross-compile gymnastics.
+          # Universal lipo bundling was abandoned previously because the
+          # sidecar lipo step kept failing in CI; running two independent
+          # matrix entries sidesteps that entirely.
+          - platform: macos-13
+            target: x86_64-apple-darwin
 
     runs-on: ${{ matrix.platform }}
 
