@@ -346,7 +346,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   {uploadMode === 'local' && (
                     <li>{isZh ? '只本地保存,不动浏览器,可在任务详情页手动逐条审核 + 上传' : 'Local only — no browser action; review + upload one-by-one from task detail'}</li>
                   )}
-                  <li>{isZh ? '每篇文章会生成 3 张内容图(同色调不同视角),不是封面海报' : '3 content images per post (same palette, different angles); not poster covers'}</li>
+                  <li>{isZh ? '每篇文章会生成 2 张图: 1 张封面(大字标题截停信息流) + 1 张内容图(画面叙事,延续封面色调)' : '2 images per post: 1 cover (big title to stop the feed) + 1 content image (narrative scene, same palette)'}</li>
                 </ul>
               </div>
             </>
@@ -391,7 +391,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   label={isZh ? '灵感来源' : 'Sources'}
                   value={`${validSegments.length} ${isZh ? '段（每次随机抽 1 段）' : 'segments (1 picked at random per run)'}`} />
                 <SummaryRow label={isZh ? '每次生成' : 'Per run'} value={`${dailyCount} ${isZh ? '篇' : 'posts'}`} />
-                <SummaryRow label={isZh ? '配图' : 'Image'} value={isZh ? '每篇 1 张 AI 内容图' : '1 AI content image per post'} />
+                <SummaryRow label={isZh ? '配图' : 'Image'} value={isZh ? '每篇 2 张 AI 图(1 封面 + 1 内容)' : '2 AI images per post (1 cover + 1 content)'} />
                 <SummaryRow label={isZh ? '生成后' : 'After gen'} value={
                   uploadMode === 'publish'
                     ? (isZh ? '直接发布到抖音' : 'Auto-publish to Douyin')

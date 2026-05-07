@@ -111,8 +111,8 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     category: 'knowledge',
     name_zh: '抖音 · 图文创作',
     name_en: 'Douyin Image-Text Creation',
-    description_zh: '你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记，再生成 1 张内容图，自动暂存到抖音创作者中心图文草稿。',
-    description_en: 'Fill 3 source snippets; each run picks one at random, AI rewrites it into a Douyin image-text note, generates 1 content image, then auto-saves it as a Douyin creator-center draft.',
+    description_zh: '你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记，配 1 张封面图 + 1 张内容图，自动发布到抖音(或存草稿/仅本地保存)。',
+    description_en: 'Fill 3 source snippets; each run picks one at random, AI rewrites it into a Douyin image-text note with 1 cover + 1 content image, then auto-publishes (or saves draft / local).',
     icon: '📝',
     default_config: {
       keywords: [],
@@ -319,8 +319,8 @@ const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
         </h3>
         <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
           {isZh
-            ? '你填 3 段灵感来源(经历 / 想法 / 笔记都行),每次运行 AI 随机抽一段,按你的人设改写成抖音图文笔记,再配一张内容图,自动暂存到抖音创作者中心图文草稿。'
-            : 'Fill 3 source snippets (notes / experiences). Each run picks one at random, rewrites in your persona, generates a content image, and auto-saves to your Douyin creator-center drafts.'}
+            ? '你填 3 段灵感来源(经历 / 想法 / 笔记都行),每次运行 AI 随机抽一段,按你的人设改写成抖音图文笔记,配一张封面图 + 一张内容图,自动发布到抖音(也可选存草稿/仅本地)。'
+            : 'Fill 3 source snippets (notes / experiences). Each run picks one at random, rewrites in your persona, generates 1 cover + 1 content image, then auto-publishes (or draft / local).'}
         </p>
         <button
           type="button"
