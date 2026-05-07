@@ -206,7 +206,10 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* Login modal */}
+      {/* Login modal — 图文创作 + 互动涨粉共用 platform="douyin"。
+          模态框开 www.douyin.com/jingxuan,SSO 跨子域共享意味着登一次
+          creator.douyin.com 也能用。任务跑时 ctx.navigate 把同一个 douyin.com
+          tab 的 URL 直接更新成目标 URL(creator URL 或 jingxuan URL)。 */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"

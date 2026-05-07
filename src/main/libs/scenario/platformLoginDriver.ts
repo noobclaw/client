@@ -48,7 +48,10 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   tiktok: /tiktok\.com/i,
   // YouTube — main domain + m.youtube.com mobile + youtube-nocookie embeds.
   youtube: /(?:^|\.)(?:youtube|youtube-nocookie)\.com/i,
-  // 抖音 web — jingxuan / 推荐 / 视频详情都在 douyin.com 下,任意路径都算。
+  // 抖音 web — jingxuan / 推荐 / 视频详情 / creator.* 都在 douyin.com 下,
+  // 任意子域路径都算。图文创作场景跟 auto_engage 共用同一个 platform 代码:
+  // SSO 跨子域共享,登一次哪都通;任务跑时 ctx.navigate(creator.* URL) 会
+  // 把这个匹配 tab 的 URL 直接更新成 creator URL,无需单独路由。
   douyin: /douyin\.com/i,
 };
 
