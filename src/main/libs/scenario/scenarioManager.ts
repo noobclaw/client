@@ -147,17 +147,29 @@ function now(): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
 }
 
-function initProgress(taskId: string): void {
+function initProgress(taskId: string, scenarioId?: string): void {
+  // Step labels are XHS-style by default (历史默认),scenarioId-specific
+  // overrides 让其它场景显示更贴切的标签。新场景如有需要在 SCENARIO_STEP_NAMES
+  // 里加一项即可,缺省回退到默认 4 步。
+  const SCENARIO_STEP_NAMES: Record<string, string[]> = {
+    douyin_image_text: [
+      '从 3 段灵感来源里随机抽 1 段',
+      'AI 改写为抖音图文笔记，保存到本地',
+      'AI 生成内容图',
+      '上传到抖音创作者中心图文草稿。请勿切换浏览器标签页。',
+    ],
+  };
+  const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [
+    '采集爆款文章。请勿切换浏览器标签页。',
+    'AI 改写标题和内容，保存到本地',
+    'AI 生成配图',
+    '上传到小红书草稿箱。请勿切换浏览器标签页。',
+  ];
   progressByTaskId.set(taskId, {
     taskId,
     status: 'running',
     currentStep: 0,
-    steps: [
-      { name: '采集爆款文章。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
-      { name: 'AI 改写标题和内容，保存到本地', status: 'waiting', logs: [] },
-      { name: 'AI 生成配图', status: 'waiting', logs: [] },
-      { name: '上传到小红书草稿箱。请勿切换浏览器标签页。', status: 'waiting', logs: [] },
-    ],
+    steps: stepNames.map(name => ({ name, status: 'waiting' as const, logs: [] })),
   });
   abortByTaskId.set(taskId, false);
 }
@@ -564,7 +576,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
   markResourcesBusy(resources, task.id);
-  initProgress(task.id);
+  initProgress(task.id, pack.manifest?.id);
   // Manual single-draft upload also creates a run record so the user can
   // review what was uploaded later from the history page.
   startTaskRecord(task, pack.manifest);

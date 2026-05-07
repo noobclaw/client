@@ -13,6 +13,7 @@ import type { Scenario, Task } from '../../services/scenario';
 import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 import { TikTokConfigWizard } from './TikTokConfigWizard';
 import { DouyinConfigWizard } from './DouyinConfigWizard';
+import { DouyinImageTextWizard } from './DouyinImageTextWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -395,6 +396,19 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'douyin_auto_engage') {
     return (
       <DouyinConfigWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // 抖音图文创作 — 输入是 3 段灵感来源 + persona,跟互动涨粉差异很大,走
+  // 独立 wizard 避免字段串台。
+  if (scenario.id === 'douyin_image_text') {
+    return (
+      <DouyinImageTextWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}

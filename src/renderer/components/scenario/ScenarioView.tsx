@@ -294,6 +294,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     language?: 'zh' | 'en' | 'mixed';
     user_context?: string;
     urls?: string[];
+    /** douyin_image_text: 3 段灵感来源,跟 keywords 互斥 */
+    source_segments?: string[];
+    /** douyin_image_text / xhs viral_production: 自动上传草稿 vs 仅生成 */
+    auto_upload?: boolean;
   }) => {
     let landingTaskId: string | null = null;
     let createdLinkRewrite = false;

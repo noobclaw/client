@@ -163,6 +163,9 @@ export interface ScenarioTask {
    *  link_rewrite) inject this into rewrite/original prompts so generated
    *  tweets have real substance instead of generic templates. Optional. */
   user_context?: string;
+  /** douyin_image_text: 用户填的 3 段灵感来源。每次任务运行随机抽 1 段交给
+   *  AI 改写。允许少于 3 段（最少 1 段）。空段被 orchestrator 过滤掉。 */
+  source_segments?: string[];
   /** Twitter v1.x: x_auto_engage daily action ranges (min/max). System
    *  picks random in [min,max] each day. Optional — old tasks default to
    *  (0,3) follows / (1,daily_count) replies. */

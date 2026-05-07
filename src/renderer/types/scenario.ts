@@ -107,6 +107,10 @@ export interface ScenarioTaskIPC {
   user_context?: string;
   /** Twitter v1: tweet URLs for x_link_rewrite scenario. Optional. */
   urls?: string[];
+  /** douyin_image_text: 用户填的 3 段灵感来源（最少 1 段）。每次任务运行
+   *  随机抽 1 段交给 AI 改写成抖音图文笔记草稿。Optional —— 仅
+   *  douyin_image_text 场景使用。 */
+  source_segments?: string[];
   /** Twitter v1.x: x_auto_engage daily action ranges. System picks random
    *  values inside each range. Optional — backwards-compat tasks fall back
    *  to (0,3) follows + (1, daily_count) replies. */

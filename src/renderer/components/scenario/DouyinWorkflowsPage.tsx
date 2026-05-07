@@ -1,11 +1,12 @@
 /**
  * DouyinWorkflowsPage — 抖音平台工作流页面.
  *
- * v1 只挂一个 scenario:
- *   douyin_auto_engage — 自动浏览精选 / 推荐流,按用户配置做点赞 / 关注 / 评论
+ * 已挂 scenarios:
+ *   douyin_auto_engage  — 自动浏览精选 / 推荐流,按用户配置做点赞 / 关注 / 评论
+ *   douyin_image_text   — 用户填 3 段灵感,AI 改写 + 生成内容图,自动暂存到
+ *                          抖音创作者中心图文草稿(参照小红书 viral_production)
  *
- * 结构跟 TikTokWorkflowsPage 完全对齐,字段隔离 (主色由粉改红,login 走 douyin)
- * — TikTok 的卡片 / 任务上限 / login modal 流程都直接复用,只是平台不同。
+ * 结构跟 TikTokWorkflowsPage / XhsWorkflowsPage 对齐,主色 violet。
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -100,6 +101,47 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
 
   const autoEngage = findById('douyin_auto_engage') || FALLBACK_AUTO_ENGAGE;
 
+  // ── 图文创作 fallback —— 跟 douyin_auto_engage 同一套 fallback 逻辑,
+  // 在 backend scenarios 列表还没拉到时也能点开 wizard。
+  const FALLBACK_IMAGE_TEXT: Scenario = {
+    id: 'douyin_image_text',
+    version: '1.0.0',
+    platform: 'douyin' as any,
+    workflow_type: 'viral_production' as any,
+    category: 'knowledge',
+    name_zh: '抖音 · 图文创作',
+    name_en: 'Douyin Image-Text Creation',
+    description_zh: '你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记，再生成 1 张内容图，自动暂存到抖音创作者中心图文草稿。',
+    description_en: 'Fill 3 source snippets; each run picks one at random, AI rewrites it into a Douyin image-text note, generates 1 content image, then auto-saves it as a Douyin creator-center draft.',
+    icon: '📝',
+    default_config: {
+      keywords: [],
+      persona: '对生活有真实感受的普通人，文字口语化，不爹味、不端着',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-22:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 3,
+      max_scroll_per_run: 0,
+      min_scroll_delay_ms: 0,
+      max_scroll_delay_ms: 0,
+      read_dwell_min_ms: 0,
+      read_dwell_max_ms: 0,
+      max_run_duration_ms: 1800000,
+      min_interval_hours: 4,
+      weekly_rest_days: 1,
+      cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48,
+      cooldown_account_flag_hours: 72,
+    } as any,
+    required_login_url: 'https://creator.douyin.com',
+    entry_urls: {},
+    skills: {},
+  } as any;
+
+  const imageText = findById('douyin_image_text') || FALLBACK_IMAGE_TEXT;
+
   const handleConfigure = useCallback(async (scenario: Scenario | null) => {
     if (!scenario) {
       alert(isZh ? '场景元数据还在加载中，请稍后再试' : 'Scenario metadata still loading');
@@ -122,18 +164,25 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     setLoginModalReason(null);
     if (reason === 'douyin_auto_engage') {
       onConfigure(autoEngage);
+    } else if (reason === 'douyin_image_text') {
+      onConfigure(imageText);
     }
   };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Single scenario card. 用 max-w-3xl 让单卡片不被拉到全宽,跟
-          TikTokWorkflowsPage / YoutubeWorkflowsPage 视觉一致。 */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md md:max-w-md mx-auto">
+      {/* Two scenario cards — 互动涨粉 + 图文创作。 */}
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <DouyinScenarioCard
           loading={loading}
           scenario={autoEngage}
           onConfigure={() => handleConfigure(autoEngage)}
+          isZh={isZh}
+        />
+        <DouyinImageTextCard
+          loading={loading}
+          scenario={imageText}
+          onConfigure={() => handleConfigure(imageText)}
           isZh={isZh}
         />
       </section>
@@ -223,7 +272,7 @@ type CardProps = {
 
 const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
   return (
-    <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
+    <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
       <div className="relative flex flex-col flex-1">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-violet-500 mb-2">
@@ -245,6 +294,38 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95"
         >
           🎶 {isZh ? '开始互动' : 'Start'} →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── 抖音图文创作 card —— 跟 XHS 爆款仿写视觉同源,主色沿用抖音页 violet 保持
+//    平台一致性。文案突出"3 段灵感来源 + AI 改写 + 内容图 + 自动暂存"四步。
+const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
+  return (
+    <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+      <div className="relative flex flex-col flex-1">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+          {isZh ? '图文创作' : 'Image-Text Post'}
+        </div>
+        <h3 className="text-base font-bold dark:text-white mb-1.5">
+          📝 {isZh ? '抖音 · 图文创作' : 'Douyin Image-Text'}
+        </h3>
+        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
+          {isZh
+            ? '你填 3 段灵感来源(经历 / 想法 / 笔记都行),每次运行 AI 随机抽一段,按你的人设改写成抖音图文笔记,再配一张内容图,自动暂存到抖音创作者中心图文草稿。'
+            : 'Fill 3 source snippets (notes / experiences). Each run picks one at random, rewrites in your persona, generates a content image, and auto-saves to your Douyin creator-center drafts.'}
+        </p>
+        <button
+          type="button"
+          onClick={onConfigure}
+          disabled={loading || !scenario}
+          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
+        >
+          📝 {isZh ? '开始创作' : 'Start'} →
         </button>
       </div>
     </div>
