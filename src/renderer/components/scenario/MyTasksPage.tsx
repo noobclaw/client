@@ -251,6 +251,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
               // 引入 isAnyLinkRewrite 后:隐藏 track 行 / 隐藏 persona snippet / 改显 URL 列表。
               const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite;
+              // v5.x+: 抖音图文创作场景没有 track / persona / keywords 概念,
+              // 只看 source_segments[3]。MyTasksPage 跟 TaskDetailPage 对齐,
+              // 隐藏 persona snippet 和 track 行(老任务 task.persona 字段还在
+              // 但 wizard 不再让用户填,展示只会误导)。
+              const isDouyinImageText = sid === 'douyin_image_text';
               const taskUrls: string[] = (task as any).urls || [];
               // Type labels per user spec (v2.4.26):
               // Twitter: 推特 · 互动涨粉 / 推特 · 自动发推 / 指定链接仿写
@@ -266,6 +271,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'youtube_auto_engage')          return { icon: '📺', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'douyin_auto_engage')           return { icon: '🎵', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+                if (sid === 'douyin_image_text')            return { icon: '📝', zh: '抖音 · 图文创作', en: 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
                 // otherwise Binance / YouTube / TikTok / Douyin scenarios with
@@ -319,7 +325,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
                         {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
                       </span>
-                      {!isAnyLinkRewrite && (
+                      {!isAnyLinkRewrite && !isDouyinImageText && (
                         <>
                           <span className="text-lg">{subIcon}</span>
                           <span className="font-medium dark:text-white truncate">{subTitle}</span>
@@ -352,12 +358,35 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   {/* Persona snippet — strip Chinese prefix in EN mode.
                       v4.28.x: 链接仿写场景(x_link_rewrite / binance_from_x_link / XHS link mode)
                       用户根本没填 persona,只有 wizard fallback 默认值,展示出来反而误导
-                      ("我没填怎么有身份"用户原话),所以这里跳过。 */}
-                  {!isAnyLinkRewrite && personaSnippet && (
+                      ("我没填怎么有身份"用户原话),所以这里跳过。
+                      v5.x+: 抖音图文创作也不展示 — 老任务可能有 persona 字段(在
+                      wizard 删 persona 之前创建的),展示出来跟详情页不一致。 */}
+                  {!isAnyLinkRewrite && !isDouyinImageText && personaSnippet && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
                       👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
                   )}
+                  {/* 抖音图文创作:在 frequency 之上展示 3 段参考文案的前 1-2 段
+                      预览,跟详情页一致 — 这是这个场景的核心输入,列表页应该
+                      第一眼能看到。 */}
+                  {isDouyinImageText && (() => {
+                    const segs: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
+                    const visible = segs.filter(s => typeof s === 'string' && s.trim().length > 0).slice(0, 2);
+                    if (visible.length === 0) return null;
+                    return (
+                      <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1 space-y-0.5">
+                        {visible.map((s, i) => (
+                          <div key={i} className="truncate">
+                            <span className="text-gray-400">{isZh ? '参考文案 ' : 'Reference '}{['①','②','③'][i] || (i + 1)}:</span>{' '}
+                            <span>{s.trim().slice(0, 70)}{s.trim().length > 70 ? '...' : ''}</span>
+                          </div>
+                        ))}
+                        {segs.filter(s => typeof s === 'string' && s.trim().length > 0).length > 2 && (
+                          <div className="text-gray-400">...</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {/* Frequency / URL details */}
                   <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
                     {isAnyLinkRewrite ? (
