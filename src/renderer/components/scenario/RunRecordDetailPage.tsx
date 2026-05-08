@@ -193,7 +193,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     if (sc.platform === 'x')       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if ((sc.platform as any) === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
     if ((sc.platform as any) === 'tiktok')  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 

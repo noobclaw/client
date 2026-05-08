@@ -116,7 +116,7 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     icon: '📝',
     default_config: {
       keywords: [],
-      persona: '对生活有真实感受的普通人，文字口语化，不爹味、不端着',
+      persona: '',
       daily_count: 1,
       variants_per_post: 1,
       schedule_window: '09:00-22:00',

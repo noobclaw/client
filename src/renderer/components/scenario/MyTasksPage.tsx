@@ -284,7 +284,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (plat === 'x')       return { icon: '🐦', zh: '推特任务', en: 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if ((plat as any) === 'youtube') return { icon: '📺', zh: 'YouTube 任务', en: 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                 if ((plat as any) === 'tiktok')  return { icon: '🎵', zh: 'TikTok 任务', en: 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-                if ((plat as any) === 'douyin')  return { icon: '🎵', zh: '抖音任务', en: 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'douyin')  return { icon: '🎵', zh: '抖音创作', en: 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 return { icon: '🔥', zh: '小红书 · 爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name

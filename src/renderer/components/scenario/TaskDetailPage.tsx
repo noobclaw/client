@@ -295,6 +295,18 @@ const STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN = [
   'Open each video, execute like / follow / comment',
   'Save this run report to disk',
 ];
+const STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH = [
+  'AI根据参考文案创作文章。请勿切换浏览器标签页。',
+  'AI 改写为抖音图文笔记，保存到本地',
+  'AI 生成封面图 + 内容图',
+  '上传到抖音创作者中心并发布。请勿切换浏览器标签页。',
+];
+const STEP_NAMES_DOUYIN_IMAGE_TEXT_EN = [
+  'AI composes article from reference text. Do not switch browser tabs.',
+  'AI rewrite saved locally as Douyin image-text note',
+  'AI generates cover + content images',
+  'Upload to Douyin creator center & publish. Do not switch browser tabs.',
+];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
   'AI 改写为币安风格 + 下载原图/视频',
@@ -360,6 +372,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'youtube_auto_engage') return isZh ? STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH : STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN;
     if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
     if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
+    if (sid === 'douyin_image_text') return isZh ? STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH : STEP_NAMES_DOUYIN_IMAGE_TEXT_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -680,6 +693,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'youtube_auto_engage')            return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
     if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'douyin_image_text')              return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
     // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.
@@ -694,7 +708,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (isXTask)       return { icon: '🐦', label: isZh ? '推特任务' : 'Twitter Task', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (isYoutubeTask) return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
     if (isTiktokTask)  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
-    if (isDouyinTask)  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isDouyinTask)  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 
@@ -734,13 +748,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {(() => {
               const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
               const taskUrls: string[] = (task as any).urls || [];
+              // 抖音图文创作场景:不展示 赛道 / 人设 / 关键词,只展示 3 段参考文案
+              const isDouyinImageText = task.scenario_id === 'douyin_image_text';
+              const sourceSegments: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
               return (
                 <>
                   {/* v4.28.x: 链接仿写场景(XHS link mode / x_link_rewrite / binance_from_x_link)
                       隐藏「赛道/人设: 🔗 ...」整行 —— 上面已经有 type badge 标明任务类型,
                       这一行的 link-mode label 跟 badge 完全重复,#ID 也已在标题区显示;
-                      用户根本没填 track / persona,展示出来纯属噪音。 */}
-                  {!isLinkMode && (
+                      用户根本没填 track / persona,展示出来纯属噪音。
+                      v5.x+: douyin_image_text 同理 — 只有参考文案,没赛道没人设。 */}
+                  {!isLinkMode && !isDouyinImageText && (
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">
                         {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
@@ -749,13 +767,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
                     </div>
                   )}
+                  {isDouyinImageText && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                    </div>
+                  )}
                   {/* v4.28.x: 把 task.persona 文本展开显示在「人设: XXX」下面 ——
                       列表页(MyTasksPage)只截取首行 80 字,用户进到详情想看完整身份
                       描述只能去 wizard 编辑里翻,体验不好。这里展示完整 persona。
-                      Link 模式没人设概念跳过。 */}
-                  {!isLinkMode && (task.persona || '').trim() && (
+                      Link 模式 + 图文创作没人设概念跳过。 */}
+                  {!isLinkMode && !isDouyinImageText && (task.persona || '').trim() && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
                       👤 {(task.persona || '').trim()}
+                    </div>
+                  )}
+                  {isDouyinImageText && sourceSegments.length > 0 && (
+                    <div className="space-y-1.5 pl-1">
+                      {sourceSegments.map((s, i) => (
+                        <div key={i} className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          <span className="text-gray-500">{isZh ? '参考文案 ' : 'Reference '}{['①','②','③'][i] || (i+1)}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{s}</span>
+                        </div>
+                      ))}
                     </div>
                   )}
                   {isLinkMode ? (
@@ -791,8 +824,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           by keyword (auto_engage uses KOL pool + Home feed,
                           post_creator uses topic_context, link_rewrite is
                           URL-driven). Hide on X to avoid showing a misleading
-                          empty/default keyword list. */}
-                      {!isXTask && (
+                          empty/default keyword list.
+                          v5.x+: douyin_image_text 也跳过 — 只看参考文案,没关键词。 */}
+                      {!isXTask && !isDouyinImageText && (
                         <div>
                           {(/^binance/.test(task.scenario_id) ? (isZh ? 'Token tag' : 'Token tag') : (isZh ? '关键词' : 'Keywords'))}
                           : {task.keywords.join(' · ')}

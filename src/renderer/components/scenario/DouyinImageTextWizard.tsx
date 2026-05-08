@@ -1,12 +1,12 @@
 /**
  * DouyinImageTextWizard — 抖音图文创作 wizard
  *
- *   Step 1 — 3 段灵感来源 (textareas) + 人设
- *   Step 2 — 每天生成几条 + 自动上传 / 仅生成
+ *   Step 1 — 3 段「参考文案」(textareas)
+ *   Step 2 — 每天生成几条 + 自动发布 / 存草稿 / 仅本地
  *   Step 3 — 调度 + 摘要 + 条款 + 创建
  *
- * 跟 DouyinConfigWizard (互动涨粉) 完全分离 —— 这个场景的输入是用户填的
- * 3 段文字 + persona,跟互动涨粉的 like/follow/comment 滑条没有共用部分。
+ * 用户实测后明确:这个场景不要 persona / 赛道 / 关键词 概念,只需要 3 段
+ * 参考文案。AI 拿参考文案直接创作抖音图文。
  *
  * 主色沿用 Douyin 页面的 violet,跟互动涨粉卡片视觉一致。
  */
@@ -40,7 +40,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
 
   const [step, setStep] = useState<WizardStep>(1);
 
-  // ── 3 段灵感来源 ──
+  // ── 3 段参考文案 ──
   const initialSegments: string[] = (() => {
     const src = (initialTask as any)?.source_segments;
     if (Array.isArray(src) && src.length > 0) {
@@ -53,12 +53,6 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const [seg1, setSeg1] = useState<string>(initialSegments[0]);
   const [seg2, setSeg2] = useState<string>(initialSegments[1]);
   const [seg3, setSeg3] = useState<string>(initialSegments[2]);
-
-  // ── persona ──
-  const initialPersona = initialTask?.persona && initialTask.persona.trim()
-    ? initialTask.persona
-    : (scenario.default_config?.persona || '对生活有真实感受的普通人，文字口语化');
-  const [persona, setPersona] = useState<string>(initialPersona);
 
   // ── 每次运行生成几条 ──
   const [dailyCount, setDailyCount] = useState<number>(
@@ -101,7 +95,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seg1, seg2, seg3, persona, dailyCount, uploadMode, runInterval]);
+  }, [seg1, seg2, seg3, dailyCount, uploadMode, runInterval]);
 
   const validSegments = [seg1, seg2, seg3]
     .map(s => s.trim())
@@ -110,7 +104,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
     1: validSegments.length >= 1
       ? { ok: true }
-      : { ok: false, reason: isZh ? `至少 1 段灵感来源（每段 ${SEGMENT_MIN_CHARS} 字以上）` : `Need at least 1 source segment (≥ ${SEGMENT_MIN_CHARS} chars each)` },
+      : { ok: false, reason: isZh ? `至少 1 段参考文案（每段 ${SEGMENT_MIN_CHARS} 字以上）` : `Need at least 1 reference text (≥ ${SEGMENT_MIN_CHARS} chars each)` },
     2: dailyCount >= DAILY_COUNT_MIN
       ? { ok: true }
       : { ok: false, reason: isZh ? '每次生成至少 1 条' : 'At least 1 per run' },
@@ -124,7 +118,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
       return;
     }
     if (validSegments.length === 0) {
-      setSaveError(isZh ? '至少 1 段灵感来源' : 'Need at least 1 source segment');
+      setSaveError(isZh ? '至少 1 段参考文案' : 'Need at least 1 reference text');
       setStep(1);
       return;
     }
@@ -136,11 +130,13 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
       //   local:   auto_upload=false (压根不上传,只本地存)
       const auto_upload = uploadMode !== 'local';
       const auto_publish = uploadMode === 'publish';
+      // 这个场景没有 persona / 赛道 / 关键词概念 —— track 用 'image_text' 占位,
+      // persona/keywords 传空给 createTask 兼容旧 schema。
       await onSave({
         scenario_id: scenario.id,
         track: 'image_text',
         keywords: [],
-        persona: persona.trim(),
+        persona: '',
         daily_count: dailyCount,
         variants_per_post: 1,
         daily_time: dailyTime,
@@ -191,14 +187,14 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
             <>
               <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300">
                 ✨ {isZh
-                  ? <>填 <strong>3 段灵感来源</strong>(可以是经历、想法、笔记、随手记)。每次任务运行会从里面<strong>随机抽 1 段</strong>,AI 按你的人设改写成抖音图文笔记。可以只填 1 段,但 3 段不重复才能让生成多样化。</>
-                  : <>Fill in <strong>3 source snippets</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and rewrites into a Douyin image-text note in your persona. 1 is the minimum, 3 keeps results varied.</>}
+                  ? <>填 <strong>3 段参考文案</strong>(可以是经历、想法、笔记、随手记)。每次任务运行会从里面<strong>随机抽 1 段</strong>,AI 拿这段参考文案直接创作抖音图文。可以只填 1 段,但 3 段不重复才能让生成多样化。</>
+                  : <>Fill in <strong>3 reference texts</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and AI uses it as the basis to compose a Douyin image-text post. 1 is the minimum, 3 keeps results varied.</>}
               </div>
 
               {[
-                { label: isZh ? '灵感 ①' : 'Source ①', value: seg1, set: setSeg1 },
-                { label: isZh ? '灵感 ②' : 'Source ②', value: seg2, set: setSeg2 },
-                { label: isZh ? '灵感 ③' : 'Source ③', value: seg3, set: setSeg3 },
+                { label: isZh ? '参考文案 ①' : 'Reference ①', value: seg1, set: setSeg1 },
+                { label: isZh ? '参考文案 ②' : 'Reference ②', value: seg2, set: setSeg2 },
+                { label: isZh ? '参考文案 ③' : 'Reference ③', value: seg3, set: setSeg3 },
               ].map((row, i) => (
                 <div key={i}>
                   <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
@@ -229,24 +225,6 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   </div>
                 </div>
               ))}
-
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                  {isZh ? '🎭 人设（AI 写作时遵循的口气）' : '🎭 Persona (writing voice)'}
-                </label>
-                <textarea
-                  value={persona}
-                  onChange={e => setPersona(e.target.value)}
-                  rows={3}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 resize-y"
-                  disabled={saving}
-                />
-                <div className="text-[11px] text-gray-400 mt-1">
-                  {isZh
-                    ? '尽量写"身份 + 口气特征"。比如:30 岁广州上班族,说话带咖啡圈黑话,会自嘲。'
-                    : 'Format: identity + voice traits. e.g. 30yo Guangzhou worker, casual coffee-circle slang, self-deprecating.'}
-                </div>
-              </div>
             </>
           )}
 

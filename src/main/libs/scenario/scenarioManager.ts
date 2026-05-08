@@ -153,10 +153,10 @@ function initProgress(taskId: string, scenarioId?: string): void {
   // 里加一项即可,缺省回退到默认 4 步。
   const SCENARIO_STEP_NAMES: Record<string, string[]> = {
     douyin_image_text: [
-      '从 3 段灵感来源里随机抽 1 段',
+      'AI根据参考文案创作文章。请勿切换浏览器标签页。',
       'AI 改写为抖音图文笔记，保存到本地',
-      'AI 生成内容图',
-      '上传到抖音创作者中心图文草稿。请勿切换浏览器标签页。',
+      'AI 生成封面图 + 内容图',
+      '上传到抖音创作者中心并发布。请勿切换浏览器标签页。',
     ],
   };
   const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [
