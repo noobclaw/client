@@ -5,15 +5,30 @@
  * Architecture:
  *   Chrome Extension <-> Native Messaging Host (stdin/stdout) <-> TCP <-> This bridge
  *
+ * v2.6.x WebSocket fallback:
+ *   The NM path requires a registry write (HKCU\...\NativeMessagingHosts\...)
+ *   which 360 / Defender / 火绒 routinely flag as malware behavior, leaving
+ *   users with a permanently disconnected extension. attachBrowserBridgeWebSocket
+ *   below mounts a WS upgrade route on the existing sidecar HTTP server (18800)
+ *   so the extension can fall back to:
+ *     ws://127.0.0.1:18800/browser-bridge
+ *   The handshake is gated by an Origin check against EXTENSION_IDS — same
+ *   whitelist NM uses. Once upgraded, the connection is shimmed into a
+ *   net.Socket-shaped object and fed through attachBrowserConn() with
+ *   transport='ws', so all downstream send/route logic is identical to NM.
+ *
  * Also handles:
  *   - Native messaging host registration (registry on Windows, plist on macOS)
  *   - Extension installation detection
  */
 
+import http from 'http';
 import net from 'net';
 import path from 'path';
 import fs from 'fs';
+import { EventEmitter } from 'events';
 import { randomUUID } from 'crypto';
+import { WebSocketServer, WebSocket as WsWebSocket } from 'ws';
 import { isElectronMode, getUserDataPath, getAppPath, getResourcesPath, openExternal } from './platformAdapter';
 
 // Conditionally load Electron modules — unavailable in sidecar mode
@@ -123,6 +138,13 @@ let bridgePort: number | null = null;
 interface BrowserConn {
   id: string;
   socket: net.Socket;
+  /** Which transport this conn arrived on. NM = native messaging host (the
+   *  default; Chrome spawns the .bat → .exe → .exe TCP-connects to us).
+   *  WS = WebSocket fallback (extension hits ws://127.0.0.1:18800/browser-bridge
+   *  directly when NM is broken — registry write blocked by AV, host script
+   *  missing, etc.). Used purely for diagnostic logs and the popup status
+   *  badge; downstream command routing treats both identically. */
+  transport: 'nm' | 'ws';
   tabs: Array<{ id: number; url: string }>;
   /** Extension version reported in the `hello` message. Empty until the
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
@@ -560,6 +582,216 @@ export function isExtensionInstalled(): boolean {
   } catch { return false; }
 }
 
+// --- Connection lifecycle (shared between NM TCP and WS fallback) ---
+
+/**
+ * Wire up a transport-agnostic connection. Both the NM TCP listener and the
+ * WS upgrade handler call this with whatever socket-shaped object they have.
+ * Owns: registration in browserConns, hello/tabs_changed parsing, command
+ * response routing, lifecycle teardown.
+ */
+function attachBrowserConn(socket: net.Socket, transport: 'nm' | 'ws'): void {
+  const connId = `conn_${++connSeq}`;
+  const conn: BrowserConn = {
+    id: connId,
+    socket,
+    transport,
+    tabs: [],
+    extensionVersion: '',
+    connectedAt: Date.now(),
+    lastActivityAt: Date.now(),
+    consecutiveTimeouts: 0,
+  };
+  // OS-level TCP keepalive — if the socket goes silently dead (system
+  // sleep, network blip, native host crash without proper FIN), the OS
+  // will probe every ~30s and after a few failed probes will fire
+  // socket.on('close'), which removes the stale conn from the map.
+  // Without this, dead sockets linger for 2 hours (default Linux/macOS
+  // TCP keepalive timer) — long enough that every sendBrowserCommand
+  // hits the dead conn first, waits 3s for timeout, returns failure.
+  // User-visible symptom: "运行前检查" hangs forever.
+  // (WS shim no-ops these; the ws lib has its own ping/pong.)
+  try { socket.setKeepAlive(true, 30000); } catch {}
+  try { socket.setNoDelay(true); } catch {}
+  browserConns.set(connId, conn);
+  console.log(`[BrowserBridge] Browser ${connId} connected via ${transport.toUpperCase()} (total: ${browserConns.size})`);
+
+  notifyBridgeStatus(true);
+  fireConnectionListeners();
+
+  let recvBuf = '';
+  socket.on('data', (data) => {
+    recvBuf += data.toString('utf8');
+    let newlineIdx;
+    while ((newlineIdx = recvBuf.indexOf('\n')) >= 0) {
+      const line = recvBuf.slice(0, newlineIdx);
+      recvBuf = recvBuf.slice(newlineIdx + 1);
+      if (!line.trim()) continue;
+      try {
+        const msg = JSON.parse(line);
+
+        if (msg.type === 'pong') return;
+
+        // Tab inventory updates from the extension. The extension sends
+        // `hello` once on connect, then `tabs_changed` on every tab
+        // create / update / remove. We use these to route subsequent
+        // commands by tabPattern without round-tripping a query first.
+        if (msg.type === 'hello' || msg.type === 'tabs_changed') {
+          if (typeof msg.version === 'string' && msg.version) {
+            conn.extensionVersion = msg.version;
+          }
+          if (Array.isArray(msg.tabs)) {
+            conn.tabs = msg.tabs.map((t: any) => ({
+              id: Number(t.id),
+              url: String(t.url || ''),
+            }));
+            conn.lastActivityAt = Date.now();
+          }
+          return;
+        }
+
+        // Response to a command — could come from ANY connection. The
+        // pendingRequests map is keyed by command id which is unique
+        // across browsers, so no de-dup needed.
+        if (msg.id && pendingRequests.has(msg.id)) {
+          const pending = pendingRequests.get(msg.id)!;
+          clearTimeout(pending.timer);
+          pendingRequests.delete(msg.id);
+          conn.lastActivityAt = Date.now();
+          if (msg.success) {
+            pending.resolve(msg.data);
+          } else {
+            pending.reject(new Error(msg.error || 'Command failed'));
+          }
+        }
+      } catch (err) {
+        console.error('[BrowserBridge] Failed to parse message:', err);
+      }
+    }
+  });
+
+  socket.on('close', () => {
+    console.log(`[BrowserBridge] Browser ${connId} (${transport.toUpperCase()}) disconnected (remaining: ${browserConns.size - 1})`);
+    browserConns.delete(connId);
+    if (!isAnyBrowserConnected()) notifyBridgeStatus(false);
+    // Reject any pending requests that were definitely targeted at this
+    // connection. We can't tell from pending entries which conn they
+    // were sent to, so on FULL disconnect (no browsers left) we reject
+    // all. Otherwise we let them ride — another browser might respond,
+    // or they'll time out naturally.
+    if (browserConns.size === 0) {
+      for (const [id, pending] of pendingRequests) {
+        clearTimeout(pending.timer);
+        pending.reject(new Error('Extension disconnected'));
+        pendingRequests.delete(id);
+      }
+    }
+  });
+
+  socket.on('error', (err) => {
+    console.error(`[BrowserBridge] Socket error on ${connId} (${transport.toUpperCase()}):`, err.message);
+  });
+}
+
+// --- WebSocket fallback (mounts on existing sidecar HTTP server) ---
+
+/**
+ * Adapter: wrap a `ws` WebSocket into a net.Socket-shaped facade so the
+ * existing browserBridge connection-handling code (designed for net.Socket)
+ * can consume it without modification. Only the methods/events actually used
+ * by attachBrowserConn are shimmed:
+ *   - .write(string|Buffer)
+ *   - .destroy()
+ *   - .destroyed (bool)
+ *   - .setKeepAlive() / .setNoDelay() — no-ops; ws has its own ping/pong
+ *   - .on('data' | 'close' | 'error')
+ * WS frames are message-bounded; we append '\n' to each frame to match the
+ * line-delimited JSON parser inherited from the TCP path.
+ */
+function wrapWebSocketAsSocket(ws: WsWebSocket): net.Socket {
+  const shim: any = new EventEmitter();
+  shim.destroyed = false;
+  shim.write = (data: string | Buffer) => {
+    if (shim.destroyed) return false;
+    try {
+      ws.send(typeof data === 'string' ? data : data.toString('utf8'));
+      return true;
+    } catch { return false; }
+  };
+  shim.destroy = () => {
+    if (shim.destroyed) return;
+    shim.destroyed = true;
+    try { ws.close(1000, 'destroyed'); } catch {}
+    try { ws.terminate(); } catch {}
+  };
+  shim.setKeepAlive = () => {};
+  shim.setNoDelay = () => {};
+
+  ws.on('message', (data) => {
+    let str: string;
+    if (typeof data === 'string') str = data;
+    else if (Buffer.isBuffer(data)) str = data.toString('utf8');
+    else if (Array.isArray(data)) str = Buffer.concat(data as Buffer[]).toString('utf8');
+    else str = String(data);
+    if (!str.endsWith('\n')) str += '\n';
+    shim.emit('data', Buffer.from(str, 'utf8'));
+  });
+  ws.on('close', () => {
+    if (!shim.destroyed) shim.destroyed = true;
+    shim.emit('close');
+  });
+  ws.on('error', (err) => shim.emit('error', err));
+  return shim as net.Socket;
+}
+
+let wsServer: WebSocketServer | null = null;
+
+/**
+ * Mount the WebSocket fallback endpoint on the given HTTP server. Idempotent.
+ * Should be called once after both startBrowserBridge() and the sidecar HTTP
+ * server are up. The sidecar HTTP server (port 18800) hosts /api/* routes
+ * for the GUI; we hijack its `upgrade` event for our /browser-bridge path
+ * and leave non-matching upgrades alone (no other WS path currently uses
+ * this server, but the check is cheap insurance).
+ *
+ * Security: Origin header must be one of EXTENSION_IDS. Real browsers can
+ * never spoof Origin on a WebSocket handshake initiated by an extension —
+ * the value comes from chrome-extension://<id>/. A non-browser local
+ * process could craft any Origin, but that's the same threat model the
+ * pre-NM (2026-03 era) WebSocket implementation accepted, and a malicious
+ * local process already has stronger attack vectors than this.
+ */
+export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
+  if (wsServer) return;
+  wsServer = new WebSocketServer({ noServer: true });
+
+  httpServer.on('upgrade', (req, sock, head) => {
+    try {
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
+      if (url.pathname !== '/browser-bridge') return;
+
+      const origin = String(req.headers.origin || '');
+      const allowedOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
+      if (!allowedOrigins.includes(origin)) {
+        console.warn(`[BrowserBridge] WS upgrade rejected: Origin=${origin || '(empty)'} not in EXTENSION_IDS whitelist`);
+        try { sock.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); } catch {}
+        try { sock.destroy(); } catch {}
+        return;
+      }
+
+      wsServer!.handleUpgrade(req, sock as net.Socket, head, (ws) => {
+        const shim = wrapWebSocketAsSocket(ws);
+        attachBrowserConn(shim, 'ws');
+      });
+    } catch (err) {
+      console.error('[BrowserBridge] WS upgrade error:', err);
+      try { sock.destroy(); } catch {}
+    }
+  });
+
+  console.log('[BrowserBridge] WebSocket fallback mounted at /browser-bridge (Origin-gated by EXTENSION_IDS)');
+}
+
 // --- TCP Server (for native messaging host connection) ---
 
 export async function startBrowserBridge(): Promise<{ port: number }> {
@@ -572,107 +804,10 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
 
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
-      // Multi-browser: every native-host connection becomes its own entry
+      // NM transport: every native-host connection becomes its own entry
       // in browserConns. We learn what tabs the browser has via the new
       // `hello` / `tabs_changed` protocol from background.js.
-      const connId = `conn_${++connSeq}`;
-      const conn: BrowserConn = {
-        id: connId,
-        socket,
-        tabs: [],
-        extensionVersion: '',
-        connectedAt: Date.now(),
-        lastActivityAt: Date.now(),
-        consecutiveTimeouts: 0,
-      };
-      // OS-level TCP keepalive — if the socket goes silently dead (system
-      // sleep, network blip, native host crash without proper FIN), the OS
-      // will probe every ~30s and after a few failed probes will fire
-      // socket.on('close'), which removes the stale conn from the map.
-      // Without this, dead sockets linger for 2 hours (default Linux/macOS
-      // TCP keepalive timer) — long enough that every sendBrowserCommand
-      // hits the dead conn first, waits 3s for timeout, returns failure.
-      // User-visible symptom: "运行前检查" hangs forever.
-      try { socket.setKeepAlive(true, 30000); } catch {}
-      try { socket.setNoDelay(true); } catch {}
-      browserConns.set(connId, conn);
-      console.log(`[BrowserBridge] Browser ${connId} connected (total: ${browserConns.size})`);
-
-      notifyBridgeStatus(true);
-      fireConnectionListeners();
-
-      let recvBuf = '';
-      socket.on('data', (data) => {
-        recvBuf += data.toString('utf8');
-        let newlineIdx;
-        while ((newlineIdx = recvBuf.indexOf('\n')) >= 0) {
-          const line = recvBuf.slice(0, newlineIdx);
-          recvBuf = recvBuf.slice(newlineIdx + 1);
-          if (!line.trim()) continue;
-          try {
-            const msg = JSON.parse(line);
-
-            if (msg.type === 'pong') return;
-
-            // Tab inventory updates from the extension. The extension sends
-            // `hello` once on connect, then `tabs_changed` on every tab
-            // create / update / remove. We use these to route subsequent
-            // commands by tabPattern without round-tripping a query first.
-            if (msg.type === 'hello' || msg.type === 'tabs_changed') {
-              if (typeof msg.version === 'string' && msg.version) {
-                conn.extensionVersion = msg.version;
-              }
-              if (Array.isArray(msg.tabs)) {
-                conn.tabs = msg.tabs.map((t: any) => ({
-                  id: Number(t.id),
-                  url: String(t.url || ''),
-                }));
-                conn.lastActivityAt = Date.now();
-              }
-              return;
-            }
-
-            // Response to a command — could come from ANY connection. The
-            // pendingRequests map is keyed by command id which is unique
-            // across browsers, so no de-dup needed.
-            if (msg.id && pendingRequests.has(msg.id)) {
-              const pending = pendingRequests.get(msg.id)!;
-              clearTimeout(pending.timer);
-              pendingRequests.delete(msg.id);
-              conn.lastActivityAt = Date.now();
-              if (msg.success) {
-                pending.resolve(msg.data);
-              } else {
-                pending.reject(new Error(msg.error || 'Command failed'));
-              }
-            }
-          } catch (err) {
-            console.error('[BrowserBridge] Failed to parse message:', err);
-          }
-        }
-      });
-
-      socket.on('close', () => {
-        console.log(`[BrowserBridge] Browser ${connId} disconnected (remaining: ${browserConns.size - 1})`);
-        browserConns.delete(connId);
-        if (!isAnyBrowserConnected()) notifyBridgeStatus(false);
-        // Reject any pending requests that were definitely targeted at this
-        // connection. We can't tell from pending entries which conn they
-        // were sent to, so on FULL disconnect (no browsers left) we reject
-        // all. Otherwise we let them ride — another browser might respond,
-        // or they'll time out naturally.
-        if (browserConns.size === 0) {
-          for (const [id, pending] of pendingRequests) {
-            clearTimeout(pending.timer);
-            pending.reject(new Error('Extension disconnected'));
-            pendingRequests.delete(id);
-          }
-        }
-      });
-
-      socket.on('error', (err) => {
-        console.error(`[BrowserBridge] Socket error on ${connId}:`, err.message);
-      });
+      attachBrowserConn(socket, 'nm');
     });
 
     // ⚠️ DO NOT silently fall back to a random port on EADDRINUSE — that

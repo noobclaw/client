@@ -295,9 +295,14 @@ async function getRunner() {
 
     // Start browser bridge (TCP server on port 12581 for Chrome extension)
     try {
-      const { startBrowserBridge, registerNativeMessagingHost, setExtensionPromptCallback } = await import('./libs/browserBridge');
+      const { startBrowserBridge, registerNativeMessagingHost, setExtensionPromptCallback, attachBrowserBridgeWebSocket } = await import('./libs/browserBridge');
       await startBrowserBridge();
       registerNativeMessagingHost();
+      // Mount the WebSocket fallback on this sidecar's HTTP server so the
+      // Chrome extension can reach us at ws://127.0.0.1:18800/browser-bridge
+      // when Native Messaging is broken (most common cause: 360 / Defender
+      // blocked the registry write that NM needs to be discoverable).
+      attachBrowserBridgeWebSocket(server);
 
       // Register extension prompt callback — broadcasts SSE to frontend for user decision
       setExtensionPromptCallback(async (opts) => {
