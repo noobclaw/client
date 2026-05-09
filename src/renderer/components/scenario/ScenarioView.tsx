@@ -632,9 +632,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         </div>
       )}
 
-      {/* L2 — platform sub-tabs (XHS / Twitter). Same hidden rule.
-          Larger + bolder text + visible inactive border so users can find
-          the toggles at a glance (previous version was too quiet). */}
+      {/* L2 — platform sub-tabs (XHS / Twitter / YouTube / TikTok / Douyin /
+          Binance). Inactive border was bumped from gray-300/gray-600 to
+          gray-400/gray-500 because the prior tone was nearly invisible
+          against the page background — user couldn't tell at a glance which
+          buttons were tappable vs decorative. Now every tab carries a
+          visible frame; the active one differentiates only by green tint
+          + green border + slight glow shadow, matching the L1 section tabs'
+          active treatment. */}
       {view.kind === 'main' && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
           {PLATFORM_TABS.map(tab => {
@@ -647,7 +652,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                   active
                     ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
-                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
                 }`}
               >
                 <span className="text-base">{tab.icon}</span>
