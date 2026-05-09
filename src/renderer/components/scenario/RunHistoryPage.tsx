@@ -14,6 +14,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
+import { friendlyRunError } from '../../services/runErrorMessage';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
 interface RunRecord {
@@ -337,7 +338,14 @@ export const RunHistoryPage: React.FC<Props> = ({
                       )}
                       {rec.error && (rec.status === 'error' || rec.status === 'stopped') && (
                         <span className="text-amber-600 dark:text-amber-400 mr-2">
-                          {rec.error.length > 100 ? rec.error.slice(0, 100) + '...' : rec.error}
+                          {/* v2.6.x: route raw orchestrator codes through the
+                              shared friendlyRunError() table — old behavior
+                              showed cryptic strings like "type_failed" /
+                              "search_input_click_failed" directly to users. */}
+                          {(() => {
+                            const friendly = friendlyRunError(rec.error, isZh ? 'zh' : 'en');
+                            return friendly.length > 100 ? friendly.slice(0, 100) + '...' : friendly;
+                          })()}
                         </span>
                       )}
                       {rec.result && typeof rec.result.collected_count === 'number' && rec.result.collected_count > 0 && (

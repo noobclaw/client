@@ -13,6 +13,7 @@ import { scenarioService, type Task, type Draft, type Scenario } from '../../ser
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { i18nService } from '../../services/i18n';
+import { friendlyRunError } from '../../services/runErrorMessage';
 import type { ScenarioRunProgress } from '../../types/scenario';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
@@ -503,14 +504,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               // User explicitly hit stop — confirm it worked.
               showToast('ok', '已停止运行');
             } else {
-              showToast('err', `运行失败: ${
-                err.includes('scenario_pack') ? '场景包未找到' :
-                err.includes('anomaly:captcha') ? '遇到验证码，请手动处理后重试' :
-                err.includes('anomaly:rate_limited') ? '操作过于频繁，请稍后再试' :
-                err.includes('anomaly:login_wall') ? `需要重新登录 ${platformLabelForTask}` :
-                err.includes('anomaly:account_flag') ? `账号异常，请检查 ${platformLabelForTask} 账号状态` :
-                err || '未知错误'
-              }`);
+              const lang = i18nService.currentLanguage === 'zh' ? 'zh' : 'en';
+              showToast('err', `${lang === 'zh' ? '运行失败' : 'Run failed'}: ${friendlyRunError(err, lang, { platform: platformLabelForTask })}`);
             }
             void refreshData();
             void onChanged();
@@ -609,14 +604,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         }
         setRunning(false);
       } else {
-        const r = outcome.reason || '';
-        showToast('err', `运行失败: ${
-          r.includes('scenario_pack') ? '场景包未找到' :
-          r.includes('task_not_found') ? '任务未找到' :
-          r.includes('BROWSER') ? '浏览器插件未连接' :
-          r.includes('API_KEY') ? 'AI 密钥未设置' :
-          r || '未知错误'
-        }`);
+        // Centralized reason-code → friendly text mapping lives in
+        // services/runErrorMessage.ts so adding a new orchestrator code
+        // only requires editing that one file (instead of every UI site
+        // that displays a reason). Falls back to "运行异常 (raw_code)"
+        // for anything unmapped, preserving the raw code for support.
+        const lang = i18nService.currentLanguage === 'zh' ? 'zh' : 'en';
+        showToast('err', `${lang === 'zh' ? '运行失败' : 'Run failed'}: ${friendlyRunError(outcome.reason, lang)}`);
         setRunning(false);
       }
     }).catch(() => {
