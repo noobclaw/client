@@ -15,6 +15,40 @@ export function isTauriMode(): boolean {
   return !!(window as any).__TAURI__;
 }
 
+// ── Open URL in OS default browser (Tauri opener plugin) ──
+//
+// Bug: Tauri 2.x does NOT auto-populate window.__TAURI__.opener.openUrl
+// just because the Rust plugin is installed — you'd also need to install
+// the @tauri-apps/plugin-opener JS bindings package, which we don't.
+// So `tauri?.opener?.openUrl` was always undefined, every wallet/Web3Auth
+// login fell through to window.open() → Tauri's webview popup blocker
+// killed it ("popup window is blocked"). The Tauri 2 invoke path goes
+// straight to the Rust plugin without needing JS bindings.
+//
+// Returns true if the OS browser was opened, false if neither path worked
+// (caller can decide whether to fall back to the blocked window.open or
+// surface a copy-link UI to the user).
+async function openInSystemBrowser(url: string): Promise<boolean> {
+  const tauri = (window as any).__TAURI__;
+  if (!tauri) return false;
+  // Tauri 2 invoke path — works as long as opener:default capability is
+  // granted (it is, see src-tauri/capabilities/default.json).
+  if (tauri.core?.invoke) {
+    try {
+      await tauri.core.invoke('plugin:opener|open_url', { url });
+      return true;
+    } catch (e) {
+      console.warn('[TauriShim] plugin:opener|open_url invoke failed:', e);
+    }
+  }
+  // Legacy fallback — if a future build does install the JS bindings,
+  // this path lights up automatically.
+  if (tauri.opener?.openUrl) {
+    try { await tauri.opener.openUrl(url); return true; } catch (_) {}
+  }
+  return false;
+}
+
 // ── Install fetch proxy IMMEDIATELY on module load (before any other code runs) ──
 // This MUST happen at the top level, not inside initTauriShim(), because
 // other modules (noobclawAuth) make fetch() calls during their own import/init
@@ -386,10 +420,10 @@ export function createTauriElectronShim(): typeof window.electron {
       openPath: (p: string) => ipcInvoke('shell:openPath', p),
       showItemInFolder: (p: string) => ipcInvoke('shell:showItemInFolder', p),
       openExternal: async (url: string) => {
-        try {
-          const tauri = (window as any).__TAURI__;
-          if (tauri?.opener?.openUrl) { await tauri.opener.openUrl(url); return; }
-        } catch {}
+        if (await openInSystemBrowser(url)) return;
+        // Last-ditch fallback — almost certainly will be blocked by Tauri
+        // webview, but matches Electron behavior on platforms where the
+        // shell helper isn't available.
         window.open(url, '_blank');
       },
     },
@@ -449,12 +483,7 @@ export function createTauriElectronShim(): typeof window.electron {
       download: async (url?: string) => {
         if (!url) return { success: false, error: 'No download URL' };
         try {
-          const tauri = (window as any).__TAURI__;
-          if (tauri?.opener?.openUrl) {
-            await tauri.opener.openUrl(url);
-          } else {
-            window.open(url, '_blank');
-          }
+          if (!(await openInSystemBrowser(url))) window.open(url, '_blank');
           // Return success with no filePath so App.tsx's handleConfirmUpdate
           // treats it as an externally-handled download and skips the
           // install() step below.
@@ -568,11 +597,9 @@ function showExtensionInstallModal(storeUrl: string): Promise<'install' | 'cance
     modal.querySelector('#nc-ext-store')!.addEventListener('click', () => {
       cleanup();
       // Open Chrome Store
-      try {
-        const tauri = (window as any).__TAURI__;
-        if (tauri?.opener?.openUrl) tauri.opener.openUrl(storeUrl);
-        else window.open(storeUrl, '_blank');
-      } catch { window.open(storeUrl, '_blank'); }
+      void openInSystemBrowser(storeUrl).then((ok) => {
+        if (!ok) window.open(storeUrl, '_blank');
+      });
       resolve('install');
     });
 
@@ -603,11 +630,9 @@ export function initTauriShim(): void {
       const urlStr = typeof url === 'string' ? url : url.toString();
       // Open external URLs in system browser, not a new Tauri window
       if (urlStr.startsWith('http')) {
-        try {
-          const tauri = (window as any).__TAURI__;
-          if (tauri?.opener?.openUrl) { tauri.opener.openUrl(urlStr); }
-          else { originalWindowOpen(urlStr, '_blank'); }
-        } catch { originalWindowOpen(urlStr, '_blank'); }
+        void openInSystemBrowser(urlStr).then((ok) => {
+          if (!ok) originalWindowOpen(urlStr, '_blank');
+        });
         return null;
       }
     }
