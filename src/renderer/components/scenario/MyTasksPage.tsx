@@ -21,6 +21,13 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task } from '../../services/scenario';
 
+// Per-platform task cap shared with the WorkflowsPages. When the user
+// already has this many tasks on a platform, the inline "+ 新建涨粉任务"
+// card stops showing at the bottom of My Tasks (top-right CTA still
+// works, but the per-scenario "立即开始" inside Create page enforces
+// the cap with a modal).
+const PER_PLATFORM_TASK_CAP = 5;
+
 interface Props {
   /** Tasks already filtered to a single platform by the parent. The parent
    *  switches between XHS / Twitter via a sub-tab and re-filters tasks. */
@@ -444,6 +451,28 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 </button>
               );
             })}
+            {/* Inline "+ 新建涨粉任务" card — appears at the bottom of the
+                list whenever the user is below the per-platform task cap.
+                Two entry points to the create flow now: (a) this inline
+                card, (b) the persistent top-right CTA in ScenarioView.
+                The cap (>= 5) hides this card; clicking the top-right CTA
+                still works, but the scenario cards inside Create page
+                show a "已达上限" modal at click time. */}
+            {tasks.length < PER_PLATFORM_TASK_CAP && onGoCreate && (
+              <button
+                type="button"
+                onClick={onGoCreate}
+                className="w-full p-5 rounded-xl border-2 border-dashed border-green-500/40 dark:border-green-500/40 bg-green-500/5 hover:bg-green-500/10 hover:border-green-500/60 transition-all flex items-center justify-center gap-3 group active:scale-[0.99]"
+              >
+                <span className="text-2xl">✨</span>
+                <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                  {isZh ? `新建${platformLabel}涨粉任务` : `New ${platformLabel} task`}
+                </span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">
+                  ({tasks.length}/{PER_PLATFORM_TASK_CAP})
+                </span>
+              </button>
+            )}
           </div>
         )}
       </section>

@@ -66,10 +66,19 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎶', enabled: true },
 ];
 
+// L1 tabs are now PURELY for "switch view": My Tasks vs Run History.
+// "Create new task" used to live here too, which made users confuse
+// "已有的涨粉任务" with "创建新的涨粉任务" — the strings overlap on
+// "涨粉任务" so a quick scan looked the same.
+//
+// Creation is now a top-right CTA button (matching the convention
+// every other web app uses for primary actions), plus an inline
+// "+ 新建涨粉任务" card injected at the bottom of the My Tasks list
+// when the user has fewer than the per-platform task cap (5). Both
+// entry points fire the same setSection('create') flow.
 const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
-  { id: 'create',  zh: '创建新的涨粉任务', en: 'Create Task',     icon: '✨' },
-  { id: 'tasks',   zh: '已有的涨粉任务',   en: 'My Tasks',        icon: '📋' },
-  { id: 'history', zh: '运行记录',          en: 'Run History',     icon: '📊' },
+  { id: 'tasks',   zh: '我的涨粉任务',  en: 'My Tasks',    icon: '📋' },
+  { id: 'history', zh: '运行记录',      en: 'Run History', icon: '📊' },
 ];
 
 export const ScenarioView: React.FC<ScenarioViewProps> = ({
@@ -80,7 +89,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   initialPlatform,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: initialPlatform || 'binance' });
+  // Default landing section is now 'tasks' (was 'create'). Users open
+  // the page to manage their tasks; creation is a one-click CTA away.
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'tasks', platform: initialPlatform || 'binance' });
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
   // every WorkflowsPage are clickable from first paint, not greyed out
@@ -623,26 +634,43 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           to a green tint + green border + slight glow. Inactive tabs were
           previously borderless which made them look unclickable. */}
       {view.kind === 'main' && (
-        <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
-          {SECTION_TABS.map(tab => {
-            const active = currentSection === tab.id;
-            const isZh = i18nService.currentLanguage === 'zh';
-            return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setSection(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-                  active
-                    ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
-                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
-                }`}
-              >
-                <span>{tab.icon}</span>
-                <span>{isZh ? tab.zh : tab.en}</span>
-              </button>
-            );
-          })}
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            {SECTION_TABS.map(tab => {
+              const active = currentSection === tab.id;
+              const isZh = i18nService.currentLanguage === 'zh';
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setSection(tab.id)}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                    active
+                      ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                      : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
+                  }`}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{isZh ? tab.zh : tab.en}</span>
+                </button>
+              );
+            })}
+          </div>
+          {/* Right-aligned CTA — primary "create new task" entry point.
+              Always clickable; per-platform task-cap (>= 5) check happens
+              inside the create page's scenario cards, not here. */}
+          <button
+            type="button"
+            onClick={() => setSection('create')}
+            className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-green-500/30 active:scale-95 ${
+              currentSection === 'create'
+                ? 'bg-green-600 text-white border border-green-600'
+                : 'bg-green-500 hover:bg-green-600 text-white border border-green-500'
+            }`}
+          >
+            <span>✨</span>
+            <span>{i18nService.currentLanguage === 'zh' ? '新建涨粉任务' : 'New Task'}</span>
+          </button>
         </div>
       )}
 
