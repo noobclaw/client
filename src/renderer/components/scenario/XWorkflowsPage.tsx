@@ -489,7 +489,7 @@ type ScenarioCardProps = {
 
 const ScenarioCard: React.FC<ScenarioCardProps> = ({
   color, emoji, badge, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
-  loading, scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask: _onOpenTask, onConfigure,
+  loading, scenario: _scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask: _onOpenTask, onConfigure,
   isZh,
 }) => {
   const palette: Record<typeof color, { border: string; bg: string; text: string; btn: string; shadow: string }> = {
@@ -544,7 +544,7 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
         <button
           type="button"
           onClick={onConfigure}
-          disabled={loading || !scenario}
+          disabled={loading}
           className={`w-full px-4 py-2.5 text-sm font-bold rounded-xl ${c.btn} disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg ${c.shadow} transition-all active:scale-95`}
         >
           {emoji} {isZh ? ctaZh : ctaEn} →

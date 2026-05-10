@@ -224,7 +224,7 @@ type CardProps = {
   isZh: boolean;
 };
 
-const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
+const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
@@ -244,7 +244,7 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
         <button
           type="button"
           onClick={onConfigure}
-          disabled={loading || !scenario}
+          disabled={loading}
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
         >
           🎵 {isZh ? '开始互动' : 'Start'} →

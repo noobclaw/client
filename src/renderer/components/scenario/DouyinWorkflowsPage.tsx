@@ -273,7 +273,7 @@ type CardProps = {
   isZh: boolean;
 };
 
-const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
+const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
@@ -293,7 +293,7 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
         <button
           type="button"
           onClick={onConfigure}
-          disabled={loading || !scenario}
+          disabled={loading}
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95"
         >
           🎶 {isZh ? '开始互动' : 'Start'} →
@@ -305,7 +305,7 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigur
 
 // ── 抖音图文创作 card —— 跟 XHS 爆款仿写视觉同源,主色沿用抖音页 violet 保持
 //    平台一致性。文案突出"3 段灵感来源 + AI 改写 + 内容图 + 自动暂存"四步。
-const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
+const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
@@ -325,7 +325,7 @@ const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
         <button
           type="button"
           onClick={onConfigure}
-          disabled={loading || !scenario}
+          disabled={loading}
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
         >
           📝 {isZh ? '开始创作' : 'Start'} →

@@ -431,7 +431,7 @@ interface BinanceCardProps {
 
 const BinanceCard: React.FC<BinanceCardProps> = ({
   emoji, badgeZh, badgeEn, titleZh, titleEn, descZh, descEn, tagsLine,
-  ctaZh, ctaEn, enabled, loading, scenario, onStart, isZh,
+  ctaZh, ctaEn, enabled, loading, scenario: _scenario, onStart, isZh,
   binanceGold, binanceGoldLight, binanceDark,
 }) => {
   const dim = !enabled;
@@ -465,7 +465,7 @@ const BinanceCard: React.FC<BinanceCardProps> = ({
         <button
           type="button"
           onClick={onStart}
-          disabled={!enabled || loading || !scenario}
+          disabled={!enabled || loading}
           className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl transition-all hover:brightness-110 active:brightness-95 shadow-md disabled:cursor-not-allowed disabled:hover:brightness-100"
           style={enabled
             ? {

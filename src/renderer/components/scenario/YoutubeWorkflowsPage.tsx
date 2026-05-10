@@ -185,7 +185,7 @@ type CardProps = {
   isZh: boolean;
 };
 
-const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigure, isZh }) => {
+const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
@@ -205,7 +205,7 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario, onConfigu
         <button
           type="button"
           onClick={onConfigure}
-          disabled={loading || !scenario}
+          disabled={loading}
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-indigo-500/25 transition-all active:scale-95"
         >
           📺 {isZh ? '开始互动' : 'Start'} →
