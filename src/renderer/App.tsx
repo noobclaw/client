@@ -277,7 +277,7 @@ const App: React.FC = () => {
   }, []);
 
   const handleShowLogin = useCallback(() => {
-    noobClawAuth.openWebsiteLogin();
+    noobClawAuth.requireLoginUI();
   }, []);
 
   const runUpdateCheck = useCallback(async () => {

@@ -74,7 +74,7 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // Open pre-run check (extension + YouTube tab + login). After it

@@ -229,6 +229,23 @@ class NoobClawAuthService {
       window.open(websiteUrl, '_blank');
     }
   }
+
+  /**
+   * Show the in-app LoginWall modal first instead of jumping straight to the
+   * external website. App.tsx mounts LoginWall globally and listens for the
+   * `noobclaw:need-login` event — dispatching it here makes the modal pop up
+   * with the "Connect Wallet" button (which itself calls openWebsiteLogin()
+   * when the user clicks). This gives users a chance to read what's about to
+   * happen before being thrown into the browser.
+   *
+   * Use this from buttons / page actions; reserve openWebsiteLogin() for the
+   * Connect button INSIDE LoginWall (otherwise you'd loop the modal).
+   */
+  requireLoginUI() {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('noobclaw:need-login'));
+    }
+  }
 }
 
 export const noobClawAuth = new NoobClawAuthService();

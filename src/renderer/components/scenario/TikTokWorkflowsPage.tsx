@@ -112,7 +112,7 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // 先弹登录检查 modal,确认浏览器 + TikTok 标签 + 登录都通过再进 wizard

@@ -200,7 +200,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     setPendingScenario(scenario);

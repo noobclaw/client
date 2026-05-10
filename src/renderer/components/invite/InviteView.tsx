@@ -165,7 +165,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
           <h2 className="text-lg font-bold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('walletConnectTitle')}</h2>
           <p className="dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm mb-6">{i18nService.t('walletConnectDesc')}</p>
           <button
-            onClick={() => noobClawAuth.openWebsiteLogin()}
+            onClick={() => noobClawAuth.requireLoginUI()}
             className="px-6 py-2.5 bg-primary hover:bg-primary-hover text-black rounded-lg font-medium transition-all"
           >
             {i18nService.t('walletConnectBtn')}

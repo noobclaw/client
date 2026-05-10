@@ -525,7 +525,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
     // 1. Wallet check (sync — fast, no perceived lag).
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
 

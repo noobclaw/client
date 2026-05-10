@@ -1954,7 +1954,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
             ) : (
               <button
                 type="button"
-                onClick={() => noobClawAuth.openWebsiteLogin()}
+                onClick={() => noobClawAuth.requireLoginUI()}
                 className="px-2 py-0.5 rounded text-[10px] font-semibold bg-claude-accent text-white hover:bg-claude-accentHover transition-colors"
               >
                 {i18nService.t('coworkConnectWallet')}

@@ -116,7 +116,7 @@ const ActivitiesTab: React.FC<{
   // 活动流程：点击 → 先领奖（后端 claim）→ 弹窗显示随机奖励 + "太棒了"按钮
   //   → 点"太棒了" 关闭弹窗并跳转到对应内容（仅对需要引导的活动）
   const claim = async (type: string, onAfter?: () => void) => {
-    if (!authState.isAuthenticated) { noobClawAuth.openWebsiteLogin(); return; }
+    if (!authState.isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
     const r = await noobClawApi.claimActivity(type);
     if (r.success) {
       setPopup({

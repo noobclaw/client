@@ -203,7 +203,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     const { ok, err } = validateLinks(linksText);
     if (err) { alert(err); return; }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     setLinkSubmitting(true);
@@ -249,7 +249,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // Same pre-check as batch mode: open LoginRequiredModal first, only show
@@ -263,7 +263,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // v2.4.27: card always opens the wizard for a NEW task — even if the
@@ -283,7 +283,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     }
     // Gate: must be logged in with wallet
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // Show check modal first (extension + XHS tab + login)

@@ -133,7 +133,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
       return;
     }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     // x_link_rewrite is intentionally a one-shot job — same UX as XHS link
@@ -156,7 +156,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
     const { ok, err } = validateTweetLinks(linksText);
     if (err) { alert(err); return; }
     if (!noobClawAuth.getState().isAuthenticated) {
-      noobClawAuth.openWebsiteLogin();
+      noobClawAuth.requireLoginUI();
       return;
     }
     if (!linkRewrite) {
