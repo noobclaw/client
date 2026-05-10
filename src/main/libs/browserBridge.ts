@@ -699,12 +699,23 @@ let wsServer: WebSocketServer | null = null;
  * and leave non-matching upgrades alone (no other WS path currently uses
  * this server, but the check is cheap insurance).
  *
- * Security: Origin header must be one of EXTENSION_IDS. Real browsers can
- * never spoof Origin on a WebSocket handshake initiated by an extension —
- * the value comes from chrome-extension://<id>/. A non-browser local
- * process could craft any Origin, but that's the same threat model the
- * pre-NM (2026-03 era) WebSocket implementation accepted, and a malicious
- * local process already has stronger attack vectors than this.
+ * Security: Origin header must be one of:
+ *   - chrome-extension://<id>   for one of EXTENSION_IDS (Chrome/Edge)
+ *   - moz-extension://<UUID>    for any Firefox install of the NoobClaw
+ *                                 extension. Firefox derives a fresh UUID
+ *                                 per install, so we can't whitelist
+ *                                 specific UUIDs the way we do CRX IDs.
+ *                                 Instead we accept any moz-extension://
+ *                                 origin and rely on the protocol-level
+ *                                 hello message (which carries the
+ *                                 extension `name`) for the second-layer
+ *                                 identity check.
+ *
+ * Real browsers can never spoof Origin on a WebSocket handshake initiated
+ * by an extension — the value comes from the runtime URL scheme. A non-
+ * browser local process could craft any Origin, but that's the same threat
+ * model the pre-NM (2026-03 era) WebSocket implementation accepted, and a
+ * malicious local process already has stronger attack vectors than this.
  */
 export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
   if (wsServer) return;
@@ -716,9 +727,14 @@ export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
       if (url.pathname !== '/browser-bridge') return;
 
       const origin = String(req.headers.origin || '');
-      const allowedOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
-      if (!allowedOrigins.includes(origin)) {
-        console.warn(`[BrowserBridge] WS upgrade rejected: Origin=${origin || '(empty)'} not in EXTENSION_IDS whitelist`);
+      // Chrome/Edge: exact match against the CRX ID whitelist.
+      // Firefox: any moz-extension:// is allowed (per-install UUID), with
+      // identity verified via the hello message after upgrade succeeds.
+      const allowedChromeOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
+      const isChromeMatch = allowedChromeOrigins.includes(origin);
+      const isFirefoxMatch = /^moz-extension:\/\/[0-9a-f-]{8,}$/i.test(origin);
+      if (!isChromeMatch && !isFirefoxMatch) {
+        console.warn(`[BrowserBridge] WS upgrade rejected: Origin=${origin || '(empty)'} not in extension whitelist (chrome:${EXTENSION_IDS.length} ids + moz-extension:*)`);
         try { sock.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); } catch {}
         try { sock.destroy(); } catch {}
         return;
