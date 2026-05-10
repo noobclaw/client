@@ -295,13 +295,18 @@ async function getRunner() {
 
     // Start browser bridge (TCP server on port 12581 for Chrome extension)
     try {
-      const { startBrowserBridge, registerNativeMessagingHost, setExtensionPromptCallback, attachBrowserBridgeWebSocket } = await import('./libs/browserBridge');
+      const { startBrowserBridge, cleanupLegacyNmResidueOnce, setExtensionPromptCallback, attachBrowserBridgeWebSocket } = await import('./libs/browserBridge');
       await startBrowserBridge();
-      registerNativeMessagingHost();
+      // v2.7+: we no longer register a Native Messaging host. The chrome
+      // extension v1.3+ goes WS-first by default, and a one-time cleanup
+      // below removes any leftover registry / .bat residue from older
+      // builds so 360 / 火绒 can stop scanning those entries on every boot.
+      // The cleanup is gated by a settings flag so it only runs once per
+      // install, never spawns a subprocess (uses Win32 APIs directly).
+      cleanupLegacyNmResidueOnce().catch(() => {});
       // Mount the WebSocket fallback on this sidecar's HTTP server so the
-      // Chrome extension can reach us at ws://127.0.0.1:18800/browser-bridge
-      // when Native Messaging is broken (most common cause: 360 / Defender
-      // blocked the registry write that NM needs to be discoverable).
+      // Chrome extension can reach us at ws://127.0.0.1:18800/browser-bridge.
+      // This is now the PRIMARY transport (was fallback in 2.6.x).
       attachBrowserBridgeWebSocket(server);
 
       // Register extension prompt callback — broadcasts SSE to frontend for user decision

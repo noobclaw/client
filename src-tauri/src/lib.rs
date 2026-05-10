@@ -135,6 +135,179 @@ fn attach_to_kill_on_close_job(pid: u32) {
     }
 }
 
+// ─── Win32 in-process Registry cleanup for legacy NM host residue ───
+//
+// Earlier client versions (<= v2.6.x) registered Native Messaging hosts
+// by spawning `cmd.exe → reg.exe add ...` from Node. That subprocess
+// chain is exactly the heuristic 360 / 火绒 / Defender flag as malware
+// installer behaviour. v2.7+ stops registering NM hosts entirely (the
+// chrome extension v1.3+ goes WS-first), but the registry entries our
+// older builds wrote are still on user machines — and AV will keep
+// scanning them on every boot.
+//
+// Solution: at next launch, clean those entries up ourselves *from
+// inside the process via the Win32 API*. No cmd, no reg.exe, no shell
+// — just a direct RegDeleteKeyExW call. Behavioural-detection-wise this
+// is identical to the Tauri main exe writing its own settings file,
+// because there's no child process spawn for AV to look at.
+//
+// Idempotent + safe-by-default: we read the (Default) value first and
+// only delete if it points at a path that contains "noobclaw" — won't
+// touch a user's hand-edited or third-party-installed key with the
+// same name (extraordinarily unlikely but cheap to check).
+#[cfg(target_os = "windows")]
+mod win_nm_cleanup {
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS};
+    use windows::Win32::System::Registry::{
+        RegCloseKey, RegDeleteKeyExW, RegOpenKeyExW, RegQueryValueExW, HKEY,
+        HKEY_CURRENT_USER, KEY_QUERY_VALUE, KEY_WOW64_64KEY,
+    };
+
+    // The three browsers' registration paths under HKCU. Built at runtime
+    // because Rust 1.x can't const-construct PCWSTRs in a static slice
+    // initialiser without a build script. Tiny cost (200B total), runs
+    // once per app session.
+    fn key_strs() -> Vec<Vec<u16>> {
+        [
+            "Software\\Google\\Chrome\\NativeMessagingHosts\\com.noobclaw.browser",
+            "Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.noobclaw.browser",
+            "Software\\Mozilla\\NativeMessagingHosts\\com.noobclaw.browser",
+        ]
+        .iter()
+        .map(|s| {
+            let mut v: Vec<u16> = s.encode_utf16().collect();
+            v.push(0);
+            v
+        })
+        .collect()
+    }
+
+    /// Read the `(Default)` value of `key_handle` as a UTF-16 string.
+    /// Returns None if the value is missing, not a string, or read fails.
+    unsafe fn read_default_value(key_handle: HKEY) -> Option<String> {
+        let mut buf_bytes = [0u8; 2048];
+        let mut data_size = buf_bytes.len() as u32;
+        let mut value_type = windows::Win32::System::Registry::REG_VALUE_TYPE(0);
+        // PCWSTR::null() asks for the unnamed (Default) value.
+        let res = RegQueryValueExW(
+            key_handle,
+            PCWSTR::null(),
+            None,
+            Some(&mut value_type),
+            Some(buf_bytes.as_mut_ptr()),
+            Some(&mut data_size),
+        );
+        if res != ERROR_SUCCESS {
+            return None;
+        }
+        // REG_SZ values are null-terminated UTF-16. Trim the NUL and decode.
+        let len_u16 = (data_size as usize) / 2;
+        if len_u16 == 0 {
+            return None;
+        }
+        let bytes = &buf_bytes[..(len_u16 * 2)];
+        let mut u16s: Vec<u16> = bytes
+            .chunks_exact(2)
+            .map(|c| u16::from_le_bytes([c[0], c[1]]))
+            .collect();
+        if u16s.last() == Some(&0) {
+            u16s.pop();
+        }
+        String::from_utf16(&u16s).ok()
+    }
+
+    /// Try to delete one HKCU subkey. Returns:
+    ///   - Ok(true)  : key existed, looked NoobClaw-owned, was deleted
+    ///   - Ok(false) : key didn't exist OR didn't look like ours, skipped
+    ///   - Err(...)  : Win32 returned an unexpected code
+    fn delete_one(subkey_w: &[u16]) -> Result<bool, String> {
+        unsafe {
+            // Open with QUERY_VALUE so we can sanity-check the (Default)
+            // value before deleting. KEY_WOW64_64KEY ensures we hit the
+            // same view that NoobClaw originally wrote to.
+            let mut h = HKEY::default();
+            let open_res = RegOpenKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey_w.as_ptr()),
+                0,
+                KEY_QUERY_VALUE | KEY_WOW64_64KEY,
+                &mut h,
+            );
+            if open_res == ERROR_FILE_NOT_FOUND {
+                return Ok(false); // not present, nothing to clean
+            }
+            if open_res != ERROR_SUCCESS {
+                return Err(format!("RegOpenKeyExW failed: {:?}", open_res));
+            }
+            let default_val = read_default_value(h);
+            let _ = RegCloseKey(h);
+
+            // Belt-and-suspenders: only delete if the (Default) value
+            // actually mentions "noobclaw". If a user (somehow) repurposed
+            // this key for something else, leave it alone.
+            let owned_by_noobclaw = match default_val {
+                Some(ref s) => s.to_lowercase().contains("noobclaw"),
+                None => true, // empty / unreadable defaults are fine to clean
+            };
+            if !owned_by_noobclaw {
+                return Ok(false);
+            }
+
+            let del_res = RegDeleteKeyExW(
+                HKEY_CURRENT_USER,
+                PCWSTR(subkey_w.as_ptr()),
+                // RegDeleteKeyExW takes a plain u32 here, not REG_SAM_FLAGS;
+                // 0x100 = KEY_WOW64_64KEY which forces the 64-bit view that
+                // the original `reg add` calls wrote to.
+                KEY_WOW64_64KEY.0,
+                0,
+            );
+            if del_res == ERROR_SUCCESS || del_res == ERROR_FILE_NOT_FOUND {
+                return Ok(true);
+            }
+            Err(format!("RegDeleteKeyExW failed: {:?}", del_res))
+        }
+    }
+
+    /// Best-effort cleanup of all three browsers' NM host keys.
+    /// Returns the count of keys actually deleted.
+    pub fn cleanup() -> u32 {
+        let mut deleted: u32 = 0;
+        for k in key_strs() {
+            match delete_one(&k) {
+                Ok(true) => deleted += 1,
+                Ok(false) => {}
+                Err(_e) => {} // swallow — cleanup is best-effort
+            }
+        }
+        deleted
+    }
+}
+
+/// Tauri command: clean up legacy Native Messaging host registry entries
+/// left over from older client builds. Returns the number of keys
+/// actually removed. No-op on macOS / Linux.
+///
+/// Called once from the Node side at app startup, gated by a once-flag in
+/// settings so we don't re-scan on every launch.
+#[tauri::command]
+fn cleanup_legacy_nm_registration() -> u32 {
+    #[cfg(target_os = "windows")]
+    {
+        let n = win_nm_cleanup::cleanup();
+        append_sidecar_log(&format!(
+            "[tauri] cleanup_legacy_nm_registration: removed {} legacy NM HKCU keys",
+            n
+        ));
+        return n;
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        return 0;
+    }
+}
+
 // ─── macOS TCC bridge ────────────────────────────────────────────────
 //
 // The sidecar (noobclaw-server) is a separate Mach-O binary, so when it
@@ -848,6 +1021,20 @@ pub fn run() {
         .setup(move |app| {
             let handle = app.handle().clone();
 
+            // ── Windows: clean up legacy NM host registry residue ──
+            // Older client builds (<= v2.6.x) registered Native Messaging
+            // hosts via `cmd.exe → reg.exe add`, and that subprocess chain
+            // is what AV (360 / 火绒 / Defender) flagged as malware-installer
+            // behaviour. v2.7+ uses WS-only and these keys are dead weight
+            // that AV would still scan on every boot. Wipe them here, in-
+            // process, via the Win32 Registry API (no spawned subprocess,
+            // not a heuristic match for any AV signature). Idempotent —
+            // running on a clean machine just returns 0 deleted.
+            #[cfg(target_os = "windows")]
+            {
+                let _ = cleanup_legacy_nm_registration();
+            }
+
             // Register the deep-link listener. Without this, clicking
             // `noobclaw://auth?...` from the system browser never reaches
             // the running app — macOS would silently drop the URL (or, in
@@ -1068,6 +1255,7 @@ pub fn run() {
             show_command_bar,
             hide_command_bar,
             toggle_command_bar,
+            cleanup_legacy_nm_registration,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

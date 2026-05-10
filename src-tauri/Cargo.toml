@@ -74,5 +74,6 @@ windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Security",          # CreateJobObjectW lives behind this feature gate
     "Win32_System_JobObjects",
+    "Win32_System_Registry",   # RegDeleteKeyExW for cleaning up old NM host registration
     "Win32_System_Threading",
 ] }

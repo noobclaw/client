@@ -227,6 +227,62 @@ interface BrowserConn {
 const browserConns = new Map<string, BrowserConn>();
 let connSeq = 0;
 
+// ─── Legacy NM residue cleanup (file-side) ─────────────────────────
+//
+// Companion to the Win32 Registry cleanup that the Tauri Rust setup()
+// now runs in-process. The Rust side wipes HKCU\...\NativeMessagingHosts
+// keys; we (Node side) wipe the matching .bat / .json files our older
+// `registerNativeMessagingHost` wrote into %APPDATA%\NoobClaw\. Pure
+// fs.unlink — no subprocess, no shell invocation, AV never notices.
+//
+// Idempotent (errors are swallowed); safe to call on every startup.
+// Files removed:
+//   - native-messaging-host.bat            (Windows wrapper)
+//   - native-messaging-host.sh             (macOS / Linux wrapper)
+//   - com.noobclaw.browser.json            (Chrome / Edge manifest)
+//   - com.noobclaw.browser.firefox.json    (Firefox manifest)
+//   - any matching files under macOS / Linux NM host dirs
+export async function cleanupLegacyNmResidueOnce(): Promise<void> {
+  const userData = getUserDataPath();
+  const candidates: string[] = [
+    path.join(userData, 'native-messaging-host.bat'),
+    path.join(userData, 'native-messaging-host.sh'),
+    path.join(userData, `${NATIVE_HOST_NAME}.json`),
+    path.join(userData, `${NATIVE_HOST_NAME}.firefox.json`),
+  ];
+
+  // macOS / Linux: legacy installs also wrote NM host JSONs under each
+  // browser's NativeMessagingHosts dir directly. Best-effort unlink.
+  if (process.platform === 'darwin') {
+    const home = process.env.HOME || '~';
+    candidates.push(
+      path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`),
+      path.join(home, 'Library/Application Support/Microsoft Edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`),
+      path.join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`),
+    );
+  } else if (process.platform === 'linux') {
+    const home = process.env.HOME || '~';
+    candidates.push(
+      path.join(home, '.config/google-chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`),
+      path.join(home, '.config/microsoft-edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`),
+      path.join(home, '.mozilla/native-messaging-hosts', `${NATIVE_HOST_NAME}.json`),
+    );
+  }
+
+  let cleaned = 0;
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        fs.unlinkSync(p);
+        cleaned++;
+      }
+    } catch { /* best-effort */ }
+  }
+  if (cleaned > 0) {
+    console.log(`[BrowserBridge] cleanupLegacyNmResidueOnce: removed ${cleaned} legacy NM file(s)`);
+  }
+}
+
 function isAnyBrowserConnected(): boolean {
   for (const c of browserConns.values()) {
     if (!c.socket.destroyed) return true;
@@ -342,153 +398,42 @@ function getNativeHostScriptPath(): string {
   return path.join(userData, 'native-messaging-host.sh');
 }
 
+/**
+ * @deprecated v2.7+: NM host registration is no longer used.
+ *
+ * The previous implementation spawned `cmd.exe → reg.exe add ...` from
+ * Node, and that subprocess chain was the actual heuristic 360 / 火绒 /
+ * Defender flagged as malware-installer behaviour (NOT the NM protocol
+ * itself). The chrome extension v1.3+ now connects via WebSocket
+ * (ws://127.0.0.1:18800/browser-bridge), so no registry write or .bat
+ * wrapper is needed.
+ *
+ * This export is kept as a no-op stub so any caller (e.g. external
+ * tests, downstream scripts) doesn't blow up. It returns immediately
+ * and writes nothing — no spawn, no fs IO. The companion
+ * `cleanupLegacyNmResidueOnce()` removes any artefacts older builds
+ * left behind.
+ */
 export function registerNativeMessagingHost(): void {
-  try {
-    const hostScriptPath = getNativeHostScriptPath();
-    const resourcesPath = getResourcesPath();
-    const jsSource = path.join(resourcesPath, 'native-messaging-host.js');
-    console.log(`[BrowserBridge] registerNativeMessagingHost: resourcesPath=${resourcesPath}, hostScriptPath=${hostScriptPath}, execPath=${process.execPath}`);
-
-    // In Tauri (sidecar) mode we ship neither a `node-runtime/` directory
-    // nor the Electron executable. Invoke the sidecar binary itself with a
-    // special `--native-messaging-host` flag — sidecar-server.ts branches on
-    // this and runs the host loop without starting the HTTP server.
-    const useSidecarAsHost = !isElectronMode() && process.platform !== undefined;
-
-    // Create batch/shell wrapper
-    if (process.platform === 'win32') {
-      if (useSidecarAsHost) {
-        // process.execPath is the sidecar .exe in Tauri mode.
-        fs.writeFileSync(hostScriptPath, `@echo off\r\n"${process.execPath}" --native-messaging-host %*\r\n`);
-      } else {
-        const nodeExe = path.join(resourcesPath, 'node-runtime', 'node.exe');
-        fs.writeFileSync(hostScriptPath, `@echo off\r\n"${nodeExe}" "${jsSource}" %*\r\n`);
-      }
-    } else {
-      // macOS/Linux
-      if (useSidecarAsHost) {
-        fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${process.execPath}" --native-messaging-host "$@"\n`);
-        try { fs.chmodSync(hostScriptPath, '755'); } catch {}
-      } else {
-        // find a working node binary
-        let nodeExe = path.join(resourcesPath, 'node-runtime', 'node');
-        if (!fs.existsSync(nodeExe)) {
-          const electronNode = process.execPath;
-          const { execSync } = require('child_process');
-          try {
-            const systemNode = execSync('which node', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
-            if (systemNode && fs.existsSync(systemNode)) {
-              nodeExe = systemNode;
-            } else {
-              nodeExe = electronNode;
-            }
-          } catch {
-            nodeExe = electronNode;
-          }
-        }
-        fs.writeFileSync(hostScriptPath, `#!/bin/bash\nexec "${nodeExe}" "${jsSource}" "$@"\n`);
-        try { fs.chmodSync(hostScriptPath, '755'); } catch {}
-        if (fs.existsSync(nodeExe)) {
-          try { fs.chmodSync(nodeExe, '755'); } catch {}
-        }
-      }
-    }
-
-    // Register for all browsers
-    const allPaths = getNativeHostManifestPaths();
-    const { execSync } = require('child_process');
-
-    for (const { browser, manifestPath, regKey } of allPaths) {
-      try {
-        // Firefox uses "allowed_extensions" instead of "allowed_origins"
-        const manifest: any = {
-          name: NATIVE_HOST_NAME,
-          description: 'NoobClaw Browser Assistant Native Messaging Host',
-          path: hostScriptPath,
-          type: 'stdio',
-        };
-        if (browser === 'firefox') {
-          // Firefox identifies extensions by the gecko id in
-          // browser_specific_settings, NOT a CRX-style hash like Chrome.
-          // The published AMO listing uses `hi@noobclaw.com` (see
-          // chrome-extension/manifest.json browser_specific_settings.gecko.id);
-          // keep `noobclaw-browser-assistant@noobclaw.com` as a fallback
-          // so any sideloaded dev build (or an older AMO listing under the
-          // longer name) still passes the allowed_extensions check.
-          // Mismatch here is silent on Firefox's side — the extension
-          // simply gets `Error: An unexpected error occurred` from
-          // browser.runtime.connectNative without telling the user the
-          // host manifest blocked it, which manifests as the red
-          // exclamation badge on the toolbar icon.
-          manifest.allowed_extensions = [
-            'hi@noobclaw.com',
-            'noobclaw-browser-assistant@noobclaw.com',
-          ];
-        } else {
-          manifest.allowed_origins = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
-        }
-
-        const manifestDir = path.dirname(manifestPath);
-        if (!fs.existsSync(manifestDir)) {
-          fs.mkdirSync(manifestDir, { recursive: true });
-        }
-        fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-
-        // Windows: write registry key for Chrome and Edge
-        if (process.platform === 'win32' && regKey) {
-          try {
-            execSync(`reg add "${regKey}" /ve /t REG_SZ /d "${manifestPath}" /f`, { stdio: 'ignore' });
-          } catch {}
-        }
-
-        // ③ 自愈校验：读回刚写的文件，确认 allowed_origins 包含所有 EXTENSION_IDS。
-        // 罕见场景：其他进程并发写、杀软拦截、文件系统 race 可能导致写入内容不完整。
-        // 不一致时 WARN 日志 + 再写一遍，还不一致就 ERROR 提示用户手动排查。
-        if (browser !== 'firefox') {
-          try {
-            const written = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-            const need = EXTENSION_IDS.map(id => `chrome-extension://${id}/`);
-            const got: string[] = Array.isArray(written.allowed_origins) ? written.allowed_origins : [];
-            const missing = need.filter(x => !got.includes(x));
-            if (missing.length > 0) {
-              console.warn(`[BrowserBridge] ${browser} manifest missing ${missing.length} origin(s), rewriting:`, missing);
-              written.allowed_origins = [...got, ...missing];
-              fs.writeFileSync(manifestPath, JSON.stringify(written, null, 2));
-              // Re-verify after retry write
-              const reRead = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-              const stillMissing = need.filter(x => !(reRead.allowed_origins || []).includes(x));
-              if (stillMissing.length > 0) {
-                console.error(`[BrowserBridge] ${browser} manifest STILL missing after rewrite:`, stillMissing);
-              } else {
-                console.log(`[BrowserBridge] ${browser} manifest self-healed: all ${need.length} origins present.`);
-              }
-            }
-          } catch (verifyErr) {
-            console.error(`[BrowserBridge] ${browser} manifest verify failed:`, verifyErr);
-          }
-        }
-
-        console.log(`[BrowserBridge] Registered native messaging host for ${browser}: ${manifestPath}`);
-      } catch (err) {
-        console.error(`[BrowserBridge] Failed to register for ${browser}:`, err);
-      }
-    }
-  } catch (err) {
-    console.error('[BrowserBridge] Failed to register native messaging host:', err);
-  }
+  // Intentionally empty. See doc comment above.
+  console.log('[BrowserBridge] registerNativeMessagingHost: no-op (v2.7+ uses WS, NM registration deprecated)');
 }
 
 function isNativeHostRegistered(): boolean {
+  // v2.7+: this used to spawn `reg query` to inspect the HKCU NM host
+  // entry. We dropped the spawn (the cmd → reg.exe subprocess chain was
+  // exactly what 360 / 火绒 / Defender heuristic-flagged as malware-
+  // installer behaviour). Now we just check whether the manifest file
+  // we (or a legacy build) wrote into userData still exists. After
+  // cleanupLegacyNmResidueOnce() runs on first v2.7+ launch this will
+  // permanently return false on machines that previously had NM
+  // registered — which is fine: the field is consumed by the renderer
+  // as "extension support exists", and the WS path makes that always
+  // true regardless of NM state.
   const allPaths = getNativeHostManifestPaths();
-  for (const { manifestPath, regKey } of allPaths) {
+  for (const { manifestPath } of allPaths) {
     try {
-      if (process.platform === 'win32' && regKey) {
-        const { execSync } = require('child_process');
-        const result = execSync(`reg query "${regKey}" /ve`, { stdio: ['pipe', 'pipe', 'pipe'], encoding: 'utf8' });
-        if (result.includes(NATIVE_HOST_NAME)) return true;
-      } else if (fs.existsSync(manifestPath)) {
-        return true;
-      }
+      if (fs.existsSync(manifestPath)) return true;
     } catch {}
   }
   return false;
@@ -866,8 +811,14 @@ export async function startBrowserBridge(): Promise<{ port: number }> {
     return { port: bridgePort! };
   }
 
-  // Register native messaging host on startup
-  registerNativeMessagingHost();
+  // v2.7+: NM host registration is GONE. The legacy `registerNativeMessagingHost`
+  // function spawned `cmd.exe → reg.exe add` from Node, and that subprocess
+  // chain was the actual heuristic 360 / 火绒 / Defender flagged as malware-
+  // installer behaviour (NOT the NM protocol itself). The chrome extension
+  // v1.3+ now connects via WebSocket directly (ws://127.0.0.1:18800/
+  // browser-bridge), no registry needed. cleanupLegacyNmResidueOnce() (called
+  // from sidecar-server startup) tidies up old keys / .bat / .json residue
+  // left behind by previous builds so AV scans stay quiet on every boot.
 
   return new Promise((resolve, reject) => {
     const server = net.createServer((socket) => {
