@@ -607,9 +607,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
 
       {/* L1 — section tabs (Create / My Tasks / History). Hidden when in
           a sub-page (task_detail / sensitive_check) so the user gets a
-          full-bleed page without competing nav. */}
+          full-bleed page without competing nav.
+          Matches the L2 platform-tabs treatment: every tab is a visible
+          card with a frame even when inactive, and the active one shifts
+          to a green tint + green border + slight glow. Inactive tabs were
+          previously borderless which made them look unclickable. */}
       {view.kind === 'main' && (
-        <div className="flex items-center gap-1 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
+        <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
           {SECTION_TABS.map(tab => {
             const active = currentSection === tab.id;
             const isZh = i18nService.currentLanguage === 'zh';
@@ -620,8 +624,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 onClick={() => setSection(tab.id)}
                 className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                   active
-                    ? 'bg-blue-500/10 text-blue-500 border border-blue-500/30'
-                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
+                    ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
                 }`}
               >
                 <span>{tab.icon}</span>
