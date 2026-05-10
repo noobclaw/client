@@ -48,6 +48,64 @@ try {
 
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
 const TCP_PORT = 12581;
+
+// ─── Telemetry: bridge-conn rollout tracker ─────────────────────────
+//
+// We're rolling out a transport-priority change (extension v1.3+ goes
+// WS-first, NM-fallback) so the next client release can stop registering
+// NM hosts entirely. Need ground-truth on what % of live connections are
+// already on WS before pulling that trigger. Backend endpoint:
+//   POST /api/telemetry/bridge-conn  (public, rate-limited per /24)
+//
+// Fire-and-forget, never blocks/throws. Each conn pings once on hello.
+let CLIENT_VERSION_CACHED: string | null = null;
+function getClientVersionForTelemetry(): string {
+  if (CLIENT_VERSION_CACHED !== null) return CLIENT_VERSION_CACHED;
+  try {
+    if (app && typeof app.getVersion === 'function') {
+      CLIENT_VERSION_CACHED = String(app.getVersion() || '');
+      return CLIENT_VERSION_CACHED;
+    }
+  } catch {}
+  try {
+    // Fallback: read packaged package.json. In dev __dirname=src/main/libs;
+    // in prod the file ships next to the bundle.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pkg = require(path.resolve(__dirname, '..', '..', '..', 'package.json'));
+    CLIENT_VERSION_CACHED = String(pkg?.version || '');
+  } catch {
+    CLIENT_VERSION_CACHED = '';
+  }
+  return CLIENT_VERSION_CACHED;
+}
+
+function reportBridgeConnTelemetry(conn: BrowserConn, walletAddress: string | null): void {
+  if (conn.telemetryReported) return;
+  conn.telemetryReported = true;
+
+  const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+  const payload = {
+    transport: conn.transport,
+    extVersion: conn.extensionVersion || null,
+    clientVersion: getClientVersionForTelemetry() || null,
+    osPlatform: process.platform,
+    walletAddress: walletAddress || null,
+  };
+
+  // Use global fetch (Node 18+ / Electron 28+ both ship it). Wrap in a
+  // try so we never raise; telemetry must never break extension comms.
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    fetch(`${base}/api/telemetry/bridge-conn`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      // Short timeout — if the backend is slow / unreachable, we don't
+      // care, this is best-effort. AbortController gives us 3s ceiling.
+      signal: (() => { const c = new AbortController(); setTimeout(() => c.abort(), 3000); return c.signal; })(),
+    }).catch(() => {});
+  } catch {}
+}
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf';
 const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd';
 const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
@@ -149,6 +207,9 @@ interface BrowserConn {
   /** Extension version reported in the `hello` message. Empty until the
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
   extensionVersion: string;
+  /** Set to true after we've fired one telemetry ping for this connection.
+   *  Telemetry is per-connection, not per-message. */
+  telemetryReported?: boolean;
   /** When this connection was accepted by the bridge. The renderer uses
    *  this to distinguish "extension still mid-handshake (just connected,
    *  hello not arrived yet)" from "extension is genuinely too old to send
@@ -646,6 +707,12 @@ function attachBrowserConn(socket: net.Socket, transport: 'nm' | 'ws'): void {
               url: String(t.url || ''),
             }));
             conn.lastActivityAt = Date.now();
+          }
+          // Fire-and-forget telemetry ping (once per conn, on first hello
+          // — by then we know the ext version too). Non-blocking, swallows
+          // all errors, never breaks comms.
+          if (!conn.telemetryReported && msg.type === 'hello') {
+            reportBridgeConnTelemetry(conn, null);
           }
           return;
         }
