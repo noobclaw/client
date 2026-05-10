@@ -9,6 +9,132 @@ use tauri::{
 };
 use tauri_plugin_shell::process::CommandChild;
 
+// ─── Windows Job Object — kernel-enforced child cleanup ──────────────
+//
+// Problem: On Windows the kernel has no parent-process-death signal
+// equivalent to POSIX. If the main NoobClaw exe dies (clean exit, panic,
+// `taskkill /F`, power loss, OOM kill, …) the spawned sidecar
+// (noobclaw-server.exe) keeps running indefinitely. It then holds onto
+// TCP port 12581 (hard-coded by the Chrome extension) and the
+// native-messaging-host.bat file lock, so the next NoobClaw launch
+// fails with "port 12581 held by another process".
+//
+// Fix: wrap every sidecar child in a Win32 Job Object whose
+// JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE flag is set. The kernel terminates
+// every process inside the job the instant the LAST handle to the job
+// closes — and the only process holding that handle is the main exe.
+// When main dies, kernel cleans up all sidecars synchronously, no
+// userspace cooperation needed.
+//
+// This is the exact pattern Chrome / Edge / VS Code / Defender use for
+// their own subprocess management; AV is fine with it (no registry
+// writes, no cross-process injection, no service install).
+#[cfg(target_os = "windows")]
+mod win_job {
+    use std::mem::{size_of, zeroed};
+    use std::sync::OnceLock;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
+        JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_SET_QUOTA, PROCESS_TERMINATE};
+
+    // SAFETY wrapper: HANDLE is !Send by default in the windows crate, but
+    // a Job Object handle is a kernel object referenced by an opaque value
+    // that's safe to share across threads as long as we don't close it
+    // until process exit. We guard the underlying handle behind OnceLock
+    // so it's set exactly once and never freed (the OS reclaims on exit).
+    struct JobHandle(HANDLE);
+    unsafe impl Send for JobHandle {}
+    unsafe impl Sync for JobHandle {}
+
+    static JOB: OnceLock<JobHandle> = OnceLock::new();
+
+    /// Lazily create a single shared Job Object configured to kill all
+    /// assigned processes when the last handle (held by us in this
+    /// process) closes. Returns Err on any Win32 failure; caller can
+    /// log + continue (sidecar will simply not be auto-cleaned, same
+    /// behaviour as before this fix).
+    fn ensure_job() -> Result<HANDLE, String> {
+        if let Some(h) = JOB.get() {
+            return Ok(h.0);
+        }
+        unsafe {
+            // lpjobattributes=None (default sec descriptor), lpname=PCWSTR::null()
+            // (anonymous job — we don't share by name, just by handle).
+            let h = CreateJobObjectW(None, PCWSTR::null())
+                .map_err(|e| format!("CreateJobObjectW failed: {e}"))?;
+            let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+            info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            let ok = SetInformationJobObject(
+                h,
+                JobObjectExtendedLimitInformation,
+                &info as *const _ as *const core::ffi::c_void,
+                size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            );
+            if let Err(e) = ok {
+                let _ = CloseHandle(h);
+                return Err(format!("SetInformationJobObject failed: {e}"));
+            }
+            // Store the handle. If another thread raced us, drop ours.
+            match JOB.set(JobHandle(h)) {
+                Ok(()) => Ok(h),
+                Err(_) => {
+                    let _ = CloseHandle(h);
+                    Ok(JOB.get().unwrap().0)
+                }
+            }
+        }
+    }
+
+    /// Attach a freshly-spawned child process (by PID) to the kill-on-
+    /// close job. Idempotent + safe to call from any thread.
+    pub fn attach_pid(pid: u32) -> Result<(), String> {
+        let job = ensure_job()?;
+        unsafe {
+            // PROCESS_SET_QUOTA + PROCESS_TERMINATE are exactly what
+            // AssignProcessToJobObject requires; nothing more.
+            let proc = OpenProcess(PROCESS_SET_QUOTA | PROCESS_TERMINATE, false, pid)
+                .map_err(|e| format!("OpenProcess({pid}) failed: {e}"))?;
+            let res = AssignProcessToJobObject(job, proc);
+            let _ = CloseHandle(proc);
+            res.map_err(|e| format!("AssignProcessToJobObject({pid}) failed: {e}"))?;
+        }
+        Ok(())
+    }
+}
+
+/// Cross-platform shim: on Windows wraps the child PID in a kill-on-
+/// close Job Object; on macOS / Linux this is a no-op because POSIX
+/// already supports proper signal-on-parent-death patterns and the
+/// shell plugin's existing kill-in-Drop is sufficient there.
+#[allow(unused_variables)]
+fn attach_to_kill_on_close_job(pid: u32) {
+    #[cfg(target_os = "windows")]
+    {
+        match win_job::attach_pid(pid) {
+            Ok(()) => {
+                append_sidecar_log(&format!(
+                    "[tauri] sidecar pid={} attached to kill-on-close Job Object",
+                    pid
+                ));
+            }
+            Err(e) => {
+                // Log loudly but don't fail spawn — worst case we fall
+                // back to the pre-fix behaviour (sidecar may outlive
+                // parent), which is still functional for happy paths.
+                append_sidecar_log(&format!(
+                    "[tauri] WARN: failed to attach sidecar pid={} to Job Object: {}",
+                    pid, e
+                ));
+            }
+        }
+    }
+}
+
 // ─── macOS TCC bridge ────────────────────────────────────────────────
 //
 // The sidecar (noobclaw-server) is a separate Mach-O binary, so when it
@@ -242,6 +368,12 @@ fn spawn_sidecar_once(app: &tauri::AppHandle) -> Result<(u16, CommandChild), Str
         append_sidecar_log(&format!("[tauri] {}", msg));
         msg
     })?;
+
+    // Wrap the freshly-spawned sidecar in a Win32 Job Object so the
+    // kernel kills it the instant the main process dies — even on
+    // unclean exits (panic / taskkill /F / power loss). No-op on
+    // macOS/Linux. See the win_job module above for rationale.
+    attach_to_kill_on_close_job(child.pid());
 
     // Pump stdout/stderr in a background task and signal the supervisor
     // when the child terminates. We send the Terminated marker out via

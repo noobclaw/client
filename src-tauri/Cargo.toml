@@ -62,3 +62,17 @@ tauri = { version = "2", features = ["devtools"] }
 objc2 = "0.5"
 objc2-foundation = { version = "0.2", features = ["NSString"] }
 objc2-app-kit = { version = "0.2", features = ["NSApplication", "NSDockTile"] }
+
+# Win32 Job Object API — used to wrap the sidecar so it dies kernel-side
+# when the main NoobClaw process dies, regardless of crash / taskkill /
+# panic / power loss. Without this, on Windows the sidecar can outlive
+# its parent and hold port 12581 (chrome extension hard-coded), causing
+# the next app launch to fatal with "port held by another process".
+# See lib.rs::attach_to_kill_on_close_job for the design.
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security",          # CreateJobObjectW lives behind this feature gate
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+] }
