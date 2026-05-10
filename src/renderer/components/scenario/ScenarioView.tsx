@@ -633,7 +633,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           card with a frame even when inactive, and the active one shifts
           to a green tint + green border + slight glow. Inactive tabs were
           previously borderless which made them look unclickable. */}
-      {view.kind === 'main' && (
+      {/* Two header modes:
+          - "list" mode (section = tasks / history): L1 tabs on the left
+            + "+ 新建涨粉任务" CTA on the right
+          - "create" mode (section = create): a "← 返回" button replaces
+            the L1 tabs; CTA hides because we're already inside Create.
+            This makes Create feel like a pushed sub-page rather than
+            another tab equal to the others — matches user expectation
+            of "task vs view" actions. */}
+      {view.kind === 'main' && currentSection !== 'create' && (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <div className="flex items-center gap-2 overflow-x-auto">
             {SECTION_TABS.map(tab => {
@@ -662,15 +670,32 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           <button
             type="button"
             onClick={() => setSection('create')}
-            className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-green-500/30 active:scale-95 ${
-              currentSection === 'create'
-                ? 'bg-green-600 text-white border border-green-600'
-                : 'bg-green-500 hover:bg-green-600 text-white border border-green-500'
-            }`}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-green-500/30 active:scale-95 bg-green-500 hover:bg-green-600 text-white border border-green-500"
           >
             <span>✨</span>
             <span>{i18nService.currentLanguage === 'zh' ? '新建涨粉任务' : 'New Task'}</span>
           </button>
+        </div>
+      )}
+
+      {/* Create-mode header: shows a back arrow that returns the user
+          to the My Tasks list. We deliberately do NOT keep the L1 tabs
+          here so the page reads as a pushed sub-page, not a sibling
+          of My Tasks / Run History. */}
+      {view.kind === 'main' && currentSection === 'create' && (
+        <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          <button
+            type="button"
+            onClick={() => setSection('tasks')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
+            title={i18nService.currentLanguage === 'zh' ? '返回我的涨粉任务' : 'Back to My Tasks'}
+          >
+            <span>←</span>
+            <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
+          </button>
+          <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2">
+            ✨ {i18nService.currentLanguage === 'zh' ? '新建涨粉任务' : 'New Task'}
+          </h2>
         </div>
       )}
 
