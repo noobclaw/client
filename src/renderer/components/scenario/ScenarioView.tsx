@@ -15,6 +15,7 @@ import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
+import { DEFAULT_SCENARIOS } from '../../data/defaultScenarios';
 import { XhsWorkflowsPage } from './XhsWorkflowsPage';
 import { XWorkflowsPage } from './XWorkflowsPage';
 import { TaskDetailPage } from './TaskDetailPage';
@@ -81,7 +82,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   const [view, setView] = useState<ViewState>({ kind: 'main', section: 'create', platform: initialPlatform || 'binance' });
 
-  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
+  // every WorkflowsPage are clickable from first paint, not greyed out
+  // while we wait on the network. listScenarios() result REPLACES this
+  // once the API call comes back, so any backend-side scenario change
+  // still reaches the user within the normal refresh cycle.
+  const [scenarios, setScenarios] = useState<Scenario[]>(() => DEFAULT_SCENARIOS);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -106,9 +112,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       setDrafts(Array.isArray(d) ? d : []);
       setLoading(false);
 
-      // Load scenarios in background (network, slow) — don't block UI
+      // Load scenarios in background (network, slow) — don't block UI.
+      // Only REPLACE the bundled DEFAULT_SCENARIOS snapshot when the API
+      // returns a non-empty array. If the API call fails or returns []
+      // (e.g. user is offline / backend down) we keep the bundled
+      // snapshot so the UI stays usable.
       scenarioService.listScenarios().then(s => {
-        setScenarios(Array.isArray(s) ? s : []);
+        if (Array.isArray(s) && s.length > 0) setScenarios(s);
       }).catch(() => {});
     } catch (err) {
       console.error('[ScenarioView] refreshAll failed:', err);
