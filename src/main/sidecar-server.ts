@@ -309,6 +309,37 @@ async function getRunner() {
       // This is now the PRIMARY transport (was fallback in 2.6.x).
       attachBrowserBridgeWebSocket(server);
 
+      // ── EARLY LISTEN: bind 18800 NOW, not after every other module
+      // is initialised ──────────────────────────────────────────────
+      // v2.6.3: previously server.listen() lived ~1500 lines below this
+      // point, after Cowork runner / Feishu Gateway / Skill sync /
+      // OpenAI compat proxy etc. Result: port 18800 wasn't open until
+      // sidecar finished its full init (~5–10s). Browser extension's
+      // WS-first probe got ECONNREFUSED for that whole window and
+      // the popup just sat at "Connecting..." waiting for the next
+      // keepalive cycle.
+      //
+      // The original WS implementation (commit fd8fcec) didn't have
+      // this problem because it ran a dedicated lightweight WS server
+      // on port 12580 that listened in early-startup, decoupled from
+      // the main HTTP server's init dependencies. We rejoined into a
+      // single port in v2.6.1 to avoid running two servers, but
+      // forgot to also move the listen() call up — that's the bug
+      // making every launch feel slow.
+      //
+      // Fix: listen RIGHT AFTER the WS upgrade handler is attached.
+      // HTTP route handlers are registered at createServer() time
+      // (around line 510 above) so they're already callable; any
+      // route that depends on later-initialised resources handles
+      // its own readiness internally. WS upgrade is its own event
+      // path, totally independent of HTTP route readiness.
+      if (!IS_NATIVE_MESSAGING_HOST) {
+        server.listen(PORT, '127.0.0.1', () => {
+          console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
+          coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
+        });
+      }
+
       // Register extension prompt callback — broadcasts SSE to frontend for user decision
       setExtensionPromptCallback(async (opts) => {
         return new Promise<'install' | 'cancel'>((resolve) => {
@@ -1851,10 +1882,13 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
-  console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
-  coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
-
+// v2.6.3: server.listen() moved up to right after attachBrowserBridgeWebSocket
+// so the chrome extension can connect within ms of sidecar boot instead of
+// waiting for every module below to initialise first. The block below used
+// to be the listen() callback; now it runs unconditionally at the end of the
+// init script. Behaviour is the same — by the time we reach here all the
+// modules below need are loaded into the closure.
+if (!IS_NATIVE_MESSAGING_HOST) {
   // Start scenario scheduler (checks every 60s for auto-run tasks)
   // v4.31.32: 之前所有 init 步骤共用一个 try/catch,只要任何一步抛异常 →
   //   下面的 startScheduler() 永远不会执行,sidecar 还能跑(立即运行能用)
@@ -1963,7 +1997,7 @@ if (!IS_NATIVE_MESSAGING_HOST) server.listen(PORT, '127.0.0.1', () => {
       coworkLog('WARN', 'sidecar-server', 'Runner pre-initialization failed — will retry on first request');
     }
   }).catch(e => coworkLog('ERROR', 'sidecar-server', `Runner pre-init error: ${e}`));
-});
+}
 
 // ── Helpers ──
 
