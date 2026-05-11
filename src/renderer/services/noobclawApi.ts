@@ -10,6 +10,24 @@ export interface TokenInfo {
   walletAddress: string;
 }
 
+// Per-chain block under PaymentInfo.chains. Backend emits these starting in
+// v5.5 (TRON/USDT support). Older clients keep using the top-level fields
+// (treasuryWallet/packages) so the response is forward+backward compatible.
+export interface ChainBlock {
+  treasuryWallet: string;
+  bnbPriceUsd?: number;        // BSC only
+  usdtContract?: string;       // TRON only
+  enabled?: boolean;
+  packages: Array<{
+    bnb?: number;              // BSC packages
+    usdt?: number;             // TRON packages
+    label: string;
+    usdValue: string;
+    tokens: number;
+    tokensDisplay: string;
+  }>;
+}
+
 export interface PaymentInfo {
   treasuryWallet: string;
   bnbPriceUsd: number;
@@ -24,6 +42,13 @@ export interface PaymentInfo {
   noobPerDollar?: number;
   purchaseNoobPerDollarMin?: number;
   purchaseNoobPerDollarMax?: number;
+  // Optional — present when backend has the multi-chain TRON channel enabled.
+  // TRON is keyed only when tron_treasury_address is set in system_config; if
+  // missing, the client falls back to BSC-only behavior.
+  chains?: {
+    BSC?: ChainBlock;
+    TRON?: ChainBlock;
+  };
 }
 
 class NoobClawApiService {
@@ -75,12 +100,28 @@ class NoobClawApiService {
     }
   }
 
-  async createOrder(bnbAmount: number): Promise<{ order?: any; error?: string; code?: string } | null> {
+  /**
+   * Create a pending top-up order.
+   *
+   * - createOrder(0.3)                       → BSC (legacy single-arg form)
+   * - createOrder(10,  'TRON')               → TRON / USDT
+   * - createOrder(0.3, 'BSC')                → BSC (explicit chain)
+   *
+   * Returns the inserted order row plus, for TRON, a `treasuryWallet` field
+   * so the caller can render the receive address without a second /info hit.
+   */
+  async createOrder(
+    amount: number,
+    chain: 'BSC' | 'TRON' = 'BSC',
+  ): Promise<{ order?: any; treasuryWallet?: string; error?: string; code?: string } | null> {
     try {
+      const body = chain === 'TRON'
+        ? { chain: 'TRON', usdtAmount: amount }
+        : { chain: 'BSC',  bnbAmount: amount };
       const res = await this.authedFetch(`${this.backendUrl}/api/payment/create`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bnbAmount }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) return { error: data.message || data.error, code: data.code };

@@ -50,6 +50,45 @@ function getStatusColor(status: string): string {
   return map[status] || 'bg-gray-500/10 text-gray-400';
 }
 
+// Network logo for the deposit-chain selector + order rows. Inline SVG so we
+// have a single source of truth and no extra asset fetch. Sizes are square px.
+const ChainLogo: React.FC<{ chain: 'BSC' | 'TRON'; size?: number }> = ({ chain, size = 18 }) => {
+  if (chain === 'TRON') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+        <rect width={24} height={24} rx={12} fill="#EF0027" />
+        <path fill="white" d="M17.5 5.5L7.5 4 12 17.5l1.5-4.2L17.5 5.5zm-1.7.8L12.7 11l-2-4.8 4.6-.4-.4.3zm-7.6-1l3.5 1.4-.8 4.4-3.4-5.5L8.2 5.3zm5.1 6.4l-1.3 3.6L7.5 7l5 4.5z" />
+      </svg>
+    );
+  }
+  // BSC
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" aria-hidden="true" style={{ verticalAlign: 'middle' }}>
+      <circle cx={16} cy={16} r={16} fill="#F3BA2F" />
+      <path fill="white" d="M12.116 14.404L16 10.52l3.886 3.886 2.26-2.258L16 6l-6.146 6.146 2.262 2.258zM6 16l2.26-2.26L10.52 16l-2.26 2.26L6 16zm6.116 1.596L16 21.48l3.886-3.886 2.26 2.259L16 26l-6.146-6.146-.003-.003 2.265-2.255zM21.48 16l2.26-2.26L26 16l-2.26 2.26L21.48 16zm-3.188-.002h.002V16L16 18.294 13.706 16.002l-.004-.004.004-.004.402-.402.195-.195L16 13.706l2.293 2.293z" />
+    </svg>
+  );
+};
+
+// Get the active chain block + a list of packages for it from PaymentInfo,
+// falling back to legacy top-level fields when the backend predates the
+// multi-chain block.
+function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON') {
+  if (!info) return null;
+  const fromChains = info.chains && info.chains[chain];
+  if (fromChains) return fromChains;
+  // legacy fallback: only BSC was supported, top-level packages == BSC
+  if (chain === 'BSC') {
+    return {
+      treasuryWallet: info.treasuryWallet,
+      bnbPriceUsd: info.bnbPriceUsd,
+      packages: info.packages,
+      enabled: true,
+    };
+  }
+  return null;
+}
+
 export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
@@ -57,8 +96,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [, setOrderTotal] = useState(0);
   const [pendingOrderNo, setPendingOrderNo] = useState('');
-  const [pendingBnbAmount, setPendingBnbAmount] = useState('');
+  // pendingAmount is the on-chain amount string the user must transfer
+  // (e.g. "0.025154" for BNB or "10.003472" for USDT). pendingChain records
+  // which chain the pending order is on so the payment panel can show the
+  // right unit + treasury address. Kept as a single string + chain rather
+  // than two separate states to avoid drift between the two on chain switch.
+  const [pendingAmount, setPendingAmount] = useState('');
+  const [pendingChain, setPendingChain] = useState<'BSC' | 'TRON'>('BSC');
   const [pendingCreatedAt, setPendingCreatedAt] = useState('');
+  // Currently selected deposit chain on the package picker. Defaulted to
+  // TRON in loadData() when the backend reports TRON is available, since
+  // USDT is the more common new-user path.
+  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON'>('BSC');
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -131,6 +180,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     setOrderTotal(historyData.total);
     setProfile(profileData);
     setNoobConfig(noobCfg);
+    // Default the picker to TRON (USDT) when the backend reports it as
+    // available — matches the website's product decision that stablecoin
+    // deposit is the more discoverable first option for new users.
+    if (info?.chains?.TRON) setCurrentChain('TRON');
   };
 
   const loadNoobEarnings = useCallback(async (page = 1, reason = '', from = '', to = '') => {
@@ -188,18 +241,28 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return () => clearInterval(interval);
   }, [step, pendingOrderNo, isExpired]);
 
-  const handleSelectPackage = async (bnbAmount: number) => {
+  const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' = currentChain) => {
     setLoading(true);
     setError('');
-    const result = await noobClawApi.createOrder(bnbAmount);
+    const result = await noobClawApi.createOrder(amount, chain);
     if (result?.order) {
-      setPendingOrderNo(result.order.order_no);
-      setPendingBnbAmount(String(parseFloat(result.order.bnb_amount)));
-      setPendingCreatedAt(result.order.created_at);
+      // TRON orders carry usdt_amount; BSC orders carry bnb_amount. Either
+      // way, what we display on the pay screen is the unique-tail value
+      // (already includes the matching tail).
+      const order = result.order;
+      const amountStr = chain === 'TRON'
+        ? String(parseFloat(order.usdt_amount))
+        : String(parseFloat(order.bnb_amount));
+      setPendingOrderNo(order.order_no);
+      setPendingAmount(amountStr);
+      setPendingChain(chain);
+      setPendingCreatedAt(order.created_at);
       setIsExpired(false);
       setStep('pay');
     } else if (result?.code === 'PENDING_LIMIT') {
       setError(i18nService.t('walletPendingLimitError'));
+    } else if (result?.code === 'TRON_DISABLED') {
+      setError('TRON deposit channel is not configured');
     } else {
       setError(result?.error || i18nService.t('walletCreateOrderFailed'));
     }
@@ -235,19 +298,28 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   };
 
   const handleViewPendingOrder = (order: any) => {
+    const chain: 'BSC' | 'TRON' = (order.chain || 'BSC').toUpperCase() === 'TRON' ? 'TRON' : 'BSC';
+    const amountStr = chain === 'TRON'
+      ? String(parseFloat(order.usdt_amount))
+      : String(parseFloat(order.bnb_amount));
     setPendingOrderNo(order.order_no);
-    setPendingBnbAmount(String(parseFloat(order.bnb_amount)));
+    setPendingAmount(amountStr);
+    setPendingChain(chain);
     setPendingCreatedAt(order.created_at);
     setIsExpired(false);
     setStep('pay');
     setSubPage('main');
+    // Flip the active tab on the picker too so coming back to "Buy Credits"
+    // lands on the matching chain.
+    setCurrentChain(chain);
   };
 
   const resetPayState = () => {
     setStep('select');
     setError('');
     setPendingOrderNo('');
-    setPendingBnbAmount('');
+    setPendingAmount('');
+    setPendingChain('BSC');
     setPendingCreatedAt('');
     setIsExpired(false);
     setCountdown('');
@@ -451,14 +523,23 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 const isPending = order.status === 'pending';
                 const createdTime = new Date(order.created_at);
                 const timeStr = createdTime.toLocaleDateString(i18nService.getDateLocale()) + ' ' +createdTime.toLocaleTimeString(i18nService.getDateLocale(), { hour: '2-digit', minute: '2-digit' });
+                // Chain-aware amount + unit. BSC orders carry bnb_amount,
+                // TRON orders carry usdt_amount (the other is NULL). Legacy
+                // BSC rows without a chain field default to 'BSC'.
+                const orderChain: 'BSC' | 'TRON' = (order.chain || 'BSC').toUpperCase() === 'TRON' ? 'TRON' : 'BSC';
+                const orderAmount = orderChain === 'TRON'
+                  ? (order.usdt_amount != null ? parseFloat(order.usdt_amount).toFixed(6) : '—')
+                  : (order.bnb_amount != null ? parseFloat(order.bnb_amount).toFixed(6) : '—');
+                const orderUnit = orderChain === 'TRON' ? 'USDT' : 'BNB';
 
                 return (
                   <div key={order.id} className="p-3.5 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
                     <div className="flex items-start justify-between mb-2">
                       <div>
                         <code className="text-xs font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{order.order_no}</code>
-                        <div className="text-sm font-medium dark:text-claude-darkText text-claude-text mt-1">
-                          {parseFloat(order.bnb_amount).toFixed(6)} BNB
+                        <div className="flex items-center gap-1.5 text-sm font-medium dark:text-claude-darkText text-claude-text mt-1">
+                          <ChainLogo chain={orderChain} size={14} />
+                          {orderAmount} {orderUnit}
                           <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {(order.tokens_purchased / 1_000_000).toFixed(1)}{i18nService.t('walletMTokenUnit')}</span>
                         </div>
                       </div>
@@ -1065,23 +1146,62 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
           )}
 
           {step === 'select' && (
-            <div className="grid grid-cols-3 gap-3">
-              {paymentInfo?.packages.map((pkg: any) => (
-                <div key={pkg.bnb} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
-                  <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">{pkg.label}</p>
-                  <p className="text-xs text-primary font-medium mb-3">{pkg.tokensDisplay}</p>
+            <>
+              {/* Chain selector tabs. Only rendered when backend reports a
+                  TRON channel available — single-chain (BSC-only) deployments
+                  see the legacy single-grid look. USDT/TRON is listed first
+                  by product decision since stablecoin deposit is the more
+                  common path for new users. */}
+              {paymentInfo?.chains?.TRON && (
+                <div className="mb-3 grid grid-cols-2 gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
                   <button
-                    onClick={() => handleSelectPackage(pkg.bnb)}
-                    disabled={loading}
-                    className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold disabled:opacity-40 transition-all"
+                    onClick={() => setCurrentChain('TRON')}
+                    className={`flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${currentChain === 'TRON' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
                   >
-                    {i18nService.t('walletTopUp')}
+                    <ChainLogo chain="TRON" size={16} />
+                    USDT · TRC20
+                  </button>
+                  <button
+                    onClick={() => setCurrentChain('BSC')}
+                    className={`flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${currentChain === 'BSC' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
+                  >
+                    <ChainLogo chain="BSC" size={16} />
+                    BNB · BSC
                   </button>
                 </div>
-              )) || (
-                <div className="col-span-3 text-center dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm py-4">{i18nService.t('walletLoadingPackages')}</div>
               )}
-            </div>
+              <div className="grid grid-cols-3 gap-3">
+                {(() => {
+                  const block = chainBlockFor(paymentInfo, currentChain);
+                  const packages = block?.packages || [];
+                  if (!packages.length) {
+                    return (
+                      <div className="col-span-3 text-center dark:text-claude-darkTextSecondary text-claude-textSecondary text-sm py-4">
+                        {paymentInfo ? `${currentChain} channel unavailable` : i18nService.t('walletLoadingPackages')}
+                      </div>
+                    );
+                  }
+                  return packages.map((pkg: any) => {
+                    const isTron = currentChain === 'TRON';
+                    const amount = isTron ? (pkg.usdt as number) : (pkg.bnb as number);
+                    const key = `${currentChain}-${amount}`;
+                    return (
+                      <div key={key} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
+                        <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">{pkg.label}</p>
+                        <p className="text-xs text-primary font-medium mb-3">{pkg.tokensDisplay}</p>
+                        <button
+                          onClick={() => handleSelectPackage(amount, currentChain)}
+                          disabled={loading}
+                          className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold disabled:opacity-40 transition-all"
+                        >
+                          {i18nService.t('walletTopUp')}
+                        </button>
+                      </div>
+                    );
+                  });
+                })()}
+              </div>
+            </>
           )}
 
           {step === 'pay' && (
@@ -1101,29 +1221,44 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     {i18nService.t('walletBack')}
                   </button>
                 </div>
-              ) : (
+              ) : (() => {
+                // Chain-aware payment instructions. The visual structure stays
+                // the same as the legacy BNB-only flow; just the unit, the
+                // treasury address, and the title swap based on pendingChain.
+                const isTron = pendingChain === 'TRON';
+                const block = chainBlockFor(paymentInfo, pendingChain);
+                const treasury = block?.treasuryWallet || '';
+                const unit = isTron ? 'USDT' : 'BNB';
+                const networkLabel = isTron ? 'TRC20 (TRON)' : 'BSC (BNB Chain)';
+                return (
                 /* Payment info */
                 <>
-                  {/* Title */}
-                  <h4 className="text-sm font-bold dark:text-claude-darkText text-claude-text text-center mb-4">{i18nService.t('walletSendBnb')}</h4>
+                  {/* Title + chain logo */}
+                  <div className="flex items-center justify-center gap-2 mb-4">
+                    <ChainLogo chain={pendingChain} size={20} />
+                    <h4 className="text-sm font-bold dark:text-claude-darkText text-claude-text text-center">
+                      {isTron ? 'Send USDT (TRC20) to complete payment' : i18nService.t('walletSendBnb')}
+                    </h4>
+                  </div>
 
                   {/* Amount */}
                   <div className="text-center mb-1">
                     <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletSendExactly')}</p>
                     <div className="flex items-center justify-center gap-2">
-                      <code className="font-bold text-primary text-lg">{pendingBnbAmount} BNB</code>
-                      <button onClick={() => copyToClipboard(pendingBnbAmount)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
+                      <code className="font-bold text-primary text-lg">{pendingAmount} {unit}</code>
+                      <button onClick={() => copyToClipboard(pendingAmount)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
                     </div>
                   </div>
 
-                  {/* Treasury address label */}
-                  <p className="text-xs text-primary text-center mb-3">{i18nService.t('walletTreasuryWallet')}</p>
+                  {/* Treasury address label — explicit network so users don't
+                      mis-route their funds via the wrong chain (unrecoverable). */}
+                  <p className="text-xs text-primary text-center mb-3">{`Receiving address (${networkLabel} only)`}</p>
 
                   {/* QR Code */}
-                  {paymentInfo?.treasuryWallet && (
+                  {treasury && (
                     <div className="flex flex-col items-center mb-3">
                       <div className="bg-white p-2.5 rounded-lg">
-                        <QRCodeSVG value={paymentInfo.treasuryWallet} size={160} />
+                        <QRCodeSVG value={treasury} size={160} />
                       </div>
                       <p className="text-xs text-primary mt-2">{i18nService.t('walletScanQr')}</p>
                     </div>
@@ -1131,8 +1266,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
                   {/* Address */}
                   <div className="flex items-center justify-center gap-2 mb-4">
-                    <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all text-center">{paymentInfo?.treasuryWallet || 'Loading...'}</code>
-                    <button onClick={() => copyToClipboard(paymentInfo?.treasuryWallet || '')} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
+                    <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all text-center">{treasury || 'Loading...'}</code>
+                    <button onClick={() => copyToClipboard(treasury)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
                   </div>
 
                   {/* Tips */}
@@ -1167,7 +1302,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </button>
                   </div>
                 </>
-              )}
+                );
+              })()}
             </div>
           )}
 
