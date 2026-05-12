@@ -75,17 +75,27 @@ class ZipWriter {
           console.log('  [strip-manifest-key] removed "key" from manifest.json (CWS-compatible)');
         }
         if (addFirefoxBackground && json.background && json.background.service_worker) {
-          // Firefox MV3 requires `scripts` paired with `service_worker`.
-          // Chrome reads service_worker (per MV3 spec) and ignores scripts;
-          // Firefox reads scripts and ignores service_worker. Each is a
-          // no-op on the other side, so injecting scripts here makes the
-          // archive accepted by AMO without affecting Chrome runtime.
+          // Firefox MV3 needs `background.scripts` and rejects manifests
+          // that still carry `background.service_worker` — the error is:
+          //   "background.service_worker is currently disabled.
+          //    Add background.scripts."
+          // even when `scripts` is also present. Firefox parses
+          // `service_worker` first, refuses on the spot, and never gets
+          // to `scripts`. Earlier versions of this script kept both
+          // fields hoping Firefox would prefer scripts; in practice
+          // (Firefox 142+) the dual-field manifest is hard-rejected.
+          //
+          // Fix: for Firefox-only archives, swap service_worker → scripts
+          // entirely. The chrome / edge zips are unaffected (they don't
+          // pass --add-firefox-background, so service_worker stays).
           if (!Array.isArray(json.background.scripts) || json.background.scripts.length === 0) {
             json.background.scripts = [json.background.service_worker];
-            touched = true;
-            console.log('  [add-firefox-background] injected background.scripts ['
-              + json.background.service_worker + '] for Firefox MV3 compatibility');
           }
+          const removedSw = json.background.service_worker;
+          delete json.background.service_worker;
+          touched = true;
+          console.log('  [add-firefox-background] replaced service_worker → scripts ['
+            + removedSw + '] for Firefox MV3 (Firefox rejects archives that keep both fields)');
         }
         if (touched) {
           data = Buffer.from(JSON.stringify(json, null, 2) + '\n', 'utf-8');
