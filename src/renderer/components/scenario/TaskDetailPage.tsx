@@ -1388,10 +1388,12 @@ function formatActionBreakdown(
       sid === 'binance_from_x_repost' ||
       sid === 'binance_from_x_link' ||
       sid === 'x_link_rewrite' ||
-      sid === 'douyin_image_text'
+      sid === 'douyin_image_text' ||
+      sid === 'xhs_viral_production_career'
     );
     const isEngageScenario = !isPostScenario && (
-      sid.endsWith('_auto_engage') || sid === 'xhs_auto_engage'
+      sid.endsWith('_auto_engage')
+      || sid === 'xhs_auto_reply_universal'
     );
     if (isPostScenario) {
       counts = { post: 0 };

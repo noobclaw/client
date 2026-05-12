@@ -362,7 +362,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                     return (
                       <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? (isRunning ? '本次运行已完成 / 计划目标' : '本次完成的动作') : (isRunning ? 'Done / planned this run' : 'Actions completed this run')}>
                         <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
-                          {isZh ? (isRunning ? '本次目标' : '本次完成') : (isRunning ? 'Progress' : 'Actions')}:
+                          {isZh ? (isRunning ? '本次运行进度' : '本次完成') : (isRunning ? 'Current Run Progress' : 'Actions')}:
                         </span>
                         {keys.map(k => {
                           const done = ac?.[k] ?? 0;

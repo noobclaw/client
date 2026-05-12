@@ -519,7 +519,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'binance_from_x_repost' ||
                       sid === 'binance_from_x_link' ||
                       sid === 'x_link_rewrite' ||
-                      sid === 'douyin_image_text'
+                      sid === 'douyin_image_text' ||
+                      sid === 'xhs_viral_production_career'
                     );
                     // v5.x+: engage scenarios are 3-pronged (like / comment /
                     // follow) so a brand-new task with no history should show
@@ -529,7 +530,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     // Douyin all follow this pattern). Post-creator scenarios
                     // stay single-key on 'post'.
                     const isEngageScenario = !isPostScenario && (
-                      sid.endsWith('_auto_engage') || sid === 'xhs_auto_engage'
+                      sid.endsWith('_auto_engage')
+                      || sid === 'xhs_auto_reply_universal'
                     );
                     const fallbackKeys: string[] = isPostScenario
                       ? ['post']
@@ -563,8 +565,13 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       // orchestrator calls setActionTargets.
                       return null;
                     }
+                    // v5.x+: label aligned with TaskDetailPage's running
+                    // glow card ("本次运行进度" / "Current Run Progress")
+                    // so the list view and detail view use the same word
+                    // for the same data. Was "本次目标" / "Run target"
+                    // pre-rename.
                     const labelPrefix = effectiveInfo.mode === 'running'
-                      ? (isZh ? '本次目标' : 'Run target')
+                      ? (isZh ? '本次运行进度' : 'Current Run Progress')
                       : (isZh ? '累计完成' : 'Total done');
                     return (
                       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
