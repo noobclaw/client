@@ -1009,32 +1009,28 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       </div>
 
       {/* Running-only pair: 本次运行进度 + 本次消耗.
-          Both cards appear when status='running' and disappear the moment
-          the task finishes / errors / stops. They share the same green
-          border + pulse + noobclaw-running-glow as other in-flight
-          surfaces (run history pending row, scenario card).
-          v5.x+: the outer gate is now JUST status==='running' — previously
-          we also required action_progress non-empty OR tokens_used>0,
-          which hid the whole block for post-creator scenarios (no
-          per-action targets declared) until the first AI call landed.
-          User report: "other tasks don't have the cards at all". Now the
-          right (本次消耗) card always shows during running starting at
-          💎 0 ≈ $0.0000, and the left (本次运行进度) card hides on its
-          own when action_progress is empty — so engage tasks see both
-          cards side-by-side, post-creator tasks see only the cost card. */}
-      {progress?.status === 'running' && (() => {
-        const hasActionProgress = !!progress.action_progress
-          && Object.keys(progress.action_progress).length > 0;
-        // Grid: 2 cols when both cards render, 1 col when only the cost
-        // card renders (otherwise it would sit awkwardly half-wide on the
-        // left with empty space on the right).
-        const gridCls = hasActionProgress
-          ? 'mb-3 grid grid-cols-1 sm:grid-cols-2 gap-3'
-          : 'mb-3 grid grid-cols-1 gap-3';
-        return (
-          <div className={gridCls}>
+          Both cards appear ONLY when status='running' AND we have either
+          action_progress entries OR a non-zero tokens_used reading.
+          They share the same green border + pulse + noobclaw-running-glow
+          as other in-flight surfaces (run history pending row, scenario
+          card).
+          v5.x+: outer gate REVERTED to the old pre-737e367 shape after
+          user reported "left card appears a few seconds AFTER the right
+          card on XHS viral runs". Root cause was that 737e367 had
+          dropped the action_progress/tokens-required guard, so the
+          right card popped in immediately on status='running' while
+          the left card had to wait for the orchestrator's
+          ctx.setActionTargets to land — making them feel desynced. With
+          the backend orchestrators now all calling setActionTargets at
+          file top (commits a1f2cc2 + ea1f830), action_progress arrives
+          within ms of task start, so re-gating on it gives both cards a
+          synchronized entrance with no visible "right card alone" gap. */}
+      {progress?.status === 'running' && (
+        ((progress.action_progress && Object.keys(progress.action_progress).length > 0) ||
+         (progress.tokens_used || 0) > 0) && (
+          <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* 本次运行进度 — live X/Y per action type. */}
-            {hasActionProgress && (
+            {progress.action_progress && Object.keys(progress.action_progress).length > 0 && (
               <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
                 <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
                   <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -1093,8 +1089,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               </div>
             </div>
           </div>
-        );
-      })()}
+        )
+      )}
 
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
            so the "下次运行" stat is meaningless; show only the first five.
