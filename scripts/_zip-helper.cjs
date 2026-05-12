@@ -108,6 +108,7 @@ class ZipWriter {
     const crc = crc32(data);
     const nameBuffer = Buffer.from(relativePath.replace(/\\/g, '/'), 'utf-8');
     const headerOffset = this.offset;
+    const { dosDate, dosTime } = dosDateTime(stat.mtimeMs);
 
     // Local file header
     const local = Buffer.alloc(30);
@@ -115,8 +116,8 @@ class ZipWriter {
     local.writeUInt16LE(20, 4); // version needed
     local.writeUInt16LE(0, 6); // flags
     local.writeUInt16LE(8, 8); // compression: deflate
-    local.writeUInt16LE(0, 10); // mod time
-    local.writeUInt16LE(0, 12); // mod date
+    local.writeUInt16LE(dosTime, 10); // mod time
+    local.writeUInt16LE(dosDate, 12); // mod date
     local.writeUInt32LE(crc, 14);
     local.writeUInt32LE(compressed.length, 18);
     local.writeUInt32LE(data.length, 22);
@@ -127,20 +128,21 @@ class ZipWriter {
     this._write(nameBuffer);
     this._write(compressed);
 
-    this.entries.push({ nameBuffer, crc, compressedSize: compressed.length, uncompressedSize: data.length, headerOffset });
+    this.entries.push({ nameBuffer, crc, compressedSize: compressed.length, uncompressedSize: data.length, headerOffset, dosDate, dosTime });
   }
 
   addDirectory(relativePath) {
     const nameBuffer = Buffer.from(relativePath.replace(/\\/g, '/') + '/', 'utf-8');
     const headerOffset = this.offset;
+    const { dosDate, dosTime } = dosDateTime(Date.now());
 
     const local = Buffer.alloc(30);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(20, 4);
     local.writeUInt16LE(0, 6);
     local.writeUInt16LE(0, 8); // stored
-    local.writeUInt16LE(0, 10);
-    local.writeUInt16LE(0, 12);
+    local.writeUInt16LE(dosTime, 10);
+    local.writeUInt16LE(dosDate, 12);
     local.writeUInt32LE(0, 14);
     local.writeUInt32LE(0, 18);
     local.writeUInt32LE(0, 22);
@@ -150,7 +152,7 @@ class ZipWriter {
     this._write(local);
     this._write(nameBuffer);
 
-    this.entries.push({ nameBuffer, crc: 0, compressedSize: 0, uncompressedSize: 0, headerOffset, isDir: true });
+    this.entries.push({ nameBuffer, crc: 0, compressedSize: 0, uncompressedSize: 0, headerOffset, isDir: true, dosDate, dosTime });
   }
 
   finalize() {
@@ -163,8 +165,8 @@ class ZipWriter {
       cd.writeUInt16LE(20, 6); // version needed
       cd.writeUInt16LE(0, 8); // flags
       cd.writeUInt16LE(e.isDir ? 0 : 8, 10); // compression
-      cd.writeUInt16LE(0, 12); // mod time
-      cd.writeUInt16LE(0, 14); // mod date
+      cd.writeUInt16LE(e.dosTime, 12); // mod time
+      cd.writeUInt16LE(e.dosDate, 14); // mod date
       cd.writeUInt32LE(e.crc, 16);
       cd.writeUInt32LE(e.compressedSize, 20);
       cd.writeUInt32LE(e.uncompressedSize, 24);
@@ -212,9 +214,15 @@ function crc32(buf) {
 }
 
 // Walk directory
+// Skip dev/VCS junk that has no business in a published extension archive.
+// .git in particular: chrome-extension is a git repo, and walking the whole
+// objects tree both bloats the archive and triggers strict-unzip failures
+// (Firefox install rejects, Windows Explorer "archive is invalid").
+const IGNORE = new Set(['.git', '.DS_Store', 'Thumbs.db', 'node_modules', '.vscode', '.idea']);
 function walkDir(dir, base) {
   const results = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (IGNORE.has(entry.name)) continue;
     const full = path.join(dir, entry.name);
     const rel = path.join(base, entry.name);
     if (entry.isDirectory()) {
@@ -225,6 +233,23 @@ function walkDir(dir, base) {
     }
   }
   return results;
+}
+
+// Build a DOS-format (time, date) pair for a JS Date. DOS time/date can NOT
+// legally encode month=0 or day=0 — some unzippers (Windows Explorer, parts
+// of Firefox's signer) reject archives with the all-zero default we used
+// originally. Fall back to a valid sentinel (1980-01-01 00:00:00) if mtime
+// is missing or out of range.
+function dosDateTime(mtimeMs) {
+  let d = new Date(mtimeMs);
+  let year = d.getFullYear();
+  if (!Number.isFinite(year) || year < 1980 || year > 2107) {
+    d = new Date(2024, 0, 1);
+    year = 2024;
+  }
+  const dosDate = ((year - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const dosTime = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+  return { dosDate, dosTime };
 }
 
 (async () => {
