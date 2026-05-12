@@ -172,11 +172,14 @@ export const RunHistoryPage: React.FC<Props> = ({
         light: true,
       });
       if (cancelled) return;
-      // History page shows ONLY completed records — per user request:
-      // "历史记录中不放进行中的，只放有结果的". Live "running" tasks are
-      // already visible (with the green pulse glow) on the My Tasks page.
-      const finished = (recs as RunRecord[]).filter(r => r.status !== 'running');
-      setRecords(finished);
+      // v5.x+: running records ARE included now (user reversed earlier
+      // "only completed runs" preference — they want to see live
+      // progress 5/32 in the list while a task is in flight). The
+      // running row carries action_counts/action_targets from
+      // scenarioManager's live RunProgress mirror so X/Y renders without
+      // a separate getRunProgress call from the renderer. Completed rows
+      // also benefit because action_targets is now persisted at finish.
+      setRecords(recs as RunRecord[]);
       setLoading(false);
     };
     void tick();
@@ -320,23 +323,34 @@ export const RunHistoryPage: React.FC<Props> = ({
                   {/* 本次完成 — its own row below the top line so the time
                       and cost chips stay uncrowded. Mirrors TaskDetailPage's
                       累计完成 icon set (👍 like / ➕ follow / 📌 subscribe /
-                      💬 comment / 📤 post). Hidden entirely when there's no
-                      action_counts data so pre-rollout rows stay flat. */}
+                      💬 comment / 📤 post).
+                      v5.x+: renders "X/Y" when action_targets is present
+                      (e.g. "👍 5/32 · ➕ 1/3 · 💬 2/2"). action_targets
+                      is the planned per-action quota declared by the
+                      orchestrator via ctx.setActionTargets at run start;
+                      scenarioManager mirrors it into the run record both
+                      live (running rows update every per-action bump)
+                      and at finish (so completed rows keep the X/Y
+                      display). Pre-rollout records have neither field
+                      and stay flat via the early null return. */}
                   {(() => {
                     const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
-                    if (!ac) return null;
+                    const at = (rec.result as any)?.action_targets as Record<string, number> | undefined;
+                    if (!ac && !at) return null;
                     const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
                     const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
                     const labels = isZh
                       ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
                       : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
-                    // v5.x+: keep 0-count keys so user_stopped runs render
-                    // "👍 0 · ➕ 0 · 💬 0" (orchestrator declared targets
-                    // via setActionTargets, but stopped before any
-                    // completed). Pre-rollout records have no
-                    // action_counts at all → caught by the !ac early
-                    // return on line 327.
-                    const keys = Object.keys(ac).filter(k => typeof ac[k] === 'number').sort((a, b) => {
+                    // Union of keys present in either map — running rows
+                    // may briefly have only targets (orchestrator set
+                    // them, no addActionCount yet); completed rows have
+                    // both.
+                    const allKeys = new Set<string>([
+                      ...Object.keys(ac || {}),
+                      ...Object.keys(at || {}),
+                    ]);
+                    const keys = Array.from(allKeys).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;
@@ -344,15 +358,30 @@ export const RunHistoryPage: React.FC<Props> = ({
                       return ia - ib;
                     });
                     if (keys.length === 0) return null;
+                    const isRunning = rec.status === 'running';
                     return (
-                      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? '本次完成的动作' : 'Actions completed this run'}>
-                        <span className="text-[10px] text-gray-500 dark:text-gray-500">{isZh ? '本次完成' : 'Actions'}:</span>
-                        {keys.map(k => (
-                          <span key={k} className="font-medium">
-                            {(ICONS[k] || '·')} {ac[k]}{' '}
-                            <span className="text-gray-500 dark:text-gray-400 font-normal">{(labels as any)[k] || k}</span>
-                          </span>
-                        ))}
+                      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? (isRunning ? '本次运行已完成 / 计划目标' : '本次完成的动作') : (isRunning ? 'Done / planned this run' : 'Actions completed this run')}>
+                        <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
+                          {isZh ? (isRunning ? '本次目标' : '本次完成') : (isRunning ? 'Progress' : 'Actions')}:
+                        </span>
+                        {keys.map(k => {
+                          const done = ac?.[k] ?? 0;
+                          const target = at?.[k] ?? 0;
+                          return (
+                            <span key={k} className="font-medium font-mono">
+                              {(ICONS[k] || '·')}{' '}
+                              {target > 0 ? (
+                                <>
+                                  <span className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{done}</span>
+                                  <span className="text-gray-400 dark:text-gray-500">/{target}</span>
+                                </>
+                              ) : (
+                                <span>{done}</span>
+                              )}{' '}
+                              <span className="text-gray-500 dark:text-gray-400 font-normal font-sans">{(labels as any)[k] || k}</span>
+                            </span>
+                          );
+                        })}
                       </div>
                     );
                   })()}

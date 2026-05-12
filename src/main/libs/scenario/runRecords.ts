@@ -84,6 +84,12 @@ export interface RunRecord {
      *  Set by orchestrators via ctx.addActionCount(). Used by the task
      *  detail page to compute 累计完成 / 上次完成. */
     action_counts?: Record<string, number>;
+    /** Per-action planned targets for this run (e.g. {like:32, follow:5,
+     *  comment:2}). Declared by orchestrators via ctx.setActionTargets() at
+     *  run start; pulled from RunProgress.action_progress[k].target at
+     *  finish time so the run history row can render "X/Y" (actually-done
+     *  over planned) without re-fetching live progress. */
+    action_targets?: Record<string, number>;
     tokens_used?: number;
     cost_usd?: number;
     [k: string]: any;
@@ -245,6 +251,25 @@ export function appendStepLog(recordId: string, entry: StepLogEntry): void {
   rec.step_logs.push(entry);
   // Cap step_logs per record so a chatty run doesn't blow up the file
   if (rec.step_logs.length > 500) rec.step_logs.splice(0, rec.step_logs.length - 500);
+  scheduleDebouncedPersist();
+}
+
+/**
+ * Patch live result counts (action_counts / action_targets / tokens_used /
+ * cost_usd) WITHOUT marking the record finished. Used while a task is in
+ * flight so the run history list shows real-time "X/Y" and "💎 N" for
+ * the still-running row. Lightweight: only merges into rec.result and
+ * schedules a debounced persist — does NOT force-flush like finishRecord,
+ * so calling it on every per-action bump is cheap.
+ */
+export function updateRecordResult(
+  recordId: string,
+  partial: NonNullable<RunRecord['result']>
+): void {
+  if (!_loaded || !recordId) return;
+  const rec = _records.find(r => r.id === recordId);
+  if (!rec) return;
+  rec.result = { ...rec.result, ...partial };
   scheduleDebouncedPersist();
 }
 

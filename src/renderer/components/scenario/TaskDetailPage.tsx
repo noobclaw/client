@@ -1009,18 +1009,32 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       </div>
 
       {/* Running-only pair: 本次运行进度 + 本次消耗.
-          Both cards appear ONLY when status='running' and disappear the
-          moment the task finishes / errors / stops — the user wanted
-          these to be live-only "while it's working" surfaces, not
-          persistent stats. They share the same green border + pulse +
-          noobclaw-running-glow as other in-flight surfaces (run history
-          pending row, scenario card). */}
-      {progress?.status === 'running' && (
-        ((progress.action_progress && Object.keys(progress.action_progress).length > 0) ||
-         (progress.tokens_used || 0) > 0) && (
-          <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          Both cards appear when status='running' and disappear the moment
+          the task finishes / errors / stops. They share the same green
+          border + pulse + noobclaw-running-glow as other in-flight
+          surfaces (run history pending row, scenario card).
+          v5.x+: the outer gate is now JUST status==='running' — previously
+          we also required action_progress non-empty OR tokens_used>0,
+          which hid the whole block for post-creator scenarios (no
+          per-action targets declared) until the first AI call landed.
+          User report: "other tasks don't have the cards at all". Now the
+          right (本次消耗) card always shows during running starting at
+          💎 0 ≈ $0.0000, and the left (本次运行进度) card hides on its
+          own when action_progress is empty — so engage tasks see both
+          cards side-by-side, post-creator tasks see only the cost card. */}
+      {progress?.status === 'running' && (() => {
+        const hasActionProgress = !!progress.action_progress
+          && Object.keys(progress.action_progress).length > 0;
+        // Grid: 2 cols when both cards render, 1 col when only the cost
+        // card renders (otherwise it would sit awkwardly half-wide on the
+        // left with empty space on the right).
+        const gridCls = hasActionProgress
+          ? 'mb-3 grid grid-cols-1 sm:grid-cols-2 gap-3'
+          : 'mb-3 grid grid-cols-1 gap-3';
+        return (
+          <div className={gridCls}>
             {/* 本次运行进度 — live X/Y per action type. */}
-            {progress.action_progress && Object.keys(progress.action_progress).length > 0 && (
+            {hasActionProgress && (
               <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
                 <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
                   <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -1056,47 +1070,40 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               </div>
             )}
             {/* 本次消耗 — live credits + USD cost climbing as AI calls
-                land. Sourced from progress.tokens_used / .cost_usd which
-                scenarioManager mirrors out of its per-task accumulators
-                on every aiCall billable response. Same green-glow shell
-                as 本次运行进度 since they're a paired running-only set.
-                v5.x+: render unconditionally during running (was gated
-                on tokens_used > 0). The pair-with-本次运行进度 UX wins
-                over "hide empty card" — user wants to watch 0 → N
-                climb in real time, and a one-card row looked unbalanced
-                while task was still in scrape phase before any AI call. */}
-            {(
-              <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
-                <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
-                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                  {isZh ? '本次消耗' : 'Current Run Cost'}
-                </div>
-                <div className="flex items-baseline gap-3 text-sm font-mono text-gray-700 dark:text-gray-200">
-                  <span>
-                    <strong className="text-green-600 dark:text-green-400 text-base">
-                      {(progress.tokens_used || 0).toLocaleString()}
-                    </strong>{' '}
-                    <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">
-                      {isZh ? '积分' : 'credits'}
-                    </span>
-                  </span>
-                  <span className="text-gray-400 dark:text-gray-600">·</span>
-                  <span>
-                    <strong className="text-green-600 dark:text-green-400 text-base">
-                      ${(progress.cost_usd || 0).toFixed(4)}
-                    </strong>{' '}
-                    <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">USD</span>
-                  </span>
-                </div>
+                land. Always renders during running (starts at 💎 0 ≈
+                $0.0000 before the first AI call so the user can watch
+                it tick up). Format mirrors the run history line
+                "💎 21,973 ≈ $0.0220" — same emoji, same ≈ separator,
+                so the user has a consistent mental anchor between
+                "what's running right now" and "what the last run cost". */}
+            <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
+              <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                {isZh ? '本次消耗' : 'Current Run Cost'}
               </div>
-            )}
+              <div className="flex items-baseline gap-2 text-sm font-mono text-gray-700 dark:text-gray-200">
+                <span>💎</span>
+                <strong className="text-green-600 dark:text-green-400 text-base">
+                  {(progress.tokens_used || 0).toLocaleString()}
+                </strong>
+                <span className="text-gray-400 dark:text-gray-600">≈</span>
+                <strong className="text-green-600 dark:text-green-400 text-base">
+                  ${(progress.cost_usd || 0).toFixed(4)}
+                </strong>
+              </div>
+            </div>
           </div>
-        )
-      )}
+        );
+      })()}
 
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
-           so the "下次运行" stat is meaningless; show only the first five. */}
-      <div className={`grid grid-cols-2 ${(isLinkModeForStats || (task as any).run_interval === 'once') ? 'sm:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-5'} gap-3 mb-6`}>
+           so the "下次运行" stat is meaningless; show only the first five.
+           v5.x+: 6-card case used to be `lg:grid-cols-5` which produced a
+           lonely "下次运行" sitting in a half-empty second row. Switched
+           to `lg:grid-cols-3` so 6 cards stack as a clean 2×3 grid and
+           5 cards (one-shot) stack as 3+2 — both layouts have at most
+           one column of asymmetry, much tidier than 5+1. */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         {/* 累计完成 — action_counts summed across all recorded runs, formatted
             by scenario family (engage shows 👍/➕/💬, post-creator shows 📤). */}
         <StatCard

@@ -236,6 +236,7 @@ function setActionTarget(taskId: string, type: string, target: number): void {
   if (!p.action_progress) p.action_progress = {};
   const cur = p.action_progress[type] || { done: 0, target: 0 };
   p.action_progress[type] = { done: cur.done, target: Math.max(0, Math.floor(Number(target) || 0)) };
+  mirrorActionProgressToRecord(taskId);
 }
 
 /** Bump the per-type done counter. Called after each successful action so
@@ -246,6 +247,64 @@ function bumpActionProgress(taskId: string, type: string, n: number = 1): void {
   if (!p.action_progress) p.action_progress = {};
   const cur = p.action_progress[type] || { done: 0, target: 0 };
   p.action_progress[type] = { done: cur.done + (Number(n) || 0), target: cur.target };
+  mirrorActionProgressToRecord(taskId);
+}
+
+/** Mirror live action_progress + tokens/cost into the in-flight run record
+ *  so the Run History list can render "X/Y · 💎 N" for the running row
+ *  via the same listRunRecords IPC the completed rows use. Without this
+ *  mirror, action_counts / action_targets only landed on the record at
+ *  task end (via updateTaskRecordResult), and the running row showed
+ *  nothing while the task was actively engaging.
+ *
+ *  Lightweight: updateRecordResult merges into rec.result and schedules a
+ *  debounced persist — no per-call disk flush. With per-action bumps
+ *  arriving every few seconds the batched persist coalesces multiple
+ *  updates into one write. */
+function mirrorActionProgressToRecord(taskId: string): void {
+  const recordId = recordIdByTaskId.get(taskId);
+  if (!recordId) return;
+  const p = progressByTaskId.get(taskId);
+  if (!p?.action_progress) return;
+  const counts: Record<string, number> = {};
+  const targets: Record<string, number> = {};
+  for (const [k, v] of Object.entries(p.action_progress)) {
+    // Keep zero-done keys so the row stays balanced (e.g. "👍 0/5 ·
+    // ➕ 0/3 · 💬 0/2") even before any action lands. action_counts
+    // already includes 0-done from the final backfill on stop/error
+    // paths; mirroring 0s here keeps the display consistent during
+    // and after the run.
+    counts[k] = v.done || 0;
+    if ((v.target || 0) > 0) targets[k] = v.target;
+  }
+  try {
+    const runRecords = require('./runRecords');
+    if (typeof runRecords.updateRecordResult === 'function') {
+      runRecords.updateRecordResult(recordId, {
+        action_counts: Object.keys(counts).length > 0 ? counts : undefined,
+        action_targets: Object.keys(targets).length > 0 ? targets : undefined,
+      });
+    }
+  } catch { /* non-fatal — run continues, list page just won't have live counts */ }
+}
+
+/** Mirror live tokens/cost into the in-flight run record. Same rationale
+ *  as mirrorActionProgressToRecord — keeps the Run History row's 💎 N
+ *  ≈ $Y indicator live while the task is running. Called from the
+ *  addTokensUsed callbacks each time the AI server reports a billable
+ *  response. */
+function mirrorTokensToRecord(taskId: string, tokensUsed: number, costUsd: number): void {
+  const recordId = recordIdByTaskId.get(taskId);
+  if (!recordId) return;
+  try {
+    const runRecords = require('./runRecords');
+    if (typeof runRecords.updateRecordResult === 'function') {
+      runRecords.updateRecordResult(recordId, {
+        tokens_used: tokensUsed,
+        cost_usd: costUsd,
+      });
+    }
+  } catch { /* non-fatal */ }
 }
 
 function stepError(taskId: string, step: number, error: string): void {
@@ -393,6 +452,11 @@ function updateTaskRecordResult(taskId: string, result: any): void {
         // object for runs where the orchestrator didn't call
         // ctx.addActionCount (e.g. older scenarios pre-rollout).
         action_counts: result.action_counts || undefined,
+        // v5.x+: action_targets (planned quotas declared via
+        // ctx.setActionTargets at run start) are also persisted so the
+        // run history list can render "X/Y" — actually achieved over
+        // planned — without re-fetching live progress.
+        action_targets: result.action_targets || undefined,
         tokens_used: tokens,
         cost_usd: costUsd,
         ...result,
@@ -693,9 +757,12 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
         tokensByTaskId.set(tid, tNew);
         costUsdByTaskId.set(tid, cNew);
         // v5.x+: mirror into live RunProgress so the renderer's poll
-        // can drive the glowing "本次消耗" card on TaskDetailPage.
+        // can drive the glowing "本次消耗" card on TaskDetailPage AND
+        // into the in-flight run record so the Run History list shows
+        // 💎 N ≈ $Y live for the running row (not just at task end).
         const p = progressByTaskId.get(tid);
         if (p) { p.tokens_used = tNew; p.cost_usd = cNew; }
+        mirrorTokensToRecord(tid, tNew, cNew);
       },
       setActionTarget: (type: string, target: number) => setActionTarget(tid, type, target),
       bumpActionProgress: (type: string, n: number) => bumpActionProgress(tid, type, n),
@@ -797,18 +864,41 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     // "👍 0 · ➕ 0 · 💬 0" instead of "-" for early-stop runs —
     // users want to see the planned breakdown even when nothing
     // completed.
-    if (!(outcome as any).action_counts) {
+    // v5.x+: backfill BOTH action_counts and action_targets from the live
+    // RunProgress when the outcome lacks them. action_counts is what the
+    // orchestrator actually achieved; action_targets is what it planned.
+    // The run history row shows "👍 5/32 赞" combining both — needs both
+    // sides to make sense.
+    {
       const live = progressByTaskId.get(task.id);
       const ap = live?.action_progress;
       if (ap && Object.keys(ap).length > 0) {
-        const partial: Record<string, number> = {};
-        for (const [k, v] of Object.entries(ap)) {
-          if ((v?.target || 0) > 0 || (v?.done || 0) > 0) {
-            partial[k] = v.done || 0;
+        if (!(outcome as any).action_counts) {
+          // Persist 0-done keys when target > 0 so early-stop runs still
+          // show the planned breakdown instead of "-".
+          const counts: Record<string, number> = {};
+          for (const [k, v] of Object.entries(ap)) {
+            if ((v?.target || 0) > 0 || (v?.done || 0) > 0) {
+              counts[k] = v.done || 0;
+            }
+          }
+          if (Object.keys(counts).length > 0) {
+            (outcome as any).action_counts = counts;
           }
         }
-        if (Object.keys(partial).length > 0) {
-          (outcome as any).action_counts = partial;
+        // action_targets: declared planned quotas. Survives even after the
+        // run finishes because we read from RunProgress (mirrors what the
+        // orchestrator booked via ctx.setActionTargets). Stored on the run
+        // record so the history list can render "X/Y" for completed runs
+        // without re-fetching live progress.
+        if (!(outcome as any).action_targets) {
+          const targets: Record<string, number> = {};
+          for (const [k, v] of Object.entries(ap)) {
+            if ((v?.target || 0) > 0) targets[k] = v.target;
+          }
+          if (Object.keys(targets).length > 0) {
+            (outcome as any).action_targets = targets;
+          }
         }
       }
     }
@@ -899,9 +989,12 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
         tokensByTaskId.set(tid, tNew);
         costUsdByTaskId.set(tid, cNew);
         // v5.x+: mirror into live RunProgress so the renderer's poll
-        // can drive the glowing "本次消耗" card on TaskDetailPage.
+        // can drive the glowing "本次消耗" card on TaskDetailPage AND
+        // into the in-flight run record so the Run History list shows
+        // 💎 N ≈ $Y live for the running row (not just at task end).
         const p = progressByTaskId.get(tid);
         if (p) { p.tokens_used = tNew; p.cost_usd = cNew; }
+        mirrorTokensToRecord(tid, tNew, cNew);
       },
       setActionTarget: (type: string, target: number) => setActionTarget(tid, type, target),
       bumpActionProgress: (type: string, n: number) => bumpActionProgress(tid, type, n),
