@@ -825,7 +825,12 @@ export function attachBrowserBridgeSse(httpServer: http.Server): void {
         res.writeHead(204, {
           'Access-Control-Allow-Origin': origin,
           'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-          'Access-Control-Allow-Headers': 'Content-Type',
+          // Firefox treats Cache-Control / Accept-Encoding etc. as
+          // non-safelisted and would preflight them; advertise broad
+          // permission so any extension-side header tweak doesn't cause
+          // a silent CORS reject. The Origin gate above is the real
+          // security boundary; CORS headers are just protocol plumbing.
+          'Access-Control-Allow-Headers': 'Content-Type, Accept, Cache-Control, X-Requested-With',
           'Access-Control-Allow-Credentials': 'true',
           'Access-Control-Max-Age': '86400',
         });
