@@ -80,6 +80,12 @@ export interface RunRecord {
     collected_count?: number;
     draft_count?: number;
     posted?: number;
+    /** Per-action counts for this run (e.g. {like:5, follow:3, comment:4}).
+     *  Set by orchestrators via ctx.addActionCount(). Used by the task
+     *  detail page to compute 累计完成 / 上次完成. */
+    action_counts?: Record<string, number>;
+    tokens_used?: number;
+    cost_usd?: number;
     [k: string]: any;
   };
   output_dir?: string;

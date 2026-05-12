@@ -52,6 +52,12 @@ export interface RunResult {
   reason?: string;
   collected_count?: number;
   draft_count?: number;
+  /** Per-action successful counts for this run, keyed by free-form
+   *  action type (e.g. like, follow, comment, reply, post). Populated
+   *  via ctx.addActionCount() from the orchestrator. Task detail page
+   *  aggregates these into "累计完成" / "上次完成" cards. Undefined for
+   *  pre-rollout runs (UI shows '-'). */
+  action_counts?: Record<string, number>;
 }
 
 // ── Utilities ──
@@ -426,6 +432,14 @@ function buildContext(
 
   // All drafts collected during this run (for saveDrafts)
   const allDrafts: Draft[] = [];
+
+  // Per-action counters surfaced to the run record under result.action_counts.
+  // Orchestrators call ctx.addActionCount('like'/'follow'/'comment'/'post'/'reply', 1)
+  // on each successful action. The dashboard reads cumulative+last_run aggregates
+  // off this map to populate the "累计完成" / "上次完成" stat cards. Keys are
+  // free-form so future scenarios can introduce new action types without
+  // touching this file.
+  const actionCounts: Record<string, number> = {};
 
   const ctx: Record<string, any> = {
     // ── Data ──
@@ -1943,6 +1957,21 @@ function buildContext(
 
     // ── Internal: access to accumulated drafts ──
     _getAllDrafts: () => allDrafts,
+
+    // ── Action-count reporting ────────────────────────────────────────
+    // Orchestrator hook: call once per successful primary action to bump
+    // the per-type counter that surfaces on the task detail page as
+    // "累计完成" + "上次完成". `n` defaults to 1 for the common
+    // "did one like / one follow" case.
+    addActionCount: (type: string, n: number = 1) => {
+      if (!type || typeof type !== 'string') return;
+      const k = type.trim();
+      if (!k) return;
+      actionCounts[k] = (actionCounts[k] || 0) + (Number(n) || 0);
+    },
+    // Internal accessor used by runOrchestrator to fold counts into the
+    // final RunResult so they get persisted on the run record.
+    _getActionCounts: () => ({ ...actionCounts }),
   };
 
   return ctx;
@@ -1973,9 +2002,20 @@ export async function runOrchestrator(
   try {
     const fn = new AsyncFunction('ctx', orchestratorCode);
     const result = await fn(ctx);
-    // If orchestrator returned a result, use it
+    // Always pull whatever the orchestrator booked via ctx.addActionCount —
+    // it survives whether the orchestrator returned a structured result or
+    // just exited after ctx.finish(). Empty object means "this scenario
+    // doesn't track action counts" (older scenarios pre-rollout); the UI
+    // shows '-' in that case.
+    const actionCounts = ctx._getActionCounts() as Record<string, number>;
+    // If orchestrator returned a result, use it (merging in action_counts
+    // unless the orchestrator already supplied them — orchestrator wins).
     if (result && typeof result === 'object' && result.status) {
-      return result as RunResult;
+      const r = result as RunResult;
+      if (!r.action_counts && Object.keys(actionCounts).length > 0) {
+        r.action_counts = actionCounts;
+      }
+      return r;
     }
     // Otherwise construct from state
     const drafts = ctx._getAllDrafts();
@@ -1983,6 +2023,7 @@ export async function runOrchestrator(
       status: 'ok',
       collected_count: 0,
       draft_count: drafts.length,
+      action_counts: Object.keys(actionCounts).length > 0 ? actionCounts : undefined,
     };
   } catch (err) {
     const msg = String(err instanceof Error ? err.message : err);

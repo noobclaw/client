@@ -98,7 +98,16 @@ export function markRunStart(task_id: string): TaskRun {
   return run;
 }
 
-export function markRunSuccess(task_id: string, collected_count: number, draft_count: number): void {
+export function markRunSuccess(
+  task_id: string,
+  collected_count: number,
+  draft_count: number,
+  extras?: {
+    action_counts?: Record<string, number>;
+    tokens_used?: number;
+    cost_usd?: number;
+  },
+): void {
   ensureLoaded();
   const runs = state.runs[task_id] || [];
   const latest = runs[runs.length - 1];
@@ -107,6 +116,17 @@ export function markRunSuccess(task_id: string, collected_count: number, draft_c
     latest.ended_at = Date.now();
     latest.collected_count = collected_count;
     latest.draft_count = draft_count;
+    // Optional richer telemetry — only set when present so pre-rollout
+    // run rows stay free of empty objects.
+    if (extras?.action_counts && Object.keys(extras.action_counts).length > 0) {
+      latest.action_counts = extras.action_counts;
+    }
+    if (typeof extras?.tokens_used === 'number' && extras.tokens_used > 0) {
+      latest.tokens_used = extras.tokens_used;
+    }
+    if (typeof extras?.cost_usd === 'number' && extras.cost_usd > 0) {
+      latest.cost_usd = extras.cost_usd;
+    }
     persist();
   }
 }

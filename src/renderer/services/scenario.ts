@@ -247,7 +247,16 @@ class ScenarioService {
 
   // ── Derived helpers ──
 
-  /** Aggregate per-task stats the task dashboard likes to show. */
+  /** Aggregate per-task stats the task dashboard likes to show.
+   *
+   *  v5.x+: the previous 3 cards (累计采集 / 生成草稿 / 已推送) were
+   *  replaced with 累计完成 / 累计消耗 / 上次完成 / 上次消耗. The new
+   *  fields are computed from per-run telemetry (`action_counts`,
+   *  `tokens_used`, `cost_usd`) that orchestrators emit via
+   *  `ctx.addActionCount()` + the auto-summed token/cost maps in
+   *  scenarioManager. Pre-rollout runs lack these fields, so they
+   *  contribute 0 to the cumulative totals and the UI shows '-' for
+   *  the "last run" panel until a fresh run lands. */
   async getTaskStats(taskId: string): Promise<{
     runs: ScenarioTaskRun[];
     draft_count: number;
@@ -256,6 +265,20 @@ class ScenarioService {
     last_run_at: number | null;
     last_run_status: ScenarioTaskRun['status'] | null;
     cooldown_ends_at: number;
+    /** Sum across every recorded successful run, keyed by free-form
+     *  action type ('like' / 'follow' / 'comment' / 'reply' / 'post'). */
+    cumulative_action_counts: Record<string, number>;
+    /** Sum of credits consumed across every recorded run. */
+    cumulative_tokens_used: number;
+    /** Sum of USD cost across every recorded run (computed at run-time
+     *  from system_config.token_price_per_million). */
+    cumulative_cost_usd: number;
+    /** action_counts of the most recent run, or {} if it doesn't have any. */
+    last_run_action_counts: Record<string, number>;
+    /** Credits consumed by the most recent run, or 0. */
+    last_run_tokens_used: number;
+    /** USD cost of the most recent run, or 0. */
+    last_run_cost_usd: number;
   }> {
     const [runStatusResult, drafts] = await Promise.all([
       this.runStatus(taskId).catch(() => ({ runs: [], cooldown_ends_at: 0 })),
@@ -264,6 +287,23 @@ class ScenarioService {
     const runs = Array.isArray(runStatusResult?.runs) ? runStatusResult.runs : [];
     const cooldown_ends_at = runStatusResult?.cooldown_ends_at || 0;
     const last = runs.length > 0 ? runs[runs.length - 1] : null;
+
+    // Cumulative aggregation. Iterate all runs (including failed/skipped —
+    // an action that succeeded before a later failure still counts).
+    const cumulative_action_counts: Record<string, number> = {};
+    let cumulative_tokens_used = 0;
+    let cumulative_cost_usd = 0;
+    for (const r of runs) {
+      const ac = r.action_counts;
+      if (ac && typeof ac === 'object') {
+        for (const [k, v] of Object.entries(ac)) {
+          cumulative_action_counts[k] = (cumulative_action_counts[k] || 0) + (Number(v) || 0);
+        }
+      }
+      cumulative_tokens_used += Number(r.tokens_used) || 0;
+      cumulative_cost_usd    += Number(r.cost_usd)    || 0;
+    }
+
     return {
       runs,
       draft_count: drafts.length,
@@ -272,6 +312,12 @@ class ScenarioService {
       last_run_at: last?.started_at || null,
       last_run_status: last?.status || null,
       cooldown_ends_at,
+      cumulative_action_counts,
+      cumulative_tokens_used,
+      cumulative_cost_usd,
+      last_run_action_counts: (last?.action_counts && typeof last.action_counts === 'object') ? last.action_counts : {},
+      last_run_tokens_used: Number(last?.tokens_used) || 0,
+      last_run_cost_usd: Number(last?.cost_usd) || 0,
     };
   }
 }

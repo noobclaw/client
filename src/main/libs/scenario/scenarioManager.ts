@@ -83,6 +83,11 @@ export interface RunOutcome {
   reason?: string;
   collected_count?: number;
   draft_count?: number;
+  /** Per-action successful counts for this run (like / follow / comment /
+   *  reply / post / etc.) — populated from ctx.addActionCount() in the
+   *  orchestrator. Surfaces on the task detail page as "累计完成" /
+   *  "上次完成". Undefined for pre-rollout runs. */
+  action_counts?: Record<string, number>;
   drafts?: Draft[];
   // v4.25.35: 'resource_busy' 跳过时,把人话信息一起带给 UI(平台名 + 占用任务名)。
   // 让 toast 能显示"该任务需要推特+币安广场都空闲,目前 'XXX' 任务在运行,请先关闭"
@@ -348,6 +353,11 @@ function updateTaskRecordResult(taskId: string, result: any): void {
         collected_count: result.collected_count,
         draft_count: result.draft_count,
         posted: result.posted,
+        // v5.x+: action_counts is forwarded straight through so the
+        // task detail page can aggregate "累计完成" / "上次完成". Empty
+        // object for runs where the orchestrator didn't call
+        // ctx.addActionCount (e.g. older scenarios pre-rollout).
+        action_counts: result.action_counts || undefined,
         tokens_used: tokens,
         cost_usd: costUsd,
         ...result,
@@ -881,7 +891,16 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
 
     const cur = progressByTaskId.get(tid);
     if (result.status === 'ok') {
-      riskGuard.markRunSuccess(task.id, result.collected_count || 0, result.draft_count || 0);
+      // Pass through action_counts + the accumulated tokens/cost so the
+      // run snapshot riskGuard exposes via scenario:runStatus carries the
+      // full telemetry the task detail page needs for "累计完成" /
+      // "累计消耗" aggregation. (tokens_used / cost_usd are summed across
+      // every ai/charge/image call in this run via the per-task maps.)
+      riskGuard.markRunSuccess(task.id, result.collected_count || 0, result.draft_count || 0, {
+        action_counts: (result as any).action_counts,
+        tokens_used: tokensByTaskId.get(task.id) || 0,
+        cost_usd: costUsdByTaskId.get(task.id) || 0,
+      });
       // 保证 UI 最终收到 done 状态（orchestrator 里大多数路径已经调过，
       // 但 orchestrator 抛异常经 phaseRunner catch 返回时没调，这里兜底）
       if (cur?.status === 'running') finishProgress(tid, 'done');

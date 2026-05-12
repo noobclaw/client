@@ -1009,11 +1009,34 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       </div>
 
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
-           so the "下次运行" stat is meaningless; show only the first four. */}
-      <div className={`grid grid-cols-2 ${(isLinkModeForStats || (task as any).run_interval === 'once') ? 'sm:grid-cols-3' : 'sm:grid-cols-4'} gap-3 mb-6`}>
-        <StatCard label={isZh ? '累计采集' : 'Collected'} value={Array.isArray(stats?.runs) ? stats.runs.reduce((s: number, r: any) => s + (r.collected_count || 0), 0) : 0} />
-        <StatCard label={isZh ? '生成草稿' : 'Drafts'} value={stats?.draft_count ?? 0} />
-        <StatCard label={isZh ? '已推送' : 'Pushed'} value={stats?.pushed_draft_count ?? 0} />
+           so the "下次运行" stat is meaningless; show only the first five. */}
+      <div className={`grid grid-cols-2 ${(isLinkModeForStats || (task as any).run_interval === 'once') ? 'sm:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-5'} gap-3 mb-6`}>
+        {/* 累计完成 — action_counts summed across all recorded runs, formatted
+            by scenario family (engage shows 👍/➕/💬, post-creator shows 📤). */}
+        <StatCard
+          label={isZh ? '累计完成' : 'Total Done'}
+          value={formatActionBreakdown(stats?.cumulative_action_counts || {}, scenario, isZh)}
+          small
+        />
+        {/* 累计消耗 — credits + USD. token_price_per_million is baked into the
+            per-run cost_usd by scenarioManager, so we just sum here. */}
+        <StatCard
+          label={isZh ? '累计消耗' : 'Total Cost'}
+          value={formatCreditsCost(stats?.cumulative_tokens_used || 0, stats?.cumulative_cost_usd || 0, isZh)}
+          small
+        />
+        {/* 上次完成 — same shape as 累计完成 but only the most recent run. */}
+        <StatCard
+          label={isZh ? '上次完成' : 'Last Done'}
+          value={formatActionBreakdown(stats?.last_run_action_counts || {}, scenario, isZh)}
+          small
+        />
+        {/* 上次消耗 — credits + USD for the most recent run. */}
+        <StatCard
+          label={isZh ? '上次消耗' : 'Last Cost'}
+          value={formatCreditsCost(stats?.last_run_tokens_used || 0, stats?.last_run_cost_usd || 0, isZh)}
+          small
+        />
         <StatCard
           label={isZh ? '上次运行' : 'Last Run'}
           value={formatRelative(stats?.last_run_at || null, isZh)}
@@ -1246,6 +1269,70 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     </div>
   );
 };
+
+/**
+ * Format the per-run / cumulative `action_counts` map into a single-line
+ * display string for the StatCard. Picks icons based on scenario family:
+ *   auto_engage   → 👍 like / ➕ follow / 💬 comment (or 📌 subscribe)
+ *   post_creator  → 📤 post (single counter)
+ *
+ * Returns "-" when the map is empty, so pre-rollout runs render cleanly
+ * (those have no action_counts) instead of "0 0 0".
+ */
+function formatActionBreakdown(
+  counts: Record<string, number> | undefined,
+  // _scenario is reserved for future workflow_type-aware tweaks
+  // (e.g. show "✍️ 仿写" instead of "📤 post" for x_link_rewrite).
+  // Currently we let the orchestrator pick the action key and use a
+  // universal icon map, so this param is unused.
+  _scenario: any,
+  isZh: boolean,
+): string {
+  if (!counts || Object.keys(counts).length === 0) return '-';
+  // Engage-family icons. 'comment' covers replies too (xhs / x both map
+  // their reply types to 'comment' to match Douyin's bucketing).
+  const ICONS: Record<string, string> = {
+    like: '👍',
+    follow: '➕',
+    comment: '💬',
+    reply: '💬',
+    subscribe: '📌',
+    post: '📤',
+  };
+  const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+  // Sort by ORDER first, then any unknown keys alphabetically — keeps the
+  // engage line in 👍 ➕ 💬 order even when the map's insertion order varied.
+  const keys = Object.keys(counts)
+    .filter(k => (counts[k] || 0) > 0)
+    .sort((a, b) => {
+      const ia = ORDER.indexOf(a);
+      const ib = ORDER.indexOf(b);
+      if (ia === -1 && ib === -1) return a.localeCompare(b);
+      if (ia === -1) return 1;
+      if (ib === -1) return -1;
+      return ia - ib;
+    });
+  if (keys.length === 0) return '-';
+  const labels = isZh
+    ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
+    : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+  return keys.map(k => {
+    const icon = ICONS[k] || '·';
+    const label = (labels as any)[k] || k;
+    return `${icon} ${counts[k]} ${label}`;
+  }).join(' · ');
+}
+
+/**
+ * Format credits + USD cost for the 累计消耗 / 上次消耗 cards. Mirrors the
+ * run history "💎 21,973 ≈ $0.0220" shape so users can cross-reference.
+ */
+function formatCreditsCost(credits: number, costUsd: number, isZh: boolean): string {
+  if (!credits || credits <= 0) return '-';
+  const c = Math.round(credits);
+  const usd = (Number(costUsd) || 0).toFixed(4);
+  return `💎 ${c.toLocaleString(isZh ? 'zh-CN' : 'en-US')} ≈ $${usd}`;
+}
 
 const StatCard: React.FC<{
   label: string;

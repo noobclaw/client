@@ -442,4 +442,13 @@ export interface TaskRun {
   reason?: string;
   collected_count?: number;
   draft_count?: number;
+  /** Per-action successful counts (like / follow / comment / reply / post).
+   *  Populated from ctx.addActionCount() in the orchestrator. Drives the
+   *  TaskDetailPage "累计完成" + "上次完成" stat cards. Undefined for
+   *  pre-rollout runs — UI shows '-' in that case. */
+  action_counts?: Record<string, number>;
+  /** Credits consumed by this run (LLM + image gen + interaction charges). */
+  tokens_used?: number;
+  /** USD cost at the time of the run, from system_config.token_price_per_million. */
+  cost_usd?: number;
 }

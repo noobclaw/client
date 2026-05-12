@@ -224,6 +224,15 @@ export interface ScenarioTaskRun {
   reason?: string;
   collected_count?: number;
   draft_count?: number;
+  /** Per-action successful counts (like / follow / comment / reply / post).
+   *  Populated from ctx.addActionCount() in the orchestrator. Surfaces on
+   *  TaskDetailPage as "累计完成" + "上次完成". Undefined for pre-rollout runs. */
+  action_counts?: Record<string, number>;
+  /** Total credits consumed by this run (LLM + image gen + interactions). */
+  tokens_used?: number;
+  /** USD cost equivalent of tokens_used at the time of the run, computed
+   *  client-side from system_config.token_price_per_million. */
+  cost_usd?: number;
 }
 
 export interface ScenarioRunOutcome {
