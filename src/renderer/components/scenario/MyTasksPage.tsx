@@ -58,6 +58,31 @@ function platformMeta(platformId: string, isZh: boolean): { icon: string; label:
   return { icon: '🤖', label: platformId };
 }
 
+// Per-platform growth-tutorial doc URL. Mirrors the two language sites the
+// docs team publishes — zh / zh-TW go to the Chinese namespace, everything
+// else (en + every other locale we ship) goes to the English namespace.
+// Update both maps if a new platform is added.
+function tutorialUrl(platformId: string, isZh: boolean): string | null {
+  const zh: Record<string, string> = {
+    binance: 'https://docs.noobclaw.com/zhong-wen-ban/bi-an-guang-chang-zhang-fen-jiao-cheng',
+    x:       'https://docs.noobclaw.com/zhong-wen-ban/tui-te-zhang-fen-jiao-cheng',
+    xhs:     'https://docs.noobclaw.com/zhong-wen-ban/xiao-hong-shu-zhang-fen-jiao-cheng',
+    youtube: 'https://docs.noobclaw.com/zhong-wen-ban/youtube-zhang-fen-jiao-cheng',
+    douyin:  'https://docs.noobclaw.com/zhong-wen-ban/dou-yin-zhang-fen-jiao-cheng',
+    tiktok:  'https://docs.noobclaw.com/zhong-wen-ban/tiktok-zhang-fen-jiao-cheng',
+  };
+  const en: Record<string, string> = {
+    binance: 'https://docs.noobclaw.com/english/binance-square-growth',
+    x:       'https://docs.noobclaw.com/english/twitter-growth',
+    xhs:     'https://docs.noobclaw.com/english/xiaohongshu-growth',
+    youtube: 'https://docs.noobclaw.com/english/youtube-growth',
+    douyin:  'https://docs.noobclaw.com/english/douyin-growth',
+    tiktok:  'https://docs.noobclaw.com/english/tiktok-growth',
+  };
+  const map = isZh ? zh : en;
+  return map[platformId] || null;
+}
+
 // Persona snippets are seeded from Chinese templates (the reply_persona_hint
 // arrays in ConfigWizard) — they always start with "身份：" / "现在做的：" /
 // "真实状态：" prefixes. In EN mode we translate the prefix so the user
@@ -247,6 +272,39 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
           <h2 className="text-lg font-bold dark:text-white">
             📋 {isZh ? `我的${platformLabel}任务` : `My ${platformLabel} Tasks`}
           </h2>
+          {/* Tutorial entry — opens the docs page for this platform's growth
+              workflow in the system browser. zh / zh-TW go to the Chinese
+              docs namespace, everything else to English. Returns null when
+              platformId isn't in the tutorialUrl map so the button silently
+              hides on unknown platforms instead of opening a 404. */}
+          {(() => {
+            const url = tutorialUrl(platformId || '', isZh);
+            if (!url) return null;
+            return (
+              <button
+                onClick={() => {
+                  try {
+                    (window as any).electron?.shell?.openExternal?.(url) ?? window.open(url, '_blank', 'noopener,noreferrer');
+                  } catch {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }
+                }}
+                className="group relative inline-flex items-center gap-1.5 text-xs font-medium
+                           px-3.5 py-1.5 rounded-full
+                           bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15
+                           hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25
+                           text-amber-700 dark:text-amber-300
+                           border border-amber-500/30 hover:border-amber-500/60
+                           shadow-sm hover:shadow-md hover:shadow-amber-500/20
+                           transition-all duration-200 hover:-translate-y-0.5"
+                title={isZh ? '查看本平台涨粉教程' : 'Open growth tutorial for this platform'}
+              >
+                <span className="text-sm leading-none">📖</span>
+                <span>{isZh ? '涨粉教程' : 'Growth Tutorial'}</span>
+                <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
+              </button>
+            );
+          })()}
         </div>
 
         {loading && tasks.length === 0 ? (
