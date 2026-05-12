@@ -622,7 +622,17 @@ function isAllowedExtensionOrigin(origin: string): boolean {
   if (!origin) return false;
   const allowedChromeOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
   if (allowedChromeOrigins.includes(origin)) return true;
-  if (/^moz-extension:\/\/[0-9a-f-]{8,}$/i.test(origin)) return true;
+  // Firefox uses one of two forms for the moz-extension origin:
+  //   - moz-extension://<UUID>           (auto-generated per install,
+  //                                       e.g. `8dc2ee31-...-d5d2ecdc83ba`)
+  //   - moz-extension://<gecko-id>       (explicit id from manifest's
+  //                                       browser_specific_settings.gecko.id,
+  //                                       e.g. `hi@noobclaw.com`)
+  // The earlier `[0-9a-f-]{8,}` regex only matched the UUID form and
+  // silently 403'd every request from our shipping AMO build (gecko.id =
+  // hi@noobclaw.com — the `@` and `.` killed the match). Accept any
+  // non-empty identifier with no path / query / fragment.
+  if (/^moz-extension:\/\/[^/?#]+$/.test(origin)) return true;
   return false;
 }
 
