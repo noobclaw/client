@@ -11,6 +11,12 @@ import http from 'http';
 import path from 'path';
 import { ensureDataDirs, getUserDataPath } from './libs/platformAdapter';
 import { coworkLog } from './libs/coworkLogger';
+// v5.x+: statically imported so attachBrowserBridge + server.listen can
+// run at module-load time, BEFORE getRunner()'s 4 awaits (~200-1000ms
+// on cold disk). Browser-bridge module has no Electron deps that load
+// synchronously — its electron require is gated behind isElectronMode()
+// and wrapped in try/catch, so importing it in sidecar/Tauri mode is safe.
+import { attachBrowserBridge, cleanupLegacyNmResidueOnce } from './libs/browserBridge';
 
 // Top-level crash handlers — without these, a synchronous throw during
 // module init (e.g. sql.js failing to load WASM, or a bad require()) kills
@@ -228,50 +234,14 @@ async function getRunner() {
       broadcastSSE('cowork:stream:error', { sessionId, error });
     });
 
-    // Mount browser bridge (ws + sse) onto this sidecar's HTTP server.
-    // The chrome / edge extension hits ws://127.0.0.1:18800/browser-bridge;
-    // Firefox uses the SSE pair at /browser-bridge/events + /browser-bridge/send.
+    // Register extension prompt callback — broadcasts SSE to frontend for user decision.
+    // v5.x+: attachBrowserBridge + server.listen moved to module-level
+    // (right after createServer at the bottom of this file) so the WS
+    // upgrade handler is live the instant sidecar boots, NOT after these
+    // four awaits. Only the prompt callback hook stays here because it
+    // needs broadcastSSE to be defined and is fine being late.
     try {
-      const { attachBrowserBridge, cleanupLegacyNmResidueOnce, setExtensionPromptCallback } = await import('./libs/browserBridge');
-      attachBrowserBridge(server);
-      // v2.8+: NM transport is gone (and so is its registry / .bat residue
-      // detection). cleanupLegacyNmResidueOnce removes leftover artifacts
-      // from older installs so 360 / 火绒 stop scanning those entries on
-      // every boot. Pure fs.unlink, no subprocess.
-      cleanupLegacyNmResidueOnce().catch(() => {});
-
-      // ── EARLY LISTEN: bind 18800 NOW, not after every other module
-      // is initialised ──────────────────────────────────────────────
-      // v2.6.3: previously server.listen() lived ~1500 lines below this
-      // point, after Cowork runner / Feishu Gateway / Skill sync /
-      // OpenAI compat proxy etc. Result: port 18800 wasn't open until
-      // sidecar finished its full init (~5–10s). Browser extension's
-      // WS-first probe got ECONNREFUSED for that whole window and
-      // the popup just sat at "Connecting..." waiting for the next
-      // keepalive cycle.
-      //
-      // The original WS implementation (commit fd8fcec) didn't have
-      // this problem because it ran a dedicated lightweight WS server
-      // on port 12580 that listened in early-startup, decoupled from
-      // the main HTTP server's init dependencies. We rejoined into a
-      // single port in v2.6.1 to avoid running two servers, but
-      // forgot to also move the listen() call up — that's the bug
-      // making every launch feel slow.
-      //
-      // Fix: listen RIGHT AFTER the WS upgrade handler is attached.
-      // HTTP route handlers are registered at createServer() time
-      // (around line 510 above) so they're already callable; any
-      // route that depends on later-initialised resources handles
-      // its own readiness internally. WS upgrade is its own event
-      // path, totally independent of HTTP route readiness.
-      if (!IS_NATIVE_MESSAGING_HOST) {
-        server.listen(PORT, '127.0.0.1', () => {
-          console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
-          coworkLog('INFO', 'sidecar-server', `Started on port ${PORT}`);
-        });
-      }
-
-      // Register extension prompt callback — broadcasts SSE to frontend for user decision
+      const { setExtensionPromptCallback } = await import('./libs/browserBridge');
       setExtensionPromptCallback(async (opts) => {
         return new Promise<'install' | 'cancel'>((resolve) => {
           const requestId = `ext-${Date.now()}`;
@@ -1821,12 +1791,40 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-// v2.6.3: server.listen() moved up to right after attachBrowserBridgeWebSocket
-// so the chrome extension can connect within ms of sidecar boot instead of
-// waiting for every module below to initialise first. The block below used
-// to be the listen() callback; now it runs unconditionally at the end of the
-// init script. Behaviour is the same — by the time we reach here all the
-// modules below need are loaded into the closure.
+// ── EARLY MOUNT: browser bridge + port 18800 bind ────────────────
+// v5.x+: bridge handlers AND the listen() call run at module-load time,
+// before any awaits. Previously these lived inside getRunner() which had
+// to await 4 dynamic imports + a SQLite open first — a 200-1000ms window
+// where the extension's auto-connect probe hit ECONNREFUSED, triggering
+// WS cool-down and SSE fallback for the rest of the session.
+//
+// Symptom this fixes: "first install after a fresh Chrome boot needs me
+// to click Reconnect once" — the extension's onInstalled / top-level
+// connect() fired during the awaits window, all retries failed, alarm
+// keepalive (30s+ on Chrome 116+) was too slow to recover before the
+// service worker died, and the user had to manually wake it via popup.
+//
+// Safety: attachBrowserBridge is pure event-listener registration (sync,
+// no I/O). The createServer 'request' callback registered above already
+// handles non-bridge routes via lazy getRunner() — those still wait for
+// the runner if a request lands during the boot window. Bridge traffic
+// doesn't need the runner so it gets served immediately.
+if (!IS_NATIVE_MESSAGING_HOST) {
+  try {
+    attachBrowserBridge(server);
+    cleanupLegacyNmResidueOnce().catch(() => {});
+    server.listen(PORT, '127.0.0.1', () => {
+      console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
+      coworkLog('INFO', 'sidecar-server', `Started on port ${PORT} (bridge mounted)`);
+    });
+  } catch (e: any) {
+    coworkLog('ERROR', 'sidecar-server', `Early bridge mount failed: ${e?.message || e}`);
+  }
+}
+
+// v2.6.3: the block below used to be the listen() callback; now it runs
+// unconditionally at the end of the init script. Behaviour is the same —
+// by the time we reach here all the modules below need are loaded.
 if (!IS_NATIVE_MESSAGING_HOST) {
   // Start scenario scheduler (checks every 60s for auto-run tasks)
   // v4.31.32: 之前所有 init 步骤共用一个 try/catch,只要任何一步抛异常 →
