@@ -36,7 +36,9 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [inviteCode, setInviteCode] = useState('');
   const [bindResult, setBindResult] = useState<{ success: boolean; message: string } | null>(null);
   const [binding, setBinding] = useState(false);
-  const [detailTab, setDetailTab] = useState<'records' | 'rewards'>('records');
+  // v5.x+: third tab `usdt_rebate` shows real-cash referral earnings (USDT-BEP20
+  // on BSC). Backend route /api/me/rebate/* — see backend/src/routes/rebate.ts.
+  const [detailTab, setDetailTab] = useState<'records' | 'rewards' | 'usdt_rebate'>('records');
   const [inviteList, setInviteList] = useState<Array<{ wallet: string; createdAt: string }>>([]);
   const [inviteListTotal, setInviteListTotal] = useState(0);
   const [inviteListPage, setInviteListPage] = useState(1);
@@ -46,6 +48,11 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [totalEarned, setTotalEarned] = useState(0);
   const [purchaseMin, setPurchaseMin] = useState(50);
   const [purchaseMax, setPurchaseMax] = useState(150);
+  // v5.x+ USDT rebate state — populated when usdt_rebate tab is opened.
+  const [usdtSummary, setUsdtSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null>(null);
+  const [usdtBreakdown, setUsdtBreakdown] = useState<Array<{ level: number; amount: string; contributor_count: number }>>([]);
+  const [usdtHistory, setUsdtHistory] = useState<Array<{ id: string; amount_usdt: string; tx_hash: string; bscscan_url: string; created_at: string }>>([]);
+  const [usdtLoading, setUsdtLoading] = useState(false);
   const PAGE_SIZE = 10;
 
   useEffect(() => {
@@ -121,12 +128,32 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     }
   }, [authState.isAuthenticated]);
 
-  const switchDetailTab = (tab: 'records' | 'rewards') => {
+  const loadUsdtRebate = async () => {
+    // Fire all 3 in parallel — they're independent reads. The summary card
+    // is what users care about most; breakdown + history populate below.
+    setUsdtLoading(true);
+    try {
+      const [summary, breakdown, history] = await Promise.all([
+        noobClawApi.getUsdtRebateSummary(),
+        noobClawApi.getUsdtRebateBreakdown(),
+        noobClawApi.getUsdtRebateHistory(50),
+      ]);
+      setUsdtSummary(summary);
+      setUsdtBreakdown(breakdown.levels);
+      setUsdtHistory(history.items);
+    } finally {
+      setUsdtLoading(false);
+    }
+  };
+
+  const switchDetailTab = (tab: 'records' | 'rewards' | 'usdt_rebate') => {
     setDetailTab(tab);
     if (tab === 'records') {
       loadRecords(1);
-    } else {
+    } else if (tab === 'rewards') {
       loadRewards(1);
+    } else if (tab === 'usdt_rebate') {
+      loadUsdtRebate();
     }
   };
 
@@ -322,11 +349,120 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               {i18nService.t('inviteRewardMenu')}
               {detailTab === 'rewards' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
             </button>
+            {/* v5.x+: USDT real-cash rebate tab. 6-level USDT-BEP20 referral
+                payouts on BSC, paid via daily cron batch transfer. Note: this
+                is independent of the NOOB system shown in the other two tabs. */}
+            <button
+              onClick={() => switchDetailTab('usdt_rebate')}
+              className={`flex-1 py-2 text-xs font-medium text-center transition-colors relative ${
+                detailTab === 'usdt_rebate'
+                  ? 'text-primary'
+                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
+              }`}
+            >
+              💰 USDT {i18nService.currentLanguage === 'zh' ? '返佣' : 'Rebate'}
+              {detailTab === 'usdt_rebate' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
+            </button>
           </div>
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto p-3">
-            {detailTab === 'records' ? (
+            {detailTab === 'usdt_rebate' ? (
+              // v5.x+ USDT real-cash rebate panel — sourced from /api/me/rebate/*
+              // Three sections stacked: summary card, level breakdown, history list.
+              // total_pending stat is "accrued but not yet sent" (excludes inflight
+              // submitted batches so the user doesn't see a number about to drop).
+              usdtLoading ? (
+                <div className="flex items-center justify-center py-12 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  Loading...
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Summary card */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-center">
+                      <div className="text-base font-bold text-primary">${parseFloat(usdtSummary?.total_earned || '0').toFixed(2)}</div>
+                      <div className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                        {i18nService.currentLanguage === 'zh' ? '累计赚到' : 'Total earned'}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border text-center">
+                      <div className="text-base font-bold dark:text-claude-darkText text-claude-text">${parseFloat(usdtSummary?.total_sent || '0').toFixed(2)}</div>
+                      <div className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                        {i18nService.currentLanguage === 'zh' ? '已到账' : 'Sent on-chain'}
+                      </div>
+                    </div>
+                    <div className="p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border text-center">
+                      <div className="text-base font-bold text-yellow-500">${parseFloat(usdtSummary?.total_pending || '0').toFixed(2)}</div>
+                      <div className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
+                        {i18nService.currentLanguage === 'zh' ? '待发放' : 'Pending'}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Note: how it works */}
+                  <div className="p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                    {i18nService.currentLanguage === 'zh'
+                      ? '💡 下级每充值 $5+，奖池 = 充值 USD × 10%，按 50% / 10% × 5 分给 L1-L6。单次累计 ≥ $1 USDT，每天 02:00 UTC 自动批量发到你的 BSC 钱包。'
+                      : '💡 Each downline deposit ≥ $5 funds a 10% pool split as 50% / 10%×5 across L1-L6. Once your accrued ≥ $1 USDT, daily 02:00 UTC batch transfers to your BSC wallet.'}
+                  </div>
+
+                  {/* Level breakdown */}
+                  {usdtBreakdown.length > 0 && (
+                    <div>
+                      <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1.5">
+                        {i18nService.currentLanguage === 'zh' ? '来源拆解' : 'By level'}
+                      </div>
+                      <div className="space-y-1">
+                        {usdtBreakdown.map((lvl) => (
+                          <div key={lvl.level} className="flex items-center justify-between px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
+                            <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                              lvl.level === 1 ? 'bg-primary/10 text-primary' : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
+                            }`}>
+                              L{lvl.level}
+                            </span>
+                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                              {lvl.contributor_count} {i18nService.currentLanguage === 'zh' ? '位下级' : 'downlines'}
+                            </span>
+                            <span className="font-semibold text-primary">${parseFloat(lvl.amount).toFixed(4)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* History */}
+                  <div>
+                    <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1.5">
+                      {i18nService.currentLanguage === 'zh' ? '到账历史' : 'Payout history'}
+                    </div>
+                    {usdtHistory.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有到账记录' : 'No payouts yet'}</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {usdtHistory.map((row) => (
+                          <div key={row.id} className="flex items-center justify-between px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
+                            <span className="font-semibold text-primary">+${parseFloat(row.amount_usdt).toFixed(4)}</span>
+                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{formatDate(row.created_at)}</span>
+                            <a
+                              href={row.bscscan_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-primary hover:underline font-mono"
+                              title={row.tx_hash}
+                            >
+                              {row.tx_hash.slice(0, 6)}...{row.tx_hash.slice(-4)} ↗
+                            </a>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            ) : detailTab === 'records' ? (
               inviteList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
                   <svg className="w-8 h-8 mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
@@ -391,8 +527,9 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             )}
           </div>
 
-          {/* Pagination */}
-          {(
+          {/* Pagination — only for records/rewards tabs. USDT tab loads all
+              50 rows in one call (no page split needed for typical user volume). */}
+          {detailTab !== 'usdt_rebate' && (
             <div className="flex items-center justify-center gap-2 py-2 border-t dark:border-claude-darkBorder border-claude-border shrink-0">
               <button
                 onClick={() => detailTab === 'records' ? loadRecords(inviteListPage - 1) : loadRewards(rewardListPage - 1)}

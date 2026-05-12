@@ -30,6 +30,7 @@ import AppUpdateBadge from './components/update/AppUpdateBadge';
 import AppUpdateModal from './components/update/AppUpdateModal';
 import { WalletView } from './components/wallet/WalletView';
 import { InviteView } from './components/invite/InviteView';
+import NotificationCenter from './components/notifications/NotificationCenter';
 import { ScenarioView } from './components/scenario/ScenarioView';
 import PartnersView from './components/partners/PartnersView';
 import PersonalityView from './components/personality/PersonalityView';
@@ -951,8 +952,13 @@ const App: React.FC = () => {
         />
       )}
       {permissionModal}
+      {/* v5.x+: global notification center — handles critical full-screen
+          modal (USDT 返佣 ≥ $50), important bottom-right banner ($5-50)
+          + OS push, all from /api/me/notifications/unread. Renders only
+          when authenticated. */}
+      <NotificationCenter />
     </div>
   );
 };
 
-export default App; 
+export default App;

@@ -10,6 +10,33 @@ export interface TokenInfo {
   walletAddress: string;
 }
 
+// v5.x+: notification row shape, shared between unread / list endpoints
+// + rebate_received-specific metadata. severity drives UI: critical →
+// full-screen modal, important → bottom-right banner + OS push, normal →
+// top thin strip + red-dot badge in InviteView.
+export interface NotificationRow {
+  id: string;
+  type: string;                  // 'rebate_received' | 'announcement' | ...
+  severity: 'critical' | 'important' | 'normal';
+  title_zh: string;
+  title_en: string;
+  body_zh: string;
+  body_en: string;
+  metadata?: {
+    amount_usdt?: string;
+    tx_hash?: string;
+    batch_id?: string;
+    recipient_wallet?: string;
+    bscscan_url?: string;
+    [k: string]: any;
+  };
+  read_at?: string | null;
+  dismissed_at?: string | null;
+  cta_clicked_at?: string | null;
+  created_at: string;
+  expires_at?: string | null;
+}
+
 // Per-chain block under PaymentInfo.chains. Backend emits these starting in
 // v5.5 (TRON/USDT support). Older clients keep using the top-level fields
 // (treasuryWallet/packages) so the response is forward+backward compatible.
@@ -233,6 +260,101 @@ class NoobClawApiService {
     } catch {
       return { airdrops: [] };
     }
+  }
+
+  // ─── v5.x+: USDT real-cash rebate endpoints ───
+  // Backend route prefix: /api/me/* (see backend/src/routes/rebate.ts).
+  // All four require auth headers — they're scoped to req.walletAddress.
+
+  async getUsdtRebateSummary(): Promise<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/summary`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch { return null; }
+  }
+
+  async getUsdtRebateBreakdown(): Promise<{ levels: Array<{ level: number; amount: string; contributor_count: number }> }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/breakdown`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { levels: [] };
+      return res.json();
+    } catch { return { levels: [] }; }
+  }
+
+  async getUsdtRebateHistory(limit = 50): Promise<{ items: Array<{ id: string; amount_usdt: string; tx_hash: string; bscscan_url: string; created_at: string }> }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/history?limit=${limit}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    } catch { return { items: [] }; }
+  }
+
+  // ─── Generic notification endpoints (initially seeded with rebate_received) ───
+  // The Modal/Banner/RedDot UI components poll these on launch + reactively.
+
+  async getUnreadNotifications(): Promise<{ items: Array<NotificationRow> }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/unread`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    } catch { return { items: [] }; }
+  }
+
+  async getNotificationHistory(limit = 50): Promise<{ items: Array<NotificationRow> }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/list?limit=${limit}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    } catch { return { items: [] }; }
+  }
+
+  async markNotificationRead(id: string): Promise<boolean> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/${id}/read`, {
+        method: 'POST', headers: this.getAuthHeaders(),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async markNotificationDismissed(id: string): Promise<boolean> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/${id}/dismiss`, {
+        method: 'POST', headers: this.getAuthHeaders(),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async markNotificationCtaClicked(id: string): Promise<boolean> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/${id}/cta-clicked`, {
+        method: 'POST', headers: this.getAuthHeaders(),
+      });
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async markAllNotificationsRead(): Promise<number> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/notifications/mark-all-read`, {
+        method: 'POST', headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return 0;
+      const j = await res.json();
+      return j.count || 0;
+    } catch { return 0; }
   }
 
   async getNoobEarnings(page = 1, limit = 20, reason = '', from = '', to = ''): Promise<{ list: any[]; total: number; stats: any }> {
