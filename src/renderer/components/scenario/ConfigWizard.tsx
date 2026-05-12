@@ -1979,7 +1979,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     ? parsedUrls.length === 0  // link rewrite: 至少 1 个 URL
                     : (keywordList.length === 0 || !persona.trim())  // 其他: keywords + persona
                 )}
-                className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:opacity-90 transition-opacity disabled:opacity-50">
+                className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {isZh ? '下一步' : 'Next'} →
               </button>
             ) : (
