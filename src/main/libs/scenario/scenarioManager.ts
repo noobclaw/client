@@ -803,28 +803,6 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   //   "正在启动…"。用户描述:"task A 在跑能看进度,task B 到点 SKIPPED
   //   后回 task A 进度看不见了" —— 实际是 task A 自己 30min 后又被定时触
   //   发,头部 delete 误伤。reset 移到确认接管之后(SKIPPED return 不动 progress)。
-  // v5.x+: pre-initialize progress BEFORE the loadPack await, so the
-  // renderer's getRunProgress(taskId) poll returns a live entry within
-  // ~10ms of the user clicking "直接运行". Without this, loadPack
-  // (which fetches the orchestrator JS over HTTP) eats 200-1000ms of
-  // wall time during which the renderer saw `progress = null`. The
-  // detail page's null-streak guard (NULL_STREAK_THRESHOLD = ~2) then
-  // downgrades running=false → big card stops glowing, "直接运行"
-  // button flips back, and the 2 new running cards disappear. A
-  // moment later loadPack finishes, initProgress fires, the renderer
-  // polls again, sees running=true, and the cards flicker back. User
-  // report: "点直接运行后跑一会然后卡片不发光了显示直接运行按钮过
-  // 一会才回来" — exactly this race.
-  //
-  // Pre-init writes a placeholder RunProgress with status='running'
-  // + a generic 4-step skeleton (initProgress's default when no
-  // scenarioId is provided). The post-pack initProgress(task.id,
-  // pack.manifest?.id) call further down OVERWRITES it with the
-  // scenario-specific step names, which is fine — by then the
-  // renderer has long since seen running=true and stopped fighting
-  // the null streak.
-  initProgress(task.id);
-
   // Per-resource concurrency: load pack first to derive its tab pattern(s),
   // then check the resource. Tasks targeting the same tab serialize; tasks
   // targeting different tabs (XHS vs Twitter) can run in parallel.
@@ -832,9 +810,6 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   // acquire ALL declared tab resources (else rejected up front).
   const pack = await loadPack(task.scenario_id);
   if (!pack) {
-    // Roll back the placeholder so the renderer doesn't keep a ghost
-    // running card up for a scenario that never even loaded.
-    progressByTaskId.delete(task.id);
     return { status: 'failed', reason: 'scenario_pack_not_found' };
   }
   const resources = resourceKeysForPack(pack);
@@ -852,11 +827,6 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     //   这避免了"自占自抢占"造成的旧那次还在跑就被新一次接管→重复发推。
     const holdingTaskId = runningByResource.get(busyKey)?.taskId;
     const holdingTask = holdingTaskId ? taskStore.getTask(holdingTaskId) : null;
-    // v5.x+: roll back the pre-init placeholder so a SKIPPED task doesn't
-    // leave a ghost 'running' progress entry. Without this the renderer
-    // would briefly show task B as "running" while the toast says it
-    // got skipped because task A holds the tab.
-    progressByTaskId.delete(task.id);
     return {
       status: 'skipped',
       reason: 'resource_busy:' + busyKey,
@@ -867,9 +837,6 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     };
   }
   if (atConcurrencyLimit()) {
-    // v5.x+: same cleanup as the resource_busy branch above — undo the
-    // pre-init placeholder so SKIPPED tasks don't appear "running".
-    progressByTaskId.delete(task.id);
     return { status: 'skipped', reason: 'concurrency_limit_reached' };
   }
   // v4.31.40: 真正接管时才 reset(SKIPPED 路径在上面已 return,不会到这)。
