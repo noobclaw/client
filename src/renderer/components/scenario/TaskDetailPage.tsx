@@ -1059,8 +1059,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 land. Sourced from progress.tokens_used / .cost_usd which
                 scenarioManager mirrors out of its per-task accumulators
                 on every aiCall billable response. Same green-glow shell
-                as 本次运行进度 since they're a paired running-only set. */}
-            {(progress.tokens_used || 0) > 0 && (
+                as 本次运行进度 since they're a paired running-only set.
+                v5.x+: render unconditionally during running (was gated
+                on tokens_used > 0). The pair-with-本次运行进度 UX wins
+                over "hide empty card" — user wants to watch 0 → N
+                climb in real time, and a one-card row looked unbalanced
+                while task was still in scrape phase before any AI call. */}
+            {(
               <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
                 <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
                   <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
