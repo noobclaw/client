@@ -151,18 +151,67 @@ function nextRunLabel(task: Task, isZh: boolean): string {
 export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platformLabel, onOpenTask, onRefresh, onGoCreate, platformId }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set());
+  // Per-task derived data for the "actions strip" on each card:
+  //  - running tasks → action_progress map (live X/Y, polled every 3s)
+  //  - idle tasks    → cumulative_action_counts map (refreshed when a
+  //                    task transitions running→idle, otherwise cached)
+  // Keyed by task id; entries are { mode, data } where mode picks which
+  // map shape `data` carries.
+  const [taskActionInfo, setTaskActionInfo] = useState<Record<string, {
+    mode: 'running' | 'cumulative';
+    data: Record<string, { done: number; target: number }> | Record<string, number>;
+  }>>({});
 
-  // Poll which tasks are actively running every 3s. Cheap IPC.
+  // Poll which tasks are actively running every 3s + fetch live progress
+  // for running tasks. Idle tasks get their cumulative counts fetched on
+  // first sight (and refreshed whenever a running task finishes so the
+  // strip flips from 本次目标 X/Y → 累计完成 X 赞 right away).
   useEffect(() => {
     let cancelled = false;
+    let prevRunningSet = new Set<string>();
     const tick = async () => {
       const ids = await scenarioService.getRunningTaskIds().catch(() => []);
-      if (!cancelled) setRunningTaskIds(new Set(ids));
+      if (cancelled) return;
+      const runningNow = new Set(ids);
+      setRunningTaskIds(runningNow);
+
+      // For running tasks, pull live progress. For tasks that JUST
+      // stopped running since last tick, refetch their cumulative so
+      // the strip swaps from running → cumulative with up-to-date data.
+      const justFinished: string[] = [];
+      prevRunningSet.forEach(id => { if (!runningNow.has(id)) justFinished.push(id); });
+      prevRunningSet = runningNow;
+
+      const updates: typeof taskActionInfo = {};
+      // Running: action_progress
+      await Promise.all(Array.from(runningNow).map(async (id) => {
+        const prog = await scenarioService.getRunProgress(id).catch(() => null);
+        const ap = (prog as any)?.action_progress;
+        if (ap && typeof ap === 'object') {
+          updates[id] = { mode: 'running', data: ap };
+        }
+      }));
+      // Just-finished + tasks we haven't fetched cumulative for yet:
+      const idleNeedingFetch = tasks
+        .filter(t => !runningNow.has(t.id))
+        .filter(t => justFinished.includes(t.id) || !taskActionInfo[t.id] || taskActionInfo[t.id].mode === 'running')
+        .slice(0, 30); // hard cap so a 100-task list doesn't pile up IPC
+      await Promise.all(idleNeedingFetch.map(async (t) => {
+        const stats = await scenarioService.getTaskStats(t.id).catch(() => null);
+        const cac = stats?.cumulative_action_counts;
+        if (cac && typeof cac === 'object') {
+          updates[t.id] = { mode: 'cumulative', data: cac };
+        }
+      }));
+      if (!cancelled && Object.keys(updates).length > 0) {
+        setTaskActionInfo(prev => ({ ...prev, ...updates }));
+      }
     };
     void tick();
     const h = setInterval(tick, 3000);
     return () => { cancelled = true; clearInterval(h); };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks.length]);
 
   // Refresh tasks on mount so edits made in TaskDetailPage (e.g. user
   // changed track) propagate immediately when the user comes back to
@@ -441,6 +490,92 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       {new Date(task.created_at || 0).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
                     </div>
                   </div>
+                  {/* Actions strip — bottom-right corner.
+                       running task → 本次目标 with X/Y (live ticking from
+                                       polling action_progress every 3s)
+                       idle task    → 累计完成 with summed history counts
+                                       (shown even at 0 so the user can
+                                       tell the task is wired correctly
+                                       before it has run once). */}
+                  {(() => {
+                    const info = taskActionInfo[task.id];
+                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
+                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                    const labels = isZh
+                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
+                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+                    // For idle tasks that have never produced action counts
+                    // (brand-new tasks, or post-creator scenarios where the
+                    // backend hasn't backfilled `cumulative_action_counts`
+                    // yet), fall back to a scenario-derived primary action
+                    // key so the "累计完成: 0 帖/赞" strip still renders
+                    // instead of leaving an empty gap on the card. The
+                    // running-mode branch keeps its >0 filter so the live
+                    // strip only lights up for actions the orchestrator
+                    // has actually announced a target for.
+                    const isPostScenario = (
+                      sid === 'binance_square_post_creator' ||
+                      sid === 'x_post_creator' ||
+                      sid === 'binance_from_x_repost' ||
+                      sid === 'binance_from_x_link' ||
+                      sid === 'x_link_rewrite' ||
+                      sid === 'douyin_image_text'
+                    );
+                    const fallbackKey = isPostScenario ? 'post' : 'like';
+                    const effectiveInfo = info ?? {
+                      mode: 'cumulative' as const,
+                      data: { [fallbackKey]: 0 } as Record<string, number>,
+                    };
+                    const keys = Object.keys(effectiveInfo.data).filter(k => {
+                      if (effectiveInfo.mode === 'running') {
+                        const v = (effectiveInfo.data as any)[k];
+                        return (v?.target || 0) > 0 || (v?.done || 0) > 0;
+                      }
+                      // cumulative: keep zeros so newly-created tasks still
+                      // show "累计完成: 0 帖" instead of nothing.
+                      return true;
+                    }).sort((a, b) => {
+                      const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+                      if (ia === -1 && ib === -1) return a.localeCompare(b);
+                      if (ia === -1) return 1;
+                      if (ib === -1) return -1;
+                      return ia - ib;
+                    });
+                    if (keys.length === 0) {
+                      // Only happens for running tasks with no announced
+                      // targets yet — keep card clean until the
+                      // orchestrator calls setActionTargets.
+                      return null;
+                    }
+                    const labelPrefix = effectiveInfo.mode === 'running'
+                      ? (isZh ? '本次目标' : 'Run target')
+                      : (isZh ? '累计完成' : 'Total done');
+                    return (
+                      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
+                        <span className={`text-[10px] ${effectiveInfo.mode === 'running' ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
+                          {labelPrefix}:
+                        </span>
+                        {keys.map(k => {
+                          if (effectiveInfo.mode === 'running') {
+                            const { done, target } = (effectiveInfo.data as any)[k];
+                            return (
+                              <span key={k} className="font-mono">
+                                {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
+                                <span className="text-gray-400 dark:text-gray-500">/{target}</span>{' '}
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{(labels as any)[k] || k}</span>
+                              </span>
+                            );
+                          }
+                          return (
+                            <span key={k} className="text-gray-700 dark:text-gray-200">
+                              {(ICONS[k] || '·')} <strong>{(effectiveInfo.data as any)[k]}</strong>{' '}
+                              <span className="text-[10px] text-gray-500 dark:text-gray-400">{(labels as any)[k] || k}</span>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </button>
               );
             })}

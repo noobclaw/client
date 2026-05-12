@@ -265,6 +265,18 @@ export interface ScenarioRunProgress {
   currentStep: number;
   steps: ScenarioStepProgress[];
   error?: string;
+  /** Live per-action progress for a running task ({done, target} per
+   *  action type). Populated when the orchestrator calls
+   *  ctx.setActionTargets() at start + ctx.addActionCount() per action.
+   *  TaskDetailPage shows a glowing "本次运行进度" card with X/Y
+   *  counters while status === 'running'; MyTasksPage swaps each task
+   *  card's stat strip from 累计完成 to 本次目标 when this is present. */
+  action_progress?: Record<string, { done: number; target: number }>;
+  /** Live running-only AI consumption — accumulated tokens + USD cost
+   *  for the in-flight run. Drives the glowing "本次消耗" card on
+   *  TaskDetailPage; only present while status === 'running'. */
+  tokens_used?: number;
+  cost_usd?: number;
 }
 
 export interface XhsLoginStatus {

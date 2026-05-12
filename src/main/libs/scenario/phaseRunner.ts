@@ -45,6 +45,12 @@ export interface ProgressFns {
    *      token_price_per_million). Precomputed server-side so the
    *      client doesn't hardcode a rate. */
   addTokensUsed?: (tokensDelta: number, costDeltaUsd: number) => void;
+  /** v5.x+: surface per-action progress to the live RunProgress so the
+   *  task detail page can render a glowing "本次运行进度" card with
+   *  "X/Y" counters that tick up as each action completes. Optional —
+   *  scenarios that don't track per-action quotas just skip these. */
+  setActionTarget?: (type: string, target: number) => void;
+  bumpActionProgress?: (type: string, n: number) => void;
 }
 
 export interface RunResult {
@@ -1963,11 +1969,35 @@ function buildContext(
     // the per-type counter that surfaces on the task detail page as
     // "累计完成" + "上次完成". `n` defaults to 1 for the common
     // "did one like / one follow" case.
+    //
+    // Also mirrors the bump into the live RunProgress (via
+    // progress.bumpActionProgress) so the running-glow "本次运行进度"
+    // card on TaskDetailPage ticks up in real time without any extra
+    // wiring from the orchestrator. Pairs with ctx.setActionTargets,
+    // which the orchestrator should call once near the start of a run
+    // after it has picked the daily caps.
     addActionCount: (type: string, n: number = 1) => {
       if (!type || typeof type !== 'string') return;
       const k = type.trim();
       if (!k) return;
-      actionCounts[k] = (actionCounts[k] || 0) + (Number(n) || 0);
+      const delta = Number(n) || 0;
+      actionCounts[k] = (actionCounts[k] || 0) + delta;
+      if (typeof progress.bumpActionProgress === 'function') {
+        try { progress.bumpActionProgress(k, delta); } catch { /* non-fatal */ }
+      }
+    },
+    /** Declare per-type planned targets at the start of a run. Pass an
+     *  object of { type: target } pairs; subsequent ctx.addActionCount
+     *  calls show up as "X/target" on the running progress card. Re-calling
+     *  with a new value updates the displayed target (last write wins). */
+    setActionTargets: (targets: Record<string, number>) => {
+      if (!targets || typeof targets !== 'object') return;
+      for (const [k, v] of Object.entries(targets)) {
+        if (!k || typeof k !== 'string') continue;
+        if (typeof progress.setActionTarget === 'function') {
+          try { progress.setActionTarget(k.trim(), Number(v) || 0); } catch { /* non-fatal */ }
+        }
+      }
     },
     // Internal accessor used by runOrchestrator to fold counts into the
     // final RunResult so they get persisted on the run record.

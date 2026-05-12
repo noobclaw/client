@@ -1008,6 +1008,87 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         </div>
       </div>
 
+      {/* Running-only pair: 本次运行进度 + 本次消耗.
+          Both cards appear ONLY when status='running' and disappear the
+          moment the task finishes / errors / stops — the user wanted
+          these to be live-only "while it's working" surfaces, not
+          persistent stats. They share the same green border + pulse +
+          noobclaw-running-glow as other in-flight surfaces (run history
+          pending row, scenario card). */}
+      {progress?.status === 'running' && (
+        ((progress.action_progress && Object.keys(progress.action_progress).length > 0) ||
+         (progress.tokens_used || 0) > 0) && (
+          <div className="mb-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 本次运行进度 — live X/Y per action type. */}
+            {progress.action_progress && Object.keys(progress.action_progress).length > 0 && (
+              <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
+                <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  {isZh ? '本次运行进度' : 'Current Run Progress'}
+                </div>
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
+                  {(() => {
+                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
+                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                    const labels = isZh
+                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
+                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+                    const ap = progress.action_progress || {};
+                    const keys = Object.keys(ap).filter(k => (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
+                      const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+                      if (ia === -1 && ib === -1) return a.localeCompare(b);
+                      if (ia === -1) return 1;
+                      if (ib === -1) return -1;
+                      return ia - ib;
+                    });
+                    return keys.map(k => {
+                      const { done, target } = ap[k];
+                      return (
+                        <span key={k} className="font-mono text-gray-700 dark:text-gray-200">
+                          {(ICONS[k] || '·')} <strong className="text-green-600 dark:text-green-400">{done}</strong>
+                          <span className="text-gray-400 dark:text-gray-500">/{target}</span>{' '}
+                          <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{(labels as any)[k] || k}</span>
+                        </span>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            )}
+            {/* 本次消耗 — live credits + USD cost climbing as AI calls
+                land. Sourced from progress.tokens_used / .cost_usd which
+                scenarioManager mirrors out of its per-task accumulators
+                on every aiCall billable response. Same green-glow shell
+                as 本次运行进度 since they're a paired running-only set. */}
+            {(progress.tokens_used || 0) > 0 && (
+              <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
+                <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
+                  <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  {isZh ? '本次消耗' : 'Current Run Cost'}
+                </div>
+                <div className="flex items-baseline gap-3 text-sm font-mono text-gray-700 dark:text-gray-200">
+                  <span>
+                    <strong className="text-green-600 dark:text-green-400 text-base">
+                      {(progress.tokens_used || 0).toLocaleString()}
+                    </strong>{' '}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">
+                      {isZh ? '积分' : 'credits'}
+                    </span>
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-600">·</span>
+                  <span>
+                    <strong className="text-green-600 dark:text-green-400 text-base">
+                      ${(progress.cost_usd || 0).toFixed(4)}
+                    </strong>{' '}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">USD</span>
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+        )
+      )}
+
       {/* Stats — link-mode tasks AND run_interval='once' tasks are one-shot
            so the "下次运行" stat is meaningless; show only the first five. */}
       <div className={`grid grid-cols-2 ${(isLinkModeForStats || (task as any).run_interval === 'once') ? 'sm:grid-cols-3' : 'sm:grid-cols-3 lg:grid-cols-5'} gap-3 mb-6`}>

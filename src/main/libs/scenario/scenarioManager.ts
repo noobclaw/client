@@ -116,6 +116,20 @@ export interface RunProgress {
   currentStep: number;   // 0=not started, 1/2/3
   steps: StepProgress[];
   error?: string;
+  /** Live per-action progress for the running task, keyed by free-form
+   *  action type ('like' / 'follow' / 'subscribe' / 'comment' / 'reply' /
+   *  'post'). Populated when the orchestrator calls ctx.setActionTargets
+   *  at start + ctx.addActionCount per action. TaskDetailPage renders a
+   *  glowing "本次运行进度" card with "X/Y" lines while status='running'.
+   *  Stays undefined for scenarios that don't report targets. */
+  action_progress?: Record<string, { done: number; target: number }>;
+  /** Live running-only tally of AI tokens consumed + matching USD cost
+   *  for THIS run. Mirrored from the same per-task accumulators that get
+   *  persisted into the run record at task end. TaskDetailPage shows a
+   *  glowing "本次消耗" card next to "本次运行进度" while status='running'
+   *  so the user can watch the running cost climb in real time. */
+  tokens_used?: number;
+  cost_usd?: number;
 }
 
 // Per-task progress + abort flag.
@@ -211,6 +225,27 @@ function stepDone(taskId: string, step: number): void {
   const p = progressByTaskId.get(taskId);
   if (!p) return;
   p.steps[step - 1].status = 'done';
+}
+
+/** Set the per-type planned target. Called once near the start of a run
+ *  after the orchestrator picks daily caps (e.g. nLike from a random
+ *  range). Multiple calls overwrite — last write wins. */
+function setActionTarget(taskId: string, type: string, target: number): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p || !type) return;
+  if (!p.action_progress) p.action_progress = {};
+  const cur = p.action_progress[type] || { done: 0, target: 0 };
+  p.action_progress[type] = { done: cur.done, target: Math.max(0, Math.floor(Number(target) || 0)) };
+}
+
+/** Bump the per-type done counter. Called after each successful action so
+ *  the UI's running-glow card ticks up live (0/60 → 1/60 → 2/60 …). */
+function bumpActionProgress(taskId: string, type: string, n: number = 1): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p || !type) return;
+  if (!p.action_progress) p.action_progress = {};
+  const cur = p.action_progress[type] || { done: 0, target: 0 };
+  p.action_progress[type] = { done: cur.done + (Number(n) || 0), target: cur.target };
 }
 
 function stepError(taskId: string, step: number, error: string): void {
@@ -653,9 +688,17 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
       addTokensUsed: (tokensDelta, costDeltaUsd) => {
-        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
-        costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
+        const tNew = (tokensByTaskId.get(tid) || 0) + tokensDelta;
+        const cNew = (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0);
+        tokensByTaskId.set(tid, tNew);
+        costUsdByTaskId.set(tid, cNew);
+        // v5.x+: mirror into live RunProgress so the renderer's poll
+        // can drive the glowing "本次消耗" card on TaskDetailPage.
+        const p = progressByTaskId.get(tid);
+        if (p) { p.tokens_used = tNew; p.cost_usd = cNew; }
       },
+      setActionTarget: (type: string, target: number) => setActionTarget(tid, type, target),
+      bumpActionProgress: (type: string, n: number) => bumpActionProgress(tid, type, n),
     }, { scriptOverride: script, targetDraft, appLocale: readAppLocale() });
 
     // Update draft status on successful upload
@@ -823,9 +866,17 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
         finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
       addTokensUsed: (tokensDelta: number, costDeltaUsd?: number) => {
-        tokensByTaskId.set(tid, (tokensByTaskId.get(tid) || 0) + tokensDelta);
-        costUsdByTaskId.set(tid, (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0));
+        const tNew = (tokensByTaskId.get(tid) || 0) + tokensDelta;
+        const cNew = (costUsdByTaskId.get(tid) || 0) + (costDeltaUsd || 0);
+        tokensByTaskId.set(tid, tNew);
+        costUsdByTaskId.set(tid, cNew);
+        // v5.x+: mirror into live RunProgress so the renderer's poll
+        // can drive the glowing "本次消耗" card on TaskDetailPage.
+        const p = progressByTaskId.get(tid);
+        if (p) { p.tokens_used = tNew; p.cost_usd = cNew; }
       },
+      setActionTarget: (type: string, target: number) => setActionTarget(tid, type, target),
+      bumpActionProgress: (type: string, n: number) => bumpActionProgress(tid, type, n),
     };
 
     let result = await runOrchestrator(pack, task, seen, callbacks, {
