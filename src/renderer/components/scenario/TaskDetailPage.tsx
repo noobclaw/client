@@ -1362,14 +1362,37 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
  */
 function formatActionBreakdown(
   counts: Record<string, number> | undefined,
-  // _scenario is reserved for future workflow_type-aware tweaks
-  // (e.g. show "✍️ 仿写" instead of "📤 post" for x_link_rewrite).
-  // Currently we let the orchestrator pick the action key and use a
-  // universal icon map, so this param is unused.
-  _scenario: any,
+  scenario: any,
   isZh: boolean,
 ): string {
-  if (!counts || Object.keys(counts).length === 0) return '-';
+  // v5.x+: when counts is missing/empty, derive engage- or post-family
+  // placeholder keys from the scenario id so brand-new engage tasks
+  // render "累计完成: 👍 0 · 💬 0 · ➕ 0" (the full 3-pronged
+  // breakdown the user expects to see for like/comment/follow tasks)
+  // instead of a lone "-". Pre-rollout records hit this same path; we
+  // accept "showing 0/0/0 on truly-empty rows" as the right trade-off
+  // since the alternative ("-") makes the card look broken.
+  const sid = String(scenario?.id || '');
+  if (!counts || Object.keys(counts).length === 0) {
+    const isPostScenario = (
+      sid === 'binance_square_post_creator' ||
+      sid === 'x_post_creator' ||
+      sid === 'binance_from_x_repost' ||
+      sid === 'binance_from_x_link' ||
+      sid === 'x_link_rewrite' ||
+      sid === 'douyin_image_text'
+    );
+    const isEngageScenario = !isPostScenario && (
+      sid.endsWith('_auto_engage') || sid === 'xhs_auto_engage'
+    );
+    if (isPostScenario) {
+      counts = { post: 0 };
+    } else if (isEngageScenario) {
+      counts = { like: 0, comment: 0, follow: 0 };
+    } else {
+      return '-';
+    }
+  }
   // Engage-family icons. 'comment' covers replies too (xhs / x both map
   // their reply types to 'comment' to match Douyin's bucketing).
   const ICONS: Record<string, string> = {

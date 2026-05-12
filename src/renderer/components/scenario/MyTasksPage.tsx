@@ -521,10 +521,26 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'x_link_rewrite' ||
                       sid === 'douyin_image_text'
                     );
-                    const fallbackKey = isPostScenario ? 'post' : 'like';
+                    // v5.x+: engage scenarios are 3-pronged (like / comment /
+                    // follow) so a brand-new task with no history should show
+                    // "累计完成: 👍 0 · 💬 0 · ➕ 0" — the full breakdown —
+                    // not just "👍 0". Detected by scenario_id ending in
+                    // _auto_engage (X / Binance Square / YouTube / TikTok /
+                    // Douyin all follow this pattern). Post-creator scenarios
+                    // stay single-key on 'post'.
+                    const isEngageScenario = !isPostScenario && (
+                      sid.endsWith('_auto_engage') || sid === 'xhs_auto_engage'
+                    );
+                    const fallbackKeys: string[] = isPostScenario
+                      ? ['post']
+                      : isEngageScenario
+                        ? ['like', 'comment', 'follow']
+                        : ['like'];
+                    const fallbackData: Record<string, number> = {};
+                    for (const k of fallbackKeys) fallbackData[k] = 0;
                     const effectiveInfo = info ?? {
                       mode: 'cumulative' as const,
-                      data: { [fallbackKey]: 0 } as Record<string, number>,
+                      data: fallbackData,
                     };
                     const keys = Object.keys(effectiveInfo.data).filter(k => {
                       if (effectiveInfo.mode === 'running') {
