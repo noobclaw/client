@@ -14,7 +14,7 @@ import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUt
 import { classifyIntent } from './libs/intentClassifier';
 import { ensureSandboxReady, getSandboxStatus, onSandboxProgress } from './libs/coworkSandboxRuntime';
 import { startCoworkOpenAICompatProxy, stopCoworkOpenAICompatProxy, setScheduledTaskDeps } from './libs/coworkOpenAICompatProxy';
-import { startBrowserBridge, stopBrowserBridge, getBrowserBridgeStatus } from './libs/browserBridge';
+import { stopBrowserBridge, getBrowserBridgeStatus } from './libs/browserBridge';
 import { IMGatewayManager, IMPlatform, IMGatewayConfig } from './im';
 import { APP_NAME } from './appConstants';
 import { getSkillServiceManager } from './skillServices';
@@ -1424,8 +1424,12 @@ if (!gotTheLock) {
   });
 
   ipcMain.handle('browser-bridge:restart', async () => {
+    // v2.8: the bridge no longer owns its own listener — the ws + sse
+    // routes are attached to the sidecar's HTTP server. "Restart" here
+    // just tears down active connections; the next extension reconnect
+    // will land on the (still-running) attached routes.
     await stopBrowserBridge();
-    return startBrowserBridge();
+    return getBrowserBridgeStatus();
   });
 
   // Cowork IPC handlers
@@ -3229,9 +3233,11 @@ if (!gotTheLock) {
       console.error('Failed to start OpenAI compatibility proxy:', error);
     });
 
-    await startBrowserBridge().catch((error) => {
-      console.error('Failed to start browser bridge:', error);
-    });
+    // v2.8: NM was removed, so Electron mode no longer needs to spin up
+    // a standalone TCP listener for the bridge. The actual ws + sse
+    // endpoints live on the sidecar's HTTP server (sidecar-server.ts
+    // calls attachBrowserBridge). Electron mode talks to extensions only
+    // when running alongside the sidecar; no init step needed here.
 
     // Inject scheduled task dependencies into the proxy server
     setScheduledTaskDeps({ getScheduledTaskStore, getScheduler });

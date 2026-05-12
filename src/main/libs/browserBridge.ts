@@ -1,25 +1,24 @@
 /**
- * Browser Bridge — TCP server that connects to the Native Messaging Host
- * which bridges Chrome extension communication.
+ * Browser Bridge — HTTP-anchored transport for chrome / edge / firefox
+ * extensions to talk to the desktop client.
  *
- * Architecture:
- *   Chrome Extension <-> Native Messaging Host (stdin/stdout) <-> TCP <-> This bridge
+ * Two transports, both mounted on the sidecar HTTP server (18800):
+ *   1. WebSocket  ws://127.0.0.1:18800/browser-bridge
+ *      Used by Chrome / Edge. Firefox falls through to SSE because
+ *      Firefox upgrades ws://localhost → wss:// under HTTPS-Only Mode
+ *      (Bug 1670581), and we can't serve wss without a trusted cert.
+ *   2. SSE + POST  http://127.0.0.1:18800/browser-bridge/events  (server→ext)
+ *                  http://127.0.0.1:18800/browser-bridge/send?session=<id>  (ext→server)
+ *      Used by Firefox as primary; available as fallback for chrome/edge too.
+ *      Plain `fetch` to localhost is never upgraded by Firefox HTTPS-Only
+ *      Mode, so this path is always reachable.
  *
- * v2.6.x WebSocket fallback:
- *   The NM path requires a registry write (HKCU\...\NativeMessagingHosts\...)
- *   which 360 / Defender / 火绒 routinely flag as malware behavior, leaving
- *   users with a permanently disconnected extension. attachBrowserBridgeWebSocket
- *   below mounts a WS upgrade route on the existing sidecar HTTP server (18800)
- *   so the extension can fall back to:
- *     ws://127.0.0.1:18800/browser-bridge
- *   The handshake is gated by an Origin check against EXTENSION_IDS — same
- *   whitelist NM uses. Once upgraded, the connection is shimmed into a
- *   net.Socket-shaped object and fed through attachBrowserConn() with
- *   transport='ws', so all downstream send/route logic is identical to NM.
+ * Both transports route through attachBrowserConn() — downstream command
+ * dispatch, msg.id correlation, hello/tabs_changed bookkeeping is shared.
  *
- * Also handles:
- *   - Native messaging host registration (registry on Windows, plist on macOS)
- *   - Extension installation detection
+ * NM (Native Messaging) was removed in v2.8: registry writes + .bat host
+ * scripts kept tripping 360/火绒/Defender heuristics. cleanupLegacyNmResidueOnce()
+ * below scrubs residue from older installs so AV scans stay quiet.
  */
 
 import http from 'http';
@@ -46,8 +45,10 @@ try {
   }
 } catch {}
 
+// Legacy constant — kept for cleanupLegacyNmResidueOnce file/dir naming only.
+// NM transport itself is removed (v2.8); this string is just used to match
+// the on-disk artifact names previous installs wrote.
 const NATIVE_HOST_NAME = 'com.noobclaw.browser';
-const TCP_PORT = 12581;
 const CHROME_STORE_URL = 'https://chromewebstore.google.com/detail/noobclaw-browser-assistan/abchfdkiphahgkoalhnmlfpfmgkedigf';
 const EDGE_STORE_URL = 'https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd';
 const FIREFOX_STORE_URL = 'https://addons.mozilla.org/addon/noobclaw-browser-assistant/';
@@ -124,7 +125,10 @@ function detectBrowsers(): DetectedBrowser[] {
   return browsers; // Chrome first by default
 }
 
-let tcpServer: net.Server | null = null;
+// Bridge is "running" once attachBrowserBridge() has wired its routes onto
+// the sidecar HTTP server. We don't own the server (sidecar-server.ts does),
+// just track whether the wiring is in place.
+let bridgeAttached = false;
 let bridgePort: number | null = null;
 
 // Multi-browser support (v2.4.9): each connected browser instance owns its
@@ -138,13 +142,15 @@ let bridgePort: number | null = null;
 interface BrowserConn {
   id: string;
   socket: net.Socket;
-  /** Which transport this conn arrived on. NM = native messaging host (the
-   *  default; Chrome spawns the .bat → .exe → .exe TCP-connects to us).
-   *  WS = WebSocket fallback (extension hits ws://127.0.0.1:18800/browser-bridge
-   *  directly when NM is broken — registry write blocked by AV, host script
-   *  missing, etc.). Used purely for diagnostic logs and the popup status
-   *  badge; downstream command routing treats both identically. */
-  transport: 'nm' | 'ws';
+  /** Which transport this conn arrived on.
+   *    WS  — Chrome / Edge (and any browser whose WebSocket impl handles
+   *          ws://localhost correctly). Native ws frames.
+   *    SSE — Firefox (and chrome/edge fallback). Server-Sent Events
+   *          (server→ext) paired with POST /browser-bridge/send (ext→server),
+   *          both adapted into a net.Socket-shaped facade.
+   *  Used purely for diagnostic logs and the popup status badge; downstream
+   *  command routing treats them identically. */
+  transport: 'ws' | 'sse';
   tabs: Array<{ id: number; url: string }>;
   /** Extension version reported in the `hello` message. Empty until the
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
@@ -269,113 +275,15 @@ export function getBrowserBridgeStatus(): {
   extensionInstalled: boolean;
 } {
   return {
-    running: tcpServer !== null,
+    running: bridgeAttached,
     port: bridgePort,
     connected: isAnyBrowserConnected(),
-    extensionInstalled: isNativeHostRegistered(),
+    // v2.8+: NM is gone, so we no longer can detect "extension installed"
+    // by inspecting NM manifest paths. The connection-based renderer flow
+    // (`connected` above + `getConnectedExtensions`) gives a more accurate
+    // signal anyway: if any extension is talking to us, it's installed.
+    extensionInstalled: isAnyBrowserConnected(),
   };
-}
-
-// --- Native Messaging Host Registration ---
-
-function getNativeHostManifestPaths(): { browser: BrowserType; manifestPath: string; regKey?: string }[] {
-  const home = process.env.HOME || '~';
-  const results: { browser: BrowserType; manifestPath: string; regKey?: string }[] = [];
-
-  if (process.platform === 'win32') {
-    const basePath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.json`);
-    // Firefox MUST use a separate manifest file on Windows: Chrome/Edge use
-    // `allowed_origins` (CRX-id list), Firefox uses `allowed_extensions`
-    // (gecko id list). If we point all three at the same file, the last
-    // iteration in the registration loop (line ~295) overwrites it with
-    // only the firefox-shaped fields and Chrome/Edge silently lose their
-    // allowed_origins → connectNative starts failing for the other browsers
-    // with no obvious cause. Separate files, separate registry keys.
-    const firefoxPath = path.join(getUserDataPath(), `${NATIVE_HOST_NAME}.firefox.json`);
-    results.push(
-      { browser: 'chrome', manifestPath: basePath, regKey: `HKCU\\Software\\Google\\Chrome\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
-      { browser: 'edge', manifestPath: basePath, regKey: `HKCU\\Software\\Microsoft\\Edge\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
-      { browser: 'firefox', manifestPath: firefoxPath, regKey: `HKCU\\Software\\Mozilla\\NativeMessagingHosts\\${NATIVE_HOST_NAME}` },
-    );
-  } else if (process.platform === 'darwin') {
-    results.push(
-      { browser: 'chrome', manifestPath: path.join(home, 'Library/Application Support/Google/Chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
-      { browser: 'edge', manifestPath: path.join(home, 'Library/Application Support/Microsoft Edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
-      { browser: 'firefox', manifestPath: path.join(home, 'Library/Application Support/Mozilla/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
-    );
-  } else {
-    results.push(
-      { browser: 'chrome', manifestPath: path.join(home, '.config/google-chrome/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
-      { browser: 'edge', manifestPath: path.join(home, '.config/microsoft-edge/NativeMessagingHosts', `${NATIVE_HOST_NAME}.json`) },
-      { browser: 'firefox', manifestPath: path.join(home, '.mozilla/native-messaging-hosts', `${NATIVE_HOST_NAME}.json`) },
-    );
-  }
-
-  return results;
-}
-
-function getNativeHostScriptPath(): string {
-  // The wrapper script (.bat / .sh) MUST live in a user-writable location.
-  // registerNativeMessagingHost rewrites it on every startup so the
-  // embedded process.execPath stays in sync with the current install
-  // location (which changes whenever the user upgrades to a build at a
-  // different install root — e.g. moving from D:\noobclaw to
-  // C:\Program Files\NoobClaw on Windows). Putting it under
-  // resourcesPath puts it under %ProgramFiles% on per-machine NSIS
-  // installs, where the standard user has read+execute but NOT write,
-  // so fs.writeFileSync throws EPERM and the entire register flow
-  // aborts before Firefox / chrome / edge manifests get a chance to
-  // land — see [BrowserBridge] EPERM in sidecar.log for the failure
-  // signature. %APPDATA% (Windows) and ~/Library/Application Support
-  // (macOS) / ~/.config (Linux) are always writable because that's
-  // where Tauri/Electron store user data anyway.
-  const userData = getUserDataPath();
-  if (process.platform === 'win32') {
-    return path.join(userData, 'native-messaging-host.bat');
-  }
-  // macOS/Linux: use shell wrapper script
-  return path.join(userData, 'native-messaging-host.sh');
-}
-
-/**
- * @deprecated v2.7+: NM host registration is no longer used.
- *
- * The previous implementation spawned `cmd.exe → reg.exe add ...` from
- * Node, and that subprocess chain was the actual heuristic 360 / 火绒 /
- * Defender flagged as malware-installer behaviour (NOT the NM protocol
- * itself). The chrome extension v1.3+ now connects via WebSocket
- * (ws://127.0.0.1:18800/browser-bridge), so no registry write or .bat
- * wrapper is needed.
- *
- * This export is kept as a no-op stub so any caller (e.g. external
- * tests, downstream scripts) doesn't blow up. It returns immediately
- * and writes nothing — no spawn, no fs IO. The companion
- * `cleanupLegacyNmResidueOnce()` removes any artefacts older builds
- * left behind.
- */
-export function registerNativeMessagingHost(): void {
-  // Intentionally empty. See doc comment above.
-  console.log('[BrowserBridge] registerNativeMessagingHost: no-op (v2.7+ uses WS, NM registration deprecated)');
-}
-
-function isNativeHostRegistered(): boolean {
-  // v2.7+: this used to spawn `reg query` to inspect the HKCU NM host
-  // entry. We dropped the spawn (the cmd → reg.exe subprocess chain was
-  // exactly what 360 / 火绒 / Defender heuristic-flagged as malware-
-  // installer behaviour). Now we just check whether the manifest file
-  // we (or a legacy build) wrote into userData still exists. After
-  // cleanupLegacyNmResidueOnce() runs on first v2.7+ launch this will
-  // permanently return false on machines that previously had NM
-  // registered — which is fine: the field is consumed by the renderer
-  // as "extension support exists", and the WS path makes that always
-  // true regardless of NM state.
-  const allPaths = getNativeHostManifestPaths();
-  for (const { manifestPath } of allPaths) {
-    try {
-      if (fs.existsSync(manifestPath)) return true;
-    } catch {}
-  }
-  return false;
 }
 
 // --- Extension Installation Detection ---
@@ -535,7 +443,7 @@ export function isExtensionInstalled(): boolean {
  * Owns: registration in browserConns, hello/tabs_changed parsing, command
  * response routing, lifecycle teardown.
  */
-function attachBrowserConn(socket: net.Socket, transport: 'nm' | 'ws'): void {
+function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
   const connId = `conn_${++connSeq}`;
   const conn: BrowserConn = {
     id: connId,
@@ -692,30 +600,36 @@ function wrapWebSocketAsSocket(ws: WsWebSocket): net.Socket {
 let wsServer: WebSocketServer | null = null;
 
 /**
- * Mount the WebSocket fallback endpoint on the given HTTP server. Idempotent.
- * Should be called once after both startBrowserBridge() and the sidecar HTTP
- * server are up. The sidecar HTTP server (port 18800) hosts /api/* routes
- * for the GUI; we hijack its `upgrade` event for our /browser-bridge path
- * and leave non-matching upgrades alone (no other WS path currently uses
- * this server, but the check is cheap insurance).
+ * Shared Origin gate for both the WS upgrade path and the SSE+POST path.
  *
- * Security: Origin header must be one of:
  *   - chrome-extension://<id>   for one of EXTENSION_IDS (Chrome/Edge)
- *   - moz-extension://<UUID>    for any Firefox install of the NoobClaw
- *                                 extension. Firefox derives a fresh UUID
- *                                 per install, so we can't whitelist
- *                                 specific UUIDs the way we do CRX IDs.
- *                                 Instead we accept any moz-extension://
- *                                 origin and rely on the protocol-level
- *                                 hello message (which carries the
- *                                 extension `name`) for the second-layer
- *                                 identity check.
+ *   - moz-extension://<UUID>    for any Firefox install. Firefox derives a
+ *                                 fresh UUID per install, so we can't
+ *                                 whitelist specific UUIDs the way we do
+ *                                 CRX IDs. Instead we accept any
+ *                                 moz-extension:// origin and rely on the
+ *                                 protocol-level hello message (which
+ *                                 carries the extension `name`) for the
+ *                                 second-layer identity check.
  *
- * Real browsers can never spoof Origin on a WebSocket handshake initiated
- * by an extension — the value comes from the runtime URL scheme. A non-
- * browser local process could craft any Origin, but that's the same threat
- * model the pre-NM (2026-03 era) WebSocket implementation accepted, and a
+ * Real browsers can never spoof Origin on a request initiated by an
+ * extension — the value comes from the runtime URL scheme. A non-browser
+ * local process could craft any Origin, but that's the same threat model
+ * the pre-NM (2026-03 era) WebSocket implementation accepted, and a
  * malicious local process already has stronger attack vectors than this.
+ */
+function isAllowedExtensionOrigin(origin: string): boolean {
+  if (!origin) return false;
+  const allowedChromeOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
+  if (allowedChromeOrigins.includes(origin)) return true;
+  if (/^moz-extension:\/\/[0-9a-f-]{8,}$/i.test(origin)) return true;
+  return false;
+}
+
+/**
+ * Mount the WebSocket endpoint on the given HTTP server. Idempotent.
+ * Hijacks the server's `upgrade` event for our /browser-bridge path and
+ * leaves non-matching upgrades alone.
  */
 export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
   if (wsServer) return;
@@ -727,13 +641,7 @@ export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
       if (url.pathname !== '/browser-bridge') return;
 
       const origin = String(req.headers.origin || '');
-      // Chrome/Edge: exact match against the CRX ID whitelist.
-      // Firefox: any moz-extension:// is allowed (per-install UUID), with
-      // identity verified via the hello message after upgrade succeeds.
-      const allowedChromeOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
-      const isChromeMatch = allowedChromeOrigins.includes(origin);
-      const isFirefoxMatch = /^moz-extension:\/\/[0-9a-f-]{8,}$/i.test(origin);
-      if (!isChromeMatch && !isFirefoxMatch) {
+      if (!isAllowedExtensionOrigin(origin)) {
         console.warn(`[BrowserBridge] WS upgrade rejected: Origin=${origin || '(empty)'} not in extension whitelist (chrome:${EXTENSION_IDS.length} ids + moz-extension:*)`);
         try { sock.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\nContent-Length: 0\r\n\r\n'); } catch {}
         try { sock.destroy(); } catch {}
@@ -750,87 +658,211 @@ export function attachBrowserBridgeWebSocket(httpServer: http.Server): void {
     }
   });
 
-  console.log('[BrowserBridge] WebSocket fallback mounted at /browser-bridge (Origin-gated by EXTENSION_IDS)');
+  console.log('[BrowserBridge] WebSocket mounted at /browser-bridge (Origin-gated)');
 }
 
-// --- TCP Server (for native messaging host connection) ---
+// --- SSE + POST transport (Firefox primary; chrome/edge fallback) ---
+//
+// WebSocket doesn't work in Firefox because Firefox's HTTPS-Only Mode
+// upgrades ws://localhost → wss://localhost (Mozilla Bug 1670581 — the
+// localhost exemption applies to fetch but not to WebSocket, and the
+// HTTPS-Only upgrader doesn't honor the mixed-content checker's localhost
+// allowlist). HTTP fetch / EventSource to 127.0.0.1 is never upgraded, so
+// we expose the same conversation as:
+//   GET  /browser-bridge/events             → SSE stream (server → ext)
+//   POST /browser-bridge/send?session=<id>  → ext → server
+// First SSE frame sent by the server is `{"type":"session","sessionId":"…"}`
+// so the extension can stamp subsequent POSTs with the right session token.
+//
+// Each SSE connection gets its own net.Socket-shaped shim (sseSessions map),
+// fed into attachBrowserConn() with transport='sse' — downstream behavior
+// is identical to WS.
 
-export async function startBrowserBridge(): Promise<{ port: number }> {
-  if (tcpServer) {
-    return { port: bridgePort! };
-  }
+interface SseSession {
+  shim: net.Socket;
+  res: http.ServerResponse;
+  heartbeat: ReturnType<typeof setInterval> | null;
+}
+const sseSessions = new Map<string, SseSession>();
+const SSE_HEARTBEAT_MS = 25_000;
 
-  // v2.7+: NM host registration is GONE. The legacy `registerNativeMessagingHost`
-  // function spawned `cmd.exe → reg.exe add` from Node, and that subprocess
-  // chain was the actual heuristic 360 / 火绒 / Defender flagged as malware-
-  // installer behaviour (NOT the NM protocol itself). The chrome extension
-  // v1.3+ now connects via WebSocket directly (ws://127.0.0.1:18800/
-  // browser-bridge), no registry needed. cleanupLegacyNmResidueOnce() (called
-  // from sidecar-server startup) tidies up old keys / .bat / .json residue
-  // left behind by previous builds so AV scans stay quiet on every boot.
+/**
+ * Wrap an HTTP ServerResponse + a session id into a net.Socket-shaped facade
+ * so attachBrowserConn() can consume it. Outbound writes are encoded as SSE
+ * `data:` frames; inbound writes are emitted as `data` events by the
+ * /browser-bridge/send POST handler (looked up via sessionId).
+ */
+function wrapSseAsSocket(res: http.ServerResponse, sessionId: string): net.Socket {
+  const shim: any = new EventEmitter();
+  shim.destroyed = false;
 
-  return new Promise((resolve, reject) => {
-    const server = net.createServer((socket) => {
-      // NM transport: every native-host connection becomes its own entry
-      // in browserConns. We learn what tabs the browser has via the new
-      // `hello` / `tabs_changed` protocol from background.js.
-      attachBrowserConn(socket, 'nm');
-    });
+  shim.write = (data: string | Buffer) => {
+    if (shim.destroyed) return false;
+    try {
+      const str = typeof data === 'string' ? data : data.toString('utf8');
+      // Strip the line-delimited '\n' the attachBrowserConn parser uses —
+      // SSE has its own framing (`data: ...\n\n`). One JSON message per
+      // SSE event.
+      const payload = str.endsWith('\n') ? str.slice(0, -1) : str;
+      // Single-line JSON; if it contains literal newlines (shouldn't for
+      // our protocol — we never serialize multi-line JSON) we collapse to
+      // make sure SSE parses it as one event.
+      const safe = payload.replace(/\n/g, ' ');
+      res.write(`data: ${safe}\n\n`);
+      return true;
+    } catch {
+      return false;
+    }
+  };
 
-    // ⚠️ DO NOT silently fall back to a random port on EADDRINUSE — that
-    // was the root cause of the "extension says connected but client says
-    // disconnected" bug. The chrome-extension's native messaging host has
-    // ELECTRON_PORT = 12581 hard-coded; if we bind a random port instead,
-    // the host happily connects to whatever stale process IS holding 12581
-    // (zombie NoobClaw, stale Electron, anything), the extension popup
-    // shows green "Connected", but our actual bridge has zero conns.
-    //
-    // Instead: retry binding TCP_PORT a few times (handles a graceful
-    // shutdown of a previous instance still in cleanup), then give up and
-    // log loudly. UI's bridge-status indicator stays "disconnected" so the
-    // user knows something's wrong and can investigate / kill the stale
-    // process / restart.
-    let retriesLeft = 5;
-    const tryListen = () => {
-      server.listen(TCP_PORT, '127.0.0.1');
-    };
+  shim.destroy = () => {
+    if (shim.destroyed) return;
+    shim.destroyed = true;
+    const session = sseSessions.get(sessionId);
+    if (session?.heartbeat) clearInterval(session.heartbeat);
+    sseSessions.delete(sessionId);
+    try { res.end(); } catch {}
+  };
 
-    server.on('error', (err: any) => {
-      if (err.code === 'EADDRINUSE') {
-        if (retriesLeft > 0) {
-          retriesLeft--;
-          console.warn(`[BrowserBridge] Port ${TCP_PORT} busy (likely a previous NoobClaw instance still cleaning up), retrying in 1s — ${retriesLeft} attempts left`);
-          setTimeout(tryListen, 1000);
-        } else {
-          console.error(`[BrowserBridge] FATAL: port ${TCP_PORT} is held by another process. ` +
-            `The chrome extension hard-codes this port, so the client cannot route ` +
-            `commands until the holder is freed. ` +
-            `Diagnose with:\n` +
-            `  macOS/Linux: lsof -i :${TCP_PORT}\n` +
-            `  Windows:     netstat -ano | findstr :${TCP_PORT}`);
-          notifyBridgeStatus(false);
-          reject(new Error(`EADDRINUSE: port ${TCP_PORT} held by another process; please close stale NoobClaw / kill the holder PID`));
+  shim.setKeepAlive = () => {};
+  shim.setNoDelay = () => {};
+
+  return shim as net.Socket;
+}
+
+/**
+ * Mount the SSE + POST endpoints on the given HTTP server. Idempotent
+ * (re-entry from a second call returns immediately).
+ */
+let sseAttached = false;
+export function attachBrowserBridgeSse(httpServer: http.Server): void {
+  if (sseAttached) return;
+  sseAttached = true;
+
+  httpServer.on('request', (req, res) => {
+    try {
+      const url = new URL(req.url || '/', 'http://127.0.0.1');
+
+      // ─── GET /browser-bridge/events ────────────────────────────────
+      if (req.method === 'GET' && url.pathname === '/browser-bridge/events') {
+        const origin = String(req.headers.origin || '');
+        if (!isAllowedExtensionOrigin(origin)) {
+          console.warn(`[BrowserBridge] SSE rejected: Origin=${origin || '(empty)'} not in whitelist`);
+          res.writeHead(403); res.end(); return;
         }
-      } else {
-        reject(err);
+
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache, no-transform',
+          'Connection': 'keep-alive',
+          'X-Accel-Buffering': 'no',           // disable proxy/reverse-proxy buffering
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Credentials': 'true',
+        });
+
+        const sessionId = randomUUID();
+        const shim = wrapSseAsSocket(res, sessionId);
+        const heartbeat = setInterval(() => {
+          try { res.write(`:keepalive\n\n`); } catch {}
+        }, SSE_HEARTBEAT_MS);
+        sseSessions.set(sessionId, { shim, res, heartbeat });
+
+        // First frame announces the session id so the extension knows what
+        // to put in POST ?session=<id>.
+        res.write(`data: ${JSON.stringify({ type: 'session', sessionId })}\n\n`);
+
+        // Hand off to the shared connection handler. attachBrowserConn
+        // wires its own data/close/error listeners on the shim.
+        attachBrowserConn(shim, 'sse');
+
+        req.on('close', () => {
+          shim.destroy();
+          shim.emit('close');
+        });
+        return;
       }
-    });
 
-    server.on('listening', () => {
-      const addr = server.address() as net.AddressInfo;
-      bridgePort = addr.port;
-      tcpServer = server;
-      console.log(`[BrowserBridge] TCP bridge started on 127.0.0.1:${bridgePort}`);
-      resolve({ port: bridgePort });
-    });
+      // ─── POST /browser-bridge/send?session=<id> ────────────────────
+      if (req.method === 'POST' && url.pathname === '/browser-bridge/send') {
+        const origin = String(req.headers.origin || '');
+        if (!isAllowedExtensionOrigin(origin)) {
+          res.writeHead(403); res.end(); return;
+        }
+        const sessionId = url.searchParams.get('session') || '';
+        const session = sseSessions.get(sessionId);
+        if (!session) {
+          res.writeHead(404, { 'Access-Control-Allow-Origin': origin });
+          res.end('{"error":"unknown session"}');
+          return;
+        }
+        let buf = '';
+        req.on('data', chunk => { buf += chunk.toString('utf8'); });
+        req.on('end', () => {
+          if (buf.length > 0) {
+            // attachBrowserConn parses newline-delimited JSON, so append \n
+            // even though we send one POST = one message.
+            if (!buf.endsWith('\n')) buf += '\n';
+            session.shim.emit('data', Buffer.from(buf, 'utf8'));
+          }
+          res.writeHead(200, {
+            'Access-Control-Allow-Origin': origin,
+            'Content-Type': 'application/json',
+          });
+          res.end('{"ok":true}');
+        });
+        return;
+      }
 
-    tryListen();
+      // ─── OPTIONS preflight (CORS) ──────────────────────────────────
+      // POSTs from extensions with non-trivial headers trigger a preflight.
+      // Allow only our two routes.
+      if (req.method === 'OPTIONS' &&
+          (url.pathname === '/browser-bridge/events' || url.pathname === '/browser-bridge/send')) {
+        const origin = String(req.headers.origin || '');
+        if (!isAllowedExtensionOrigin(origin)) {
+          res.writeHead(403); res.end(); return;
+        }
+        res.writeHead(204, {
+          'Access-Control-Allow-Origin': origin,
+          'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+          'Access-Control-Allow-Headers': 'Content-Type',
+          'Access-Control-Allow-Credentials': 'true',
+          'Access-Control-Max-Age': '86400',
+        });
+        res.end();
+        return;
+      }
+    } catch (err) {
+      console.error('[BrowserBridge] SSE handler error:', err);
+      try { res.writeHead(500); res.end(); } catch {}
+    }
+    // Not our route — fall through (sidecar's other handlers will see it).
   });
+
+  console.log('[BrowserBridge] SSE mounted at /browser-bridge/events + /browser-bridge/send (Origin-gated)');
 }
+
+/**
+ * Single entry point: wire BOTH transports onto the given HTTP server.
+ * Replaces the old startBrowserBridge() which used to spin up a separate
+ * TCP listener for the Native Messaging host (removed in v2.8).
+ */
+export function attachBrowserBridge(httpServer: http.Server): void {
+  attachBrowserBridgeWebSocket(httpServer);
+  attachBrowserBridgeSse(httpServer);
+  bridgeAttached = true;
+  bridgePort = 18800;
+  console.log('[BrowserBridge] Attached (ws + sse) on shared HTTP server');
+}
+
+// --- Lifecycle ---
+//
+// v2.8: We no longer own a TCP listener. The two transports (ws + sse)
+// are attached to the sidecar's existing HTTP server via attachBrowserBridge()
+// above. stopBrowserBridge() therefore just tears down active connections
+// + pending requests; it cannot stop the HTTP server itself.
 
 export async function stopBrowserBridge(): Promise<void> {
-  if (!tcpServer) return;
-
   for (const [id, pending] of pendingRequests) {
     clearTimeout(pending.timer);
     pending.reject(new Error('Bridge shutting down'));
@@ -843,18 +875,15 @@ export async function stopBrowserBridge(): Promise<void> {
   }
   browserConns.clear();
 
-  return new Promise((resolve) => {
-    if (tcpServer) {
-      tcpServer.close(() => {
-        tcpServer = null;
-        bridgePort = null;
-        console.log('[BrowserBridge] Stopped');
-        resolve();
-      });
-    } else {
-      resolve();
-    }
-  });
+  // Close any lingering SSE sessions (in case attachBrowserConn's close
+  // handler hasn't fired yet for them).
+  for (const session of sseSessions.values()) {
+    if (session.heartbeat) clearInterval(session.heartbeat);
+    try { session.res.end(); } catch {}
+  }
+  sseSessions.clear();
+
+  console.log('[BrowserBridge] Stopped (connections drained; HTTP server owned by sidecar continues)');
 }
 
 // --- Notify renderer ---
