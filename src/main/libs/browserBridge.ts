@@ -619,19 +619,29 @@ let wsServer: WebSocketServer | null = null;
  * malicious local process already has stronger attack vectors than this.
  */
 function isAllowedExtensionOrigin(origin: string): boolean {
-  if (!origin) return false;
+  // Empty Origin → accept. Rationale:
+  //   1. The HTTP server binds 127.0.0.1, so any request that reaches this
+  //      handler came from the local machine. Cross-host CSRF is impossible.
+  //   2. The Origin header is browser-controlled and only present on
+  //      cross-origin requests initiated from a normal web page (or some
+  //      extension fetch flows). Firefox specifically does NOT send Origin
+  //      on extension-initiated fetch from a background script / page
+  //      (privacy hardening — avoids leaking the extension UUID to the
+  //      target server). Sec-Fetch-Site: same-origin is used in its place.
+  //      Result: rejecting empty-Origin requests means EVERY Firefox
+  //      extension fetch from background gets 403'd silently.
+  //   3. Tools like curl / PowerShell / native scripts running locally
+  //      also send no Origin header and are legitimate consumers.
+  // The Origin check below remains as a CSRF gate against the one case
+  // that DOES send Origin: a malicious web page in any browser trying
+  // to make this localhost server execute browser commands from its JS.
+  if (!origin) return true;
   const allowedChromeOrigins = EXTENSION_IDS.map(id => `chrome-extension://${id}`);
   if (allowedChromeOrigins.includes(origin)) return true;
-  // Firefox uses one of two forms for the moz-extension origin:
-  //   - moz-extension://<UUID>           (auto-generated per install,
-  //                                       e.g. `8dc2ee31-...-d5d2ecdc83ba`)
-  //   - moz-extension://<gecko-id>       (explicit id from manifest's
-  //                                       browser_specific_settings.gecko.id,
-  //                                       e.g. `hi@noobclaw.com`)
-  // The earlier `[0-9a-f-]{8,}` regex only matched the UUID form and
-  // silently 403'd every request from our shipping AMO build (gecko.id =
-  // hi@noobclaw.com — the `@` and `.` killed the match). Accept any
-  // non-empty identifier with no path / query / fragment.
+  // Firefox uses one of two forms when it DOES send Origin (e.g. content
+  // script context, page-action, etc.):
+  //   - moz-extension://<UUID>     (auto-generated per install)
+  //   - moz-extension://<gecko-id> (explicit manifest id, e.g. `hi@noobclaw.com`)
   if (/^moz-extension:\/\/[^/?#]+$/.test(origin)) return true;
   return false;
 }
