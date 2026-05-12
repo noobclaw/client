@@ -300,31 +300,6 @@ export const RunHistoryPage: React.FC<Props> = ({
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
-                      {/* 本次完成 — per-action breakdown for this run. Same
-                          icon set as TaskDetailPage's 累计完成/上次完成 cards
-                          (👍 like / ➕ follow / 💬 comment / 📌 subscribe /
-                          📤 post). Only rendered when action_counts has
-                          at least one nonzero entry — pre-rollout runs
-                          have nothing to show, so we keep the row clean. */}
-                      {(() => {
-                        const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
-                        if (!ac) return null;
-                        const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
-                        const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
-                        const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
-                          const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
-                          if (ia === -1 && ib === -1) return a.localeCompare(b);
-                          if (ia === -1) return 1;
-                          if (ib === -1) return -1;
-                          return ia - ib;
-                        });
-                        if (keys.length === 0) return null;
-                        return (
-                          <span title={isZh ? '本次完成的动作' : 'Actions completed this run'}>
-                            · {keys.map(k => `${ICONS[k] || '·'} ${ac[k]}`).join(' ')}
-                          </span>
-                        );
-                      })()}
                       {/* v2.4.37: AI cost per run — ALWAYS show (was
                           gated on tokens_used > 0, which meant runs that
                           failed before calling AI had no cost column and
@@ -342,6 +317,39 @@ export const RunHistoryPage: React.FC<Props> = ({
                       })()}
                     </div>
                   </div>
+                  {/* 本次完成 — its own row below the top line so the time
+                      and cost chips stay uncrowded. Mirrors TaskDetailPage's
+                      累计完成 icon set (👍 like / ➕ follow / 📌 subscribe /
+                      💬 comment / 📤 post). Hidden entirely when there's no
+                      action_counts data so pre-rollout rows stay flat. */}
+                  {(() => {
+                    const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
+                    if (!ac) return null;
+                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
+                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                    const labels = isZh
+                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
+                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+                    const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
+                      const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+                      if (ia === -1 && ib === -1) return a.localeCompare(b);
+                      if (ia === -1) return 1;
+                      if (ib === -1) return -1;
+                      return ia - ib;
+                    });
+                    if (keys.length === 0) return null;
+                    return (
+                      <div className="mt-1.5 flex items-center gap-3 text-xs text-gray-600 dark:text-gray-300 flex-wrap" title={isZh ? '本次完成的动作' : 'Actions completed this run'}>
+                        <span className="text-[10px] text-gray-500 dark:text-gray-500">{isZh ? '本次完成' : 'Actions'}:</span>
+                        {keys.map(k => (
+                          <span key={k} className="font-medium">
+                            {(ICONS[k] || '·')} {ac[k]}{' '}
+                            <span className="text-gray-500 dark:text-gray-400 font-normal">{(labels as any)[k] || k}</span>
+                          </span>
+                        ))}
+                      </div>
+                    );
+                  })()}
                   {/* IDs row — both task id and record id so users can
                       tell separate runs of the same task apart. */}
                   <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
