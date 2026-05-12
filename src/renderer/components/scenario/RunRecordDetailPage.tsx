@@ -254,13 +254,50 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       {/* Stats — 5 columns on wide screens to accommodate the cost card.
           耗时 → 运行成本 → 日志条目 order per user spec: 运行成本 sits
           immediately after 耗时 as a first-class stat. */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
         <Stat label={isZh ? '开始' : 'Started'} value={fullTime(rec.started_at, isZh)} />
         <Stat label={isZh ? '结束' : 'Finished'} value={rec.finished_at ? fullTime(rec.finished_at, isZh) : (isZh ? '运行中' : 'Running')} />
         <Stat
           label={isZh ? '耗时' : 'Duration'}
           value={rec.finished_at ? formatDuration(rec.finished_at - rec.started_at, isZh) : '-'}
         />
+        {/* 本次完成 — per-action breakdown for this specific run. Mirrors
+            TaskDetailPage's 上次完成 card style (👍 N 赞 · ➕ N 关注 · 💬 N 评论
+            or 📤 N 发帖). Pre-rollout runs lack action_counts → '-'. */}
+        {(() => {
+          const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
+          const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
+          const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+          const labels = isZh
+            ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
+            : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+          let display: React.ReactNode = '-';
+          if (ac && Object.keys(ac).length > 0) {
+            const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
+              const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+              if (ia === -1 && ib === -1) return a.localeCompare(b);
+              if (ia === -1) return 1;
+              if (ib === -1) return -1;
+              return ia - ib;
+            });
+            if (keys.length > 0) {
+              // Stack lines vertically so the card stays narrow even with
+              // 3 action types — single-line "👍 5 赞 · ➕ 3 关注 · 💬 4 评论"
+              // wraps awkwardly inside a stat card width.
+              display = (
+                <span className="text-[12px] leading-tight">
+                  {keys.map((k, i) => (
+                    <React.Fragment key={k}>
+                      {i > 0 && <br />}
+                      {(ICONS[k] || '·')} {ac[k]} {(labels as any)[k] || k}
+                    </React.Fragment>
+                  ))}
+                </span>
+              );
+            }
+          }
+          return <Stat label={isZh ? '本次完成' : 'Actions'} value={display} />;
+        })()}
         {/* v2.4.37: 运行成本 卡 — always visible. 0-token runs just show
             "💎 0 / ≈ $0.0000" (user preference: prefer literal 0 over
             "—" placeholder). */}

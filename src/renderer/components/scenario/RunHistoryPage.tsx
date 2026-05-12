@@ -300,6 +300,31 @@ export const RunHistoryPage: React.FC<Props> = ({
                     <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
                       <span>⏱️ {formatTime(rec.started_at, isZh)}</span>
                       {duration && <span>· {duration}</span>}
+                      {/* 本次完成 — per-action breakdown for this run. Same
+                          icon set as TaskDetailPage's 累计完成/上次完成 cards
+                          (👍 like / ➕ follow / 💬 comment / 📌 subscribe /
+                          📤 post). Only rendered when action_counts has
+                          at least one nonzero entry — pre-rollout runs
+                          have nothing to show, so we keep the row clean. */}
+                      {(() => {
+                        const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
+                        if (!ac) return null;
+                        const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
+                        const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                        const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
+                          const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+                          if (ia === -1 && ib === -1) return a.localeCompare(b);
+                          if (ia === -1) return 1;
+                          if (ib === -1) return -1;
+                          return ia - ib;
+                        });
+                        if (keys.length === 0) return null;
+                        return (
+                          <span title={isZh ? '本次完成的动作' : 'Actions completed this run'}>
+                            · {keys.map(k => `${ICONS[k] || '·'} ${ac[k]}`).join(' ')}
+                          </span>
+                        );
+                      })()}
                       {/* v2.4.37: AI cost per run — ALWAYS show (was
                           gated on tokens_used > 0, which meant runs that
                           failed before calling AI had no cost column and
