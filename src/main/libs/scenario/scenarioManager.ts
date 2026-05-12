@@ -784,6 +784,34 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
 
   try {
     const outcome = await _runTaskInner(task, manual, pack);
+    // v5.x+: backfill action_counts from the live RunProgress when the
+    // outcome lacks them (user_stopped / mid-run abort path). The
+    // orchestrator's normal return populates outcome.action_counts, but
+    // when the run is killed via 'user_stopped' the inner catch builds
+    // outcome = { status:'failed', reason:'user_stopped' } and the
+    // partial like/follow/comment counts the orchestrator already
+    // accumulated would otherwise be lost.
+    //
+    // Also persist 0-done keys when target > 0 (orchestrator declared
+    // them via setActionTargets) so the detail page shows
+    // "👍 0 · ➕ 0 · 💬 0" instead of "-" for early-stop runs —
+    // users want to see the planned breakdown even when nothing
+    // completed.
+    if (!(outcome as any).action_counts) {
+      const live = progressByTaskId.get(task.id);
+      const ap = live?.action_progress;
+      if (ap && Object.keys(ap).length > 0) {
+        const partial: Record<string, number> = {};
+        for (const [k, v] of Object.entries(ap)) {
+          if ((v?.target || 0) > 0 || (v?.done || 0) > 0) {
+            partial[k] = v.done || 0;
+          }
+        }
+        if (Object.keys(partial).length > 0) {
+          (outcome as any).action_counts = partial;
+        }
+      }
+    }
     // Patch the run record with result counts now that we have them
     // (status was already set by finishProgress mirror).
     updateTaskRecordResult(task.id, outcome);

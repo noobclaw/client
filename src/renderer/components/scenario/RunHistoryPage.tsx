@@ -330,7 +330,13 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const labels = isZh
                       ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
                       : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
-                    const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
+                    // v5.x+: keep 0-count keys so user_stopped runs render
+                    // "👍 0 · ➕ 0 · 💬 0" (orchestrator declared targets
+                    // via setActionTargets, but stopped before any
+                    // completed). Pre-rollout records have no
+                    // action_counts at all → caught by the !ac early
+                    // return on line 327.
+                    const keys = Object.keys(ac).filter(k => typeof ac[k] === 'number').sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;

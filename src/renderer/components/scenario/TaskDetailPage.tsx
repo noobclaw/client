@@ -1381,10 +1381,16 @@ function formatActionBreakdown(
     post: '📤',
   };
   const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
-  // Sort by ORDER first, then any unknown keys alphabetically — keeps the
-  // engage line in 👍 ➕ 💬 order even when the map's insertion order varied.
+  // v5.x+: keep 0-count keys when they're explicitly present in the map.
+  // Pre-rollout records have no action_counts → empty map → the early
+  // return on line above handles those. Newer runs that DID call
+  // setActionTargets but stopped before any action completed will
+  // arrive here with { like:0, follow:0, comment:0 } — we want to show
+  // those as "👍 0 · ➕ 0 · 💬 0", not collapse them to "-". Sort by
+  // ORDER first, then unknown keys alphabetically — keeps engage line
+  // in 👍 ➕ 💬 order regardless of insertion order.
   const keys = Object.keys(counts)
-    .filter(k => (counts[k] || 0) > 0)
+    .filter(k => typeof counts[k] === 'number')
     .sort((a, b) => {
       const ia = ORDER.indexOf(a);
       const ib = ORDER.indexOf(b);
