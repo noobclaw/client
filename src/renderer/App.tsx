@@ -598,20 +598,43 @@ const App: React.FC = () => {
   }, []);
 
   // Renderer ErrorBoundary-adjacent global handlers: unhandled promise
-  // rejections and thrown errors in React callbacks land here. We
-  // emit them as manual crash reports via the sidecar IPC (if wired)
-  // and show a toast — this covers the renderer side of the crash
-  // pipeline without pulling in Sentry.
+  // rejections and thrown errors in React callbacks land here. We log
+  // them to console for debugging + show a toast — but we suppress a
+  // handful of expected-but-noisy errors that the user cannot act on.
+  //
+  // Suppressed (logged-only, no toast):
+  //   - "Unexpected end of JSON input" / "Failed to execute 'json' on 'Response'"
+  //     Fires when fetch hits an empty-body response (204 No Content,
+  //     an Electron IPC redirect, auth-expired handler that empties the
+  //     stream, etc). All of our app-level fetch wrappers handle this
+  //     case correctly via try/catch around res.json(); the noise comes
+  //     from third-party / SDK code paths we don't control. User-facing
+  //     toast adds zero value — operator sees the symptom on console
+  //     during dev, prod users just see meaningless "Unhandled: ..."
   useEffect(() => {
+    const SILENT_PATTERNS = [
+      /Unexpected end of JSON input/i,
+      /Failed to execute 'json' on 'Response'/i,
+      /JSON\.parse:/i,
+    ];
+    const shouldSilence = (msg: string) => SILENT_PATTERNS.some((re) => re.test(msg));
+
     const onError = (event: ErrorEvent) => {
+      const msg = (event.message || 'unknown');
       // eslint-disable-next-line no-console
-      console.error('[window.error]', event.error || event.message);
-      setToastMessage(`Error: ${(event.message || 'unknown').slice(0, 80)}`);
+      console.error('[window.error]', event.error || msg);
+      if (shouldSilence(msg)) return;
+      setToastMessage(`Error: ${msg.slice(0, 80)}`);
     };
     const onRejection = (event: PromiseRejectionEvent) => {
+      const msg = event.reason instanceof Error ? event.reason.message : String(event.reason);
       // eslint-disable-next-line no-console
       console.error('[unhandledrejection]', event.reason);
-      const msg = event.reason instanceof Error ? event.reason.message : String(event.reason);
+      if (shouldSilence(msg)) {
+        // Mark as handled so it stops bubbling to the host (Electron) too.
+        event.preventDefault?.();
+        return;
+      }
       setToastMessage(`Unhandled: ${msg.slice(0, 80)}`);
     };
     window.addEventListener('error', onError);
