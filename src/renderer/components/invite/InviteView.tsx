@@ -29,10 +29,42 @@ function formatDate(dateStr: string): string {
   }
 }
 
+// ─── Stale-while-revalidate cache for user profile ───
+// Stored in localStorage so the "我的上级" / "我的邀请链接" / referral stats
+// show INSTANTLY on InviteView mount, before the background /profile fetch
+// returns. Without this cache the section flickered in 100-300ms after page
+// open — visually annoying enough that users called it out.
+//
+// Per-wallet key so a user-switch (rare but possible on this client) doesn't
+// leak the previous user's data. 1 day TTL — referrer binding rarely changes,
+// avatar/balance can mildly drift between page opens which is fine since
+// we always re-fetch fresh in the background to overwrite.
+const PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+function readCachedProfile(wallet: string | null | undefined): any | null {
+  if (!wallet) return null;
+  try {
+    const raw = localStorage.getItem(`noobclaw_profile_cache:${wallet.toLowerCase()}`);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj?.data || !obj?.ts) return null;
+    if (Date.now() - obj.ts > PROFILE_CACHE_TTL_MS) return null;
+    return obj.data;
+  } catch { return null; }
+}
+function writeCachedProfile(wallet: string | null | undefined, data: any) {
+  if (!wallet || !data) return;
+  try {
+    localStorage.setItem(`noobclaw_profile_cache:${wallet.toLowerCase()}`, JSON.stringify({ data, ts: Date.now() }));
+  } catch { /* quota exceeded / disabled — degrade silently */ }
+}
+
 export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
-  const [profile, setProfile] = useState<any>(null);
+  // Lazy-initialize profile from localStorage so the first render already
+  // has data — referrer wallet shows immediately, no half-second flicker.
+  // Background fetch in the effect below replaces it with fresh data.
+  const [profile, setProfile] = useState<any>(() => readCachedProfile(noobClawAuth.getState().walletAddress));
   const [copied, setCopied] = useState(false);
   const [inviteCode, setInviteCode] = useState('');
   const [bindResult, setBindResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -81,7 +113,21 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
 
   useEffect(() => {
     if (authState.isAuthenticated) {
-      noobClawApi.getUserProfile().then(setProfile);
+      // Show cached profile immediately (instant render), then fetch fresh
+      // in background. If wallet changed since last cache, the freshly fetched
+      // data overwrites the wrong one — but during the milliseconds before
+      // fetch returns, user sees the previous wallet's data, which is
+      // harmless for an authed session that just resumed.
+      const cached = readCachedProfile(authState.walletAddress);
+      if (cached && (!profile || profile.walletAddress !== cached.walletAddress)) {
+        setProfile(cached);
+      }
+      noobClawApi.getUserProfile().then((fresh) => {
+        if (fresh) {
+          setProfile(fresh);
+          writeCachedProfile(authState.walletAddress, fresh);
+        }
+      });
       // v5.x+: prefetch USDT summary so the "USDT 总返佣" stat card up top
       // shows a real number from the moment the page mounts — without forcing
       // the user to switch into the Rebate→USDT sub-tab first.
@@ -137,7 +183,15 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
       });
       if (data.success) {
         setInviteCode('');
-        noobClawApi.getUserProfile().then(setProfile);
+        // Re-fetch fresh profile (referrer now bound) AND write to the
+        // SWR cache so next mount renders "我的上级" instantly without
+        // waiting on the network.
+        noobClawApi.getUserProfile().then((fresh) => {
+          if (fresh) {
+            setProfile(fresh);
+            writeCachedProfile(authState.walletAddress, fresh);
+          }
+        });
       }
     } catch {
       setBindResult({ success: false, message: i18nService.t('inviteNetworkError') });
