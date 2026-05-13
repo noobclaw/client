@@ -167,22 +167,20 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   }, [authState.isAuthenticated]);
 
   const loadUsdtRebate = async (page = 1) => {
-    // Fire 3 endpoints in parallel — summary (top), breakdown (mid), earnings
-    // page (bottom). Earnings is paginated server-side; FIFO status matching
-    // runs over the full set before pagination so a row's status stays stable
-    // when navigating between pages.
+    // One-shot call to /dashboard returns summary + breakdown + paginated
+    // earnings in a single HTTPS roundtrip. Was 3 parallel fetches before;
+    // collapsing to 1 cuts auth-middleware DB hits and TCP overhead, which
+    // matters more than the underlying queries on this page.
     setUsdtLoading(true);
     try {
-      const [summary, breakdown, earnings] = await Promise.all([
-        noobClawApi.getUsdtRebateSummary(),
-        noobClawApi.getUsdtRebateBreakdown(),
-        noobClawApi.getUsdtRebateEarnings(page, PAGE_SIZE),
-      ]);
-      setUsdtSummary(summary);
-      setUsdtBreakdown(breakdown.levels);
-      setUsdtEarnings(earnings.items);
-      setUsdtEarningsTotal(earnings.total);
-      setUsdtEarningsPage(page);
+      const data = await noobClawApi.getUsdtRebateDashboard(page, PAGE_SIZE);
+      if (data) {
+        setUsdtSummary(data.summary);
+        setUsdtBreakdown(data.breakdown.levels);
+        setUsdtEarnings(data.earnings.items);
+        setUsdtEarningsTotal(data.earnings.total);
+        setUsdtEarningsPage(page);
+      }
     } finally {
       setUsdtLoading(false);
     }

@@ -315,6 +315,41 @@ class NoobClawApiService {
   // are sorted by earned_at DESC (newest first). FIFO matching runs over
   // the full ordered set before pagination, so a row's status is stable
   // across pages — page 2 won't suddenly flip pending → sent.
+  // v5.x+: one-shot endpoint returning summary + breakdown + paginated
+  // earnings in a single HTTPS roundtrip. Replaces 3 parallel calls and
+  // cuts the InviteView "USDT 返佣" tab load latency from ~3 roundtrips
+  // (each with its own auth-middleware DB hit) down to 1. Backend does
+  // the same DB work in less time since rebate_earnings + rebate_sends
+  // are pulled exactly once, then summary/breakdown/page slice are all
+  // derived in memory from the same arrays.
+  async getUsdtRebateDashboard(page = 1, pageSize = 20): Promise<{
+    summary: { total_earned: string; total_sent: string; total_inflight: string; total_pending: string };
+    breakdown: { levels: Array<{ level: number; amount: string; contributor_count: number }> };
+    earnings: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+      total_earned: string;
+      total_sent: string;
+      total_pending: string;
+      items: Array<{
+        id: string; level: number | null; contributor_wallet: string | null;
+        amount_usdt: string; reason: string; source_asset: string; order_id: string | null;
+        earned_at: string; status: 'sent' | 'pending';
+        tx_hash: string | null; bscscan_url: string | null; paid_at: string | null;
+      }>;
+    };
+  } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/dashboard?page=${page}&pageSize=${pageSize}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch { return null; }
+  }
+
   async getUsdtRebateEarnings(page = 1, pageSize = 20): Promise<{
     page: number;
     pageSize: number;
