@@ -306,6 +306,39 @@ class NoobClawApiService {
     } catch { return { items: [] }; }
   }
 
+  // v5.x+: unified per-row commission ledger with FIFO-derived payout status.
+  // Each rebate_earnings row is annotated 'sent' or 'pending'. 'sent' rows
+  // carry the tx_hash + paid_at of the rebate_sends row that covers them
+  // (approximate FIFO match — batched payouts mean N earnings → 1 send).
+  async getUsdtRebateEarnings(limit = 100): Promise<{
+    total_count: number;
+    total_earned: string;
+    total_sent: string;
+    total_pending: string;
+    items: Array<{
+      id: string;
+      level: number | null;
+      contributor_wallet: string | null;
+      amount_usdt: string;
+      reason: string;
+      source_asset: string;
+      order_id: string | null;
+      earned_at: string;
+      status: 'sent' | 'pending';
+      tx_hash: string | null;
+      bscscan_url: string | null;
+      paid_at: string | null;
+    }>;
+  }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/earnings?limit=${limit}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { total_count: 0, total_earned: '0', total_sent: '0', total_pending: '0', items: [] };
+      return res.json();
+    } catch { return { total_count: 0, total_earned: '0', total_sent: '0', total_pending: '0', items: [] }; }
+  }
+
   // ─── Generic notification endpoints (initially seeded with rebate_received) ───
   // The Modal/Banner/RedDot UI components poll these on launch + reactively.
 
