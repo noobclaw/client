@@ -36,10 +36,15 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [inviteCode, setInviteCode] = useState('');
   const [bindResult, setBindResult] = useState<{ success: boolean; message: string } | null>(null);
   const [binding, setBinding] = useState(false);
-  // v5.x+: third tab `usdt_rebate` shows real-cash referral earnings (USDT-BEP20
-  // on BSC). Backend route /api/me/rebate/* — see backend/src/routes/rebate.ts.
-  const [detailTab, setDetailTab] = useState<'records' | 'rewards' | 'usdt_rebate'>('records');
-  const [inviteList, setInviteList] = useState<Array<{ wallet: string; createdAt: string }>>([]);
+  // v5.x+: tabs are 2-level now. Top: Records vs Rebate. Inside Rebate, two
+  // sub-tabs split USDT-BEP20 real-cash payouts (independent BSC stream) from
+  // the NoobCoin reward stream. Older states used a flat 3-tab list — this
+  // pair of states preserves the same content via composition.
+  const [detailTab, setDetailTab] = useState<'records' | 'rebate'>('records');
+  const [rebateSubTab, setRebateSubTab] = useState<'usdt' | 'noob'>('usdt');
+  // v5.x+: list now spans 6 levels (was only L1). Each row carries the level
+  // (1..6) so we can render an L1/L2.../L6 chip identical to the rewards tab.
+  const [inviteList, setInviteList] = useState<Array<{ wallet: string; createdAt: string; level?: number }>>([]);
   const [inviteListTotal, setInviteListTotal] = useState(0);
   const [inviteListPage, setInviteListPage] = useState(1);
   const [rewardList, setRewardList] = useState<Array<{ noobAmount: number; reason: string; status: string; createdAt: string; contributorWallet?: string; level?: number }>>([]);
@@ -63,12 +68,31 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   useEffect(() => {
     if (authState.isAuthenticated) {
       noobClawApi.getUserProfile().then(setProfile);
+      // v5.x+: prefetch USDT summary so the "USDT 总返佣" stat card up top
+      // shows a real number from the moment the page mounts — without forcing
+      // the user to switch into the Rebate→USDT sub-tab first.
+      noobClawApi.getUsdtRebateSummary().then(s => { if (s) setUsdtSummary(s); }).catch(() => {});
     }
     noobClawApi.getPaymentInfo().then(info => {
       if (info?.purchaseNoobPerDollarMin) setPurchaseMin(info.purchaseNoobPerDollarMin);
       if (info?.purchaseNoobPerDollarMax) setPurchaseMax(info.purchaseNoobPerDollarMax);
     });
   }, [authState.isAuthenticated]);
+
+  // Affiliate rules doc URL — only the zh family points to the Chinese page;
+  // every other locale (ko/ja/ru/fr/de/...) falls back to English, which is
+  // what we ship until those translations exist on docs.noobclaw.com.
+  const rulesDocUrl = () => {
+    const lang = i18nService.currentLanguage;
+    if (lang === 'zh' || lang === 'zh-TW') {
+      return 'https://docs.noobclaw.com/zhong-wen-ban/yao-qing-fan-yong-ji-zhi';
+    }
+    return 'https://docs.noobclaw.com/english/affiliate-program';
+  };
+
+  const openRules = () => {
+    try { window.electron?.shell?.openExternal(rulesDocUrl()); } catch {}
+  };
 
   const hasReferrer = !!profile?.referrerWallet;
   const referralLink = profile?.referralLink || `https://noobclaw.com/r/${authState.walletAddress}`;
@@ -146,14 +170,23 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     }
   };
 
-  const switchDetailTab = (tab: 'records' | 'rewards' | 'usdt_rebate') => {
+  const switchDetailTab = (tab: 'records' | 'rebate') => {
     setDetailTab(tab);
     if (tab === 'records') {
       loadRecords(1);
-    } else if (tab === 'rewards') {
-      loadRewards(1);
-    } else if (tab === 'usdt_rebate') {
+    } else {
+      // Default sub-tab on entering Rebate is USDT (real cash, more interesting
+      // than the NoobCoin ledger). Caller can flip to noob via switchRebateSub.
+      switchRebateSub(rebateSubTab);
+    }
+  };
+
+  const switchRebateSub = (sub: 'usdt' | 'noob') => {
+    setRebateSubTab(sub);
+    if (sub === 'usdt') {
       loadUsdtRebate();
+    } else {
+      loadRewards(1);
     }
   };
 
@@ -274,7 +307,19 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
 
             {/* How it works + Reward rules */}
             <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-              <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('inviteHowItWorks')}</h3>
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-medium dark:text-claude-darkText text-claude-text">{i18nService.t('inviteHowItWorks')}</h3>
+                {/* v5.x+: link to the full affiliate-program doc. zh/zh-TW
+                    → Chinese page, everything else → English fallback until
+                    other locales exist on docs.noobclaw.com. */}
+                <button
+                  type="button"
+                  onClick={openRules}
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-0.5"
+                >
+                  📖 {i18nService.t('inviteViewRules')} ↗
+                </button>
+              </div>
               <div className="space-y-2.5">
                 {[
                   { title: i18nService.t('inviteStep1Title'), desc: i18nService.t('inviteStep1Desc') },
@@ -311,8 +356,13 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
 
           {/* ── Right Column: Stats + Invite Details / Rewards ── */}
           <div className="flex-1 min-w-0 space-y-3 flex flex-col">
-            {/* Stats: Direct Referrals + Total Network */}
-            <div className="grid grid-cols-2 gap-2">
+            {/* Stats: Direct Referrals + Total Network + USDT total earned + NOOB earned.
+                v5.x+: grid is 4 cols on md+ for the full row, falls back to
+                2 cols on narrow widths so the labels don't squash on phones.
+                USDT total comes from /api/me/rebate/summary (prefetched on
+                mount), NOOB total comes from profile.totalNoob (already
+                served by /api/user/referral). */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary">{profile?.directReferrals || 0}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteDirectReferrals')}</div>
@@ -321,11 +371,20 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="text-xl font-bold text-primary">{profile?.totalReferrals || 0}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteTotalNetwork')}</div>
               </div>
+              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
+                <div className="text-xl font-bold text-primary">${parseFloat(usdtSummary?.total_earned || '0').toFixed(2)}</div>
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
+              </div>
+              <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
+                <div className="text-xl font-bold text-primary">{Number(profile?.totalNoob || 0).toLocaleString()}</div>
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
+              </div>
             </div>
 
             {/* ── Invite Details / Rewards ── */}
             <div className="flex-1 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border flex flex-col min-h-0">
-          {/* Tabs */}
+          {/* Top-level tabs: Records vs Rebate. Rebate has its own sub-menu
+              (USDT real-cash + NoobCoin) rendered below this row when active. */}
           <div className="flex border-b dark:border-claude-darkBorder border-claude-border shrink-0">
             <button
               onClick={() => switchDetailTab('records')}
@@ -339,35 +398,49 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               {detailTab === 'records' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
             </button>
             <button
-              onClick={() => switchDetailTab('rewards')}
+              onClick={() => switchDetailTab('rebate')}
               className={`flex-1 py-2 text-xs font-medium text-center transition-colors relative ${
-                detailTab === 'rewards'
+                detailTab === 'rebate'
                   ? 'text-primary'
                   : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
               }`}
             >
-              {i18nService.t('inviteRewardMenu')}
-              {detailTab === 'rewards' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
-            </button>
-            {/* v5.x+: USDT real-cash rebate tab. 6-level USDT-BEP20 referral
-                payouts on BSC, paid via daily cron batch transfer. Note: this
-                is independent of the NOOB system shown in the other two tabs. */}
-            <button
-              onClick={() => switchDetailTab('usdt_rebate')}
-              className={`flex-1 py-2 text-xs font-medium text-center transition-colors relative ${
-                detailTab === 'usdt_rebate'
-                  ? 'text-primary'
-                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'
-              }`}
-            >
-              💰 USDT {i18nService.currentLanguage === 'zh' ? '返佣' : 'Rebate'}
-              {detailTab === 'usdt_rebate' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
+              💰 {i18nService.t('inviteRebateMenu')}
+              {detailTab === 'rebate' && <div className="absolute bottom-0 left-1/4 right-1/4 h-0.5 bg-primary rounded-full" />}
             </button>
           </div>
 
-          {/* Content */}
+          {/* Sub-menu only shown when Rebate is active — two pills for USDT
+              (real cash, BSC chain) vs NoobCoin (in-app reward ledger). */}
+          {detailTab === 'rebate' && (
+            <div className="flex gap-1 px-2 py-1.5 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+              <button
+                onClick={() => switchRebateSub('usdt')}
+                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
+                  rebateSubTab === 'usdt'
+                    ? 'bg-primary/10 text-primary'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                {i18nService.t('inviteRebateUsdtSub')}
+              </button>
+              <button
+                onClick={() => switchRebateSub('noob')}
+                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
+                  rebateSubTab === 'noob'
+                    ? 'bg-primary/10 text-primary'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                {i18nService.t('inviteRebateNoobSub')}
+              </button>
+            </div>
+          )}
+
+          {/* Content. v5.x+ branch order matches the new 2-level tab tree:
+              top-level Records first, then Rebate splits via rebateSubTab. */}
           <div className="flex-1 overflow-y-auto p-3">
-            {detailTab === 'usdt_rebate' ? (
+            {detailTab === 'rebate' && rebateSubTab === 'usdt' ? (
               // v5.x+ USDT real-cash rebate panel — sourced from /api/me/rebate/*
               // Three sections stacked: summary card, level breakdown, history list.
               // total_pending stat is "accrued but not yet sent" (excludes inflight
@@ -472,13 +545,24 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="space-y-1.5">
                   {inviteList.map((item, idx) => (
                     <div key={idx} className="flex items-center justify-between px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50">
-                      <div className="flex items-center gap-2">
-                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                           <svg className="w-3 h-3 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" /></svg>
                         </div>
-                        <span className="text-xs font-mono dark:text-claude-darkText text-claude-text">{maskWallet(item.wallet)}</span>
+                        <span className="text-xs font-mono dark:text-claude-darkText text-claude-text truncate">{maskWallet(item.wallet)}</span>
                       </div>
-                      <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{formatDate(item.createdAt)}</span>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {/* L1 highlighted (direct), L2-L6 muted — same chip
+                            language as rewards/USDT-breakdown tabs. */}
+                        <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-xs font-medium ${
+                          item.level === 1
+                            ? 'bg-primary/10 text-primary'
+                            : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
+                        }`}>
+                          {item.level ? `L${item.level}` : '-'}
+                        </span>
+                        <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{formatDate(item.createdAt)}</span>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -527,9 +611,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             )}
           </div>
 
-          {/* Pagination — only for records/rewards tabs. USDT tab loads all
-              50 rows in one call (no page split needed for typical user volume). */}
-          {detailTab !== 'usdt_rebate' && (
+          {/* Pagination — only for records and the NoobCoin sub-tab. USDT
+              rebate loads all 50 rows in one call (no page split needed for
+              typical user volume). */}
+          {(detailTab === 'records' || (detailTab === 'rebate' && rebateSubTab === 'noob')) && (
             <div className="flex items-center justify-center gap-2 py-2 border-t dark:border-claude-darkBorder border-claude-border shrink-0">
               <button
                 onClick={() => detailTab === 'records' ? loadRecords(inviteListPage - 1) : loadRewards(rewardListPage - 1)}

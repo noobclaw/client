@@ -226,7 +226,7 @@ class NoobClawApiService {
     }
   }
 
-  async getInviteList(page = 1, pageSize = 20): Promise<{ list: Array<{ wallet: string; createdAt: string }>; total: number }> {
+  async getInviteList(page = 1, pageSize = 20): Promise<{ list: Array<{ wallet: string; createdAt: string; level?: number }>; total: number }> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/list?page=${page}&pageSize=${pageSize}`, {
         headers: this.getAuthHeaders(),
