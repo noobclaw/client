@@ -345,11 +345,13 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   📖 {i18nService.t('inviteViewRules')} ↗
                 </button>
               </div>
+              {/* Steps 1-2 are the narrative; step 3 (rewards trigger) is
+                  replaced below by the unified dual-rewards callout, which
+                  is too rich to fit a single-line step description. */}
               <div className="space-y-2.5">
                 {[
                   { title: i18nService.t('inviteStep1Title'), desc: i18nService.t('inviteStep1Desc') },
                   { title: i18nService.t('inviteStep2Title'), desc: i18nService.t('inviteStep2Desc') },
-                  { title: i18nService.t('inviteStep3Title'), desc: i18nService.t('inviteStep3Desc', { purchaseMin: String(purchaseMin), purchaseMax: String(purchaseMax) }) },
                 ].map((step, i) => (
                   <div key={i} className="flex items-start gap-2">
                     <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">{i + 1}</div>
@@ -359,8 +361,45 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   </div>
                 ))}
+                {/* Step 3: dual-reward composite (was: brief NOOB-only one-liner).
+                    Replaces the old separate USDT explainer card too — both
+                    rewards are surfaced inline with parallel structure so the
+                    user sees them as siblings, not as competing systems. */}
+                <div className="flex items-start gap-2">
+                  <div className="w-5 h-5 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5">3</div>
+                  <div className="flex-1">
+                    <div className="text-sm dark:text-claude-darkText text-claude-text">
+                      {i18nService.currentLanguage === 'zh' ? '好友每次充值，触发双重奖励：' : 'Each friend deposit triggers dual rewards:'}
+                    </div>
+                    {/* NoobCoin airdrop */}
+                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="text-xs font-medium text-primary mb-1">
+                        🪂 $NoobCoin {i18nService.currentLanguage === 'zh' ? '空投' : 'airdrop'}
+                      </div>
+                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                        {i18nService.currentLanguage === 'zh'
+                          ? `好友每充值 $1，获得 ${purchaseMin}~${purchaseMax} 随机数量的 $NoobCoin。按 6 层邀请链路进行空投，您额外获得 50%+ 同等数量代币。`
+                          : `Friend gets ${purchaseMin}-${purchaseMax} random $NoobCoin per $1 deposited. Airdropped across your 6-level invite chain — you earn 50%+ of the same amount.`}
+                      </div>
+                    </div>
+                    {/* USDT real-cash rebate */}
+                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="text-xs font-medium text-primary mb-1">
+                        💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'real-cash rebate'}
+                      </div>
+                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                        {i18nService.currentLanguage === 'zh'
+                          ? '好友每充值 $1，充值金额的 10% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金每日 02:00 UTC 以 BNB Chain 上的 USDT 形式自动发放到您钱包。'
+                          : 'For every $1 your friend deposits, 10% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid daily at 02:00 UTC as USDT on BNB Chain, straight to your wallet.'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
 
+              {/* 6-level reward percentage chart — applies to BOTH rewards above.
+                  L1 gets ≥50%, L2-L6 each get 10%. Same splits for NoobCoin
+                  airdrop and USDT rebate, hence one chart documents both. */}
               <div className="mt-3 p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border">
                 <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1.5">{i18nService.t('inviteRewardTitle')}</div>
                 <div className="space-y-1 text-xs">
@@ -372,18 +411,6 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteRewardLevel2_6')}</span>
                     <span className="dark:text-claude-darkText text-claude-text">10% each</span>
                   </div>
-                </div>
-              </div>
-
-              {/* v5.x+: USDT rebate explainer was previously a paragraph inside
-                  the right-column rebate panel. Moved here so the "rules" are
-                  all in one place and the right column can focus on data. */}
-              <div className="mt-3 p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-xs leading-relaxed">
-                <div className="text-xs font-medium text-primary mb-1.5">💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'Real-cash Rebate'}</div>
-                <div className="dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                  {i18nService.currentLanguage === 'zh'
-                    ? '下级每充值 $5+，奖池 = 充值 USD × 10%，按 50% / 10% × 5 分给 L1-L6。单次累计 ≥ $1 USDT，每天 02:00 UTC 自动批量发到你的 BSC 钱包。'
-                    : 'Each downline deposit ≥ $5 funds a 10% pool split 50% / 10%×5 across L1-L6. Once accrued ≥ $1 USDT, daily 02:00 UTC batch transfers to your BSC wallet.'}
                 </div>
               </div>
             </div>
