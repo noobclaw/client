@@ -310,8 +310,16 @@ class NoobClawApiService {
   // Each rebate_earnings row is annotated 'sent' or 'pending'. 'sent' rows
   // carry the tx_hash + paid_at of the rebate_sends row that covers them
   // (approximate FIFO match — batched payouts mean N earnings → 1 send).
-  async getUsdtRebateEarnings(limit = 100): Promise<{
-    total_count: number;
+  //
+  // Pagination: page 1-indexed, pageSize capped at 100 server-side. Rows
+  // are sorted by earned_at DESC (newest first). FIFO matching runs over
+  // the full ordered set before pagination, so a row's status is stable
+  // across pages — page 2 won't suddenly flip pending → sent.
+  async getUsdtRebateEarnings(page = 1, pageSize = 20): Promise<{
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
     total_earned: string;
     total_sent: string;
     total_pending: string;
@@ -330,13 +338,14 @@ class NoobClawApiService {
       paid_at: string | null;
     }>;
   }> {
+    const empty = { page, pageSize, total: 0, totalPages: 1, total_earned: '0', total_sent: '0', total_pending: '0', items: [] };
     try {
-      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/earnings?limit=${limit}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/earnings?page=${page}&pageSize=${pageSize}`, {
         headers: this.getAuthHeaders(),
       });
-      if (!res.ok) return { total_count: 0, total_earned: '0', total_sent: '0', total_pending: '0', items: [] };
+      if (!res.ok) return empty;
       return res.json();
-    } catch { return { total_count: 0, total_earned: '0', total_sent: '0', total_pending: '0', items: [] }; }
+    } catch { return empty; }
   }
 
   // ─── Generic notification endpoints (initially seeded with rebate_received) ───

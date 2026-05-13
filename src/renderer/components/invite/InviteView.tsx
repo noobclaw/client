@@ -67,6 +67,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     earned_at: string; status: 'sent' | 'pending';
     tx_hash: string | null; bscscan_url: string | null; paid_at: string | null;
   }>>([]);
+  // Pagination for the earnings ledger. Server caps pageSize at 100; we use
+  // 20 here to match the records/rewards tabs' PAGE_SIZE constant.
+  const [usdtEarningsPage, setUsdtEarningsPage] = useState(1);
+  const [usdtEarningsTotal, setUsdtEarningsTotal] = useState(0);
   const [usdtLoading, setUsdtLoading] = useState(false);
   const PAGE_SIZE = 10;
 
@@ -162,21 +166,23 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     }
   }, [authState.isAuthenticated]);
 
-  const loadUsdtRebate = async () => {
-    // Fire 3 endpoints in parallel — summary card (top), breakdown (mid),
-    // earnings list (bottom). earnings replaces the legacy history call: it
-    // returns ALL rebate_earnings rows with FIFO-derived sent/pending status
-    // so the user sees every commission event, not just the on-chain payouts.
+  const loadUsdtRebate = async (page = 1) => {
+    // Fire 3 endpoints in parallel — summary (top), breakdown (mid), earnings
+    // page (bottom). Earnings is paginated server-side; FIFO status matching
+    // runs over the full set before pagination so a row's status stays stable
+    // when navigating between pages.
     setUsdtLoading(true);
     try {
       const [summary, breakdown, earnings] = await Promise.all([
         noobClawApi.getUsdtRebateSummary(),
         noobClawApi.getUsdtRebateBreakdown(),
-        noobClawApi.getUsdtRebateEarnings(100),
+        noobClawApi.getUsdtRebateEarnings(page, PAGE_SIZE),
       ]);
       setUsdtSummary(summary);
       setUsdtBreakdown(breakdown.levels);
       setUsdtEarnings(earnings.items);
+      setUsdtEarningsTotal(earnings.total);
+      setUsdtEarningsPage(page);
     } finally {
       setUsdtLoading(false);
     }
@@ -196,7 +202,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const switchRebateSub = (sub: 'usdt' | 'noob') => {
     setRebateSubTab(sub);
     if (sub === 'usdt') {
-      loadUsdtRebate();
+      loadUsdtRebate(1);
     } else {
       loadRewards(1);
     }
@@ -663,30 +669,48 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             )}
           </div>
 
-          {/* Pagination — only for records and the NoobCoin sub-tab. USDT
-              rebate loads all 50 rows in one call (no page split needed for
-              typical user volume). */}
-          {(detailTab === 'records' || (detailTab === 'rebate' && rebateSubTab === 'noob')) && (
-            <div className="flex items-center justify-center gap-2 py-2 border-t dark:border-claude-darkBorder border-claude-border shrink-0">
-              <button
-                onClick={() => detailTab === 'records' ? loadRecords(inviteListPage - 1) : loadRewards(rewardListPage - 1)}
-                disabled={detailTab === 'records' ? inviteListPage <= 1 : rewardListPage <= 1}
-                className="text-xs px-2 py-1 rounded dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover disabled:opacity-30 transition-colors"
-              >
-                &laquo;
-              </button>
-              <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                {detailTab === 'records' ? inviteListPage : rewardListPage} / {detailTab === 'records' ? recordsTotalPages : rewardsTotalPages}
-              </span>
-              <button
-                onClick={() => detailTab === 'records' ? loadRecords(inviteListPage + 1) : loadRewards(rewardListPage + 1)}
-                disabled={detailTab === 'records' ? inviteListPage >= recordsTotalPages : rewardListPage >= rewardsTotalPages}
-                className="text-xs px-2 py-1 rounded dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover disabled:opacity-30 transition-colors"
-              >
-                &raquo;
-              </button>
-            </div>
-          )}
+          {/* Pagination — works for records, NoobCoin rewards sub-tab,
+              and USDT rebate sub-tab. Each tab has its own page state and
+              total-page calc; the buttons dispatch to the correct loader. */}
+          {(() => {
+            // Compute current page + totalPages + loader for the active tab.
+            // Hoisting these into a single ternary keeps the JSX tidy and the
+            // disabled/onClick logic uniform across all three pagination cases.
+            let curPage = 1;
+            let totalPages = 1;
+            let loader: ((p: number) => void) | null = null;
+            if (detailTab === 'records') {
+              curPage = inviteListPage; totalPages = recordsTotalPages || 1; loader = loadRecords;
+            } else if (detailTab === 'rebate' && rebateSubTab === 'noob') {
+              curPage = rewardListPage; totalPages = rewardsTotalPages || 1; loader = loadRewards;
+            } else if (detailTab === 'rebate' && rebateSubTab === 'usdt') {
+              curPage = usdtEarningsPage;
+              totalPages = Math.max(1, Math.ceil(usdtEarningsTotal / PAGE_SIZE));
+              loader = loadUsdtRebate;
+            }
+            if (!loader) return null;
+            return (
+              <div className="flex items-center justify-center gap-2 py-2 border-t dark:border-claude-darkBorder border-claude-border shrink-0">
+                <button
+                  onClick={() => loader!(curPage - 1)}
+                  disabled={curPage <= 1}
+                  className="text-xs px-2 py-1 rounded dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover disabled:opacity-30 transition-colors"
+                >
+                  &laquo;
+                </button>
+                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  {curPage} / {totalPages}
+                </span>
+                <button
+                  onClick={() => loader!(curPage + 1)}
+                  disabled={curPage >= totalPages}
+                  className="text-xs px-2 py-1 rounded dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover disabled:opacity-30 transition-colors"
+                >
+                  &raquo;
+                </button>
+              </div>
+            );
+          })()}
         </div>
           </div>
 
