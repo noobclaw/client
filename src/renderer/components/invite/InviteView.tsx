@@ -5,6 +5,7 @@ import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
+import InviteTicker from './InviteTicker';
 
 interface InviteViewProps {
   isSidebarCollapsed?: boolean;
@@ -440,6 +441,15 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
           {/* Content. v5.x+ branch order matches the new 2-level tab tree:
               top-level Records first, then Rebate splits via rebateSubTab. */}
           <div className="flex-1 overflow-y-auto p-3">
+            {/* v5.x+: scrolling "today's payouts" marquee on top of the
+                Rebate tab — social proof to push users to share their
+                invite link. Real rebate_sends rows topped up with daily
+                seeded fakes server-side; this component just renders. */}
+            {detailTab === 'rebate' && (
+              <div className="mb-3">
+                <InviteTicker />
+              </div>
+            )}
             {detailTab === 'rebate' && rebateSubTab === 'usdt' ? (
               // v5.x+ USDT real-cash rebate panel — sourced from /api/me/rebate/*
               // Three sections stacked: summary card, level breakdown, history list.

@@ -262,6 +262,16 @@ class NoobClawApiService {
     }
   }
 
+  async getReferralTicker(): Promise<{ items: Array<{ wallet: string; amount: number }>; day: string }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/ticker`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { items: [], day: '' };
+      return res.json();
+    } catch { return { items: [], day: '' }; }
+  }
+
   // ─── v5.x+: USDT real-cash rebate endpoints ───
   // Backend route prefix: /api/me/* (see backend/src/routes/rebate.ts).
   // All four require auth headers — they're scoped to req.walletAddress.
