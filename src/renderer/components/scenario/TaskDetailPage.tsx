@@ -380,6 +380,15 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   })();
   // ── Core state ──
   const [running, setRunning] = useState(false);
+  // Grace period anchor: timestamp of the most recent optimistic
+  // setRunning(true) from the user clicking "直接运行". Used by the
+  // progress-poll cross-check below to avoid spurious setRunning(false)
+  // during the 0~few-second window where the click already lit the UI
+  // but the sidecar hasn't called markResourcesBusy + initProgress yet
+  // — without this guard, slow-starting platforms (Douyin / TikTok /
+  // YouTube login-check + new-tab opens) produced a visible 亮→暗→亮
+  // flicker on the running card.
+  const justStartedAtRef = useRef(0);
   const [progress, setProgress] = useState<ScenarioRunProgress | null>(null);
   const [, setDrafts] = useState<Draft[]>([]);
   const [stats, setStats] = useState<any>(null);
@@ -470,8 +479,34 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           // Cross-check with the authoritative running list before downgrading
           // — getRunningTaskIds reads runningByResource which is updated
           // synchronously when the task finishes, so it's the safer signal.
+          //
+          // BUT: there are TWO situations where progress=null AND
+          // runningByResource doesn't have us:
+          //   (a) task genuinely finished (intended downgrade)
+          //   (b) task just started — the sidecar is still inside the
+          //       async warm-up before markResourcesBusy + initProgress
+          //       fire (login check, tab open, etc.) which on slow
+          //       platforms can stretch past the 6s nullStreak window.
+          // Without a guard, (b) was being misread as (a) → setRunning(false)
+          // → the "ongoing sync" tick 3s later sees the now-busy sidecar
+          // → setRunning(true) → user-visible 亮→暗→亮 flicker.
+          //
+          // Grace period: if it's been < 15s since the user clicked
+          // "直接运行" (justStartedAtRef), defer the downgrade. After
+          // 15s the sidecar is reliably either inside the task (progress
+          // non-null) or genuinely finished — both paths are correctly
+          // handled outside this branch.
           nullStreak++;
           if (nullStreak >= NULL_STREAK_THRESHOLD) {
+            const sinceStart = Date.now() - justStartedAtRef.current;
+            if (justStartedAtRef.current > 0 && sinceStart < 15_000) {
+              // Still in warm-up window — skip downgrade this tick.
+              // Reset the streak so we don't immediately re-fire on the
+              // next null; let the next 3 nulls accumulate so the
+              // cross-check happens again after a fresh ~6s of nulls.
+              nullStreak = 0;
+              return;
+            }
             const ids = await scenarioService.getRunningTaskIds().catch(() => [] as string[]);
             if (cancelled || !mountedRef.current) return;
             if (!Array.isArray(ids) || ids.indexOf(task.id) < 0) {
@@ -576,8 +611,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
 
   const handleLoginConfirmed = () => {
     setLoginModalOpen(false);
-    // 4. Start! Set running IMMEDIATELY — don't wait for IPC
+    // 4. Start! Set running IMMEDIATELY — don't wait for IPC. Stamp the
+    // grace-period anchor so the progress-poll cross-check (below)
+    // doesn't undo this in the first ~15s while the sidecar is still
+    // warming up the platform (login check, tab open, etc.) and
+    // hasn't yet marked the task busy in runningByResource.
     setRunning(true);
+    justStartedAtRef.current = Date.now();
     setProgress(null);
 
     // 5. Fire IPC — returns immediately with { status: 'started' }.
