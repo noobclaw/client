@@ -43,6 +43,19 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      - name: Force cargo PATH (macOS rustup-shim workaround)
+        # macos-latest ships /usr/local/bin/cargo as a rustup-init shim that
+        # doesn't recognize 'cargo metadata'. dtolnay appends $HOME/.cargo/bin
+        # to GITHUB_PATH but it goes AFTER the system PATH, so the shim wins.
+        # Write to GITHUB_PATH explicitly so $HOME/.cargo/bin is PREPENDED to
+        # the PATH for all subsequent steps. Previously only the Build Tauri
+        # step's inline `export PATH=...` had this — but transient toolchain
+        # install issues + which-cargo-resolves-where in earlier steps made
+        # the build flaky on Intel mac cross-compile.
+        if: runner.os == 'macOS'
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+        shell: bash
+
       - name: Cache Rust build artifacts
         uses: swatinem/rust-cache@v2
         with:
