@@ -16,7 +16,7 @@
  */
 
 import { coworkLog } from '../coworkLogger';
-import { sendBrowserCommand } from '../browserBridge';
+import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
 
 export interface PlatformLoginStatus {
   loggedIn: boolean;
@@ -124,12 +124,26 @@ export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promi
 
 export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
   const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
+  // v2.7+: 必须传 tabPattern + tabGroup + isolate(扩展支持时),让 extension
+  // 走 isolated path 复用已有 tab,不要每点一次都真开新 tab。之前不传任何
+  // 路由信息 → 扩展走 legacy chrome.tabs.create({url}) → 用户点 N 次"打开
+  // X 登录页"就累计 N 个 X tab(见 binance_from_x_link 用户报"老是开好几
+  // 个 xtab")。
+  const tabPattern = TAB_PATTERNS[platform]?.source;
+  const tabGroup = PLATFORM_TAB_GROUPS[platform];
+  const opts: any = {};
+  if (tabPattern) opts.tabPattern = tabPattern;
+  if (tabGroup) opts.tabGroup = tabGroup;
+  if (tabPattern && connectionHasCapability(tabPattern, 'isolated_windows')) {
+    opts.isolate = true;
+  }
+  if (url) opts.anchor_url = url;
   try {
-    await sendBrowserCommand('tab_create', { url }, 8000);
+    await sendBrowserCommand('tab_create', { url }, 8000, opts);
     return { ok: true };
   } catch {
     try {
-      await sendBrowserCommand('navigate', { url }, 8000);
+      await sendBrowserCommand('navigate', { url }, 8000, opts);
       return { ok: true };
     } catch (err2) {
       return { ok: false, reason: String(err2) };
