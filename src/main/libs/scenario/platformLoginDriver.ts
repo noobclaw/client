@@ -124,26 +124,50 @@ export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promi
 
 export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
   const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
-  // v2.7+: 必须传 tabPattern + tabGroup + isolate(扩展支持时),让 extension
-  // 走 isolated path 复用已有 tab,不要每点一次都真开新 tab。之前不传任何
-  // 路由信息 → 扩展走 legacy chrome.tabs.create({url}) → 用户点 N 次"打开
-  // X 登录页"就累计 N 个 X tab(见 binance_from_x_link 用户报"老是开好几
-  // 个 xtab")。
   const tabPattern = TAB_PATTERNS[platform]?.source;
   const tabGroup = PLATFORM_TAB_GROUPS[platform];
-  const opts: any = {};
-  if (tabPattern) opts.tabPattern = tabPattern;
-  if (tabGroup) opts.tabGroup = tabGroup;
+  const routeOpts: any = {};
+  if (tabPattern) routeOpts.tabPattern = tabPattern;
+  if (tabGroup) routeOpts.tabGroup = tabGroup;
   if (tabPattern && connectionHasCapability(tabPattern, 'isolated_windows')) {
-    opts.isolate = true;
+    routeOpts.isolate = true;
   }
-  if (url) opts.anchor_url = url;
+  if (url) routeOpts.anchor_url = url;
+  // v2.7+: 主动去重 — 先全量 tab_list,自己用 platform regex 找现有 tab。
+  // 找到就直接 navigate 它(reuse),不调 tab_create。
+  // 之前的方案是把 routing info 传给 extension 让它自己 reuse,但那依赖
+  // extension 的 priority 1/2/3 detection,而且老 extension 没有 isolated
+  // path。client 主动 query 是 belt-and-suspenders — 不论 extension 啥
+  // 行为,client 这边都不会让用户因为反复点按钮而累积 N 个同平台 tab。
+  const platformRe = TAB_PATTERNS[platform];
+  if (platformRe) {
+    try {
+      const listRes: any = await sendBrowserCommand('tab_list', {}, 3000);
+      const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
+        : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
+      const existing = allTabs.find(t => typeof t?.url === 'string' && platformRe.test(t.url));
+      if (existing) {
+        // 已有就用 navigate 路径(extension 会在 routeOpts.tabPattern 引导下
+        // resolve 到那个 tab,顺便给它打 NoobClaw 分组标签)。
+        coworkLog('INFO', 'platformLoginDriver',
+          `openPlatformLogin: reusing existing ${platform} tab`,
+          { tabId: existing.id, url: existing.url });
+        await sendBrowserCommand('navigate', { url }, 8000, routeOpts);
+        return { ok: true };
+      }
+    } catch (qErr) {
+      // tab_list 失败不是致命的 — 走下面 tab_create 兜底
+      coworkLog('WARN', 'platformLoginDriver',
+        'openPlatformLogin: tab_list probe failed, falling back to tab_create',
+        { err: String(qErr) });
+    }
+  }
   try {
-    await sendBrowserCommand('tab_create', { url }, 8000, opts);
+    await sendBrowserCommand('tab_create', { url }, 8000, routeOpts);
     return { ok: true };
   } catch {
     try {
-      await sendBrowserCommand('navigate', { url }, 8000, opts);
+      await sendBrowserCommand('navigate', { url }, 8000, routeOpts);
       return { ok: true };
     } catch (err2) {
       return { ok: false, reason: String(err2) };
