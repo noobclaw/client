@@ -96,6 +96,22 @@ export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: 
   douyin:  { title: '🤖 Douyin · NoobClaw',  color: 'pink'   },
 };
 
+/** Single source of truth for "which platform does this regex string target".
+ *  Used by phaseRunner (to pick the right tabGroup / platform-specific
+ *  cleanup target) and anywhere else that needs to map a manifest's
+ *  tab_url_pattern back to a LoginPlatform key. Keeping this in one place
+ *  means adding a new platform doesn't risk drifting two parallel lists. */
+export function inferPlatformFromPattern(pattern: string | undefined): LoginPlatform | undefined {
+  if (!pattern) return undefined;
+  if (/xiaohongshu/i.test(pattern)) return 'xhs';
+  if (/binance/i.test(pattern)) return 'binance';
+  if (/youtube/i.test(pattern)) return 'youtube';
+  if (/tiktok/i.test(pattern)) return 'tiktok';
+  if (/douyin/i.test(pattern)) return 'douyin';
+  if (/twitter|x\\?\.com/i.test(pattern)) return 'x';
+  return undefined;
+}
+
 export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<PlatformLoginStatus> {
   // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];

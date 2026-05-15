@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
-import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, type LoginPlatform } from './platformLoginDriver';
+import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -328,17 +328,9 @@ function buildContext(
     ? (PLATFORM_TAB_GROUPS as any)[platformId as LoginPlatform]
     : undefined;
   // Infer secondary platform from its URL pattern (no need for a new
-  // manifest field — the pattern already encodes the domain).
-  const inferPlatformFromPattern = (pat?: string): LoginPlatform | undefined => {
-    if (!pat) return undefined;
-    if (/xiaohongshu/i.test(pat)) return 'xhs';
-    if (/binance/i.test(pat)) return 'binance';
-    if (/youtube/i.test(pat)) return 'youtube';
-    if (/tiktok/i.test(pat)) return 'tiktok';
-    if (/douyin/i.test(pat)) return 'douyin';
-    if (/twitter|x\\?\.com/i.test(pat)) return 'x';
-    return undefined;
-  };
+  // manifest field — the pattern already encodes the domain). The actual
+  // mapping lives in platformLoginDriver so adding a new platform is a
+  // single-file change.
   const secondaryPlatform = inferPlatformFromPattern(secondaryPattern);
   const secondaryTabGroup = secondaryPlatform ? PLATFORM_TAB_GROUPS[secondaryPlatform] : undefined;
   const getBridgeOpts = () => {
@@ -2094,15 +2086,8 @@ export async function runOrchestrator(
     const platformsToClean: LoginPlatform[] = [];
     if (primaryPlat && PLATFORM_TAB_GROUPS[primaryPlat]) platformsToClean.push(primaryPlat);
     if (secondaryPat) {
-      // 复用 buildContext 里同款的 inferPlatformFromPattern 推断 — 关掉
-      // secondary 平台的重复 tab(比如 binance_from_x_link 的 X tab)。
-      let secPlat: LoginPlatform | undefined;
-      if (/xiaohongshu/i.test(secondaryPat)) secPlat = 'xhs';
-      else if (/binance/i.test(secondaryPat)) secPlat = 'binance';
-      else if (/youtube/i.test(secondaryPat)) secPlat = 'youtube';
-      else if (/tiktok/i.test(secondaryPat)) secPlat = 'tiktok';
-      else if (/douyin/i.test(secondaryPat)) secPlat = 'douyin';
-      else if (/twitter|x\\?\.com/i.test(secondaryPat)) secPlat = 'x';
+      // 关掉 secondary 平台的重复 tab(比如 binance_from_x_link 的 X tab)。
+      const secPlat = inferPlatformFromPattern(secondaryPat);
       if (secPlat && !platformsToClean.includes(secPlat)) platformsToClean.push(secPlat);
     }
     if (platformsToClean.length > 0) {
