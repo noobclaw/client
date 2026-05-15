@@ -140,6 +140,10 @@ export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promi
 
 export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
   const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
+  // v2.8+: 极简 — 只发 tab_create 带路由 envelope,extension 1.4.22+ 自治
+  // (mutex 内 enforce + reuse-or-open),不需要 client 主动 tab_list 兜底。
+  // 用户多点这个按钮:ext 端 mutex 串行,只会 reuse 已有 NoobClaw managed
+  // tab 或开 1 个新窗口,绝不累积。
   const tabPattern = TAB_PATTERNS[platform]?.source;
   const tabGroup = PLATFORM_TAB_GROUPS[platform];
   const routeOpts: any = {};
@@ -149,178 +153,12 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
     routeOpts.isolate = true;
   }
   if (url) routeOpts.anchor_url = url;
-  // v2.7+: 主动去重 — 先全量 tab_list,自己用 platform regex 找现有 tab。
-  // 找到就直接 navigate 它(reuse),不调 tab_create。
-  // 之前的方案是把 routing info 传给 extension 让它自己 reuse,但那依赖
-  // extension 的 priority 1/2/3 detection,而且老 extension 没有 isolated
-  // path。client 主动 query 是 belt-and-suspenders — 不论 extension 啥
-  // 行为,client 这边都不会让用户因为反复点按钮而累积 N 个同平台 tab。
-  const platformRe = TAB_PATTERNS[platform];
-  if (platformRe) {
-    try {
-      const listRes: any = await sendBrowserCommand('tab_list', {}, 3000);
-      const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
-        : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
-      const existing = allTabs.find(t => typeof t?.url === 'string' && platformRe.test(t.url));
-      if (existing) {
-        // 已有就用 navigate 路径(extension 会在 routeOpts.tabPattern 引导下
-        // resolve 到那个 tab,顺便给它打 NoobClaw 分组标签)。
-        coworkLog('INFO', 'platformLoginDriver',
-          `openPlatformLogin: reusing existing ${platform} tab`,
-          { tabId: existing.id, url: existing.url });
-        await sendBrowserCommand('navigate', { url }, 8000, routeOpts);
-        return { ok: true };
-      }
-    } catch (qErr) {
-      // tab_list 失败不是致命的 — 走下面 tab_create 兜底
-      coworkLog('WARN', 'platformLoginDriver',
-        'openPlatformLogin: tab_list probe failed, falling back to tab_create',
-        { err: String(qErr) });
-    }
-  }
   try {
     await sendBrowserCommand('tab_create', { url }, 8000, routeOpts);
     return { ok: true };
-  } catch {
-    try {
-      await sendBrowserCommand('navigate', { url }, 8000, routeOpts);
-      return { ok: true };
-    } catch (err2) {
-      return { ok: false, reason: String(err2) };
-    }
+  } catch (err) {
+    return { ok: false, reason: String(err) };
   }
-}
-
-/** v2.7+: 确保 platforms 列表里每个 platform 的 NoobClaw managed tab 都在
- *  自己独立的窗口里 — 跨平台任务(binance + X)启动前调用,如果两个平台
- *  tab 在同一窗口里共享,把第二个搬到新窗口,避免后台 tab 被 chrome 节流
- *  (chrome 后台 tab 的 setTimeout 频率 1/min,rAF frozen — 是 isolated_
- *  windows 整套设计的根本原因)。
- *
- *  优先保留 active tab 在原窗口;非 active 的搬走。如果用户没事先打开任何
- *  managed tab,函数 no-op(任务后续会自己开新窗口,自然就独立)。
- *
- *  依赖 chrome-extension v1.4.11+(tab_list 返回 groupTitle) +
- *  v1.4.12+(tab_to_new_window 命令)。老 ext silently no-op。 */
-export async function ensurePlatformsInSeparateWindows(
-  platforms: LoginPlatform[]
-): Promise<{ moved: number }> {
-  if (!platforms || platforms.length < 2) return { moved: 0 };
-  let listRes: any;
-  try {
-    listRes = await sendBrowserCommand('tab_list', {}, 3000);
-  } catch (e) {
-    coworkLog('WARN', 'platformLoginDriver',
-      'ensurePlatformsInSeparateWindows: tab_list failed', { err: String(e) });
-    return { moved: 0 };
-  }
-  const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
-    : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
-  // platform → 它的 managed tab(closeDuplicatePlatformTabs 已经收敛过,通常
-  // 只有 1 个;但调用顺序不保证,这里取第一个就行)
-  const tabByPlatform = new Map<LoginPlatform, any>();
-  for (const platform of platforms) {
-    const expectedTitle = PLATFORM_TAB_GROUPS[platform]?.title;
-    if (!expectedTitle) continue;
-    const tab = allTabs.find(t =>
-      typeof t?.groupTitle === 'string' && t.groupTitle === expectedTitle
-    );
-    if (tab) tabByPlatform.set(platform, tab);
-  }
-  if (tabByPlatform.size < 2) return { moved: 0 }; // 没共享的可能
-  // 按窗口分组,看哪些窗口里挤了多个 platform 的 tab
-  const windowToPlatforms = new Map<number, LoginPlatform[]>();
-  for (const [platform, tab] of tabByPlatform.entries()) {
-    const wid = tab.windowId;
-    if (typeof wid !== 'number') continue;
-    if (!windowToPlatforms.has(wid)) windowToPlatforms.set(wid, []);
-    windowToPlatforms.get(wid)!.push(platform);
-  }
-  let moved = 0;
-  for (const [wid, plats] of windowToPlatforms.entries()) {
-    if (plats.length < 2) continue;
-    // 决定谁留下:active tab 优先留;否则按 platforms 入参顺序第一个留
-    let keep: LoginPlatform = plats[0];
-    for (const p of plats) {
-      const t = tabByPlatform.get(p);
-      if (t?.active) { keep = p; break; }
-    }
-    const toMove = plats.filter(p => p !== keep);
-    coworkLog('INFO', 'platformLoginDriver',
-      `ensurePlatformsInSeparateWindows: window ${wid} shared by ${plats.join(', ')}, keep ${keep}, move ${toMove.join(', ')}`);
-    for (const p of toMove) {
-      const t = tabByPlatform.get(p);
-      if (!t || typeof t.id !== 'number') continue;
-      try {
-        await sendBrowserCommand('tab_to_new_window', { tabId: t.id }, 5000);
-        moved++;
-      } catch (mErr) {
-        coworkLog('WARN', 'platformLoginDriver',
-          `ensurePlatformsInSeparateWindows: failed to move ${p} tab ${t.id}`,
-          { err: String(mErr) });
-      }
-    }
-  }
-  return { moved };
-}
-
-/** v2.7+: 收敛同平台 NoobClaw managed tab 到 1 个 — 任务启动前调用,
- *  把累积的重复 X / binance / xhs ... NoobClaw managed tab 关到只剩一个。
- *  只关 NoobClaw 标签下的 tab(按 group title 筛),绝不动用户自己开的
- *  tab,所以可以安全在每次任务启动前无脑跑。
- *
- *  依赖 chrome-extension v1.4.11+(tab_list 必须返回 groupTitle)。老版本
- *  扩展 groupTitle 字段不存在,函数 silently no-op。 */
-export async function closeDuplicatePlatformTabs(
-  platforms: LoginPlatform[]
-): Promise<{ closed: number }> {
-  if (!platforms || platforms.length === 0) return { closed: 0 };
-  let listRes: any;
-  try {
-    listRes = await sendBrowserCommand('tab_list', {}, 3000);
-  } catch (e) {
-    coworkLog('WARN', 'platformLoginDriver',
-      'closeDuplicatePlatformTabs: tab_list failed', { err: String(e) });
-    return { closed: 0 };
-  }
-  const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
-    : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
-  // groupTitle 是 v1.4.11+ 才有的字段。老 extension 会没这个字段 → 全 null
-  // → 没法识别 managed → 函数 no-op,这是预期行为。
-  let totalClosed = 0;
-  for (const platform of platforms) {
-    const expectedTitle = PLATFORM_TAB_GROUPS[platform]?.title;
-    if (!expectedTitle) continue;
-    const managed = allTabs.filter(t =>
-      typeof t?.groupTitle === 'string' && t.groupTitle === expectedTitle
-    );
-    if (managed.length <= 1) continue;
-    // 留第一个,关掉其他。第一个的选择标准:active 优先,其次最早 id(stable)。
-    managed.sort((a, b) => {
-      if (a.active !== b.active) return a.active ? -1 : 1;
-      return (a.id || 0) - (b.id || 0);
-    });
-    const toClose = managed.slice(1).map(t => t.id).filter(id => typeof id === 'number');
-    if (toClose.length === 0) continue;
-    coworkLog('INFO', 'platformLoginDriver',
-      `closeDuplicatePlatformTabs: closing ${toClose.length} duplicate ${platform} tab(s)`,
-      { keep: managed[0].id, close: toClose });
-    try {
-      // Extension 的 tab_close 接受 tabId 单个;循环关。
-      for (const tabId of toClose) {
-        try { await sendBrowserCommand('tab_close', { tabId }, 3000); }
-        catch (cErr) {
-          coworkLog('WARN', 'platformLoginDriver',
-            `closeDuplicatePlatformTabs: failed to close tab ${tabId}`, { err: String(cErr) });
-        }
-      }
-      totalClosed += toClose.length;
-    } catch (e) {
-      coworkLog('WARN', 'platformLoginDriver',
-        `closeDuplicatePlatformTabs: ${platform} batch failed`, { err: String(e) });
-    }
-  }
-  return { closed: totalClosed };
 }
 
 // ── Backward-compat aliases ─────────────────────────────────────────

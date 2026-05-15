@@ -248,19 +248,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
 
   const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass'
     && (!secondaryPlatform || secondaryTabStatus === 'pass');
-
-  // v2.7+: 一旦所有 platform tab 都 ✅,自动让 main 进程整理一下窗口:
-  //   - 同平台多个 NoobClaw managed tab → 关到只剩 1 个
-  //   - 跨平台 tab 共享窗口 → 拆到独立窗口(单平台 modal 不会触发拆,只 dedup)
-  // 用户在 modal 上立刻看到整理好的布局,不用等任务真启动。useRef 防止
-  // polling 每 3s 触发一次重复整理 — 一个 modal 生命周期只跑一次。
-  const splitDoneRef = React.useRef(false);
-  useEffect(() => {
-    if (!allReady || splitDoneRef.current) return;
-    splitDoneRef.current = true;
-    const platforms = secondaryPlatform ? [platform, secondaryPlatform] : [platform];
-    void scenarioService.prepareTabsForRun(platforms).catch(() => { /* 静默失败,任务启动时还会再跑 */ });
-  }, [allReady, platform, secondaryPlatform]);
+  // v2.8+: 不再 client 主动 prepareTabsForRun(dedup + split)。chrome-extension
+  // 1.4.22+ 在 _windowMutex 内自治,任何会动 chrome.windows / tabGroups 的
+  // 路径都串行 enforce,不需要 client 提前 nudge。
 
   // 一键打开 secondary 平台 tab(跨 tab scenario 用)
   const handleOpenSecondary = async () => {

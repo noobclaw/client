@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
-import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, ensurePlatformsInSeparateWindows, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
+import { PLATFORM_TAB_GROUPS, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -2089,45 +2089,10 @@ export async function runOrchestrator(
     (ctx as any)._targetDraft = options.targetDraft;
   }
 
-  // v2.7+: 任务启动前先把重复的 NoobClaw managed tab 关掉,只剩一个。
-  // 解决用户在 LoginRequiredModal 反复点"打开 X / Binance"按钮累积出来
-  // 的多 tab,以及之前任意原因(老 client / SW race)留下的残留 managed
-  // tab。只关 group title 含 NoobClaw 的 tab,绝不动用户自己的 tab。
-  // 失败不阻塞任务启动 — 至少能跑就行。
-  try {
-    const manifest = pack.manifest as any;
-    const primaryPlat = manifest.platform as LoginPlatform | undefined;
-    const secondaryPat: string | undefined = manifest.secondary_tab_url_pattern;
-    const platformsToClean: LoginPlatform[] = [];
-    if (primaryPlat && PLATFORM_TAB_GROUPS[primaryPlat]) platformsToClean.push(primaryPlat);
-    if (secondaryPat) {
-      // 关掉 secondary 平台的重复 tab(比如 binance_from_x_link 的 X tab)。
-      const secPlat = inferPlatformFromPattern(secondaryPat);
-      if (secPlat && !platformsToClean.includes(secPlat)) platformsToClean.push(secPlat);
-    }
-    if (platformsToClean.length > 0) {
-      const r = await closeDuplicatePlatformTabs(platformsToClean);
-      if (r.closed > 0) {
-        coworkLog('INFO', 'phaseRunner',
-          `pre-run dedup: closed ${r.closed} duplicate managed tab(s)`,
-          { platforms: platformsToClean });
-      }
-      // v2.7+: 跨平台任务,确保各平台 tab 在独立窗口里(不然后台 tab 被 chrome
-      // throttle —— 就是当初做 isolated_windows 的根本原因)。单平台任务自然
-      // 不需要,函数自己 early-return。dedup 完再 split,顺序重要 — 先收敛到
-      // 1 个 / platform,再去对比 windowId。
-      if (platformsToClean.length >= 2) {
-        const sr = await ensurePlatformsInSeparateWindows(platformsToClean);
-        if (sr.moved > 0) {
-          coworkLog('INFO', 'phaseRunner',
-            `pre-run split: moved ${sr.moved} tab(s) to dedicated windows`,
-            { platforms: platformsToClean });
-        }
-      }
-    }
-  } catch (e) {
-    coworkLog('WARN', 'phaseRunner', 'pre-run tab dedup failed', { err: String(e) });
-  }
+  // v2.8+: dedup + 跨平台拆窗口 完全交给 chrome-extension 1.4.22+ 自治。
+  // ext 在 _windowMutex 内串行处理 — 比 client 这边更靠谱(无 IPC 延迟、
+  // 不可能跟 ext 自己 race)。这里之前的 closeDuplicatePlatformTabs +
+  // ensurePlatformsInSeparateWindows 调用都删了,任务启动直接进 orchestrator。
 
   try {
     const fn = new AsyncFunction('ctx', orchestratorCode);
