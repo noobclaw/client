@@ -312,6 +312,7 @@ interface IElectronAPI {
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
     checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<XhsLoginStatus>;
     openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<{ ok: boolean; reason?: string }>;
+    prepareTabsForRun: (platforms: string[]) => Promise<{ closed: number; moved: number }>;
   };
   mcp: {
     list: () => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;

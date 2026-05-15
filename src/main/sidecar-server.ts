@@ -1690,6 +1690,23 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { ok: false, reason: e.message });
             }
           }
+          case 'scenario:prepareTabsForRun': {
+            try {
+              const driver = require('./libs/scenario/platformLoginDriver');
+              const platforms = ((args && args[0]) || []) as string[];
+              const valid = (Array.isArray(platforms) ? platforms : []).filter(p =>
+                typeof p === 'string' && ['xhs', 'x', 'binance', 'tiktok', 'youtube', 'douyin'].includes(p)
+              );
+              if (valid.length === 0) return writeJSON(res, 200, { closed: 0, moved: 0 });
+              const dedup = await driver.closeDuplicatePlatformTabs(valid).catch(() => ({ closed: 0 }));
+              const split = valid.length >= 2
+                ? await driver.ensurePlatformsInSeparateWindows(valid).catch(() => ({ moved: 0 }))
+                : { moved: 0 };
+              return writeJSON(res, 200, { closed: dedup.closed || 0, moved: split.moved || 0 });
+            } catch (e: any) {
+              return writeJSON(res, 200, { closed: 0, moved: 0, error: e.message });
+            }
+          }
 
           default:
             coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);

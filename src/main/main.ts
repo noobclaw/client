@@ -2840,6 +2840,28 @@ if (!gotTheLock) {
       const { openXhsLogin } = require('./libs/scenario/xhsDriver');
       return await openXhsLogin(platform);
     });
+
+    // v2.7+: 给 LoginRequiredModal 用 — modal 检查到所有 platform tab 都
+    // ready 时调一次,把同平台重复 tab 关到只剩 1 个 + 跨平台共享窗口拆开。
+    // 这样用户在 modal 上看到 "✅ 已打开" 就立刻看见整理好的窗口布局,
+    // 不用等到任务真启动才发现窗口共享。后续 phaseRunner 启动时还会再
+    // 跑一遍兜底(防止 modal 关闭后用户又改了状态)。
+    ipcMain.handle('scenario:prepareTabsForRun', async (_e, platforms?: string[]) => {
+      if (!Array.isArray(platforms) || platforms.length === 0) {
+        return { closed: 0, moved: 0 };
+      }
+      const driver = require('./libs/scenario/platformLoginDriver');
+      const valid = platforms.filter((p: any) =>
+        typeof p === 'string' && ['xhs', 'x', 'binance', 'tiktok', 'youtube', 'douyin'].includes(p)
+      );
+      if (valid.length === 0) return { closed: 0, moved: 0 };
+      const dedupRes = await driver.closeDuplicatePlatformTabs(valid).catch(() => ({ closed: 0 }));
+      let splitRes = { moved: 0 };
+      if (valid.length >= 2) {
+        splitRes = await driver.ensurePlatformsInSeparateWindows(valid).catch(() => ({ moved: 0 }));
+      }
+      return { closed: dedupRes.closed || 0, moved: splitRes.moved || 0 };
+    });
   }
 
   // Set Content Security Policy

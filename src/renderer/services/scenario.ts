@@ -245,6 +245,18 @@ class ScenarioService {
     }
   }
 
+  /** v2.7+: 给 LoginRequiredModal 在所有平台 ✅ 之后调一次,把同平台重复
+   *  tab 关掉 + 跨平台共享窗口拆开,让用户在 modal 上立刻看到整理过的
+   *  窗口布局。返回 { closed, moved } 数字,用于 log 不强制 surface UI。 */
+  async prepareTabsForRun(platforms: string[]): Promise<{ closed: number; moved: number }> {
+    try {
+      const r = await (window.electron.scenario as any).prepareTabsForRun(platforms);
+      return r || { closed: 0, moved: 0 };
+    } catch {
+      return { closed: 0, moved: 0 };
+    }
+  }
+
   // ── Derived helpers ──
 
   /** Aggregate per-task stats the task dashboard likes to show.
