@@ -807,22 +807,78 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     ]
   },
   {
-    "id": "douyin_image_text",
+    "id": "xhs_image_text",
     "version": "1.0.0",
-    "platform": "douyin",
+    "platform": "xhs",
     "workflow_type": "viral_production",
     "category": "knowledge",
-    "name_zh": "抖音 · 图文创作",
-    "name_en": "Douyin Image-Text Creation",
-    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记，配 1 张封面图 + 1 张内容图，自动发布到抖音(或存草稿/仅本地保存)。",
-    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites it into a Douyin image-text note with 1 cover + 1 content image, then auto-publishes (or saves draft / local).",
+    "name_zh": "小红书 · 图文创作",
+    "name_en": "Xiaohongshu Image-Text Creation",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到小红书创作者中心草稿箱。",
+    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Xiaohongshu note. Image source: AI-generated OR scraped real photos by keyword (2-6 configurable). Auto-uploads to Xiaohongshu creator center drafts.",
     "icon": "📝",
     "default_config": {
       "keywords": [],
       "persona": "",
       "daily_count": 1,
       "variants_per_post": 1,
-      "schedule_window": "09:00-22:00"
+      "schedule_window": "09:00-22:00",
+      "use_real_photos": false,
+      "real_photo_count": 6,
+      "real_photo_keywords": ""
+    },
+    "risk_caps": {
+      "max_daily_runs": 3,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 1800000,
+      "min_interval_hours": 4,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 5
+    },
+    "required_login_url": "https://creator.xiaohongshu.com/",
+    "tab_url_pattern": "xiaohongshu",
+    "anchor_url": "https://www.xiaohongshu.com",
+    "entry_urls": {},
+    "creator_urls": {
+      "publish": "https://creator.xiaohongshu.com/publish/publish?source=official"
+    },
+    "skills": {
+      "prompts": {
+        "composer": "prompts/composer.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js",
+      "upload_draft_script": "upload_draft.js",
+      "draft_uploader": "draft_uploader.json"
+    }
+  },
+  {
+    "id": "douyin_image_text",
+    "version": "1.1.0",
+    "platform": "douyin",
+    "workflow_type": "viral_production",
+    "category": "knowledge",
+    "name_zh": "抖音 · 图文创作",
+    "name_en": "Douyin Image-Text Creation",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓实景图（2-6 张可调）。整完发布到抖音(或存草稿/仅本地保存)。",
+    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Douyin image-text note. Image source: AI-generated OR scraped real photos from Douyin's image-text filter (2-6 configurable). Auto-publishes (or saves draft / local).",
+    "icon": "📝",
+    "default_config": {
+      "keywords": [],
+      "persona": "",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-22:00",
+      "use_real_photos": false,
+      "real_photo_count": 6,
+      "real_photo_keywords": ""
     },
     "risk_caps": {
       "max_daily_runs": 3,

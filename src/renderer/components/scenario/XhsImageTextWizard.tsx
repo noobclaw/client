@@ -1,14 +1,13 @@
 /**
- * DouyinImageTextWizard — 抖音图文创作 wizard
+ * XhsImageTextWizard — 小红书图文创作 wizard
  *
  *   Step 1 — 3 段「参考文案」(textareas)
- *   Step 2 — 每天生成几条 + 自动发布 / 存草稿 / 仅本地
- *   Step 3 — 调度 + 摘要 + 条款 + 创建
+ *   Step 2 — 配图模式（实景图 / AI 生图）+ 图片张数 + 实景图关键词
+ *   Step 3 — 每次几条 + 调度 + 摘要 + 条款
  *
- * 用户实测后明确:这个场景不要 persona / 赛道 / 关键词 概念,只需要 3 段
- * 参考文案。AI 拿参考文案直接创作抖音图文。
- *
- * 主色沿用 Douyin 页面的 violet,跟互动涨粉卡片视觉一致。
+ * 跟 DouyinImageTextWizard 几乎同结构。两个差异：
+ *   1. step 2 多了"实景图开关 + 关键词输入框 + 张数滑条"
+ *   2. 上传策略只有 'draft' / 'local' (小红书没有"直接发布"模式 — 都走草稿箱更安全)
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
@@ -28,13 +27,12 @@ const SEGMENT_MIN_CHARS = 10;
 const SEGMENT_MAX_CHARS = 800;
 const DAILY_COUNT_MIN = 1;
 const DAILY_COUNT_MAX = 5;
-// v1.1.0: 配图新选项 — 实景图模式 + 张数 + 关键词
 const REAL_PHOTO_MIN = 2;
 const REAL_PHOTO_MAX = 6;
 const REAL_PHOTO_DEFAULT = 6;
 const KEYWORDS_MAX_COUNT = 10;
 
-export const DouyinImageTextWizard: React.FC<Props> = ({
+export const XhsImageTextWizard: React.FC<Props> = ({
   scenario,
   initialTask,
   onCancel,
@@ -59,14 +57,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const [seg2, setSeg2] = useState<string>(initialSegments[1]);
   const [seg3, setSeg3] = useState<string>(initialSegments[2]);
 
-  // ── 每次运行生成几条 ──
-  const [dailyCount, setDailyCount] = useState<number>(
-    typeof initialTask?.daily_count === 'number'
-      ? Math.max(DAILY_COUNT_MIN, Math.min(DAILY_COUNT_MAX, initialTask.daily_count))
-      : 1
-  );
-
-  // ── v1.1.0: 配图模式 ──
+  // ── 配图模式 ──
   const [useRealPhotos, setUseRealPhotos] = useState<boolean>(
     !!(initialTask as any)?.use_real_photos
   );
@@ -78,25 +69,24 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const [realPhotoKeywords, setRealPhotoKeywords] = useState<string>(
     String((initialTask as any)?.real_photo_keywords || '')
   );
+
+  // 关键词数量校验（空格分隔，最多 10 个）
   const keywordTokens = useMemo(() => {
     return realPhotoKeywords.trim().split(/\s+/).filter(s => s.length > 0);
   }, [realPhotoKeywords]);
   const keywordCount = keywordTokens.length;
   const keywordOverLimit = keywordCount > KEYWORDS_MAX_COUNT;
 
-  // ── 生成后处理：3 选 1 ──
-  //   'publish' (default) — 跑完直接发布。抖音图文草稿只能存 1 篇,后存的会
-  //                          覆盖之前的,多篇任务用草稿就没意义,所以默认走发布。
-  //   'draft'             — 跑完存到抖音草稿(抖音侧只 1 篇上限,会覆盖)。
-  //   'local'             — 仅生成保存到本地,用户去任务详情页手动逐条上传。
-  type UploadMode = 'publish' | 'draft' | 'local';
-  const initialMode: UploadMode = (() => {
-    const t: any = initialTask;
-    if (!t) return 'publish';
-    if (t.auto_upload === false) return 'local';
-    if (t.auto_publish === false) return 'draft';
-    return 'publish';
-  })();
+  // ── 每次运行生成几条 ──
+  const [dailyCount, setDailyCount] = useState<number>(
+    typeof initialTask?.daily_count === 'number'
+      ? Math.max(DAILY_COUNT_MIN, Math.min(DAILY_COUNT_MAX, initialTask.daily_count))
+      : 1
+  );
+
+  // ── 上传策略 (XHS 没有直发模式,只 draft / local) ──
+  type UploadMode = 'draft' | 'local';
+  const initialMode: UploadMode = (initialTask as any)?.auto_upload === false ? 'local' : 'draft';
   const [uploadMode, setUploadMode] = useState<UploadMode>(initialMode);
 
   // ── 调度 ──
@@ -128,14 +118,13 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
     1: validSegments.length >= 1
       ? { ok: true }
       : { ok: false, reason: isZh ? `至少 1 段参考文案（每段 ${SEGMENT_MIN_CHARS} 字以上）` : `Need at least 1 reference text (≥ ${SEGMENT_MIN_CHARS} chars each)` },
-    // v1.1.0: 实景图模式必须填关键词
-    2: dailyCount < DAILY_COUNT_MIN
-      ? { ok: false, reason: isZh ? '每次生成至少 1 条' : 'At least 1 per run' }
-      : useRealPhotos && keywordCount === 0
-        ? { ok: false, reason: isZh ? '实景图模式需要至少 1 个关键词' : 'Real-photo mode needs at least 1 keyword' }
-        : useRealPhotos && keywordOverLimit
-          ? { ok: false, reason: isZh ? `关键词最多 ${KEYWORDS_MAX_COUNT} 个，当前 ${keywordCount} 个` : `Max ${KEYWORDS_MAX_COUNT} keywords (you have ${keywordCount})` }
-          : { ok: true },
+    2: useRealPhotos
+      ? (keywordCount === 0
+          ? { ok: false, reason: isZh ? '实景图模式需要至少 1 个关键词' : 'Real-photo mode needs at least 1 keyword' }
+          : keywordOverLimit
+            ? { ok: false, reason: isZh ? `关键词最多 ${KEYWORDS_MAX_COUNT} 个，当前 ${keywordCount} 个` : `Max ${KEYWORDS_MAX_COUNT} keywords (you have ${keywordCount})` }
+            : { ok: true })
+      : { ok: true },
     3: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
   };
 
@@ -152,14 +141,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
     }
     setSaving(true);
     try {
-      // uploadMode → orchestrator 看 (auto_upload, auto_publish) 两个 flag:
-      //   publish: auto_upload=true,  auto_publish=true (默认,直接发布)
-      //   draft:   auto_upload=true,  auto_publish=false(进抖音草稿,1 篇上限)
-      //   local:   auto_upload=false (压根不上传,只本地存)
+      // uploadMode → orchestrator 看 auto_upload:
+      //   draft: auto_upload=true (跑完进小红书草稿箱)
+      //   local: auto_upload=false (压根不上传,只本地存)
       const auto_upload = uploadMode !== 'local';
-      const auto_publish = uploadMode === 'publish';
-      // 这个场景没有 persona / 赛道 / 关键词概念 —— track 用 'image_text' 占位,
-      // persona/keywords 传空给 createTask 兼容旧 schema。
       await onSave({
         scenario_id: scenario.id,
         track: 'image_text',
@@ -170,15 +155,14 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
         daily_time: dailyTime,
         run_interval: runInterval,
         auto_upload,
-        auto_publish,
+        auto_publish: false, // 小红书没有"直接发布"模式
         source_segments: [seg1, seg2, seg3].map(s => s.trim()).filter(s => s.length > 0),
-        // v1.1.0: 配图模式 — 实景图 / AI 生图
         use_real_photos: useRealPhotos,
-        real_photo_count: realPhotoCount,
+        real_photo_count: useRealPhotos ? realPhotoCount : 0,
         real_photo_keywords: useRealPhotos ? keywordTokens.slice(0, KEYWORDS_MAX_COUNT).join(' ') : '',
       });
     } catch (err) {
-      console.error('[DouyinImageTextWizard] save failed:', err);
+      console.error('[XhsImageTextWizard] save failed:', err);
       setSaveError(String(err instanceof Error ? err.message : err) || (isZh ? '保存失败,请重试' : 'Save failed, please retry'));
     } finally {
       setSaving(false);
@@ -201,11 +185,11 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
             📝 {editing
-              ? (isZh ? '编辑抖音图文任务' : 'Edit Douyin Image-Text Task')
-              : (isZh ? '配置抖音图文创作' : 'Configure Douyin Image-Text Creation')}
+              ? (isZh ? '编辑小红书图文任务' : 'Edit XHS Image-Text Task')
+              : (isZh ? '配置小红书图文创作' : 'Configure XHS Image-Text Creation')}
           </div>
           <div className="flex items-center gap-3">
-            <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">
+            <span className="text-xs px-2.5 py-1 rounded-full border border-rose-500/40 text-rose-500 bg-rose-500/5">
               {isZh ? `第 ${step} / 3 步` : `Step ${step} / 3`}
             </span>
             <button type="button" onClick={onCancel} disabled={saving}
@@ -217,10 +201,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
 
           {step === 1 && (
             <>
-              <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300">
+              <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-rose-500/30 bg-rose-500/5 text-rose-700 dark:text-rose-300">
                 ✨ {isZh
-                  ? <>填 <strong>3 段参考文案</strong>(可以是经历、想法、笔记、随手记)。每次任务运行会从里面<strong>随机抽 1 段</strong>,AI 拿这段参考文案直接创作抖音图文。可以只填 1 段,但 3 段不重复才能让生成多样化。</>
-                  : <>Fill in <strong>3 reference texts</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and AI uses it as the basis to compose a Douyin image-text post. 1 is the minimum, 3 keeps results varied.</>}
+                  ? <>填 <strong>3 段参考文案</strong>(可以是经历、想法、笔记、随手记)。每次任务运行从里面<strong>随机抽 1 段</strong>,AI 拿这段直接创作小红书图文笔记。可以只填 1 段,3 段不重复才能让生成多样化。</>
+                  : <>Fill <strong>3 reference texts</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and AI uses it as the basis to compose a Xiaohongshu image-text post. 1 minimum, 3 keeps results varied.</>}
               </div>
 
               {[
@@ -244,7 +228,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       ? '比如：上周末跟朋友去喝咖啡，发现店里那杯特调好喝到尖叫，店主说豆子是手冲专用的...'
                       : 'e.g. Went for coffee last weekend, the special blend was insane. Owner said the beans are hand-pour only...'}
                     rows={4}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 resize-y min-h-[90px]"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40 resize-y min-h-[90px]"
                     disabled={saving}
                   />
                   <div className="text-[11px] text-gray-400 mt-1 flex items-center gap-2">
@@ -262,7 +246,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
 
           {step === 2 && (
             <>
-              {/* v1.1.0: 配图模式 — 实景图 vs AI 二选一 */}
+              {/* 配图模式 — 二选一 */}
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '🖼️ 配图模式' : '🖼️ Image source'}
@@ -274,27 +258,27 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       icon: '🎨',
                       titleZh: 'AI 生图（默认）',
                       titleEn: 'AI generated (default)',
-                      descZh: '调用 AI 生成 N 张文字卡片图,每张 token 有成本。',
-                      descEn: 'AI generates N text-card images. Tokens are spent per image.',
+                      descZh: '调用 AI 生成 N 张文字卡片图，米白底色温暖色调，文字内容紧扣正文。每张图消耗 token,有成本。',
+                      descEn: 'AI generates N text-card style images, warm cream background, text drawn from the rewritten body. Each image costs tokens.',
                     },
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: '实景图（按关键词去抖音「图文」筛选下抓，零 token）',
-                      titleEn: 'Real photos (scrape from Douyin image-text filter, zero token)',
-                      descZh: '按你填的关键词去抖音搜索结果页 (筛选 type=2 「图文」) 抓取笔记封面图。零 AI token 成本。如果某次找不到目标数量,会自动重试 3 次换关键词,最终有几张算几张 (最少 2 张才会上传)。',
-                      descEn: 'Searches Douyin (filtering image-text type) by keyword and grabs note cover images. Zero AI token cost. Retries 3 times with different keywords if short; uploads only if ≥2 found.',
+                      titleZh: '实景图（按关键词去小红书搜，零 token 成本）',
+                      titleEn: 'Real photos (scrape from XHS by keyword, zero token cost)',
+                      descZh: '按你填的关键词去小红书搜索结果页抓取笔记封面图作为配图。零 AI token 成本。如果某次找不到目标数量，会自动重试 3 次换关键词，最终有几张算几张（最少 2 张才会上传）。',
+                      descEn: 'Searches Xiaohongshu by your keywords and grabs note cover images. Zero AI token cost. If a run finds fewer than the target count, retries 3 times with different keywords; whatever it ends up with is what gets used (uploads only if ≥2 found).',
                     },
                   ]).map((opt) => {
                     const active = useRealPhotos === opt.mode;
                     return (
                       <label
                         key={String(opt.mode)}
-                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-rose-500 bg-rose-500/5' : 'border-gray-300 dark:border-gray-700'}`}
                       >
                         <input
                           type="radio"
-                          name="dy_image_source"
+                          name="xhs_image_source"
                           checked={active}
                           onChange={() => setUseRealPhotos(opt.mode)}
                           className="mt-0.5"
@@ -327,17 +311,17 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     value={realPhotoCount}
                     onChange={e => setRealPhotoCount(parseInt(e.target.value, 10))}
                     disabled={saving}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-rose-500"
                   />
-                  <span className="text-lg font-bold text-violet-500 min-w-[2ch] text-center">{realPhotoCount}</span>
+                  <span className="text-lg font-bold text-rose-500 min-w-[2ch] text-center">{realPhotoCount}</span>
                 </div>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
                   {useRealPhotos
                     ? (isZh
-                        ? `按 ${realPhotoCount} 张目标去抖音搜图(不够会自动重试,最少 2 张才上传)。抖音图文最多 18 张。`
-                        : `Targets ${realPhotoCount} per post (auto-retries if short; uploads only if ≥2 found). Douyin supports up to 18 images per note.`)
+                        ? `按 ${realPhotoCount} 张目标去小红书搜图（不够会自动重试，最少 2 张才上传）。小红书图文笔记最多支持 9 张。`
+                        : `Targets ${realPhotoCount} photos per post (auto-retries if short; uploads only if ≥2 found). XHS supports up to 9 images per note.`)
                     : (isZh
-                        ? `AI 会生成 ${realPhotoCount} 张文字卡片图(按正文段落分主题)。`
+                        ? `AI 会生成 ${realPhotoCount} 张文字卡片图（按正文段落分主题）。`
                         : `AI generates ${realPhotoCount} text-card images, themed across rewritten paragraphs.`)}
                 </div>
               </div>
@@ -355,7 +339,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     placeholder={isZh
                       ? '比如：杭州西湖 春天 樱花 旅游攻略'
                       : 'e.g. coffee latte cafe interior'}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/40"
                     disabled={saving}
                   />
                   <div className="text-[11px] mt-1 flex items-center gap-2">
@@ -368,14 +352,18 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       </span>
                     )}
                   </div>
-                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 mt-2 text-[11px] leading-relaxed text-violet-700 dark:text-violet-300">
+                  <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 mt-2 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
                     💡 {isZh
-                      ? <>系统将在<strong>抖音搜索结果页</strong>用这些关键词搜索（多关键词会拼到一起搜），<strong>自动切到「图文」筛选 tab</strong>抓取笔记封面图作为你这篇笔记的配图。如果某次找不到目标数量,会自动换关键词重试 3 次。</>
-                      : <>Searches Douyin's <strong>search results page</strong> with these keywords (combined), <strong>auto-selects the "image-text" filter</strong> to grab note cover images. Auto-retries 3 times with different keywords if short.</>}
+                      ? <>系统将在<strong>小红书搜索结果页</strong>用这些关键词搜索（多关键词会拼到一起搜），抓取笔记封面图作为你这篇笔记的配图。如果某次找不到目标数量,会自动换关键词重试 3 次。</>
+                      : <>The orchestrator will search Xiaohongshu's <strong>search results page</strong> with these keywords (combined into one query), and grab note cover images as the configured photos. Auto-retries 3 times with different keywords if short.</>}
                   </div>
                 </div>
               )}
+            </>
+          )}
 
+          {step === 3 && (
+            <>
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '每次运行生成几条图文' : 'Posts per run'}
@@ -388,14 +376,14 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     value={dailyCount}
                     onChange={e => setDailyCount(parseInt(e.target.value, 10))}
                     disabled={saving}
-                    className="flex-1 accent-violet-500"
+                    className="flex-1 accent-rose-500"
                   />
-                  <span className="text-lg font-bold text-violet-500 min-w-[2ch] text-center">{dailyCount}</span>
+                  <span className="text-lg font-bold text-rose-500 min-w-[2ch] text-center">{dailyCount}</span>
                 </div>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
                   {isZh
-                    ? `每次运行从 3 段里独立随机抽 ${dailyCount} 次（同一段可能被重复选中）。建议 1-2 条,避免单日发太多触发抖音风控。`
-                    : `Each run picks ${dailyCount} times independently from your 3 segments. 1-2 recommended — too many per day risks Douyin's rate control.`}
+                    ? `每次运行从 3 段里独立随机抽 ${dailyCount} 次（同一段可能被重复选中）。建议 1-2 条,避免单日发太多触发风控。`
+                    : `Each run picks ${dailyCount} times independently from your 3 segments. 1-2 recommended.`}
                 </div>
               </div>
 
@@ -406,25 +394,17 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 <div className="space-y-2">
                   {([
                     {
-                      mode: 'publish' as UploadMode,
-                      icon: '📤',
-                      titleZh: '直接发布到抖音(推荐)',
-                      titleEn: 'Auto-publish to Douyin (recommended)',
-                      descZh: '生成完每篇直接走抖音「发布」按钮。⚠️ 一旦发出无法撤回,且单日 >5 篇有封号风险,建议先用「仅本地」模式跑一次审核质量。',
-                      descEn: 'Each post hits Douyin Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent; >5/day risks ban. Recommend running "Local only" first to review quality.',
-                    },
-                    {
                       mode: 'draft' as UploadMode,
                       icon: '📋',
-                      titleZh: '存到抖音草稿(只能 1 篇,会被覆盖)',
-                      titleEn: 'Save to Douyin drafts (1-only, gets overwritten)',
-                      descZh: '抖音创作者中心的图文草稿只能存 1 篇,新草稿会覆盖旧的 — 多篇任务用这个模式只剩最后一篇。',
-                      descEn: 'Douyin creator-center keeps only 1 image-text draft — newer overwrites older. Multi-post runs end up with just the last one.',
+                      titleZh: '上传到小红书草稿箱（推荐）',
+                      titleEn: 'Save to Xiaohongshu drafts (recommended)',
+                      descZh: '生成完每篇上传到小红书创作者中心草稿箱（不直接发布）。你需要手动去草稿箱审核 + 发布。',
+                      descEn: 'Each post uploads to Xiaohongshu creator-center draft box. You manually review + publish from drafts.',
                     },
                     {
                       mode: 'local' as UploadMode,
                       icon: '📁',
-                      titleZh: '仅生成保存到本地(最安全)',
+                      titleZh: '仅生成保存到本地（最安全）',
                       titleEn: 'Generate only, save locally (safest)',
                       descZh: '不动浏览器,只把改写文本和配图存盘。任务详情页可以逐条手动上传。',
                       descEn: 'Touches no browser tab; saves rewrite + images to disk. Upload one-by-one from the task detail page.',
@@ -434,11 +414,11 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     return (
                       <label
                         key={opt.mode}
-                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-rose-500 bg-rose-500/5' : 'border-gray-300 dark:border-gray-700'}`}
                       >
                         <input
                           type="radio"
-                          name="dy_upload_mode"
+                          name="xhs_upload_mode"
                           checked={active}
                           onChange={() => setUploadMode(opt.mode)}
                           className="mt-0.5"
@@ -458,26 +438,6 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-                <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
-                <ul className="list-disc list-inside space-y-0.5">
-                  {uploadMode === 'publish' && (
-                    <li>{isZh ? '直接发布模式 — 跑完立即可见,慎用,日 >5 篇有封号风险' : 'Publish mode — posts go live immediately; >5/day risks ban'}</li>
-                  )}
-                  {uploadMode === 'draft' && (
-                    <li>{isZh ? '抖音侧只保留最新 1 篇草稿,daily_count > 1 时只剩最后一篇' : 'Douyin keeps only 1 draft — multi-post runs leave just the last'}</li>
-                  )}
-                  {uploadMode === 'local' && (
-                    <li>{isZh ? '只本地保存,不动浏览器,可在任务详情页手动逐条审核 + 上传' : 'Local only — no browser action; review + upload one-by-one from task detail'}</li>
-                  )}
-                  <li>{isZh ? '每篇文章会生成 2 张图: 1 张封面(大字标题截停信息流) + 1 张内容图(画面叙事,延续封面色调)' : '2 images per post: 1 cover (big title to stop the feed) + 1 content image (narrative scene, same palette)'}</li>
-                </ul>
-              </div>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
@@ -494,26 +454,19 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       onClick={() => setRunInterval(opt.value)}
                       className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
                         runInterval === opt.value
-                          ? 'border-violet-500 bg-violet-500/10 text-violet-500 font-medium'
-                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-violet-500/50'
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'
                       }`}
                     >{opt.label}</button>
                   ))}
                 </div>
-                {runInterval === 'daily_random' && (
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    {isZh
-                      ? '✨ 推荐:每天随机时间触发,避免被风控判定为机器人(每次距离上次至少 24 小时)。'
-                      : '✨ Recommended: triggers at a different time each day, avoiding bot-pattern detection.'}
-                  </p>
-                )}
               </div>
 
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-3 text-sm space-y-1.5">
                 <div className="font-semibold dark:text-gray-200 mb-1">📋 {isZh ? '任务摘要' : 'Task summary'}</div>
                 <SummaryRow
                   label={isZh ? '灵感来源' : 'Sources'}
-                  value={`${validSegments.length} ${isZh ? '段（每次随机抽 1 段）' : 'segments (1 picked at random per run)'}`} />
+                  value={`${validSegments.length} ${isZh ? '段（每次随机抽 1 段）' : 'segments (1 picked per run)'}`} />
                 <SummaryRow label={isZh ? '每次生成' : 'Per run'} value={`${dailyCount} ${isZh ? '篇' : 'posts'}`} />
                 <SummaryRow
                   label={isZh ? '配图' : 'Images'}
@@ -521,11 +474,9 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     ? (isZh ? `📷 实景图 ${realPhotoCount} 张/篇 · 关键词 "${keywordTokens.join(' ')}"` : `📷 Real ${realPhotoCount}/post · "${keywordTokens.join(' ')}"`)
                     : (isZh ? `🎨 AI 生图 ${realPhotoCount} 张/篇` : `🎨 AI ${realPhotoCount}/post`)} />
                 <SummaryRow label={isZh ? '生成后' : 'After gen'} value={
-                  uploadMode === 'publish'
-                    ? (isZh ? '直接发布到抖音' : 'Auto-publish to Douyin')
-                    : uploadMode === 'draft'
-                      ? (isZh ? '存抖音草稿(只 1 篇,会覆盖)' : 'Douyin draft (1-only, overwrites)')
-                      : (isZh ? '仅本地保存,人工审核' : 'Local only, manual review')
+                  uploadMode === 'draft'
+                    ? (isZh ? '上传到小红书草稿箱（手动发布）' : 'Upload to XHS drafts (manual publish)')
+                    : (isZh ? '仅本地保存,人工审核' : 'Local only, manual review')
                 } />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
               </div>
@@ -536,8 +487,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 </div>
                 {[
                   isZh
-                    ? '我理解 NoobClaw 会在我本地浏览器代我打开抖音创作者中心,所有行为使用我自己的 IP 和账号'
-                    : 'I understand NoobClaw drives the Douyin creator center inside my own browser using my IP and my account.',
+                    ? '我理解 NoobClaw 会在我本地浏览器代我打开小红书创作者中心,所有行为使用我自己的 IP 和账号'
+                    : 'I understand NoobClaw drives the Xiaohongshu creator center inside my own browser using my IP and my account.',
                   isZh
                     ? '我理解平台账号风险由我自己承担,草稿仅暂存,需自行审核后再发布'
                     : 'I accept platform account risk, and that drafts are stored only — I review them before publishing.',
@@ -552,7 +503,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                         setTermsAccepted(next);
                       }}
                       disabled={saving}
-                      className="mt-0.5 h-4 w-4 accent-violet-500 cursor-pointer shrink-0"
+                      className="mt-0.5 h-4 w-4 accent-rose-500 cursor-pointer shrink-0"
                     />
                     <span className="leading-relaxed">{term}</span>
                   </label>
@@ -589,12 +540,12 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 setStep((step + 1) as WizardStep);
               }}
               disabled={saving}
-              className="px-4 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50"
+              className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
               title={!canAdvance[step].ok ? canAdvance[step].reason : undefined}
             >{isZh ? '下一步' : 'Next'} →</button>
           ) : (
             <button type="button" onClick={handleSave} disabled={saving || !allTermsAccepted}
-              className="px-5 py-2 rounded-lg text-sm font-semibold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-5 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >{saving
               ? (isZh ? '保存中...' : 'Saving...')
               : (editing ? (isZh ? '✓ 保存修改' : '✓ Save Changes') : '📝 ' + (isZh ? '创建任务' : 'Create Task'))}</button>
@@ -612,4 +563,4 @@ const SummaryRow: React.FC<{ label: string; value: string }> = ({ label, value }
   </div>
 );
 
-export default DouyinImageTextWizard;
+export default XhsImageTextWizard;

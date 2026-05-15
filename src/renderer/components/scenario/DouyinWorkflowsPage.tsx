@@ -105,14 +105,14 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
   // 在 backend scenarios 列表还没拉到时也能点开 wizard。
   const FALLBACK_IMAGE_TEXT: Scenario = {
     id: 'douyin_image_text',
-    version: '1.0.0',
+    version: '1.1.0',
     platform: 'douyin' as any,
     workflow_type: 'viral_production' as any,
     category: 'knowledge',
     name_zh: '抖音 · 图文创作',
     name_en: 'Douyin Image-Text Creation',
-    description_zh: '你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记，配 1 张封面图 + 1 张内容图，自动发布到抖音(或存草稿/仅本地保存)。',
-    description_en: 'Fill 3 source snippets; each run picks one at random, AI rewrites it into a Douyin image-text note with 1 cover + 1 content image, then auto-publishes (or saves draft / local).',
+    description_zh: '你填 3 段灵感来源，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓实景图（2-6 张可调）。',
+    description_en: 'Fill 3 source snippets; AI rewrites into Douyin image-text note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable).',
     icon: '📝',
     default_config: {
       keywords: [],
@@ -120,6 +120,9 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
       daily_count: 1,
       variants_per_post: 1,
       schedule_window: '09:00-22:00',
+      use_real_photos: false,
+      real_photo_count: 6,
+      real_photo_keywords: '',
     } as any,
     risk_caps: {
       max_daily_runs: 3,

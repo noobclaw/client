@@ -14,6 +14,7 @@ import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 import { TikTokConfigWizard } from './TikTokConfigWizard';
 import { DouyinConfigWizard } from './DouyinConfigWizard';
 import { DouyinImageTextWizard } from './DouyinImageTextWizard';
+import { XhsImageTextWizard } from './XhsImageTextWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -409,6 +410,19 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'douyin_image_text') {
     return (
       <DouyinImageTextWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // 小红书图文创作 — 跟抖音图文同款 3 段灵感的入口,但额外有
+  // 实景图 vs AI 生图 的二选一开关 + 张数滑条 + 关键词输入框,所以走独立 wizard。
+  if (scenario.id === 'xhs_image_text') {
+    return (
+      <XhsImageTextWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}
