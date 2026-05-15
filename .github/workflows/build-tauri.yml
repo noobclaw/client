@@ -168,7 +168,17 @@ jobs:
           fi
 
       - name: Build Tauri app
-        run: npx tauri build --target ${{ matrix.target }}
+        # macOS workaround: macos-latest runner ships a /usr/local/bin/cargo
+        # which is a rustup-init shim that doesn't recognise the 'metadata'
+        # subcommand. dtolnay/rust-toolchain installs the real cargo at
+        # $HOME/.cargo/bin/cargo and *appends* its bin to GITHUB_PATH, but
+        # the system shim still wins. Prepend $HOME/.cargo/bin so the real
+        # cargo is found first when tauri build calls `cargo metadata`.
+        # Windows is unaffected (no system shim) — the export is harmless.
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          npx tauri build --target ${{ matrix.target }}
+        shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ''
           # Tauri v2 uses these for automatic codesign + notarization
