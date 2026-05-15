@@ -352,11 +352,16 @@ function buildContext(
     // extensions (no capability) get the legacy shared-tab behavior;
     // extension simply ignores the unknown envelope.isolate field.
     const wantsIsolation = !!activePattern && connectionHasCapability(activePattern, 'isolated_windows');
-    if (!activePattern && !tg && !wantsIsolation) return undefined;
-    const opts: { tabPattern?: string; tabGroup?: { title: string; color: string }; isolate?: boolean } = {};
+    // v1.4.2+: also pass the manifest's anchor_url so the extension doesn't
+    // need a hardcoded platform → URL map. Adding a new platform now means
+    // setting anchor_url in the scenario manifest only.
+    const anchorUrl = activePattern ? anchorUrlForPattern(activePattern) : undefined;
+    if (!activePattern && !tg && !wantsIsolation && !anchorUrl) return undefined;
+    const opts: { tabPattern?: string; tabGroup?: { title: string; color: string }; isolate?: boolean; anchor_url?: string } = {};
     if (activePattern) opts.tabPattern = activePattern;
     if (tg) opts.tabGroup = tg;
     if (wantsIsolation) opts.isolate = true;
+    if (anchorUrl) opts.anchor_url = anchorUrl;
     return opts;
   };
 
@@ -401,6 +406,11 @@ function buildContext(
     const isolate = connectionHasCapability(pat, 'isolated_windows');
     const preflightOpts: any = { tabPattern: pat };
     if (isolate) preflightOpts.isolate = true;
+    // v1.4.2+: pass anchor_url so the extension doesn't fall back to its
+    // hardcoded list. Even non-isolation flows benefit (extension still
+    // needs an anchor when no matching tab exists).
+    const preflightAnchor = anchorUrlForPattern(pat);
+    if (preflightAnchor) preflightOpts.anchor_url = preflightAnchor;
     let tabs: any[] = [];
     try {
       const res: any = await sendBrowserCommand('tab_list', {}, 5000, preflightOpts);

@@ -982,6 +982,13 @@ export interface SendBrowserCommandOptions {
    *  setting it unconditionally is harmless but would be misleading.
    *  Callers typically derive this via connectionHasCapability(). */
   isolate?: boolean;
+  /** v1.4.2+: anchor URL for the platform, read from manifest.anchor_url.
+   *  Sent with every routed command so the extension doesn't need a
+   *  hardcoded platform → URL map. Adding a new platform now means
+   *  updating its scenario manifest only — no extension republish.
+   *  Older extensions ignore unknown envelope fields and fall back to
+   *  their own anchorUrlFor table for the legacy 3 platforms. */
+  anchor_url?: string;
 }
 
 /** v1.4.0+: does the connection that would receive a command for this
@@ -1047,6 +1054,7 @@ export function sendBrowserCommand(
     if (options.tabPattern) envelope.tabPattern = options.tabPattern;
     if (options.tabGroup) envelope.tabGroup = options.tabGroup;
     if (options.isolate) envelope.isolate = true;
+    if (options.anchor_url) envelope.anchor_url = options.anchor_url;
 
     conn.lastActivityAt = Date.now();
     conn.socket.write(JSON.stringify(envelope) + '\n');
