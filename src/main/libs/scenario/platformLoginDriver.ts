@@ -175,6 +175,65 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   }
 }
 
+/** v2.7+: 收敛同平台 NoobClaw managed tab 到 1 个 — 任务启动前调用,
+ *  把累积的重复 X / binance / xhs ... NoobClaw managed tab 关到只剩一个。
+ *  只关 NoobClaw 标签下的 tab(按 group title 筛),绝不动用户自己开的
+ *  tab,所以可以安全在每次任务启动前无脑跑。
+ *
+ *  依赖 chrome-extension v1.4.11+(tab_list 必须返回 groupTitle)。老版本
+ *  扩展 groupTitle 字段不存在,函数 silently no-op。 */
+export async function closeDuplicatePlatformTabs(
+  platforms: LoginPlatform[]
+): Promise<{ closed: number }> {
+  if (!platforms || platforms.length === 0) return { closed: 0 };
+  let listRes: any;
+  try {
+    listRes = await sendBrowserCommand('tab_list', {}, 3000);
+  } catch (e) {
+    coworkLog('WARN', 'platformLoginDriver',
+      'closeDuplicatePlatformTabs: tab_list failed', { err: String(e) });
+    return { closed: 0 };
+  }
+  const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
+    : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
+  // groupTitle 是 v1.4.11+ 才有的字段。老 extension 会没这个字段 → 全 null
+  // → 没法识别 managed → 函数 no-op,这是预期行为。
+  let totalClosed = 0;
+  for (const platform of platforms) {
+    const expectedTitle = PLATFORM_TAB_GROUPS[platform]?.title;
+    if (!expectedTitle) continue;
+    const managed = allTabs.filter(t =>
+      typeof t?.groupTitle === 'string' && t.groupTitle === expectedTitle
+    );
+    if (managed.length <= 1) continue;
+    // 留第一个,关掉其他。第一个的选择标准:active 优先,其次最早 id(stable)。
+    managed.sort((a, b) => {
+      if (a.active !== b.active) return a.active ? -1 : 1;
+      return (a.id || 0) - (b.id || 0);
+    });
+    const toClose = managed.slice(1).map(t => t.id).filter(id => typeof id === 'number');
+    if (toClose.length === 0) continue;
+    coworkLog('INFO', 'platformLoginDriver',
+      `closeDuplicatePlatformTabs: closing ${toClose.length} duplicate ${platform} tab(s)`,
+      { keep: managed[0].id, close: toClose });
+    try {
+      // Extension 的 tab_close 接受 tabId 单个;循环关。
+      for (const tabId of toClose) {
+        try { await sendBrowserCommand('tab_close', { tabId }, 3000); }
+        catch (cErr) {
+          coworkLog('WARN', 'platformLoginDriver',
+            `closeDuplicatePlatformTabs: failed to close tab ${tabId}`, { err: String(cErr) });
+        }
+      }
+      totalClosed += toClose.length;
+    } catch (e) {
+      coworkLog('WARN', 'platformLoginDriver',
+        `closeDuplicatePlatformTabs: ${platform} batch failed`, { err: String(e) });
+    }
+  }
+  return { closed: totalClosed };
+}
+
 // ── Backward-compat aliases ─────────────────────────────────────────
 // Old callers imported `checkXhsLogin` / `openXhsLogin` from `./xhsDriver`.
 // They now route here; the misleading-named exports are kept so any caller

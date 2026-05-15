@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
-import { PLATFORM_TAB_GROUPS, type LoginPlatform } from './platformLoginDriver';
+import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -2080,6 +2080,41 @@ export async function runOrchestrator(
   // Inject target draft for the upload_draft.js path
   if (options?.targetDraft) {
     (ctx as any)._targetDraft = options.targetDraft;
+  }
+
+  // v2.7+: 任务启动前先把重复的 NoobClaw managed tab 关掉,只剩一个。
+  // 解决用户在 LoginRequiredModal 反复点"打开 X / Binance"按钮累积出来
+  // 的多 tab,以及之前任意原因(老 client / SW race)留下的残留 managed
+  // tab。只关 group title 含 NoobClaw 的 tab,绝不动用户自己的 tab。
+  // 失败不阻塞任务启动 — 至少能跑就行。
+  try {
+    const manifest = pack.manifest as any;
+    const primaryPlat = manifest.platform as LoginPlatform | undefined;
+    const secondaryPat: string | undefined = manifest.secondary_tab_url_pattern;
+    const platformsToClean: LoginPlatform[] = [];
+    if (primaryPlat && PLATFORM_TAB_GROUPS[primaryPlat]) platformsToClean.push(primaryPlat);
+    if (secondaryPat) {
+      // 复用 buildContext 里同款的 inferPlatformFromPattern 推断 — 关掉
+      // secondary 平台的重复 tab(比如 binance_from_x_link 的 X tab)。
+      let secPlat: LoginPlatform | undefined;
+      if (/xiaohongshu/i.test(secondaryPat)) secPlat = 'xhs';
+      else if (/binance/i.test(secondaryPat)) secPlat = 'binance';
+      else if (/youtube/i.test(secondaryPat)) secPlat = 'youtube';
+      else if (/tiktok/i.test(secondaryPat)) secPlat = 'tiktok';
+      else if (/douyin/i.test(secondaryPat)) secPlat = 'douyin';
+      else if (/twitter|x\\?\.com/i.test(secondaryPat)) secPlat = 'x';
+      if (secPlat && !platformsToClean.includes(secPlat)) platformsToClean.push(secPlat);
+    }
+    if (platformsToClean.length > 0) {
+      const r = await closeDuplicatePlatformTabs(platformsToClean);
+      if (r.closed > 0) {
+        coworkLog('INFO', 'phaseRunner',
+          `pre-run dedup: closed ${r.closed} duplicate managed tab(s)`,
+          { platforms: platformsToClean });
+      }
+    }
+  } catch (e) {
+    coworkLog('WARN', 'phaseRunner', 'pre-run tab dedup failed', { err: String(e) });
   }
 
   try {
