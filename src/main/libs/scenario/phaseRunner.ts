@@ -12,7 +12,7 @@
 
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
-import { sendBrowserCommand } from '../browserBridge';
+import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
 import { PLATFORM_TAB_GROUPS, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
@@ -344,10 +344,19 @@ function buildContext(
   const getBridgeOpts = () => {
     const useSecondary = activePattern && activePattern === secondaryPattern;
     const tg = useSecondary ? (secondaryTabGroup || primaryTabGroup) : primaryTabGroup;
-    if (!activePattern && !tg) return undefined;
-    const opts: { tabPattern?: string; tabGroup?: { title: string; color: string } } = {};
+    // v1.4.0+: opt into per-platform isolated windows when the connected
+    // extension advertises support. With isolation on, the extension uses
+    // its own managed window for each platform instead of hijacking the
+    // user's main browser tab — so multiple platforms can run in parallel
+    // without Chrome throttling background tabs in the same window. Older
+    // extensions (no capability) get the legacy shared-tab behavior;
+    // extension simply ignores the unknown envelope.isolate field.
+    const wantsIsolation = !!activePattern && connectionHasCapability(activePattern, 'isolated_windows');
+    if (!activePattern && !tg && !wantsIsolation) return undefined;
+    const opts: { tabPattern?: string; tabGroup?: { title: string; color: string }; isolate?: boolean } = {};
     if (activePattern) opts.tabPattern = activePattern;
     if (tg) opts.tabGroup = tg;
+    if (wantsIsolation) opts.isolate = true;
     return opts;
   };
 
@@ -381,9 +390,20 @@ function buildContext(
     let regex: RegExp;
     try { regex = new RegExp(pat); }
     catch { anchorPreflightDone.add(pat); return; }
+    // v1.4.0+: when extension supports isolation, preflight MUST pass
+    // isolate so tab_list returns only OUR managed windows' tabs and
+    // tab_create routes the new tab into the right managed window. If we
+    // omitted isolate here, tab_list would see the user's main-browser
+    // x.com tab, preflight would skip tab_create, then the real command
+    // (which DOES set isolate via getBridgeOpts) would open a fresh
+    // managed window — leaving preflight and runtime out of sync, which
+    // was the exact failure mode the v1.3.5 attempt hit.
+    const isolate = connectionHasCapability(pat, 'isolated_windows');
+    const preflightOpts: any = { tabPattern: pat };
+    if (isolate) preflightOpts.isolate = true;
     let tabs: any[] = [];
     try {
-      const res: any = await sendBrowserCommand('tab_list', {}, 5000);
+      const res: any = await sendBrowserCommand('tab_list', {}, 5000, preflightOpts);
       tabs = (res && Array.isArray(res.tabs)) ? res.tabs
         : ((res && res.data && Array.isArray(res.data.tabs)) ? res.data.tabs : []);
     } catch {
@@ -406,9 +426,9 @@ function buildContext(
       anchorPreflightDone.add(pat);
       return;
     }
-    coworkLog('INFO', 'phaseRunner', 'anchor pre-flight: opening', { pattern: pat, anchor });
+    coworkLog('INFO', 'phaseRunner', 'anchor pre-flight: opening', { pattern: pat, anchor, isolate });
     try {
-      await sendBrowserCommand('tab_create', { url: anchor }, 12000);
+      await sendBrowserCommand('tab_create', { url: anchor }, 12000, preflightOpts);
       // Give the new tab a moment to commit a URL the regex can match.
       // tab_create returns immediately after chrome.tabs.create resolves,
       // but the URL may still be about:blank for ~50-200ms.

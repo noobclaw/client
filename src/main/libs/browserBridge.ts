@@ -155,6 +155,11 @@ interface BrowserConn {
   /** Extension version reported in the `hello` message. Empty until the
    *  extension side rolls out v1.2.0+ (older versions don't send it). */
   extensionVersion: string;
+  /** v1.4.0+: capabilities advertised by the extension in its hello. Lets
+   *  this client opt into protocol extensions (e.g. envelope.isolate when
+   *  'isolated_windows' is present) without breaking older extensions
+   *  that never set the field. Empty Set = legacy extension. */
+  capabilities: Set<string>;
   /** When this connection was accepted by the bridge. The renderer uses
    *  this to distinguish "extension still mid-handshake (just connected,
    *  hello not arrived yet)" from "extension is genuinely too old to send
@@ -451,6 +456,7 @@ function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
     transport,
     tabs: [],
     extensionVersion: '',
+    capabilities: new Set<string>(),
     connectedAt: Date.now(),
     lastActivityAt: Date.now(),
     consecutiveTimeouts: 0,
@@ -492,6 +498,13 @@ function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
         if (msg.type === 'hello' || msg.type === 'tabs_changed') {
           if (typeof msg.version === 'string' && msg.version) {
             conn.extensionVersion = msg.version;
+          }
+          // v1.4.0+: extension advertises capability strings in hello so
+          // we can opt into protocol extensions (e.g. envelope.isolate).
+          // Cleared+rebuilt on every announce so the extension can
+          // disable a capability mid-session if needed.
+          if (Array.isArray(msg.capabilities)) {
+            conn.capabilities = new Set(msg.capabilities.filter((c: any) => typeof c === 'string'));
           }
           if (Array.isArray(msg.tabs)) {
             conn.tabs = msg.tabs.map((t: any) => ({
@@ -963,6 +976,21 @@ export interface SendBrowserCommandOptions {
    *  map (PLATFORM_TAB_GROUPS) and passes the right value with every
    *  command. Old extensions simply ignore the field — backwards compat. */
   tabGroup?: { title: string; color: string };
+  /** v1.4.0+: opt into the extension's per-platform isolated-window mode.
+   *  Only set this when the target connection advertises the
+   *  'isolated_windows' capability — older extensions ignore the flag, so
+   *  setting it unconditionally is harmless but would be misleading.
+   *  Callers typically derive this via connectionHasCapability(). */
+  isolate?: boolean;
+}
+
+/** v1.4.0+: does the connection that would receive a command for this
+ *  tabPattern advertise the given capability? Lets callers decide whether
+ *  to set protocol-extension fields on the envelope. Returns false when
+ *  no connection exists (caller will hit BROWSER_NOT_CONNECTED anyway). */
+export function connectionHasCapability(tabPattern: string | undefined, cap: string): boolean {
+  const conn = pickConnForPattern(tabPattern);
+  return !!conn && conn.capabilities.has(cap);
 }
 
 /** Pick the browser connection that should receive a command. */
@@ -1018,6 +1046,7 @@ export function sendBrowserCommand(
     const envelope: Record<string, any> = { id, command, params };
     if (options.tabPattern) envelope.tabPattern = options.tabPattern;
     if (options.tabGroup) envelope.tabGroup = options.tabGroup;
+    if (options.isolate) envelope.isolate = true;
 
     conn.lastActivityAt = Date.now();
     conn.socket.write(JSON.stringify(envelope) + '\n');
