@@ -41,6 +41,14 @@ export interface ProgressFns {
    *  iteration instead of a buried backlog. The persistent run record
    *  (history view) still gets every line — only live view is reset. */
   stepActionBoundary?: (step: number, label: string) => void;
+  /** v2.7+: nuke live logs for ALL steps in one shot. Iterative top-level
+   *  scenarios (binance_from_x_link processing N URLs) call this between
+   *  iterations so step 2/3/4 cards aren't crowded with the previous
+   *  URL's logs. The persistent run record is unaffected — only the live
+   *  in-memory buffer is wiped. Falls back gracefully when missing
+   *  (orchestrator detects via typeof check and uses braille-spacer
+   *  fallback for old client builds). */
+  stepResetAll?: () => void;
   finishProgress: (status: 'done' | 'error' | 'partial', error?: string) => void;
   isAbortRequested: () => boolean;
   /** v2.4.35+: accumulate AI token usage per task so the run record
@@ -519,6 +527,13 @@ function buildContext(
       else { step = ctx._currentStep || 1; label = String(args[0] || ''); }
       progress.stepActionBoundary(step, label);
     },
+    /** v2.7+: clear live logs across ALL steps. Used by iterative top-level
+     *  scenarios (binance_from_x_link 5 URLs) so each iteration starts
+     *  with empty step cards. Falls back to undefined on old client builds —
+     *  orchestrators check via `typeof ctx.stepResetAll === 'function'`. */
+    stepResetAll: progress.stepResetAll
+      ? () => progress.stepResetAll!()
+      : undefined,
     finish: (status: string, error?: string) => progress.finishProgress(status as any, error),
     aborted: () => progress.isAbortRequested(),
 

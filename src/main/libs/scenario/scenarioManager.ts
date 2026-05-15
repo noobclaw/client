@@ -303,6 +303,20 @@ function stepActionBoundary(taskId: string, step: number, label: string): void {
   }
 }
 
+/** v2.7+: clear live logs across ALL steps in one shot. Top-level iterative
+ *  scenarios (binance_from_x_link 5 URLs / binance_from_x_repost) call this
+ *  between iterations so step 2/3/4 cards aren't crowded with the prior
+ *  URL's logs. Persistent run record is unaffected — only the live in-memory
+ *  buffer per step is wiped. The orchestrator follows up with a stepLog on
+ *  step 1 to set the "📦 第 N/M 条 开始" header. */
+function stepResetAll(taskId: string): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  for (const s of p.steps) {
+    if (s) s.logs = [];
+  }
+}
+
 /** Set the per-type planned target. Called once near the start of a run
  *  after the orchestrator picks daily caps (e.g. nLike from a random
  *  range). Multiple calls overwrite — last write wins. */
@@ -830,6 +844,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       stepDone: (step) => stepDone(tid, step),
       stepError: (step, error) => stepError(tid, step, error),
       stepActionBoundary: (step: number, label: string) => stepActionBoundary(tid, step, label),
+      stepResetAll: () => stepResetAll(tid),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
       addTokensUsed: (tokensDelta, costDeltaUsd) => {
@@ -1069,6 +1084,7 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
       stepError: (step: number, error: string) => stepError(tid, step, error),
       stepActionBoundary: (step: number, label: string) =>
         stepActionBoundary(tid, step, label),
+      stepResetAll: () => stepResetAll(tid),
       finishProgress: (status: 'done' | 'error', error?: string) =>
         finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
