@@ -131,7 +131,15 @@ export function markRunSuccess(
   }
 }
 
-export function markRunFailure(task_id: string, reason: string): void {
+export function markRunFailure(
+  task_id: string,
+  reason: string,
+  extras?: {
+    action_counts?: Record<string, number>;
+    tokens_used?: number;
+    cost_usd?: number;
+  },
+): void {
   ensureLoaded();
   const runs = state.runs[task_id] || [];
   const latest = runs[runs.length - 1];
@@ -139,6 +147,21 @@ export function markRunFailure(task_id: string, reason: string): void {
     latest.status = 'failed';
     latest.ended_at = Date.now();
     latest.reason = reason;
+    // v5.x+: persist whatever counts the orchestrator already accumulated
+    // before the failure / user-stop. Without this, manual stops at "已发
+    // 20/30" silently drop +20 from the all-time aggregate (the bug user
+    // saw: "累计 4" when one stopped run actually finished 20). Mirrors
+    // markRunSuccess's extras handling — only set when present, so old
+    // failure rows stay clean.
+    if (extras?.action_counts && Object.keys(extras.action_counts).length > 0) {
+      latest.action_counts = extras.action_counts;
+    }
+    if (typeof extras?.tokens_used === 'number' && extras.tokens_used > 0) {
+      latest.tokens_used = extras.tokens_used;
+    }
+    if (typeof extras?.cost_usd === 'number' && extras.cost_usd > 0) {
+      latest.cost_usd = extras.cost_usd;
+    }
     persist();
   }
 }

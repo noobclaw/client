@@ -35,6 +35,12 @@ export interface ProgressFns {
   stepLog: (step: number, status: 'done' | 'running' | 'error', message: string) => void;
   stepDone: (step: number) => void;
   stepError: (step: number, error: string) => void;
+  /** v5.x+: clear the live in-memory log buffer for a step and seed it with
+   *  `label`. Used by iterative scenarios (X auto-engage step 2 doing 30
+   *  follow / reply / like in a row) so the UI shows ONLY the current
+   *  iteration instead of a buried backlog. The persistent run record
+   *  (history view) still gets every line — only live view is reset. */
+  stepActionBoundary?: (step: number, label: string) => void;
   finishProgress: (status: 'done' | 'error' | 'partial', error?: string) => void;
   isAbortRequested: () => boolean;
   /** v2.4.35+: accumulate AI token usage per task so the run record
@@ -474,6 +480,23 @@ function buildContext(
     },
     stepLog: (step: number, status: string, msg: string) => progress.stepLog(step, status as any, msg),
     stepDone: (step: number) => progress.stepDone(step),
+    /** v5.x+: orchestrator opt-in for iterative steps. Call at the top of each
+     *  iteration (e.g. before each follow / reply / like in X auto-engage's
+     *  step 2 loop) so the live UI clears the previous iteration's logs and
+     *  shows only the current one. The full log timeline is preserved in the
+     *  persistent run record (history view). Falls back to a no-op when the
+     *  callback is missing — older client builds keep the old accumulating
+     *  behavior. Both signatures supported:
+     *    ctx.startAction('🎯 关注 @user')          → uses ctx._currentStep
+     *    ctx.startAction(2, '🎯 关注 @user')       → explicit step number
+     */
+    startAction: (...args: any[]) => {
+      if (!progress.stepActionBoundary) return;
+      let step: number, label: string;
+      if (typeof args[0] === 'number') { step = args[0]; label = String(args[1] || ''); }
+      else { step = ctx._currentStep || 1; label = String(args[0] || ''); }
+      progress.stepActionBoundary(step, label);
+    },
     finish: (status: string, error?: string) => progress.finishProgress(status as any, error),
     aborted: () => progress.isAbortRequested(),
 

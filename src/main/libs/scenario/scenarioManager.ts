@@ -9,6 +9,7 @@
  * Each step emits progress logs that the renderer polls via getRunProgress().
  */
 
+import { powerSaveBlocker } from 'electron';
 import { coworkLog } from '../coworkLogger';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
@@ -21,6 +22,46 @@ import type {
   ScenarioPack,
   ScenarioTask,
 } from './types';
+
+// ── Sleep prevention (v5.x+) ─────────────────────────────────────────
+// Mirrors what the chrome extension does (chrome.power.requestKeepAwake)
+// so the OS doesn't suspend the Electron main process either while a
+// scenario task is running. Without this, idle-driven system sleep
+// freezes the orchestrator mid-flight (browser commands timeout, AI calls
+// abort, etc.). 'prevent-app-suspension' = same semantics as
+// chrome.power('system'): keeps system active, lets the screen turn off
+// normally (battery friendly).
+//
+// Refcounted so multiple parallel tasks (XHS + Twitter etc.) keep one
+// blocker alive across the union of their runtimes — released the
+// moment the last task exits.
+//
+// Boundaries we CAN'T fight: explicit user "Sleep" click, laptop lid
+// close, critical battery — all hardware/UX driven by the user, not
+// power policy.
+let _powerBlockerId: number | null = null;
+let _activeTaskCount = 0;
+function acquireKeepAwake(): void {
+  _activeTaskCount++;
+  if (_powerBlockerId === null) {
+    try {
+      _powerBlockerId = powerSaveBlocker.start('prevent-app-suspension');
+    } catch (e) {
+      coworkLog('WARN', 'scenarioManager', 'powerSaveBlocker.start failed: ' + (e as any)?.message);
+    }
+  }
+}
+function releaseKeepAwake(): void {
+  _activeTaskCount = Math.max(0, _activeTaskCount - 1);
+  if (_activeTaskCount === 0 && _powerBlockerId !== null) {
+    try {
+      powerSaveBlocker.stop(_powerBlockerId);
+    } catch (e) {
+      coworkLog('WARN', 'scenarioManager', 'powerSaveBlocker.stop failed: ' + (e as any)?.message);
+    }
+    _powerBlockerId = null;
+  }
+}
 
 // AI rescue (v5.6.2+): only attempt for failures that smell like a
 // DOM/selector breakage. Network, abort, balance, and AI-quota failures
@@ -225,6 +266,41 @@ function stepDone(taskId: string, step: number): void {
   const p = progressByTaskId.get(taskId);
   if (!p) return;
   p.steps[step - 1].status = 'done';
+}
+
+/** v5.x+: action-boundary marker for iterative steps (e.g. X auto-engage's
+ *  step 2 doing 30 follow/reply/like actions in a row). Clears the in-
+ *  memory step logs and seeds them with `label` so the UI shows ONLY the
+ *  current action's progress instead of a 30-action backlog (which
+ *  overflowed the 30-line cap and made it impossible to see what's
+ *  happening right now).
+ *
+ *  The persistent run record (runRecords.appendStepLog) keeps the full
+ *  pre-clear log timeline — history view is unaffected. Live and history
+ *  views diverge intentionally: live = "what's happening now", history =
+ *  "what happened across the whole run".
+ *
+ *  Orchestrators opt in by calling ctx.startAction(label) at the top of
+ *  each iteration; orchestrators that don't call it keep the old
+ *  accumulating behavior (backwards compatible). */
+function stepActionBoundary(taskId: string, step: number, label: string): void {
+  const p = progressByTaskId.get(taskId);
+  if (!p) return;
+  const stepIdx = step - 1;
+  if (!p.steps[stepIdx]) return;
+  // Wipe live logs and seed with the action header.
+  p.steps[stepIdx].logs = [];
+  const time = now();
+  p.steps[stepIdx].logs.push({ time, status: 'running', message: label });
+  // Mirror the marker into the run record so the persistent timeline
+  // visually separates one iteration from the next ("─── action 1 ───").
+  const recordId = recordIdByTaskId.get(taskId);
+  if (recordId) {
+    try {
+      const runRecords = require('./runRecords');
+      runRecords.appendStepLog(recordId, { time, step, status: 'running', message: label });
+    } catch { /* non-fatal */ }
+  }
 }
 
 /** Set the per-type planned target. Called once near the start of a run
@@ -690,6 +766,10 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
   // review what was uploaded later from the history page.
   startTaskRecord(task, pack.manifest);
 
+  // Acquire keep-awake INSIDE the try so the finally is guaranteed to
+  // release. Pre-try throws (e.g. startTaskRecord above) would leak the
+  // blocker if we acquired before try.
+  acquireKeepAwake();
   try {
     const script = pack.upload_draft_script;
     if (!script) {
@@ -749,6 +829,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
       stepLog: (step, status, message) => stepLog(tid, step, status, message),
       stepDone: (step) => stepDone(tid, step),
       stepError: (step, error) => stepError(tid, step, error),
+      stepActionBoundary: (step: number, label: string) => stepActionBoundary(tid, step, label),
       finishProgress: (status, error) => finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
       addTokensUsed: (tokensDelta, costDeltaUsd) => {
@@ -781,6 +862,7 @@ export async function uploadOneDraft(taskId: string, draftId: string): Promise<R
     return result;
   } finally {
     releaseResources(resources);
+    releaseKeepAwake();
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
     tokensByTaskId.delete(task.id);
@@ -849,6 +931,10 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
   initProgress(task.id);
   startTaskRecord(task, pack.manifest);
 
+  // Acquire keep-awake INSIDE the try so the finally is guaranteed to
+  // release. Pre-try throws (e.g. startTaskRecord above) would leak the
+  // blocker if we acquired before try.
+  acquireKeepAwake();
   try {
     const outcome = await _runTaskInner(task, manual, pack);
     // v5.x+: backfill action_counts from the live RunProgress when the
@@ -914,6 +1000,7 @@ export async function runTask(task: ScenarioTask, manual?: boolean): Promise<Run
     return outcome;
   } finally {
     releaseResources(resources);
+    releaseKeepAwake();
     abortByTaskId.delete(task.id);
     recordIdByTaskId.delete(task.id);
     // v4.25.4: 之前 runTask 漏了清 tokens/cost,同任务跑两次成本翻倍记录。
@@ -980,6 +1067,8 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
         stepLog(tid, step, status, message),
       stepDone: (step: number) => stepDone(tid, step),
       stepError: (step: number, error: string) => stepError(tid, step, error),
+      stepActionBoundary: (step: number, label: string) =>
+        stepActionBoundary(tid, step, label),
       finishProgress: (status: 'done' | 'error', error?: string) =>
         finishProgress(tid, status, error),
       isAbortRequested: () => isAbortRequested(tid),
@@ -1077,7 +1166,17 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
       // 但 orchestrator 抛异常经 phaseRunner catch 返回时没调，这里兜底）
       if (cur?.status === 'running') finishProgress(tid, 'done');
     } else {
-      riskGuard.markRunFailure(task.id, result.reason || 'unknown');
+      // v5.x+: pass through whatever the orchestrator already accumulated
+      // before failure / user-stop. Without this, manual stops at "已发
+      // 20/30" silently dropped +20 from the all-time aggregate. The
+      // backfill block ~200 lines up populates result.action_counts from
+      // live RunProgress for early-stop paths so this is non-empty for
+      // partial runs.
+      riskGuard.markRunFailure(task.id, result.reason || 'unknown', {
+        action_counts: (result as any).action_counts,
+        tokens_used: tokensByTaskId.get(task.id) || 0,
+        cost_usd: costUsdByTaskId.get(task.id) || 0,
+      });
       // 关键修复：orchestrator 抛 user_stopped → phaseRunner catch → 这里。
       // 之前没调 finishProgress，UI 永远看不到 error 状态，一直显示"停止中"。
       if (cur?.status === 'running') finishProgress(tid, 'error', result.reason || 'unknown');
@@ -1091,7 +1190,28 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
     //   ensureLoaded() 抛(若 riskGuard 没 init),整条 error 路径挂掉,
     //   finishProgress 永远不调,progress 永久卡 'running' + 空 logs,UI 永远
     //   显示"正在启动…"。各步骤独立 try。
-    try { riskGuard.markRunFailure(task.id, msg); } catch (e) {
+    // v5.x+: 即使 orchestrator 硬崩,从 live progress 里把 action_progress 捞
+    //   出来传给 markRunFailure,partial 的 like / follow / comment 计数才不会
+    //   从累计里丢。
+    let _crashCounts: Record<string, number> | undefined;
+    try {
+      const live = progressByTaskId.get(task.id);
+      const ap = live?.action_progress;
+      if (ap) {
+        const counts: Record<string, number> = {};
+        for (const [k, v] of Object.entries(ap)) {
+          if ((v?.done || 0) > 0) counts[k] = v.done;
+        }
+        if (Object.keys(counts).length > 0) _crashCounts = counts;
+      }
+    } catch { /* non-fatal */ }
+    try {
+      riskGuard.markRunFailure(task.id, msg, {
+        action_counts: _crashCounts,
+        tokens_used: tokensByTaskId.get(task.id) || 0,
+        cost_usd: costUsdByTaskId.get(task.id) || 0,
+      });
+    } catch (e) {
       coworkLog('WARN', 'scenarioManager', `markRunFailure threw (riskGuard not initialized?)`, { err: String(e) });
     }
     try { finishProgress(task.id, 'error', msg); } catch (e) {
