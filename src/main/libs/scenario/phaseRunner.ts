@@ -13,7 +13,7 @@
 import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
-import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
+import { PLATFORM_TAB_GROUPS, closeDuplicatePlatformTabs, ensurePlatformsInSeparateWindows, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -2096,6 +2096,18 @@ export async function runOrchestrator(
         coworkLog('INFO', 'phaseRunner',
           `pre-run dedup: closed ${r.closed} duplicate managed tab(s)`,
           { platforms: platformsToClean });
+      }
+      // v2.7+: 跨平台任务,确保各平台 tab 在独立窗口里(不然后台 tab 被 chrome
+      // throttle —— 就是当初做 isolated_windows 的根本原因)。单平台任务自然
+      // 不需要,函数自己 early-return。dedup 完再 split,顺序重要 — 先收敛到
+      // 1 个 / platform,再去对比 windowId。
+      if (platformsToClean.length >= 2) {
+        const sr = await ensurePlatformsInSeparateWindows(platformsToClean);
+        if (sr.moved > 0) {
+          coworkLog('INFO', 'phaseRunner',
+            `pre-run split: moved ${sr.moved} tab(s) to dedicated windows`,
+            { platforms: platformsToClean });
+        }
       }
     }
   } catch (e) {

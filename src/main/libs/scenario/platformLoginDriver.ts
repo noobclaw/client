@@ -191,6 +191,79 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   }
 }
 
+/** v2.7+: 确保 platforms 列表里每个 platform 的 NoobClaw managed tab 都在
+ *  自己独立的窗口里 — 跨平台任务(binance + X)启动前调用,如果两个平台
+ *  tab 在同一窗口里共享,把第二个搬到新窗口,避免后台 tab 被 chrome 节流
+ *  (chrome 后台 tab 的 setTimeout 频率 1/min,rAF frozen — 是 isolated_
+ *  windows 整套设计的根本原因)。
+ *
+ *  优先保留 active tab 在原窗口;非 active 的搬走。如果用户没事先打开任何
+ *  managed tab,函数 no-op(任务后续会自己开新窗口,自然就独立)。
+ *
+ *  依赖 chrome-extension v1.4.11+(tab_list 返回 groupTitle) +
+ *  v1.4.12+(tab_to_new_window 命令)。老 ext silently no-op。 */
+export async function ensurePlatformsInSeparateWindows(
+  platforms: LoginPlatform[]
+): Promise<{ moved: number }> {
+  if (!platforms || platforms.length < 2) return { moved: 0 };
+  let listRes: any;
+  try {
+    listRes = await sendBrowserCommand('tab_list', {}, 3000);
+  } catch (e) {
+    coworkLog('WARN', 'platformLoginDriver',
+      'ensurePlatformsInSeparateWindows: tab_list failed', { err: String(e) });
+    return { moved: 0 };
+  }
+  const allTabs: any[] = Array.isArray(listRes?.tabs) ? listRes.tabs
+    : (Array.isArray(listRes?.data?.tabs) ? listRes.data.tabs : []);
+  // platform → 它的 managed tab(closeDuplicatePlatformTabs 已经收敛过,通常
+  // 只有 1 个;但调用顺序不保证,这里取第一个就行)
+  const tabByPlatform = new Map<LoginPlatform, any>();
+  for (const platform of platforms) {
+    const expectedTitle = PLATFORM_TAB_GROUPS[platform]?.title;
+    if (!expectedTitle) continue;
+    const tab = allTabs.find(t =>
+      typeof t?.groupTitle === 'string' && t.groupTitle === expectedTitle
+    );
+    if (tab) tabByPlatform.set(platform, tab);
+  }
+  if (tabByPlatform.size < 2) return { moved: 0 }; // 没共享的可能
+  // 按窗口分组,看哪些窗口里挤了多个 platform 的 tab
+  const windowToPlatforms = new Map<number, LoginPlatform[]>();
+  for (const [platform, tab] of tabByPlatform.entries()) {
+    const wid = tab.windowId;
+    if (typeof wid !== 'number') continue;
+    if (!windowToPlatforms.has(wid)) windowToPlatforms.set(wid, []);
+    windowToPlatforms.get(wid)!.push(platform);
+  }
+  let moved = 0;
+  for (const [wid, plats] of windowToPlatforms.entries()) {
+    if (plats.length < 2) continue;
+    // 决定谁留下:active tab 优先留;否则按 platforms 入参顺序第一个留
+    let keep: LoginPlatform = plats[0];
+    for (const p of plats) {
+      const t = tabByPlatform.get(p);
+      if (t?.active) { keep = p; break; }
+    }
+    const toMove = plats.filter(p => p !== keep);
+    coworkLog('INFO', 'platformLoginDriver',
+      `ensurePlatformsInSeparateWindows: window ${wid} shared by ${plats.join(', ')}, keep ${keep}, move ${toMove.join(', ')}`);
+    for (const p of toMove) {
+      const t = tabByPlatform.get(p);
+      if (!t || typeof t.id !== 'number') continue;
+      try {
+        await sendBrowserCommand('tab_to_new_window', { tabId: t.id }, 5000);
+        moved++;
+      } catch (mErr) {
+        coworkLog('WARN', 'platformLoginDriver',
+          `ensurePlatformsInSeparateWindows: failed to move ${p} tab ${t.id}`,
+          { err: String(mErr) });
+      }
+    }
+  }
+  return { moved };
+}
+
 /** v2.7+: 收敛同平台 NoobClaw managed tab 到 1 个 — 任务启动前调用,
  *  把累积的重复 X / binance / xhs ... NoobClaw managed tab 关到只剩一个。
  *  只关 NoobClaw 标签下的 tab(按 group title 筛),绝不动用户自己开的
