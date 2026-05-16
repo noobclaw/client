@@ -14,6 +14,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import type { Scenario, Task } from '../../services/scenario';
+import { fetchImageStyles, FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
 
 interface Props {
   scenario: Scenario;
@@ -86,13 +87,16 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   );
 
   // ── AI 生图风格 (仅 useRealPhotos=false 时用) ──
-  type AIImageStyle =
-    | 'realistic' | 'text_card' | 'illustration' | 'cinematic'
-    | 'anime' | '3d_render' | 'vintage' | 'minimalist'
-    | 'ink_wash' | 'oil_painting' | 'watercolor' | 'cyberpunk';
-  const [aiImageStyle, setAiImageStyle] = useState<AIImageStyle>(
-    ((initialTask as any)?.ai_image_style as AIImageStyle) || 'realistic'
+  // 风格列表从 backend /api/image/styles 拉取(server-side 单源)。默认 ai_auto。
+  const [stylesList, setStylesList] = useState(FALLBACK_IMAGE_STYLES);
+  const [aiImageStyle, setAiImageStyle] = useState<string>(
+    String((initialTask as any)?.ai_image_style || 'ai_auto')
   );
+  useEffect(() => {
+    let alive = true;
+    fetchImageStyles().then(res => { if (alive) setStylesList(res.styles); });
+    return () => { alive = false; };
+  }, []);
 
   const keywordTokens = useMemo(() => {
     return realPhotoKeywords.trim().split(/\s+/).filter(s => s.length > 0);
@@ -370,31 +374,18 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     {isZh ? '🎨 AI 生图风格' : '🎨 AI image style'}
                   </label>
                   <div className="grid grid-cols-3 gap-2">
-                    {([
-                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic', descZh: '真实摄影感', descEn: 'Real photo' },
-                      { value: 'text_card',    icon: '🎴', zh: '文字卡片', en: 'Text card', descZh: '米白底大字', descEn: 'Cream bg' },
-                      { value: 'illustration', icon: '✏️', zh: '手绘插画', en: 'Illustration', descZh: '扁平 + 清新', descEn: 'Flat & fresh' },
-                      { value: 'cinematic',    icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围', descEn: 'Moody lighting' },
-                      { value: 'anime',        icon: '🌸', zh: '动漫风格', en: 'Anime', descZh: '日系二次元', descEn: 'Japanese anime' },
-                      { value: '3d_render',    icon: '🧊', zh: '3D 渲染', en: '3D render', descZh: '立体质感', descEn: 'Volumetric' },
-                      { value: 'vintage',      icon: '🎞️', zh: '复古胶片', en: 'Vintage', descZh: '怀旧颗粒', descEn: 'Grainy retro' },
-                      { value: 'minimalist',   icon: '◻️', zh: '极简设计', en: 'Minimalist', descZh: '留白 + 单色', descEn: 'Whitespace' },
-                      { value: 'ink_wash',     icon: '🖌️', zh: '水墨国风', en: 'Ink wash', descZh: '中国水墨写意', descEn: 'Chinese ink' },
-                      { value: 'oil_painting', icon: '🖼️', zh: '油画风格', en: 'Oil painting', descZh: '厚涂笔触', descEn: 'Thick strokes' },
-                      { value: 'watercolor',   icon: '💧', zh: '水彩绘画', en: 'Watercolor', descZh: '透明渐染', descEn: 'Soft wash' },
-                      { value: 'cyberpunk',    icon: '🌃', zh: '赛博朋克', en: 'Cyberpunk', descZh: '霓虹 + 未来', descEn: 'Neon future' },
-                    ] as Array<{ value: AIImageStyle; icon: string; zh: string; en: string; descZh: string; descEn: string }>).map(opt => {
-                      const active = aiImageStyle === opt.value;
+                    {stylesList.map(opt => {
+                      const active = aiImageStyle === opt.id;
                       return (
                         <label
-                          key={opt.value}
+                          key={opt.id}
                           className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${active ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}
                         >
                           <input
                             type="radio"
                             name="dy_ai_image_style"
                             checked={active}
-                            onChange={() => setAiImageStyle(opt.value)}
+                            onChange={() => setAiImageStyle(opt.id)}
                             className="mt-0.5"
                             disabled={saving}
                           />
@@ -403,7 +394,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                               {opt.icon} {isZh ? opt.zh : opt.en}
                             </div>
                             <div className="text-gray-500 dark:text-gray-400">
-                              {isZh ? opt.descZh : opt.descEn}
+                              {isZh ? opt.desc_zh : opt.desc_en}
                             </div>
                           </div>
                         </label>
