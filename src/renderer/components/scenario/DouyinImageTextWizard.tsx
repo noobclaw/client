@@ -86,9 +86,9 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   );
 
   // ── AI 生图风格 (仅 useRealPhotos=false 时用) ──
-  type AIImageStyle = 'text_card' | 'realistic' | 'illustration' | 'cinematic';
+  type AIImageStyle = 'realistic' | 'text_card' | 'illustration' | 'cinematic' | 'anime' | '3d_render' | 'vintage' | 'minimalist';
   const [aiImageStyle, setAiImageStyle] = useState<AIImageStyle>(
-    ((initialTask as any)?.ai_image_style as AIImageStyle) || 'text_card'
+    ((initialTask as any)?.ai_image_style as AIImageStyle) || 'realistic'
   );
 
   const keywordTokens = useMemo(() => {
@@ -294,8 +294,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: '实景图（从抖音抓现成的）',
-                      titleEn: 'Real photos (from Douyin)',
+                      titleZh: '网络图片（从抖音抓现成的）',
+                      titleEn: 'Web images (from Douyin)',
                       descZh: '按你填的关键词去抖音抓相关图片,成本较低。',
                       descEn: 'Grabs relevant images from Douyin by your keywords. Lower cost.',
                     },
@@ -328,12 +328,26 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 </div>
               </div>
 
-              {/* 图片张数 */}
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? `每篇配图张数（${REAL_PHOTO_MIN}-${REAL_PHOTO_MAX}）` : `Images per post (${REAL_PHOTO_MIN}-${REAL_PHOTO_MAX})`}
-                </label>
-                <div className="flex items-center gap-3">
+              {/* 两个 slider 并排:每次生成几篇 + 每篇配图张数 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? `每次生成 ${dailyCount} 篇` : `Posts per run: ${dailyCount}`}
+                  </label>
+                  <input
+                    type="range"
+                    min={DAILY_COUNT_MIN}
+                    max={DAILY_COUNT_MAX}
+                    value={dailyCount}
+                    onChange={e => setDailyCount(parseInt(e.target.value, 10))}
+                    disabled={saving}
+                    className="w-full accent-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? `每篇配 ${realPhotoCount} 张图` : `${realPhotoCount} images per post`}
+                  </label>
                   <input
                     type="range"
                     min={REAL_PHOTO_MIN}
@@ -341,18 +355,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     value={realPhotoCount}
                     onChange={e => setRealPhotoCount(parseInt(e.target.value, 10))}
                     disabled={saving}
-                    className="flex-1 accent-violet-500"
+                    className="w-full accent-violet-500"
                   />
-                  <span className="text-lg font-bold text-violet-500 min-w-[2ch] text-center">{realPhotoCount}</span>
-                </div>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                  {useRealPhotos
-                    ? (isZh
-                        ? `按 ${realPhotoCount} 张目标去抖音搜图(不够会自动重试,最少 2 张才上传)。抖音图文最多 18 张。`
-                        : `Targets ${realPhotoCount} per post (auto-retries if short; uploads only if ≥2 found). Douyin supports up to 18 images per note.`)
-                    : (isZh
-                        ? `AI 会生成 ${realPhotoCount} 张文字卡片图(按正文段落分主题)。`
-                        : `AI generates ${realPhotoCount} text-card images, themed across rewritten paragraphs.`)}
                 </div>
               </div>
 
@@ -364,10 +368,14 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     {([
+                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic photo', descZh: '真实摄影感,无文字', descEn: 'Real photo, no text' },
                       { value: 'text_card',    icon: '🎴', zh: '文字卡片', en: 'Text card', descZh: '米白底大字标题', descEn: 'Cream bg, big title' },
-                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic photo', descZh: '真实摄影感,无文字', descEn: 'Real photo feel, no text' },
                       { value: 'illustration', icon: '✏️', zh: '手绘插画', en: 'Illustration', descZh: '扁平 + 清新色彩', descEn: 'Flat + fresh colors' },
-                      { value: 'cinematic',   icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围感', descEn: 'Mood + lighting' },
+                      { value: 'cinematic',    icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围感', descEn: 'Mood + lighting' },
+                      { value: 'anime',        icon: '🌸', zh: '动漫风格', en: 'Anime', descZh: '日系二次元', descEn: 'Japanese anime' },
+                      { value: '3d_render',    icon: '🧊', zh: '3D 渲染', en: '3D render', descZh: '立体质感', descEn: 'Volumetric & shiny' },
+                      { value: 'vintage',      icon: '🎞️', zh: '复古胶片', en: 'Vintage film', descZh: '怀旧颗粒感', descEn: 'Grainy retro' },
+                      { value: 'minimalist',   icon: '◻️', zh: '极简设计', en: 'Minimalist', descZh: '留白 + 单色', descEn: 'Whitespace + mono' },
                     ] as Array<{ value: AIImageStyle; icon: string; zh: string; en: string; descZh: string; descEn: string }>).map(opt => {
                       const active = aiImageStyle === opt.value;
                       return (
@@ -426,29 +434,6 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   </div>
                 </div>
               )}
-
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? '每次运行生成几条图文' : 'Posts per run'}
-                </label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={DAILY_COUNT_MIN}
-                    max={DAILY_COUNT_MAX}
-                    value={dailyCount}
-                    onChange={e => setDailyCount(parseInt(e.target.value, 10))}
-                    disabled={saving}
-                    className="flex-1 accent-violet-500"
-                  />
-                  <span className="text-lg font-bold text-violet-500 min-w-[2ch] text-center">{dailyCount}</span>
-                </div>
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                  {isZh
-                    ? `每次运行从 3 段里独立随机抽 ${dailyCount} 次（同一段可能被重复选中）。建议 1-2 条,避免单日发太多触发抖音风控。`
-                    : `Each run picks ${dailyCount} times independently from your 3 segments. 1-2 recommended — too many per day risks Douyin's rate control.`}
-                </div>
-              </div>
 
               <div>
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
