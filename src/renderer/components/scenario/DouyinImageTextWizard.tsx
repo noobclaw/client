@@ -84,6 +84,13 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const [realPhotoKeywords, setRealPhotoKeywords] = useState<string>(
     String((initialTask as any)?.real_photo_keywords || '')
   );
+
+  // ── AI 生图风格 (仅 useRealPhotos=false 时用) ──
+  type AIImageStyle = 'text_card' | 'realistic' | 'illustration' | 'cinematic';
+  const [aiImageStyle, setAiImageStyle] = useState<AIImageStyle>(
+    ((initialTask as any)?.ai_image_style as AIImageStyle) || 'text_card'
+  );
+
   const keywordTokens = useMemo(() => {
     return realPhotoKeywords.trim().split(/\s+/).filter(s => s.length > 0);
   }, [realPhotoKeywords]);
@@ -124,7 +131,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [seg1, seg2, seg3, dailyCount, uploadMode, runInterval, useRealPhotos, realPhotoCount, realPhotoKeywords]);
+  }, [seg1, seg2, seg3, dailyCount, uploadMode, runInterval, useRealPhotos, realPhotoCount, realPhotoKeywords, aiImageStyle]);
 
   const validSegments = [seg1, seg2, seg3]
     .map(s => s.trim())
@@ -182,6 +189,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
         use_real_photos: useRealPhotos,
         real_photo_count: realPhotoCount,
         real_photo_keywords: useRealPhotos ? keywordTokens.slice(0, KEYWORDS_MAX_COUNT).join(' ') : '',
+        ai_image_style: useRealPhotos ? null : aiImageStyle,
       });
     } catch (err) {
       console.error('[DouyinImageTextWizard] save failed:', err);
@@ -347,6 +355,48 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                         : `AI generates ${realPhotoCount} text-card images, themed across rewritten paragraphs.`)}
                 </div>
               </div>
+
+              {/* AI 生图风格选择 — 仅 useRealPhotos=false 时显示 */}
+              {!useRealPhotos && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? '🎨 AI 生图风格' : '🎨 AI image style'}
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'text_card',    icon: '🎴', zh: '文字卡片', en: 'Text card', descZh: '米白底大字标题', descEn: 'Cream bg, big title' },
+                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic photo', descZh: '真实摄影感,无文字', descEn: 'Real photo feel, no text' },
+                      { value: 'illustration', icon: '✏️', zh: '手绘插画', en: 'Illustration', descZh: '扁平 + 清新色彩', descEn: 'Flat + fresh colors' },
+                      { value: 'cinematic',   icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围感', descEn: 'Mood + lighting' },
+                    ] as Array<{ value: AIImageStyle; icon: string; zh: string; en: string; descZh: string; descEn: string }>).map(opt => {
+                      const active = aiImageStyle === opt.value;
+                      return (
+                        <label
+                          key={opt.value}
+                          className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${active ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                        >
+                          <input
+                            type="radio"
+                            name="dy_ai_image_style"
+                            checked={active}
+                            onChange={() => setAiImageStyle(opt.value)}
+                            className="mt-0.5"
+                            disabled={saving}
+                          />
+                          <div className="flex-1 text-xs leading-relaxed">
+                            <div className="font-semibold dark:text-white mb-0.5">
+                              {opt.icon} {isZh ? opt.zh : opt.en}
+                            </div>
+                            <div className="text-gray-500 dark:text-gray-400">
+                              {isZh ? opt.descZh : opt.descEn}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* 实景图关键词输入框 — 仅 useRealPhotos=true 时显示 */}
               {useRealPhotos && (
