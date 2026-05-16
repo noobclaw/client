@@ -29,6 +29,7 @@ import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
 import { YoutubeWorkflowsPage } from './YoutubeWorkflowsPage';
 import { TikTokWorkflowsPage } from './TikTokWorkflowsPage';
 import { DouyinWorkflowsPage } from './DouyinWorkflowsPage';
+import { WalletBadge } from '../common/WalletBadge';
 
 type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
 
@@ -622,6 +623,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">
             {i18nService.t('quickUse')}
           </h1>
+          {/* v1.x: 钱包余额 + 充值入口紧跟标题,跟 CoworkView 顶栏一致 */}
+          <div className="non-draggable">
+            <WalletBadge />
+          </div>
         </div>
         <WindowTitleBar inline />
       </div>
