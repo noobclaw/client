@@ -64,3 +64,6 @@ chrome-extension.zip
 # of the extension repo or a stale build artifact doesn't sneak back in.
 chrome-extension/
 src-tauri/resources/chrome-extension/
+
+# TS incremental build cache
+tsconfig.node.tsbuildinfo
