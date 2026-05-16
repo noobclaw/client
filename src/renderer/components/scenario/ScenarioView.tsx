@@ -14,6 +14,7 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
+import { noobClawAuth } from '../../services/noobclawAuth';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { DEFAULT_SCENARIOS } from '../../data/defaultScenarios';
 import { XhsWorkflowsPage } from './XhsWorkflowsPage';
@@ -404,6 +405,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // we offer one-click jumps to the create page for either platform.
         const isZh = i18nService.currentLanguage === 'zh';
         const goCreate = (platform: PlatformId) => {
+          // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
+          if (!noobClawAuth.hasEnoughBalanceForTask()) return;
           setView({ kind: 'main', section: 'create', platform });
         };
         return (
@@ -481,7 +484,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           platformId={currentPlatform === 'x' ? 'x' : currentPlatform === 'binance' ? 'binance' : 'xhs'}
           onOpenTask={openTask}
           onRefresh={refreshAll}
-          onGoCreate={() => setView({ kind: 'main', section: 'create', platform: currentPlatform })}
+          onGoCreate={() => {
+            // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
+            if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+            setView({ kind: 'main', section: 'create', platform: currentPlatform });
+          }}
         />
       );
     }
@@ -678,7 +685,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               inside the create page's scenario cards, not here. */}
           <button
             type="button"
-            onClick={() => setSection('create')}
+            onClick={() => {
+              // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
+              if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+              setSection('create');
+            }}
             className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-green-500/30 active:scale-95 bg-green-500 hover:bg-green-600 text-white border border-green-500"
           >
             <span>✨</span>

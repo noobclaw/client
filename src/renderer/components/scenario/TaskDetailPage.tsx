@@ -565,6 +565,10 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
       return;
     }
 
+    // 1b. Balance check — 余额 < 10000 时弹"积分不足"提示框,点击充值跳
+    //     钱包页;否则继续启动任务。阈值见 noobClawAuth.hasEnoughBalanceForTask。
+    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+
     // 2. Open the pre-run modal IMMEDIATELY so the user sees instant
     //    visual feedback. Pre-2.4.30 we awaited getRunningTaskIds +
     //    listTasks + listScenarios BEFORE setLoginModalOpen, which on a

@@ -129,6 +129,29 @@ class NoobClawAuthService {
     } catch { /* ignore */ }
   }
 
+  /**
+   * Client-side pre-flight check before kicking off any task that will burn
+   * credits (创建涨粉任务 / 直接运行任务). If balance is below `threshold`,
+   * fires the same 'noobclaw:token-insufficient' event used by /api/ai 402
+   * responses so App-level TokenInsufficientDialog renders — caller should
+   * `return` when this returns false.
+   *
+   * Default threshold 10000: one 涨粉 round burns roughly 1.5-4.5K tokens
+   * (action charges + AI 写评论的 token),10000 ≈ 2-3 轮 buffer 让用户至少
+   * 跑完手头这个任务再充。
+   *
+   * Returns true when balance is sufficient OR user is unauthenticated
+   * (login UI 会先拦在前面,这里不重复弹窗)。
+   */
+  hasEnoughBalanceForTask(threshold = 10000): boolean {
+    if (!this.state.isAuthenticated) return true;
+    if (this.state.tokenBalance >= threshold) return true;
+    window.dispatchEvent(new CustomEvent('noobclaw:token-insufficient', {
+      detail: { balance: this.state.tokenBalance, threshold },
+    }));
+    return false;
+  }
+
   async refreshBalance(): Promise<number> {
     if (!this.state.authToken) return 0;
     try {
