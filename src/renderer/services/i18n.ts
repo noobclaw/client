@@ -1259,7 +1259,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // CoworkView
     coworkWebsite: '官网',
     coworkOpenSource: '开源认证项目 · 安全无毒放心使用 · 查看源码',
-    coworkTokenBalance: '积分: {n}',
+    coworkTokenBalance: '💎 剩余积分: {n}',
     coworkLowBalance: '余额不足 · 充值',
     coworkConnectWallet: '登录',
   },
@@ -2506,7 +2506,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // CoworkView
     coworkWebsite: 'Website',
     coworkOpenSource: 'Open Source · Safe & Verified · View Source',
-    coworkTokenBalance: 'Credits: {n}',
+    coworkTokenBalance: '💎 Credits left: {n}',
     coworkLowBalance: 'Low Balance · Top Up',
     coworkConnectWallet: 'Login',
   },
@@ -3155,7 +3155,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // CoworkView
     coworkWebsite: '官網',
     coworkOpenSource: '開源認證項目 · 安全無毒放心使用 · 查看原始碼',
-    coworkTokenBalance: '積分: {n}',
+    coworkTokenBalance: '💎 剩餘積分: {n}',
     coworkLowBalance: '餘額不足 · 充值',
     coworkConnectWallet: '登入',
   },
