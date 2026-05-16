@@ -155,19 +155,18 @@ export const DouyinConfigWizard: React.FC<Props> = ({
 
   // v5.x+: 默认值跟 Twitter reply 2/2 看齐
   const [cmtMin, setCmtMinRaw] = useState<number>(
-    Math.max(1, typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 2)
+    typeof (initialTask as any)?.daily_comment_min === 'number' ? (initialTask as any).daily_comment_min : 2
   );
   const [cmtMax, setCmtMaxRaw] = useState<number>(
     typeof (initialTask as any)?.daily_comment_max === 'number' ? (initialTask as any).daily_comment_max : 2
   );
-  // v1.x: 评论数下限强制 ≥ 1 (user 要求 "互动任务评论最小只能设为 1")
   const setCmtMin = (v: number) => {
-    const n = Math.max(1, Math.min(COMMENT_HARDCAP, v));
+    const n = Math.max(0, Math.min(COMMENT_HARDCAP, v));
     setCmtMinRaw(n);
     setCmtMaxRaw(prev => (prev < n ? n : prev));
   };
   const setCmtMax = (v: number) => {
-    const n = Math.max(1, Math.min(COMMENT_HARDCAP, v));
+    const n = Math.max(0, Math.min(COMMENT_HARDCAP, v));
     setCmtMaxRaw(n);
     setCmtMinRaw(prev => (prev > n ? n : prev));
   };
@@ -344,7 +343,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
               <RangeSlider
                 label={isZh ? '每次运行评论数量' : 'Comments per run'}
                 min={cmtMin} max={cmtMax} setMin={setCmtMin} setMax={setCmtMax}
-                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (1-${COMMENT_HARDCAP},内容由 AI 按视频上下文 + 关键词自动写)` : `Random ${cmtMin}-${cmtMax} comments (1-${COMMENT_HARDCAP}, AI auto-writes from video context + keyword)`}
+                hardCap={COMMENT_HARDCAP} hint={isZh ? `每次随机发 ${cmtMin}-${cmtMax} 条评论 (0-${COMMENT_HARDCAP},内容由 AI 按视频上下文 + 关键词自动写)` : `Random ${cmtMin}-${cmtMax} comments (0-${COMMENT_HARDCAP}, AI auto-writes from video context + keyword)`}
                 disabled={saving}
               />
 
