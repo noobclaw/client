@@ -639,9 +639,18 @@ function buildContext(
           // 402 insufficient_balance / 422 bad input / 500 server
           return { ok: false, reason: String(data?.error || `http_${res.status}`) };
         }
+        const charged = typeof data?.charged === 'number' ? data.charged : 0;
+        const costUsd = typeof data?.cost_usd === 'number' ? data.cost_usd : 0;
+        // v1.x: feed the per-action charge into the same tokens/cost stream
+        // as AI chat + image gen, so TaskDetailPage 的「本次/上次/累计消耗」
+        // 💎 + $ 数字把按次扣费也算进来。旧版本(后端 charge.ts 没返 cost_usd)
+        // 时 costUsd = 0,💎 数字仍准,只是 $ 那栏偏低。
+        if (charged > 0 && progress.addTokensUsed) {
+          progress.addTokensUsed(charged, costUsd);
+        }
         return {
           ok: true,
-          charged: typeof data?.charged === 'number' ? data.charged : 0,
+          charged,
           balance_after: typeof data?.balance_after === 'number' ? data.balance_after : undefined,
         };
       } catch (err: any) {
