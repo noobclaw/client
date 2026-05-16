@@ -32,6 +32,13 @@ const WORKFLOW_META: Record<string, { icon: string; titleKey: string; descKey: s
     titleKey: 'scenarioWorkflowViral',
     descKey: 'scenarioWorkflowViralDesc',
   },
+  // v1.1.x: image-text 独立 workflow_type,跟 viral_production 分开避免 .find 撞车。
+  // 没单独 i18n key 时复用 viral 的标题(图文创作也算"爆款生产"的一种)。
+  image_text_creation: {
+    icon: '📝',
+    titleKey: 'scenarioWorkflowViral',
+    descKey: 'scenarioWorkflowViralDesc',
+  },
   auto_reply: {
     icon: '💬',
     titleKey: 'scenarioWorkflowAutoReply',

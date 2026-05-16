@@ -172,7 +172,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const IMAGE_TEXT_FALLBACK: Scenario = {
     ...FALLBACK_SCENARIO,
     id: 'xhs_image_text',
-    workflow_type: 'viral_production' as any,
+    workflow_type: 'image_text_creation' as any,
     name_zh: '小红书 · 图文创作',
     name_en: 'XHS Image-Text Creation',
     description_zh: '填 3 段灵感, AI 改写成小红书笔记。配图二选一: AI 生图 或 关键词去小红书抓实景图(2-6 张可调)。整完上传到草稿箱。',
@@ -399,7 +399,33 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 2. Link mode */}
+        {/* 3. Image-text creation (3 段灵感 → AI 改写 → 配图二选一 → 草稿箱) */}
+        <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '图文创作' : 'Image-Text'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              📝 {i18nService.currentLanguage === 'zh' ? '小红书 · 图文创作' : 'XHS Image-Text Creation'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '填 3 段灵感来源，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到草稿箱手动审核发布。'
+                : 'Fill 3 source snippets; AI rewrites into a XHS note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable). Uploads to drafts for manual review.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleImageTextClick}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-500/25 transition-all active:scale-95"
+            >
+              📝 {i18nService.currentLanguage === 'zh' ? '开始创作' : 'Start Creating'} →
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Link mode */}
         <div className="relative rounded-2xl border border-purple-500/30 bg-gradient-to-br from-purple-500/10 via-fuchsia-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-purple-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -423,7 +449,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 3. Sensitive-word checker */}
+        {/* 5. Sensitive-word checker */}
         <div className="relative rounded-2xl border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 via-amber-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-yellow-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -445,32 +471,6 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-yellow-500 text-white hover:bg-yellow-600 shadow-lg shadow-yellow-500/25 transition-all active:scale-95"
             >
               🚫 {i18nService.currentLanguage === 'zh' ? '开始检测' : 'Start Check'} →
-            </button>
-          </div>
-        </div>
-
-        {/* 5. Image-text creation (3 段灵感 → AI 改写 → 配图二选一 → 草稿箱) */}
-        <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
-          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
-          <div className="relative flex flex-col h-full">
-            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '图文创作' : 'Image-Text'}
-            </div>
-            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              📝 {i18nService.currentLanguage === 'zh' ? '小红书 · 图文创作' : 'XHS Image-Text Creation'}
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
-              {i18nService.currentLanguage === 'zh'
-                ? '填 3 段灵感来源，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到草稿箱手动审核发布。'
-                : 'Fill 3 source snippets; AI rewrites into a XHS note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable). Uploads to drafts for manual review.'}
-            </p>
-            <button
-              type="button"
-              onClick={handleImageTextClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-500/25 transition-all active:scale-95"
-            >
-              📝 {i18nService.currentLanguage === 'zh' ? '开始创作' : 'Start Creating'} →
             </button>
           </div>
         </div>

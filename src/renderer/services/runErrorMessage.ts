@@ -126,7 +126,7 @@ const EXACT: Record<string, Translation> = {
   no_urls_provided:          { zh: '没填写要处理的 URL', en: 'No URLs provided' },
   no_valid_images:           { zh: '没有有效配图', en: 'No valid images' },
   no_images:                 { zh: '没有图片可用', en: 'No images available' },
-  no_source_segments:        { zh: '源文本切分失败', en: 'Source segmentation failed' },
+  no_source_segments:        { zh: '没填灵感来源段落,请编辑任务补上 1-3 段参考文案', en: 'No source segments provided. Please edit the task and add 1-3 reference snippets.' },
   no_path_available:         { zh: '没有可用执行路径', en: 'No execution path available' },
   no_confirmation:           { zh: '没收到平台确认信号', en: 'No confirmation from platform' },
   collect_failed:            { zh: '采集失败', en: 'Collection failed' },

@@ -29,9 +29,11 @@ const SEGMENT_MAX_CHARS = 800;
 const DAILY_COUNT_MIN = 1;
 const DAILY_COUNT_MAX = 5;
 // v1.1.0: 配图新选项 — 实景图模式 + 张数 + 关键词
+// v1.1.x: AI 生图贵($0.04/张) → 默认 2 张省钱;实景图免费抓 → 默认 6 张铺满
 const REAL_PHOTO_MIN = 2;
 const REAL_PHOTO_MAX = 6;
 const REAL_PHOTO_DEFAULT = 6;
+const AI_PHOTO_DEFAULT = 2;
 const KEYWORDS_MAX_COUNT = 10;
 
 export const DouyinImageTextWizard: React.FC<Props> = ({
@@ -67,14 +69,18 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   );
 
   // ── v1.1.0: 配图模式 ──
-  const [useRealPhotos, setUseRealPhotos] = useState<boolean>(
-    !!(initialTask as any)?.use_real_photos
-  );
+  const initialUseRealPhotos = !!(initialTask as any)?.use_real_photos;
+  const [useRealPhotos, setUseRealPhotosRaw] = useState<boolean>(initialUseRealPhotos);
   const [realPhotoCount, setRealPhotoCount] = useState<number>(
     typeof (initialTask as any)?.real_photo_count === 'number'
       ? Math.max(REAL_PHOTO_MIN, Math.min(REAL_PHOTO_MAX, (initialTask as any).real_photo_count))
-      : REAL_PHOTO_DEFAULT
+      : (initialUseRealPhotos ? REAL_PHOTO_DEFAULT : AI_PHOTO_DEFAULT)
   );
+  // v1.1.x: 切换 AI/实景图时,把张数重置到该模式的合理默认值。AI 贵默认 2,实景免费默认 6。
+  const setUseRealPhotos = (next: boolean) => {
+    setUseRealPhotosRaw(next);
+    setRealPhotoCount(next ? REAL_PHOTO_DEFAULT : AI_PHOTO_DEFAULT);
+  };
   const [realPhotoKeywords, setRealPhotoKeywords] = useState<string>(
     String((initialTask as any)?.real_photo_keywords || '')
   );
@@ -267,23 +273,23 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '🖼️ 配图模式' : '🖼️ Image source'}
                 </label>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
                   {([
                     {
                       mode: false,
                       icon: '🎨',
                       titleZh: 'AI 生图（默认）',
                       titleEn: 'AI generated (default)',
-                      descZh: '调用 AI 生成 N 张文字卡片图,每张 token 有成本。',
-                      descEn: 'AI generates N text-card images. Tokens are spent per image.',
+                      descZh: '让 AI 画 N 张文字卡片图,单张约 $0.04。',
+                      descEn: 'AI generates N text-card images. ~$0.04 per image.',
                     },
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: '实景图（按关键词去抖音「图文」筛选下抓，零 token）',
-                      titleEn: 'Real photos (scrape from Douyin image-text filter, zero token)',
-                      descZh: '按你填的关键词去抖音搜索结果页 (筛选 type=2 「图文」) 抓取笔记封面图。零 AI token 成本。如果某次找不到目标数量,会自动重试 3 次换关键词,最终有几张算几张 (最少 2 张才会上传)。',
-                      descEn: 'Searches Douyin (filtering image-text type) by keyword and grabs note cover images. Zero AI token cost. Retries 3 times with different keywords if short; uploads only if ≥2 found.',
+                      titleZh: '实景图（从抖音抓现成的）',
+                      titleEn: 'Real photos (from Douyin)',
+                      descZh: '按你填的关键词去抖音抓相关图片,成本较低。',
+                      descEn: 'Grabs relevant images from Douyin by your keywords. Lower cost.',
                     },
                   ]).map((opt) => {
                     const active = useRealPhotos === opt.mode;
@@ -368,11 +374,6 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       </span>
                     )}
                   </div>
-                  <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 px-3 py-2 mt-2 text-[11px] leading-relaxed text-violet-700 dark:text-violet-300">
-                    💡 {isZh
-                      ? <>系统将在<strong>抖音搜索结果页</strong>用这些关键词搜索（多关键词会拼到一起搜），<strong>自动切到「图文」筛选 tab</strong>抓取笔记封面图作为你这篇笔记的配图。如果某次找不到目标数量,会自动换关键词重试 3 次。</>
-                      : <>Searches Douyin's <strong>search results page</strong> with these keywords (combined), <strong>auto-selects the "image-text" filter</strong> to grab note cover images. Auto-retries 3 times with different keywords if short.</>}
-                  </div>
                 </div>
               )}
 
@@ -410,24 +411,16 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       icon: '📤',
                       titleZh: '直接发布到抖音(推荐)',
                       titleEn: 'Auto-publish to Douyin (recommended)',
-                      descZh: '生成完每篇直接走抖音「发布」按钮。⚠️ 一旦发出无法撤回,且单日 >5 篇有封号风险,建议先用「仅本地」模式跑一次审核质量。',
-                      descEn: 'Each post hits Douyin Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent; >5/day risks ban. Recommend running "Local only" first to review quality.',
-                    },
-                    {
-                      mode: 'draft' as UploadMode,
-                      icon: '📋',
-                      titleZh: '存到抖音草稿(只能 1 篇,会被覆盖)',
-                      titleEn: 'Save to Douyin drafts (1-only, gets overwritten)',
-                      descZh: '抖音创作者中心的图文草稿只能存 1 篇,新草稿会覆盖旧的 — 多篇任务用这个模式只剩最后一篇。',
-                      descEn: 'Douyin creator-center keeps only 1 image-text draft — newer overwrites older. Multi-post runs end up with just the last one.',
+                      descZh: '生成完每篇直接走抖音「发布」按钮。⚠️ 一旦发出无法撤回。',
+                      descEn: 'Each post hits Douyin Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent.',
                     },
                     {
                       mode: 'local' as UploadMode,
                       icon: '📁',
                       titleZh: '仅生成保存到本地(最安全)',
                       titleEn: 'Generate only, save locally (safest)',
-                      descZh: '不动浏览器,只把改写文本和配图存盘。任务详情页可以逐条手动上传。',
-                      descEn: 'Touches no browser tab; saves rewrite + images to disk. Upload one-by-one from the task detail page.',
+                      descZh: '不动浏览器,只把改写文本和配图存盘。',
+                      descEn: 'Touches no browser tab; saves rewrite + images to disk.',
                     },
                   ]).map((opt) => {
                     const active = uploadMode === opt.mode;

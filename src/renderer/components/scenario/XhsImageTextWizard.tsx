@@ -30,6 +30,7 @@ const DAILY_COUNT_MAX = 5;
 const REAL_PHOTO_MIN = 2;
 const REAL_PHOTO_MAX = 6;
 const REAL_PHOTO_DEFAULT = 6;
+const AI_PHOTO_DEFAULT = 2;
 const KEYWORDS_MAX_COUNT = 10;
 
 export const XhsImageTextWizard: React.FC<Props> = ({
@@ -58,14 +59,18 @@ export const XhsImageTextWizard: React.FC<Props> = ({
   const [seg3, setSeg3] = useState<string>(initialSegments[2]);
 
   // ── 配图模式 ──
-  const [useRealPhotos, setUseRealPhotos] = useState<boolean>(
-    !!(initialTask as any)?.use_real_photos
-  );
+  const initialUseRealPhotos = !!(initialTask as any)?.use_real_photos;
+  const [useRealPhotos, setUseRealPhotosRaw] = useState<boolean>(initialUseRealPhotos);
   const [realPhotoCount, setRealPhotoCount] = useState<number>(
     typeof (initialTask as any)?.real_photo_count === 'number'
       ? Math.max(REAL_PHOTO_MIN, Math.min(REAL_PHOTO_MAX, (initialTask as any).real_photo_count))
-      : REAL_PHOTO_DEFAULT
+      : (initialUseRealPhotos ? REAL_PHOTO_DEFAULT : AI_PHOTO_DEFAULT)
   );
+  // 切换 AI/实景图时把张数重置到该模式的合理默认值。AI 贵默认 2,实景免费默认 6。
+  const setUseRealPhotos = (next: boolean) => {
+    setUseRealPhotosRaw(next);
+    setRealPhotoCount(next ? REAL_PHOTO_DEFAULT : AI_PHOTO_DEFAULT);
+  };
   const [realPhotoKeywords, setRealPhotoKeywords] = useState<string>(
     String((initialTask as any)?.real_photo_keywords || '')
   );
@@ -251,23 +256,23 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '🖼️ 配图模式' : '🖼️ Image source'}
                 </label>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
                   {([
                     {
                       mode: false,
                       icon: '🎨',
                       titleZh: 'AI 生图（默认）',
                       titleEn: 'AI generated (default)',
-                      descZh: '调用 AI 生成 N 张文字卡片图，米白底色温暖色调，文字内容紧扣正文。每张图消耗 token,有成本。',
-                      descEn: 'AI generates N text-card style images, warm cream background, text drawn from the rewritten body. Each image costs tokens.',
+                      descZh: '让 AI 画 N 张文字卡片图,单张约 $0.04。',
+                      descEn: 'AI generates N text-card images. ~$0.04 per image.',
                     },
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: '实景图（按关键词去小红书搜，零 token 成本）',
-                      titleEn: 'Real photos (scrape from XHS by keyword, zero token cost)',
-                      descZh: '按你填的关键词去小红书搜索结果页抓取笔记封面图作为配图。零 AI token 成本。如果某次找不到目标数量，会自动重试 3 次换关键词，最终有几张算几张（最少 2 张才会上传）。',
-                      descEn: 'Searches Xiaohongshu by your keywords and grabs note cover images. Zero AI token cost. If a run finds fewer than the target count, retries 3 times with different keywords; whatever it ends up with is what gets used (uploads only if ≥2 found).',
+                      titleZh: '实景图（从小红书抓现成的）',
+                      titleEn: 'Real photos (from Xiaohongshu)',
+                      descZh: '按你填的关键词去小红书抓相关图片,成本较低。',
+                      descEn: 'Grabs relevant images from Xiaohongshu by your keywords. Lower cost.',
                     },
                   ]).map((opt) => {
                     const active = useRealPhotos === opt.mode;
@@ -352,11 +357,6 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                       </span>
                     )}
                   </div>
-                  <div className="rounded-lg border border-rose-500/20 bg-rose-500/5 px-3 py-2 mt-2 text-[11px] leading-relaxed text-rose-700 dark:text-rose-300">
-                    💡 {isZh
-                      ? <>系统将在<strong>小红书搜索结果页</strong>用这些关键词搜索（多关键词会拼到一起搜），抓取笔记封面图作为你这篇笔记的配图。如果某次找不到目标数量,会自动换关键词重试 3 次。</>
-                      : <>The orchestrator will search Xiaohongshu's <strong>search results page</strong> with these keywords (combined into one query), and grab note cover images as the configured photos. Auto-retries 3 times with different keywords if short.</>}
-                  </div>
                 </div>
               )}
             </>
@@ -398,16 +398,16 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                       icon: '📋',
                       titleZh: '上传到小红书草稿箱（推荐）',
                       titleEn: 'Save to Xiaohongshu drafts (recommended)',
-                      descZh: '生成完每篇上传到小红书创作者中心草稿箱（不直接发布）。你需要手动去草稿箱审核 + 发布。',
-                      descEn: 'Each post uploads to Xiaohongshu creator-center draft box. You manually review + publish from drafts.',
+                      descZh: '生成完每篇上传到小红书草稿箱,你手动审核后发布。',
+                      descEn: 'Each post uploads to Xiaohongshu draft box. You review + publish manually.',
                     },
                     {
                       mode: 'local' as UploadMode,
                       icon: '📁',
                       titleZh: '仅生成保存到本地（最安全）',
                       titleEn: 'Generate only, save locally (safest)',
-                      descZh: '不动浏览器,只把改写文本和配图存盘。任务详情页可以逐条手动上传。',
-                      descEn: 'Touches no browser tab; saves rewrite + images to disk. Upload one-by-one from the task detail page.',
+                      descZh: '不动浏览器,只把改写文本和配图存盘。',
+                      descEn: 'Touches no browser tab; saves rewrite + images to disk.',
                     },
                   ]).map((opt) => {
                     const active = uploadMode === opt.mode;
