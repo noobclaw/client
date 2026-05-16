@@ -412,15 +412,21 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 <span className={`text-xs font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
                   {i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}
                 </span>
-                {authState.tokenBalance < 1000 && (
-                  <button
-                    type="button"
-                    onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
-                    className="non-draggable px-2 py-0.5 rounded text-xs font-semibold bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30 transition-colors"
-                  >
-                    {i18nService.t('coworkLowBalance')}
-                  </button>
-                )}
+                {/* 充值入口 — 始终显示,低余额时变橙色更显眼。点击跳到「我的钱包」。 */}
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
+                  className={`non-draggable px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
+                    authState.tokenBalance < 1000
+                      ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30'
+                      : 'bg-green-500/15 text-green-500 border border-green-500/30 hover:bg-green-500/25'
+                  }`}
+                  title={i18nService.currentLanguage === 'zh' ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
+                >
+                  {authState.tokenBalance < 1000
+                    ? i18nService.t('coworkLowBalance')
+                    : (i18nService.currentLanguage === 'zh' ? '💰 充值' : '💰 Top up')}
+                </button>
               </>
             ) : (
               <button

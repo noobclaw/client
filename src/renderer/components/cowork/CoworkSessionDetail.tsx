@@ -1949,7 +1949,19 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
               <>
                 <span className="text-[10px] font-mono dark:text-claude-darkText text-claude-text">{formatWalletAddress(authState.walletAddress)}</span>
                 <span className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary">|</span>
-                <span className="text-[10px] dark:text-claude-darkText text-claude-text font-semibold">{i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}</span>
+                <span className={`text-[10px] font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>{i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}</span>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
+                  className={`non-draggable px-1.5 py-0.5 rounded text-[10px] font-semibold transition-colors ${
+                    authState.tokenBalance < 1000
+                      ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30'
+                      : 'bg-green-500/15 text-green-500 border border-green-500/30 hover:bg-green-500/25'
+                  }`}
+                  title={i18nService.currentLanguage === 'zh' ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
+                >
+                  {i18nService.currentLanguage === 'zh' ? '💰 充值' : '💰 Top up'}
+                </button>
               </>
             ) : (
               <button
