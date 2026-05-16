@@ -699,13 +699,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     setFollowMaxRaw(n);
     setFollowMinRaw(prev => (prev > n ? n : prev));
   };
+  // v1.x: Binance auto_engage 允许 reply=0(三动作 max 全 0 时 canFinish 会拦);
+  // Twitter auto_engage 历史上 reply floor 强制 ≥1,保持不变。
   const setReplyMin = (v: number) => {
-    const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
+    const floor = isBinanceAutoEngage ? 0 : 1;
+    const n = Math.max(floor, Math.min(REPLY_HARDCAP, v));
     setReplyMinRaw(n);
     setReplyMaxRaw(prev => (prev < n ? n : prev));
   };
   const setReplyMax = (v: number) => {
-    const n = Math.max(1, Math.min(REPLY_HARDCAP, v));
+    const floor = isBinanceAutoEngage ? 0 : 1;
+    const n = Math.max(floor, Math.min(REPLY_HARDCAP, v));
     setReplyMaxRaw(n);
     setReplyMinRaw(prev => (prev > n ? n : prev));
   };
@@ -765,11 +769,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //   - Twitter (auto_engage / post_creator) : needs persona only — no keywords
   //   - XHS scenarios  : needs ≥1 keyword + non-empty persona + a track
   // Always: terms accepted + a track selected.
+  // v1.x: engage 场景必须至少一项 max ≥ 1,否则任务无事可做(orchestrator 也会 throw)。
+  // Twitter wizard 因 reply floor 强制 ≥1,这里 totalMax 一定 > 0;Binance 解锁了
+  // reply=0,可能三动作 max 全 0 → 拦截 + 显示红字提示在 step2 reply slider 下方。
+  const engageMaxSum = likeMax + followMax + replyMax;
+  const engageNoAction = isAutoEngageScenario && engageMaxSum === 0;
   const canFinish = (() => {
     if (!allTermsAccepted || !trackId) return false;
     if (isLinkRewriteScenario) {
       return parsedUrls.length >= 1 && parsedUrls.length <= 5;
     }
+    if (engageNoAction) return false;
     if (isXOrBinance) {
       // Binance post_creator requires at least 1 token (keywords=tokens),
       // persona alone is not enough. Binance auto_engage doesn't read
@@ -1516,7 +1526,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
                           </div>
                           <input
-                            type="range" min={1} max={REPLY_HARDCAP} value={replyMin}
+                            type="range" min={isBinanceAutoEngage ? 0 : 1} max={REPLY_HARDCAP} value={replyMin}
                             onChange={e => setReplyMin(parseInt(e.target.value, 10))}
                             className="w-full"
                           />
@@ -1526,7 +1536,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
                           </div>
                           <input
-                            type="range" min={1} max={REPLY_HARDCAP} value={replyMax}
+                            type="range" min={isBinanceAutoEngage ? 0 : 1} max={REPLY_HARDCAP} value={replyMax}
                             onChange={e => setReplyMax(parseInt(e.target.value, 10))}
                             className="w-full"
                           />
@@ -1534,8 +1544,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </div>
                       <div className="text-[11px] text-gray-400 mt-1">
                         {isZh
-                          ? `每次运行随机评论 ${replyMin}-${replyMax} 条（1-${REPLY_HARDCAP}，越大封号风险越高）`
-                          : `Random ${replyMin}-${replyMax} replies/day (1-${REPLY_HARDCAP}, larger = higher ban risk)`}
+                          ? `每次运行随机评论 ${replyMin}-${replyMax} 条（${isBinanceAutoEngage ? 0 : 1}-${REPLY_HARDCAP}，越大封号风险越高）`
+                          : `Random ${replyMin}-${replyMax} replies/day (${isBinanceAutoEngage ? 0 : 1}-${REPLY_HARDCAP}, larger = higher ban risk)`}
                       </div>
                     </div>
                   )}
@@ -1573,6 +1583,15 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                         : `Random ${likeMin}-${likeMax} likes/day (0-${LIKE_HARDCAP}, 0 = no like)`}
                     </div>
                   </div>
+
+                  {/* v1.x: 三动作 max 全 0 时显式提示用户(否则只是"下一步/保存"按钮灰掉,不知道为什么) */}
+                  {engageNoAction && (
+                    <div className="mt-1 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+                      {isZh
+                        ? '⚠️ 请至少为「点赞 / 关注 / 评论」其中一项设置最大值 ≥ 1,否则任务什么动作都不会做。'
+                        : '⚠️ Set Max ≥ 1 for at least one of Like / Follow / Reply, otherwise the task will do nothing.'}
+                    </div>
+                  )}
 
                   {/* v2.4.59: 删除原来步骤 2 的"数值越大风险越高"框 ——
                       跟步骤 3 的"安全提示"信息重复(用户反馈)。当前配置文本
