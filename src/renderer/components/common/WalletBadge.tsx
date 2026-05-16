@@ -67,10 +67,10 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
       <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
-        className={`non-draggable px-2 py-0.5 rounded ${txt} font-semibold transition-colors ${
+        className={`non-draggable px-2.5 py-0.5 rounded ${txt} font-bold transition-colors shadow-sm ${
           low
-            ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30'
-            : 'bg-green-500/15 text-green-500 border border-green-500/30 hover:bg-green-500/25'
+            ? 'bg-yellow-500 text-white hover:bg-yellow-600 shadow-yellow-500/30'
+            : 'bg-green-500 text-white hover:bg-green-600 shadow-green-500/30'
         }`}
         title={isZh ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
       >

@@ -412,14 +412,14 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                 <span className={`text-xs font-semibold ${authState.tokenBalance < 1000 ? 'text-red-500' : 'dark:text-claude-darkText text-claude-text'}`}>
                   {i18nService.t('coworkTokenBalance', { n: authState.tokenBalance.toLocaleString() })}
                 </span>
-                {/* 充值入口 — 始终显示,低余额时变橙色更显眼。点击跳到「我的钱包」。 */}
+                {/* 充值入口 — 始终显示,实心彩色按钮让 user 一眼看到。点击跳到「我的钱包」。 */}
                 <button
                   type="button"
                   onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
-                  className={`non-draggable px-2 py-0.5 rounded text-xs font-semibold transition-colors ${
+                  className={`non-draggable px-2.5 py-0.5 rounded text-xs font-bold transition-colors shadow-sm ${
                     authState.tokenBalance < 1000
-                      ? 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30 hover:bg-yellow-500/30'
-                      : 'bg-green-500/15 text-green-500 border border-green-500/30 hover:bg-green-500/25'
+                      ? 'bg-yellow-500 text-white hover:bg-yellow-600 shadow-yellow-500/30'
+                      : 'bg-green-500 text-white hover:bg-green-600 shadow-green-500/30'
                   }`}
                   title={i18nService.currentLanguage === 'zh' ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
                 >
