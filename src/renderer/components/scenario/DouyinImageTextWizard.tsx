@@ -296,7 +296,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     return (
                       <label
                         key={String(opt.mode)}
-                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}
                       >
                         <input
                           type="radio"
@@ -427,7 +427,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     return (
                       <label
                         key={opt.mode}
-                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-violet-500 bg-violet-500/5' : 'border-gray-300 dark:border-gray-700'}`}
+                        className={`flex items-start gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${active ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}
                       >
                         <input
                           type="radio"
