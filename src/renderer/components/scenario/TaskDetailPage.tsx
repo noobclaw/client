@@ -728,6 +728,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'douyin_image_text')              return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'xhs_image_text')                 return { icon: '📝', label: isZh ? '小红书 · 图文创作' : 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
     if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
     // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.

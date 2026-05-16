@@ -454,8 +454,8 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                       onClick={() => setRunInterval(opt.value)}
                       className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
                         runInterval === opt.value
-                          ? 'border-rose-500 bg-rose-500/10 text-rose-500 font-medium'
-                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-rose-500/50'
+                          ? 'border-green-500 bg-green-500/10 text-green-500 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-green-500/50'
                       }`}
                     >{opt.label}</button>
                   ))}
