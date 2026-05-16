@@ -86,7 +86,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   );
 
   // ── AI 生图风格 (仅 useRealPhotos=false 时用) ──
-  type AIImageStyle = 'realistic' | 'text_card' | 'illustration' | 'cinematic' | 'anime' | '3d_render' | 'vintage' | 'minimalist';
+  type AIImageStyle =
+    | 'realistic' | 'text_card' | 'illustration' | 'cinematic'
+    | 'anime' | '3d_render' | 'vintage' | 'minimalist'
+    | 'ink_wash' | 'oil_painting' | 'watercolor' | 'cyberpunk';
   const [aiImageStyle, setAiImageStyle] = useState<AIImageStyle>(
     ((initialTask as any)?.ai_image_style as AIImageStyle) || 'realistic'
   );
@@ -366,16 +369,20 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '🎨 AI 生图风格' : '🎨 AI image style'}
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     {([
-                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic photo', descZh: '真实摄影感,无文字', descEn: 'Real photo, no text' },
-                      { value: 'text_card',    icon: '🎴', zh: '文字卡片', en: 'Text card', descZh: '米白底大字标题', descEn: 'Cream bg, big title' },
-                      { value: 'illustration', icon: '✏️', zh: '手绘插画', en: 'Illustration', descZh: '扁平 + 清新色彩', descEn: 'Flat + fresh colors' },
-                      { value: 'cinematic',    icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围感', descEn: 'Mood + lighting' },
+                      { value: 'realistic',    icon: '📷', zh: '实景照片', en: 'Realistic', descZh: '真实摄影感', descEn: 'Real photo' },
+                      { value: 'text_card',    icon: '🎴', zh: '文字卡片', en: 'Text card', descZh: '米白底大字', descEn: 'Cream bg' },
+                      { value: 'illustration', icon: '✏️', zh: '手绘插画', en: 'Illustration', descZh: '扁平 + 清新', descEn: 'Flat & fresh' },
+                      { value: 'cinematic',    icon: '🎬', zh: '电影质感', en: 'Cinematic', descZh: '光影 + 氛围', descEn: 'Moody lighting' },
                       { value: 'anime',        icon: '🌸', zh: '动漫风格', en: 'Anime', descZh: '日系二次元', descEn: 'Japanese anime' },
-                      { value: '3d_render',    icon: '🧊', zh: '3D 渲染', en: '3D render', descZh: '立体质感', descEn: 'Volumetric & shiny' },
-                      { value: 'vintage',      icon: '🎞️', zh: '复古胶片', en: 'Vintage film', descZh: '怀旧颗粒感', descEn: 'Grainy retro' },
-                      { value: 'minimalist',   icon: '◻️', zh: '极简设计', en: 'Minimalist', descZh: '留白 + 单色', descEn: 'Whitespace + mono' },
+                      { value: '3d_render',    icon: '🧊', zh: '3D 渲染', en: '3D render', descZh: '立体质感', descEn: 'Volumetric' },
+                      { value: 'vintage',      icon: '🎞️', zh: '复古胶片', en: 'Vintage', descZh: '怀旧颗粒', descEn: 'Grainy retro' },
+                      { value: 'minimalist',   icon: '◻️', zh: '极简设计', en: 'Minimalist', descZh: '留白 + 单色', descEn: 'Whitespace' },
+                      { value: 'ink_wash',     icon: '🖌️', zh: '水墨国风', en: 'Ink wash', descZh: '中国水墨写意', descEn: 'Chinese ink' },
+                      { value: 'oil_painting', icon: '🖼️', zh: '油画风格', en: 'Oil painting', descZh: '厚涂笔触', descEn: 'Thick strokes' },
+                      { value: 'watercolor',   icon: '💧', zh: '水彩绘画', en: 'Watercolor', descZh: '透明渐染', descEn: 'Soft wash' },
+                      { value: 'cyberpunk',    icon: '🌃', zh: '赛博朋克', en: 'Cyberpunk', descZh: '霓虹 + 未来', descEn: 'Neon future' },
                     ] as Array<{ value: AIImageStyle; icon: string; zh: string; en: string; descZh: string; descEn: string }>).map(opt => {
                       const active = aiImageStyle === opt.value;
                       return (
