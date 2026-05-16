@@ -10,6 +10,8 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { scenarioService } from '../../services/scenario';
 import { i18nService } from '../../services/i18n';
+import { getBackendApiUrl } from '../../services/endpoints';
+import { noobClawAuth } from '../../services/noobclawAuth';
 
 interface Props {
   mode: 'create' | 'run';
@@ -83,12 +85,27 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // is connected but reports a version below MIN_EXTENSION_VERSION. The
   // floor is bumped each release that ships a behavior-affecting
   // extension change (see chrome-extension/manifest.json version).
-  // Both XHS and Twitter pre-run modals run this check.
-  // v2.4.63+ bumped to 1.2.9 因为 binance auto_engage / post_creator 必须用
-  // chrome-extension 1.2.9 新加的 binance_dom_action 命令(CSP-safe DOM 操作),
-  // 老版本会在 binance.com 撞 CSP 报错。XHS / Twitter 不依赖这个,但下限统一
-  // 拉到 1.2.9 让用户看到提醒尽快升,避免遇到币安场景才发现要更新。
-  const MIN_EXTENSION_VERSION = '1.2.9';
+  //
+  // v1.x: 从硬编码改成 server 下发 — 运营调 system_config['min_extension_version']
+  // 即可让所有 client 重新弹"更新插件"提示,不用发 desktop-app release。
+  // 启动时 fetch /api/user/runtime-config,失败 fallback '1.2.9' (旧默认)。
+  const [MIN_EXTENSION_VERSION, setMinExtVersion] = useState<string>('1.2.9');
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendApiUrl()}/api/user/runtime-config`, {
+          headers: noobClawAuth.getAuthHeaders(),
+        });
+        if (!res.ok) return;
+        const j = await res.json();
+        if (alive && typeof j?.min_extension_version === 'string') {
+          setMinExtVersion(j.min_extension_version);
+        }
+      } catch { /* keep fallback */ }
+    })();
+    return () => { alive = false; };
+  }, []);
   const [outdatedExts, setOutdatedExts] = useState<Array<{ version: string }>>([]);
   // True when an extension is connected but hasn't reported its version yet
   // AND we're still inside the handshake grace window. The UI shows a
