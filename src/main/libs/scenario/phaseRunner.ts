@@ -600,19 +600,23 @@ function buildContext(
     },
 
     // ── chargeAction ───────────────────────────────────────────────
-    // Non-AI 互动动作扣费(点赞 / 关注 / 订阅)。AI 评论已经走 /api/ai 的
-    // token 计费链路;这里只扣点赞和关注。
+    // Non-AI 互动动作扣费(点赞 / 关注 / 订阅 / 评论 / 图文)。每次成功执行一个
+    // 互动动作单独按次计费,跟 AI 写作/生图的 token 费分开。AI 写评论内容本身
+    // 的 token 费走 /api/ai 的 chat 通道,这笔 charge 是产品层面"每次动作
+    // 按次扣"。
     //
     // 服务端定价(防伪造):
-    //   like      : random 300-700 tokens
-    //   follow    : random 500-800 tokens
-    //   subscribe : 同 follow
+    //   like       : random 300-700 tokens
+    //   follow     : random 500-800 tokens
+    //   subscribe  : 同 follow
+    //   comment    : 同 like (AI 写评论的 token 已走 chat 通道,这笔按次)
+    //   image_text : random 300-700 tokens(图文场景每张图)
     //
     // 用法: const r = await ctx.chargeAction('like', 'douyin', refId)
     //   返回 { ok, charged, balance_after } 或 { ok: false, reason }
     //   balance 不够时不抛异常,返回 ok:false 让 orchestrator 自决(继续 or 停)
     chargeAction: async (
-      actionType: 'like' | 'follow' | 'subscribe',
+      actionType: 'like' | 'follow' | 'subscribe' | 'comment' | 'image_text',
       platform: 'youtube' | 'tiktok' | 'douyin' | 'x' | 'binance' | 'xhs',
       refId?: string
     ): Promise<{ ok: boolean; charged?: number; balance_after?: number; reason?: string }> => {
@@ -1610,8 +1614,13 @@ function buildContext(
           : mp4Variants[Math.floor(mp4Variants.length / 2)];
 
         // 4) 下载视频字节
+        // v1.x: clearTimeout 之前在 await fetch() 后立刻 clear,意思 abort 只
+        // 控制 header 阶段(几百 ms)。后续 arrayBuffer() 读 body 时 abort 已
+        // 失活,大文件慢 CDN 时永远读不完(user 实测等 1500s+ 无 timeout)。
+        // 修:clearTimeout 推迟到 arrayBuffer() 也完成之后,确保 5min 真覆盖
+        // 整个 header + body 下载流程。
         const dlCtl = new AbortController();
-        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000); // 5 min for big videos
+        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000); // 5 min total (header + body)
         let videoBuf: Buffer;
         try {
           const vResp = await fetch(chosen.url, {
@@ -1619,9 +1628,12 @@ function buildContext(
             headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
             signal: dlCtl.signal,
           });
-          clearTimeout(dlTo);
-          if (!vResp.ok) return { ok: false, reason: 'video_download_http_' + vResp.status };
+          if (!vResp.ok) {
+            clearTimeout(dlTo);
+            return { ok: false, reason: 'video_download_http_' + vResp.status };
+          }
           const ab = await vResp.arrayBuffer();
+          clearTimeout(dlTo);
           videoBuf = Buffer.from(ab);
         } catch (e: any) {
           clearTimeout(dlTo);
