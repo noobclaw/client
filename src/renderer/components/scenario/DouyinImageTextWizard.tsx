@@ -373,33 +373,22 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '🎨 AI 生图风格' : '🎨 AI image style'}
                   </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {stylesList.map(opt => {
-                      const active = aiImageStyle === opt.id;
-                      return (
-                        <label
-                          key={opt.id}
-                          className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${active ? 'border-green-500 bg-green-500/5' : 'border-gray-300 dark:border-gray-700'}`}
-                        >
-                          <input
-                            type="radio"
-                            name="dy_ai_image_style"
-                            checked={active}
-                            onChange={() => setAiImageStyle(opt.id)}
-                            className="mt-0.5"
-                            disabled={saving}
-                          />
-                          <div className="flex-1 text-xs leading-relaxed">
-                            <div className="font-semibold dark:text-white mb-0.5">
-                              {opt.icon} {isZh ? opt.zh : opt.en}
-                            </div>
-                            <div className="text-gray-500 dark:text-gray-400">
-                              {isZh ? opt.desc_zh : opt.desc_en}
-                            </div>
-                          </div>
-                        </label>
-                      );
-                    })}
+                  <div className="relative">
+                    <select
+                      value={aiImageStyle}
+                      onChange={e => setAiImageStyle(e.target.value)}
+                      disabled={saving}
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-3 pr-9 py-2.5 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50 cursor-pointer"
+                    >
+                      {stylesList.map(opt => (
+                        <option key={opt.id} value={opt.id}>
+                          {opt.icon} {isZh ? opt.zh : opt.en} — {isZh ? opt.desc_zh : opt.desc_en}
+                        </option>
+                      ))}
+                    </select>
+                    <svg className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
                   </div>
                 </div>
               )}
