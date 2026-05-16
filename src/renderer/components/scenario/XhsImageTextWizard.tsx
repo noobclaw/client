@@ -177,7 +177,7 @@ export const XhsImageTextWizard: React.FC<Props> = ({
         auto_publish: false, // 小红书没有"直接发布"模式
         source_segments: [seg1, seg2, seg3].map(s => s.trim()).filter(s => s.length > 0),
         use_real_photos: useRealPhotos,
-        real_photo_count: useRealPhotos ? realPhotoCount : 0,
+        real_photo_count: realPhotoCount, // v1.x: 不分模式都传,backend 用同字段决定每篇张数
         real_photo_keywords: useRealPhotos ? keywordTokens.slice(0, KEYWORDS_MAX_COUNT).join(' ') : '',
         ai_image_style: useRealPhotos ? null : aiImageStyle,
       });
