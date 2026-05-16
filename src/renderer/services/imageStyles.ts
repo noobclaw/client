@@ -22,7 +22,7 @@ export interface ImageStyle {
 }
 
 export const FALLBACK_IMAGE_STYLES: ImageStyle[] = [
-  { id: 'ai_auto',     icon: '🪄', zh: 'AI 自由发挥', en: 'AI auto',       desc_zh: '让 AI 自己选',     desc_en: 'Let AI decide',     prompt_prefix: '' },
+  { id: 'ai_auto',     icon: '🪄', zh: 'AI 自由发挥', en: 'AI auto',       desc_zh: '让 AI 自己根据文案发挥', desc_en: 'Let AI freely interpret the copy', prompt_prefix: '' },
   { id: 'realistic',   icon: '📷', zh: '实景照片',    en: 'Realistic',     desc_zh: '真实摄影感',       desc_en: 'Real photo',         prompt_prefix: '风格:真实摄影' },
   { id: 'text_card',   icon: '🎴', zh: '文字卡片',    en: 'Text card',     desc_zh: '米白底大字',       desc_en: 'Cream bg',           prompt_prefix: '风格:文字卡片' },
   { id: 'illustration',icon: '✏️', zh: '手绘插画',    en: 'Illustration',  desc_zh: '扁平 + 清新',       desc_en: 'Flat & fresh',       prompt_prefix: '风格:手绘插画' },
