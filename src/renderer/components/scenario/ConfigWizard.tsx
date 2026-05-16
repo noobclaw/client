@@ -1977,6 +1977,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ❌ {saveError}
                 </div>
               )}
+
+              {/* v1.x: step 3 上的同步红字 — 用户在 step 2 一路 next 进来后,
+                  如果三动作 max 全 0,"保存"按钮会灰掉。这里把原因显式说出来,
+                  避免用户只看到灰按钮不知道为什么。 */}
+              {engageNoAction && (
+                <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500">
+                  {isZh
+                    ? '⚠️ 请回到上一步,至少为「点赞 / 关注 / 评论」其中一项设置最大值 ≥ 1,否则任务什么动作都不会做。'
+                    : '⚠️ Go back to the previous step and set Max ≥ 1 for at least one of Like / Follow / Reply, otherwise the task will do nothing.'}
+                </div>
+              )}
             </div>
           )}
         </div>
