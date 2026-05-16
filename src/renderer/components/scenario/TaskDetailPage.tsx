@@ -813,7 +813,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       Link 模式 + 图文创作没人设概念跳过。 */}
                   {!isLinkMode && !isDouyinImageText && (task.persona || '').trim() && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
-                      👤 {(task.persona || '').trim()}
+                      <span className="text-gray-500 font-medium">{isZh ? '人设:' : 'Persona:'}</span>{' '}
+                      {(task.persona || '').trim()}
                     </div>
                   )}
                   {isDouyinImageText && sourceSegments.length > 0 && (
@@ -972,22 +973,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   : '📂 Open folder'}
               </button>
             </div>
-            {isAutoReplyTask && task.persona && (() => {
-              // Strip the Chinese prefix in EN mode so users on English UI
-              // don't see "身份:" / "技术栈:" / etc. labels — body content
-              // stays Chinese (it's user-editable copy, can't auto-xlate).
-              const personaText = isZh ? task.persona : task.persona
-                .replace(/(^|\n)身份[：:]\s*/g, (_, p) => p + 'Identity: ')
-                .replace(/(^|\n)现在做的[：:]\s*/g, (_, p) => p + 'Currently doing: ')
-                .replace(/(^|\n)真实状态[：:]\s*/g, (_, p) => p + 'Status: ')
-                .replace(/(^|\n)技术栈[：:]\s*/g, (_, p) => p + 'Tech stack: ');
-              return (
-                <div className="text-[11px] text-gray-400 leading-relaxed">
-                  <span className="text-gray-500">{isZh ? '人设:' : 'Persona:'}</span>{' '}
-                  <span className="italic">{personaText.length > 120 ? personaText.slice(0, 120) + '...' : personaText}</span>
-                </div>
-              );
-            })()}
+            {/* v1.x: 删了截短 persona preview — 跟上面完整 persona 块 (line ~814) 重复了 */}
           </div>
           <div className="shrink-0 flex items-center gap-2">
             {running ? (
@@ -1048,6 +1034,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           </div>
         </div>
       </div>
+
+      {/* v1.x: 任务运行中醒目提示 — running 时 render,提醒不要打断 NoobClaw 占用的浏览器 */}
+      {running && (
+        <div className="rounded-xl border-2 border-amber-500/50 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 px-4 py-3 mb-3 noobclaw-running-glow">
+          <div className="flex items-start gap-3">
+            <span className="text-xl shrink-0 animate-pulse">⚠️</span>
+            <div className="flex-1 text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
+              {isZh ? (
+                <>运行中<strong>请勿最小化/关闭浏览器或退出账号</strong>,以免干扰运行。如需使用浏览器,请<strong>新开一个独立窗口</strong>(切勿在原窗口新开标签页)。</>
+              ) : (
+                <>While running, <strong>do NOT minimize/close the browser or log out</strong> — it'll interrupt the task. If you need to browse, <strong>open a separate browser window</strong> (not a new tab in the same window).</>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Running-only pair: 本次运行进度 + 本次消耗.
           Both cards appear ONLY when status='running' AND we have either
