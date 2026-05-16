@@ -135,6 +135,15 @@ function formatTime(ts: number, isZh: boolean): string {
   });
 }
 
+// Compact: 123 → '123', 9939 → '9.94K', 1234567 → '1.23M', 1.5e9 → '1.5B'
+function compactNum(n: number): string {
+  const abs = Math.abs(n);
+  if (abs < 1000) return String(n);
+  if (abs < 1_000_000)     return (n / 1_000).toFixed(abs < 10_000 ? 2 : 1) + 'K';
+  if (abs < 1_000_000_000) return (n / 1_000_000).toFixed(abs < 10_000_000 ? 2 : 1) + 'M';
+  return (n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 2 : 1) + 'B';
+}
+
 export const RunHistoryPage: React.FC<Props> = ({
   tasks: _tasks,
   scenarios: _scenarios,
@@ -314,7 +323,7 @@ export const RunHistoryPage: React.FC<Props> = ({
                         const cost = Number((rec.result as any)?.cost_usd) || 0;
                         return (
                           <span title={isZh ? 'AI Token × 每百万单价 ≈ 美金' : 'tokens × $/M ≈ USD'}>
-                            · 💎 {tokens.toLocaleString()} ≈ ${cost.toFixed(4)}
+                            · 💎 {compactNum(tokens)} ≈ ${cost.toFixed(4)}
                           </span>
                         );
                       })()}

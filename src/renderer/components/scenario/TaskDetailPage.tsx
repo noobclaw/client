@@ -1123,7 +1123,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               <div className="flex items-baseline gap-2 text-sm font-mono text-gray-700 dark:text-gray-200">
                 <span>💎</span>
                 <strong className="text-green-600 dark:text-green-400 text-base">
-                  {(progress.tokens_used || 0).toLocaleString()}
+                  {compactNumber(progress.tokens_used || 0)}
                 </strong>
                 <span className="text-gray-400 dark:text-gray-600">≈</span>
                 <strong className="text-green-600 dark:text-green-400 text-base">
@@ -1487,14 +1487,26 @@ function formatActionBreakdown(
 }
 
 /**
- * Format credits + USD cost for the 累计消耗 / 上次消耗 cards. Mirrors the
- * run history "💎 21,973 ≈ $0.0220" shape so users can cross-reference.
+ * Compact number: 123 → '123', 9939 → '9.94K', 1234567 → '1.23M', 1.5e9 → '1.5B'.
+ * Used for credits / tokens — full int gets bulky past 4-5 digits.
  */
-function formatCreditsCost(credits: number, costUsd: number, isZh: boolean): string {
+function compactNumber(n: number): string {
+  const abs = Math.abs(n);
+  if (abs < 1000) return String(n);
+  if (abs < 1_000_000)     return (n / 1_000).toFixed(abs < 10_000 ? 2 : 1) + 'K';
+  if (abs < 1_000_000_000) return (n / 1_000_000).toFixed(abs < 10_000_000 ? 2 : 1) + 'M';
+  return (n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 2 : 1) + 'B';
+}
+
+/**
+ * Format credits + USD cost for the 累计消耗 / 上次消耗 cards.
+ * v1.x: compact K/M/B units (per user feedback — '9,939' too noisy).
+ */
+function formatCreditsCost(credits: number, costUsd: number, _isZh: boolean): string {
   if (!credits || credits <= 0) return '-';
   const c = Math.round(credits);
   const usd = (Number(costUsd) || 0).toFixed(4);
-  return `💎 ${c.toLocaleString(isZh ? 'zh-CN' : 'en-US')} ≈ $${usd}`;
+  return `💎 ${compactNumber(c)} ≈ $${usd}`;
 }
 
 const StatCard: React.FC<{

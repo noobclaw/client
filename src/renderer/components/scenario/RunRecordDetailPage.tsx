@@ -61,6 +61,15 @@ function fullTime(ts: number, isZh: boolean): string {
   });
 }
 
+// Compact: 123 → '123', 9939 → '9.94K', 1234567 → '1.23M', 1.5e9 → '1.5B'
+function compactNum(n: number): string {
+  const abs = Math.abs(n);
+  if (abs < 1000) return String(n);
+  if (abs < 1_000_000)     return (n / 1_000).toFixed(abs < 10_000 ? 2 : 1) + 'K';
+  if (abs < 1_000_000_000) return (n / 1_000_000).toFixed(abs < 10_000_000 ? 2 : 1) + 'M';
+  return (n / 1_000_000_000).toFixed(abs < 10_000_000_000 ? 2 : 1) + 'B';
+}
+
 export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenTask }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const [rec, setRec] = useState<RunRecord | null>(null);
@@ -307,7 +316,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
           return (
             <Stat
               label={isZh ? '运行成本' : 'AI cost'}
-              value={<span>💎 {tokens.toLocaleString()}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
+              value={<span>💎 {compactNum(tokens)}<br/><span className="text-[11px]">≈ ${cost.toFixed(4)}</span></span>}
             />
           );
         })()}
@@ -353,7 +362,7 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
               )}
               {typeof (rec.result as any).tokens_used === 'number' && (rec.result as any).tokens_used > 0 && (
                 <span className="text-gray-600 dark:text-gray-300" title={isZh ? 'tokens × $/M ≈ USD' : ''}>
-                  💎 Tokens: <strong>{((rec.result as any).tokens_used).toLocaleString()}</strong>
+                  💎 Tokens: <strong>{compactNum((rec.result as any).tokens_used)}</strong>
                   {' '}· <strong>≈ ${((rec.result as any).cost_usd || 0).toFixed(4)}</strong></span>
               )}
             </div>
