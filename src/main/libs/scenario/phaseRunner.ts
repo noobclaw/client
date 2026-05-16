@@ -600,24 +600,26 @@ function buildContext(
     },
 
     // ── chargeAction ───────────────────────────────────────────────
-    // Non-AI 互动动作扣费(点赞 / 关注 / 订阅 / 评论 / 图文)。每次成功执行一个
-    // 互动动作单独按次计费,跟 AI 写作/生图的 token 费分开。AI 写评论内容本身
-    // 的 token 费走 /api/ai 的 chat 通道,这笔 charge 是产品层面"每次动作
-    // 按次扣"。
+    // Non-AI 互动动作按次扣费(点赞/关注/订阅/评论/图文 等)。每次成功执行
+    // 一个互动动作单独计费,跟 AI 写作/生图的 token 费分开 — AI 写评论内容
+    // 本身的 token 费走 /api/ai 的 chat 通道,这笔 charge 是产品层面"每次
+    // 动作按次扣"。
     //
-    // 服务端定价(防伪造):
-    //   like       : random 300-700 tokens
-    //   follow     : random 500-800 tokens
-    //   subscribe  : 同 follow
-    //   comment    : 同 like (AI 写评论的 token 已走 chat 通道,这笔按次)
-    //   image_text : random 300-700 tokens(图文场景每张图)
+    // 架构边界:**服务端是单一权威**
+    //   - 合法的 actionType / platform 由后端 charge.ts 的 PRICE_RANGES /
+    //     ALLOWED_PLATFORMS 定义,这里 actionType / platform 都用 string
+    //     透传,不在客户端做白名单 — 加新平台 / 新动作类型不需要重新发版
+    //     客户端,只改后端 + scenarios/*.js 即可。
+    //   - 非法 actionType / platform 服务端返 422 'invalid_action_type' /
+    //     'invalid_platform',这里走 reason 返回,不抛异常。
+    //   - 价格区间也在服务端定(防伪造),客户端不知道也不需要知道。
     //
     // 用法: const r = await ctx.chargeAction('like', 'douyin', refId)
     //   返回 { ok, charged, balance_after } 或 { ok: false, reason }
     //   balance 不够时不抛异常,返回 ok:false 让 orchestrator 自决(继续 or 停)
     chargeAction: async (
-      actionType: 'like' | 'follow' | 'subscribe' | 'comment' | 'image_text',
-      platform: 'youtube' | 'tiktok' | 'douyin' | 'x' | 'binance' | 'xhs',
+      actionType: string,
+      platform: string,
       refId?: string
     ): Promise<{ ok: boolean; charged?: number; balance_after?: number; reason?: string }> => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
