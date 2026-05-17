@@ -699,17 +699,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     setFollowMaxRaw(n);
     setFollowMinRaw(prev => (prev > n ? n : prev));
   };
-  // v1.x: Binance auto_engage 允许 reply=0(三动作 max 全 0 时 canFinish 会拦);
-  // Twitter auto_engage 历史上 reply floor 强制 ≥1,保持不变。
+  // v1.x: 所有 engage 场景(Twitter + Binance)的 reply min/max 都允许 0。
+  // 历史上 Twitter 强制 reply ≥1,现在跟 Binance / Douyin / TikTok / Youtube 看齐 ——
+  // canFinish + orchestrator throw 已经把"三动作 max 全 0"的 no-op 任务拦在外面。
   const setReplyMin = (v: number) => {
-    const floor = isBinanceAutoEngage ? 0 : 1;
-    const n = Math.max(floor, Math.min(REPLY_HARDCAP, v));
+    const n = Math.max(0, Math.min(REPLY_HARDCAP, v));
     setReplyMinRaw(n);
     setReplyMaxRaw(prev => (prev < n ? n : prev));
   };
   const setReplyMax = (v: number) => {
-    const floor = isBinanceAutoEngage ? 0 : 1;
-    const n = Math.max(floor, Math.min(REPLY_HARDCAP, v));
+    const n = Math.max(0, Math.min(REPLY_HARDCAP, v));
     setReplyMaxRaw(n);
     setReplyMinRaw(prev => (prev > n ? n : prev));
   };
@@ -1526,7 +1525,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             {isZh ? '最少' : 'Min'}: <span className="font-semibold text-sky-500">{replyMin}</span>
                           </div>
                           <input
-                            type="range" min={isBinanceAutoEngage ? 0 : 1} max={REPLY_HARDCAP} value={replyMin}
+                            type="range" min={0} max={REPLY_HARDCAP} value={replyMin}
                             onChange={e => setReplyMin(parseInt(e.target.value, 10))}
                             className="w-full"
                           />
@@ -1536,7 +1535,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             {isZh ? '最多' : 'Max'}: <span className="font-semibold text-sky-500">{replyMax}</span>
                           </div>
                           <input
-                            type="range" min={isBinanceAutoEngage ? 0 : 1} max={REPLY_HARDCAP} value={replyMax}
+                            type="range" min={0} max={REPLY_HARDCAP} value={replyMax}
                             onChange={e => setReplyMax(parseInt(e.target.value, 10))}
                             className="w-full"
                           />
@@ -1544,8 +1543,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       </div>
                       <div className="text-[11px] text-gray-400 mt-1">
                         {isZh
-                          ? `每次运行随机评论 ${replyMin}-${replyMax} 条（${isBinanceAutoEngage ? 0 : 1}-${REPLY_HARDCAP}，越大封号风险越高）`
-                          : `Random ${replyMin}-${replyMax} replies/day (${isBinanceAutoEngage ? 0 : 1}-${REPLY_HARDCAP}, larger = higher ban risk)`}
+                          ? `每次运行随机评论 ${replyMin}-${replyMax} 条（0-${REPLY_HARDCAP}，越大封号风险越高）`
+                          : `Random ${replyMin}-${replyMax} replies/day (0-${REPLY_HARDCAP}, larger = higher ban risk)`}
                       </div>
                     </div>
                   )}
