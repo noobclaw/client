@@ -1564,48 +1564,38 @@ function buildContext(
         if (!m) return { ok: false, reason: 'invalid_tweet_url' };
         const statusId = m[1];
 
-        // 2) 调 syndication API,改走扩展 fetch_url(SW fetch,带真实 cookie/UA/referer)。
-        //    v1.x: 原 Node fetch UA='Mozilla/5.0 NoobClaw/1.0' + 空 cookie,X 识别为
-        //    爬虫后**软拦截**(接受连接但永远不回响应,8s AbortController 触发 →
-        //    syndication_failed:This operation was aborted)。换走扩展后,UA=浏览器
-        //    本身 UA,cookie=X host cookie,跟用户访问 X 完全一致,X 无理由拦。
-        //    仍保留 3 次重试 + 指数退避,容忍偶发 5xx / 429 / 网络抖动。
+        // 2) 调 syndication API,加重试 —— Twitter 端偶发 503 / rate-limit / 网络瞬断,
+        //    用户报"有时候又行"。3 次重试 + 指数退避 (1s/2s/4s) 把成功率从 ~50% 提到 95%+。
+        //    每次失败的 status code / 错误打 log 方便用户在 cowork.log 里看根因。
         let meta: any = null;
         let lastErr = '';
         for (let attempt = 1; attempt <= 3; attempt++) {
           const token = Math.random().toString(36).slice(2, 14);
           const apiUrl = `https://cdn.syndication.twimg.com/tweet-result?id=${statusId}&token=${token}`;
+          const apiCtl = new AbortController();
+          const apiTo = setTimeout(() => apiCtl.abort(), 8000); // 8s/次,3 次共 ~24s + 退避
           try {
-            // 15s/次(扩展 SW fetch + native messaging IPC 比 Node fetch 略慢,放宽到 15s)
-            const r: any = await sendBrowserCommand('fetch_url', {
-              url: apiUrl,
-              referrer: 'https://twitter.com/',
-              acceptContentTypePrefix: 'application/json',
-              maxBytes: 2 * 1024 * 1024, // 2 MB JSON ceiling
-            }, 15000, getBridgeOpts());
-            if (r && r.error) {
-              lastErr = String(r.error) + (r.status ? ' (' + r.status + ')' : '');
-              coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 失败 attempt=${attempt}/3 err=${lastErr} statusId=${statusId}`);
-              // 5xx / 429 / network 类错误才重试;4xx 业务错(非 429)直接抛
-              const isRetryable = !r.status || r.status >= 500 || r.status === 429 || !/^http_4(?!29)/.test(String(r.error));
-              if (isRetryable && attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
-              return { ok: false, reason: 'syndication_failed:' + lastErr };
-            }
-            if (r && r.ok && r.base64) {
-              try {
-                const jsonStr = Buffer.from(r.base64, 'base64').toString('utf-8');
-                meta = JSON.parse(jsonStr);
-                if (meta) break;
-                lastErr = 'json_parse_empty';
-              } catch (e: any) {
-                lastErr = 'json_parse_failed:' + String(e?.message || e).slice(0, 60);
+            const apiResp = await fetch(apiUrl, {
+              method: 'GET',
+              headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0', 'Accept': 'application/json' },
+              signal: apiCtl.signal,
+            });
+            clearTimeout(apiTo);
+            if (!apiResp.ok) {
+              lastErr = 'http_' + apiResp.status;
+              coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 失败 attempt=${attempt}/3 status=${apiResp.status} statusId=${statusId}`);
+              if (apiResp.status >= 500 || apiResp.status === 429) {
+                if (attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
               }
-            } else {
-              lastErr = 'unexpected_response';
+              return { ok: false, reason: 'syndication_http_' + apiResp.status };
             }
+            meta = await apiResp.json().catch(() => null);
+            if (meta) break;
+            lastErr = 'json_parse_failed';
           } catch (e: any) {
+            clearTimeout(apiTo);
             lastErr = String(e?.message || e).slice(0, 80);
-            coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 异常 attempt=${attempt}/3 err=${lastErr} statusId=${statusId}`);
+            coworkLog('WARN', 'phaseRunner', `fetchTweetVideo Syndication 网络异常 attempt=${attempt}/3 err=${lastErr} statusId=${statusId}`);
             if (attempt < 3) { await sleep(1000 * Math.pow(2, attempt - 1)); continue; }
             return { ok: false, reason: 'syndication_failed:' + lastErr };
           }
@@ -1634,27 +1624,30 @@ function buildContext(
           : pref === 'lowest' ? mp4Variants[mp4Variants.length - 1]
           : mp4Variants[Math.floor(mp4Variants.length / 2)];
 
-        // 4) 下载视频字节 — 走扩展 fetch_url(同上 cookie/UA 一致性,绕开 X CDN 软拦截)
-        //    v1.x: 原 Node fetch 报 'fetch failed' 是 TLS/连接被 reset,跟 syndication
-        //    一样根因(无 cookie + 假 UA)。换走扩展后视频 CDN 也按真实用户访问处理。
-        //    50 MB 上限覆盖绝大部分 X 视频(大部分 < 30 MB),超限会返 too_large,
-        //    后续 fallback 链 / 重抽兜底。5 min timeout 覆盖 header + body 全程。
+        // 4) 下载视频字节
+        // v1.x: clearTimeout 之前在 await fetch() 后立刻 clear,意思 abort 只
+        // 控制 header 阶段(几百 ms)。后续 arrayBuffer() 读 body 时 abort 已
+        // 失活,大文件慢 CDN 时永远读不完(user 实测等 1500s+ 无 timeout)。
+        // 修:clearTimeout 推迟到 arrayBuffer() 也完成之后,确保 5min 真覆盖
+        // 整个 header + body 下载流程。
+        const dlCtl = new AbortController();
+        const dlTo = setTimeout(() => dlCtl.abort(), 5 * 60 * 1000); // 5 min total (header + body)
         let videoBuf: Buffer;
         try {
-          const vr: any = await sendBrowserCommand('fetch_url', {
-            url: chosen.url,
-            referrer: 'https://twitter.com/',
-            acceptContentTypePrefix: 'video/',
-            maxBytes: 50 * 1024 * 1024,
-          }, 5 * 60 * 1000, getBridgeOpts());
-          if (!vr || vr.error) {
-            return { ok: false, reason: 'video_download_failed:' + (vr?.error || 'unknown') };
+          const vResp = await fetch(chosen.url, {
+            method: 'GET',
+            headers: { 'User-Agent': 'Mozilla/5.0 NoobClaw/1.0' },
+            signal: dlCtl.signal,
+          });
+          if (!vResp.ok) {
+            clearTimeout(dlTo);
+            return { ok: false, reason: 'video_download_http_' + vResp.status };
           }
-          if (!vr.ok || !vr.base64) {
-            return { ok: false, reason: 'video_download_no_data' };
-          }
-          videoBuf = Buffer.from(vr.base64, 'base64');
+          const ab = await vResp.arrayBuffer();
+          clearTimeout(dlTo);
+          videoBuf = Buffer.from(ab);
         } catch (e: any) {
+          clearTimeout(dlTo);
           return { ok: false, reason: 'video_download_failed:' + String(e?.message || e).slice(0, 80) };
         }
 
@@ -1664,21 +1657,17 @@ function buildContext(
         const videoFile = path.join(dir, `源视频_${statusId}.mp4`);
         fs.writeFileSync(videoFile, videoBuf);
 
-        // 6) 顺手下封面图(poster) — 失败不阻塞,同样走扩展 fetch_url 保持一致
+        // 6) 顺手下封面图(poster) — 失败不阻塞
         let posterFile: string | null = null;
         const posterUrl = videoMedia.media_url_https || '';
         if (posterUrl) {
           try {
-            const pr: any = await sendBrowserCommand('fetch_url', {
-              url: posterUrl,
-              referrer: 'https://twitter.com/',
-              acceptContentTypePrefix: 'image/',
-              maxBytes: 5 * 1024 * 1024,
-            }, 30000, getBridgeOpts());
-            if (pr && pr.ok && pr.base64) {
+            const pResp = await fetch(posterUrl, { method: 'GET' });
+            if (pResp.ok) {
+              const pAb = await pResp.arrayBuffer();
               const ext = posterUrl.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
               posterFile = path.join(dir, `源视频封面_${statusId}.${ext}`);
-              fs.writeFileSync(posterFile, Buffer.from(pr.base64, 'base64'));
+              fs.writeFileSync(posterFile, Buffer.from(pAb));
             }
           } catch { /* poster 失败不阻塞 */ }
         }
