@@ -437,14 +437,26 @@ export const YoutubeConfigWizard: React.FC<Props> = ({
                 ))}
               </div>
 
-              {saveError && (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/5 px-4 py-2.5 text-xs text-red-600 dark:text-red-400">
-                  ❌ {saveError}
-                </div>
-              )}
             </>
           )}
         </div>
+
+        {/* v1.x: 持久化校验提示行 — 用户反馈"按钮点不动不知道为啥"。
+            saveError(API 失败)优先红色;否则当前 step 校验失败显示 amber
+            提示,内容由 canAdvance[step].reason 实时计算,用户改字段就消失。 */}
+        {(!canAdvance[step].ok || saveError) && (
+          <div className="px-6 pt-2 pb-1 shrink-0">
+            <div className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+              saveError
+                ? 'border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400'
+                : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300'
+            }`}>
+              {saveError
+                ? `❌ ${saveError}`
+                : `⚠️ ${canAdvance[step].reason || (isZh ? '当前步骤还有必填项未完成' : 'Required fields incomplete on this step')}`}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2 shrink-0">

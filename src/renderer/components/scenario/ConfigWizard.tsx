@@ -791,6 +791,41 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     }
     return keywordList.length > 0 && persona.trim().length > 0;
   })();
+
+  // v1.x: canAdvance — 跟其他 wizard 同款 Record,给底部持久化校验提示行用。
+  // 用户反馈"按钮点不动不知道为啥",每一步都要把"差啥"实时显示给用户。
+  const canAdvance: Record<1 | 2 | 3, { ok: boolean; reason?: string }> = (() => {
+    // Step 1 — scenario-specific minimum input
+    let s1: { ok: boolean; reason?: string };
+    if (isLinkRewriteScenario) {
+      s1 = parsedUrls.length >= 1
+        ? { ok: true }
+        : { ok: false, reason: isZh ? '至少粘贴 1 条推文链接' : 'Paste at least 1 tweet URL' };
+    } else if (keywordList.length === 0) {
+      s1 = { ok: false, reason: isZh ? '至少填 1 个关键词' : 'At least 1 keyword required' };
+    } else if (!persona.trim()) {
+      s1 = { ok: false, reason: isZh ? '请填一段人设描述' : 'Persona description is required' };
+    } else {
+      s1 = { ok: true };
+    }
+    // Step 2 — engage 场景三动作 max 必须至少一项 ≥ 1
+    const s2: { ok: boolean; reason?: string } = engageNoAction
+      ? { ok: false, reason: isZh ? '请至少为「点赞 / 关注 / 评论」其中一项设置最大值 ≥ 1' : 'Set Max ≥ 1 for at least one of Like / Follow / Reply' }
+      : { ok: true };
+    // Step 3 — terms + canFinish
+    let s3: { ok: boolean; reason?: string };
+    if (!allTermsAccepted) {
+      s3 = { ok: false, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' };
+    } else if (!trackId) {
+      s3 = { ok: false, reason: isZh ? '请选择一个赛道' : 'Please select a track' };
+    } else if (engageNoAction) {
+      s3 = { ok: false, reason: isZh ? '请回到第 2 步,至少为一项设置最大值 ≥ 1' : 'Go back to step 2 and set Max ≥ 1 for at least one action' };
+    } else {
+      s3 = canFinish ? { ok: true } : { ok: false, reason: isZh ? '请补全必填项' : 'Please complete required fields' };
+    }
+    return { 1: s1, 2: s2, 3: s3 };
+  })();
+
   // Auto-reply scenario allows up to 6 articles/day (each with 1 note + 2
   // user-comment replies). Other scenarios still cap at 3 to keep XHS happy.
   const dailyHardCap = ((scenario.risk_caps as any)?.daily_count_cap)
@@ -1971,25 +2006,28 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 ))}
               </div>
 
-              {saveError && (
-                <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500">
-                  ❌ {saveError}
-                </div>
-              )}
-
-              {/* v1.x: step 3 上的同步红字 — 用户在 step 2 一路 next 进来后,
-                  如果三动作 max 全 0,"保存"按钮会灰掉。这里把原因显式说出来,
-                  避免用户只看到灰按钮不知道为什么。 */}
-              {engageNoAction && (
-                <div className="mt-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-500">
-                  {isZh
-                    ? '⚠️ 请回到上一步,至少为「点赞 / 关注 / 评论」其中一项设置最大值 ≥ 1,否则任务什么动作都不会做。'
-                    : '⚠️ Go back to the previous step and set Max ≥ 1 for at least one of Like / Follow / Reply, otherwise the task will do nothing.'}
-                </div>
-              )}
+              {/* saveError + engageNoAction 已抽到底部统一的 canAdvance 提示行,
+                  这里不再单独渲染避免重复显示。 */}
             </div>
           )}
         </div>
+
+        {/* v1.x: 持久化校验提示行 — 用户反馈"按钮点不动不知道为啥"。
+            saveError(API 失败)优先红色;否则当前 step 校验失败显示 amber
+            提示,内容由 canAdvance[step].reason 实时计算,用户改字段就消失。 */}
+        {(!canAdvance[step].ok || saveError) && (
+          <div className="px-6 pt-2 pb-1 shrink-0">
+            <div className={`rounded-lg border px-3 py-2 text-xs leading-relaxed ${
+              saveError
+                ? 'border-red-500/30 bg-red-500/5 text-red-600 dark:text-red-400'
+                : 'border-amber-500/30 bg-amber-500/5 text-amber-700 dark:text-amber-300'
+            }`}>
+              {saveError
+                ? `❌ ${saveError}`
+                : `⚠️ ${canAdvance[step].reason || (isZh ? '当前步骤还有必填项未完成' : 'Required fields incomplete on this step')}`}
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-200 dark:border-gray-800 shrink-0">
