@@ -1049,9 +1049,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             <span className="text-xl shrink-0 animate-pulse">⚠️</span>
             <div className="flex-1 text-sm text-amber-700 dark:text-amber-300 leading-relaxed font-medium">
               {isZh ? (
-                <>运行中<strong>请勿最小化/关闭浏览器或退出账号</strong>,以免干扰运行。如需使用浏览器,请<strong>新开一个独立窗口</strong>(切勿在原窗口新开标签页)。</>
+                <>运行中<strong>请勿缩小/最小化/关闭浏览器或退出账号</strong>,以免干扰运行。如需使用浏览器,请<strong>新开一个独立窗口</strong>(切勿在原窗口新开标签页)。</>
               ) : (
-                <>While running, <strong>do NOT minimize/close the browser or log out</strong> — it'll interrupt the task. If you need to browse, <strong>open a separate browser window</strong> (not a new tab in the same window).</>
+                <>While running, <strong>do NOT resize/minimize/close the browser or log out</strong> — it'll interrupt the task. If you need to browse, <strong>open a separate browser window</strong> (not a new tab in the same window).</>
               )}
             </div>
           </div>
