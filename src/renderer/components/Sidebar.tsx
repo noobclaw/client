@@ -265,7 +265,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             {i18nService.t('myWallet')}
           </button>
 
-          {/* Invite Friends to Earn Coins */}
+          {/* Invite Rebate (v1.x: 文案统一为"邀请返佣",跟官网 nav 对齐) */}
           <button
             type="button"
             onClick={() => { setIsSearchOpen(false); onShowInvite(); }}
@@ -276,7 +276,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             }`}
           >
             <span className="text-sm">🎁</span>
-            {i18nService.t('inviteFriends')}
+            {i18nService.t('inviteRebateMenu')}
           </button>
 
           {/* Personality Tests */}

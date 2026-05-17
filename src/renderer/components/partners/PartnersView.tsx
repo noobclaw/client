@@ -219,7 +219,7 @@ const ActivitiesTab: React.FC<{
           <span className="text-3xl">🎁</span>
           <div>
             <h3 className="text-base font-semibold dark:text-claude-darkText text-claude-text">
-              {isZh ? '邀请好友赚币' : 'Invite Friends to Earn'}
+              {isZh ? '邀请返佣' : 'Invite & Rebate'}
             </h3>
             <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
               {isZh
