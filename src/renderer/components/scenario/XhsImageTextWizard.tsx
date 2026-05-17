@@ -406,6 +406,14 @@ export const XhsImageTextWizard: React.FC<Props> = ({
                       </span>
                     )}
                   </div>
+                  {/* v1.x: 抓图规则说明 — 让用户理解多关键词的价值。
+                      默认抓图模式: 按本篇张数逐张独立抽 1 个关键词去搜小红书,
+                      并筛选「图文 + 半年内」, 每次只取 1 张图。 */}
+                  <div className="mt-2 rounded-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                    {isZh
+                      ? 'ℹ️ 抓图规则: 按本篇所需张数, 逐张从你填的关键词里随机抽 1 个去搜小红书「图文 · 半年内」, 每搜一次只取 1 张图 — 关键词填得越多, 本篇配图越多样。'
+                      : 'ℹ️ Scrape rule: For each image needed, randomly pick 1 keyword from your list to search Xiaohongshu (filtered to Image-Text + Last 6 Months), take 1 image per search. More keywords = more variety per post.'}
+                  </div>
                 </div>
               )}
             </>
