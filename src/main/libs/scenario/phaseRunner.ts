@@ -1246,7 +1246,7 @@ function buildContext(
           // 字段在三平台对齐 — 缺失维度服务端可挂 null,helper 会跳过。
           // XHS 的 min_views 填值但实际抓不到(平台不公开),仅为 schema 对齐。
           xhs:     { min_likes: 500, min_comments: 20, min_views: 1000, min_match: 1 },
-          x:       { min_likes: 500, min_comments: 20, min_views: 5000, min_match: 1 },
+          x:       { min_likes: 500, min_comments: 20, min_views: 1000, min_match: 1 },
           binance: { min_likes: 500, min_comments: 20, min_views: 5000, min_match: 1 },
         },
       };

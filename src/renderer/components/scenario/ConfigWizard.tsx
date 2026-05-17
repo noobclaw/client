@@ -1639,7 +1639,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '🎲 自动发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
                   </div>
                   <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                    <li>{isZh ? '· 40% 仿写：feed 找爆款长推（字数≥100 + 浏览≥1万） → AI 用同样钩子写一条新推' : '· 40% rewrite: find viral long tweet (≥100 chars + ≥10K views) → AI rewrites in your voice'}</li>
+                    <li>{isZh ? '· 40% 仿写：feed 找爆款长推（字数≥100 + 浏览≥1000） → AI 用同样钩子写一条新推' : '· 40% rewrite: find viral long tweet (≥100 chars + ≥1K views) → AI rewrites in your voice'}</li>
                     <li>{isZh ? '· 40% 原创：按你最近的话题 + 随机钩子类型生成' : '· 40% original: AI generates based on your topic_context + random hook'}</li>
                     <li>{isZh ? '· 20% 转推回应：feed 里挑一条 → 写带观点的 quote tweet' : '· 20% quote: pick a feed tweet → write a quote with a viewpoint'}</li>
                   </ul>
@@ -1774,8 +1774,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isXPostCreator ? (
                     <>
                       <li>{isZh
-                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条 3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1万`
-                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between), each randomized across 3 mechanisms (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥10K views`}</li>
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条 3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1000`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between), each randomized across 3 mechanisms (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥1K views`}</li>
                       <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查' : '· Tweets cannot be unposted — review AI output after first run'}</li>

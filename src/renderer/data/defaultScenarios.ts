@@ -50,11 +50,11 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_account_flag_hours": 72,
       "max_posts_per_day": 5,
       "inter_post_jitter_ms": [
-        180000,
-        900000
+        60000,
+        120000
       ],
       "min_post_chars": 100,
-      "max_post_chars": 1900,
+      "max_post_chars": 1600,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -111,15 +111,15 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_account_flag_hours": 72,
       "max_posts_per_day": 100,
       "inter_post_jitter_ms": [
-        180000,
-        900000
+        60000,
+        120000
       ],
       "feed_scroll_min": 5,
       "feed_scroll_max": 20,
       "min_long_tweet_chars": 80,
-      "min_rewrite_views": 5000,
+      "min_rewrite_views": 2000,
       "min_post_chars": 100,
-      "max_post_chars": 2100,
+      "max_post_chars": 1600,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -151,8 +151,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "币安广场互动涨粉",
     "name_en": "Binance Square Engage & Grow",
-    "description_zh": "每天随机做 0-5 个动作：关注币安广场加密 KOL、给热门帖子写有观点的 AI 回复。动作间隔 8-30 分钟随机，模拟真人节奏，避免 spam。",
-    "description_en": "Each day randomly performs 0-5 actions: follow crypto KOLs on Binance Square and post AI-drafted opinionated replies to hot Square posts. 8-30 min randomized spacing between actions to mimic a real user.",
+    "description_zh": "每天随机做 0-5 个动作：关注币安广场加密 KOL、给热门帖子写有观点的 AI 回复。动作间隔 5 秒-1 分钟随机，模拟真人节奏，避免 spam。",
+    "description_en": "Each day randomly performs 0-5 actions: follow crypto KOLs on Binance Square and post AI-drafted opinionated replies to hot Square posts. 5s-1min randomized spacing between actions to mimic a real user.",
     "icon": "🤝",
     "default_config": {
       "keywords": [],
@@ -179,10 +179,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "max_follows_per_day": 100,
       "max_likes_per_day": 500,
       "daily_count_cap": 100,
-      "min_action_interval_ms": 10000,
-      "max_action_interval_ms": 180000,
-      "min_action_interval_light_ms": 10000,
-      "max_action_interval_light_ms": 180000,
+      "min_action_interval_ms": 5000,
+      "max_action_interval_ms": 60000,
+      "min_action_interval_light_ms": 3000,
+      "max_action_interval_light_ms": 30000,
       "min_kol_engage_repeat_days": 7,
       "feed_scroll_min": 3,
       "feed_scroll_max": 8,
@@ -243,7 +243,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_account_flag_hours": 72,
       "max_posts_per_day": 200,
       "min_post_chars": 100,
-      "max_post_chars": 2100,
+      "max_post_chars": 1600,
       "weights": {
         "originator": 100,
         "rewrite": 0,
@@ -305,8 +305,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "max_follows_per_day": 100,
       "max_comments_per_day": 100,
       "daily_count_cap": 30,
-      "min_action_interval_ms": 20000,
-      "max_action_interval_ms": 180000,
+      "min_action_interval_ms": 30000,
+      "max_action_interval_ms": 240000,
       "feed_scroll_min": 4,
       "feed_scroll_max": 12
     },
@@ -807,68 +807,15 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     ]
   },
   {
-    "id": "xhs_image_text",
-    "version": "1.0.0",
-    "platform": "xhs",
-    "workflow_type": "image_text_creation",
-    "category": "knowledge",
-    "name_zh": "小红书 · 图文创作",
-    "name_en": "Xiaohongshu Image-Text Creation",
-    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓网络图（2-6 张可调）。整完上传到小红书创作者中心草稿箱。",
-    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Xiaohongshu note. Image source: AI-generated OR scraped real photos by keyword (2-6 configurable). Auto-uploads to Xiaohongshu creator center drafts.",
-    "icon": "📝",
-    "default_config": {
-      "keywords": [],
-      "persona": "",
-      "daily_count": 1,
-      "variants_per_post": 1,
-      "schedule_window": "09:00-22:00",
-      "use_real_photos": false,
-      "real_photo_count": 6,
-      "real_photo_keywords": ""
-    },
-    "risk_caps": {
-      "max_daily_runs": 3,
-      "max_scroll_per_run": 0,
-      "min_scroll_delay_ms": 0,
-      "max_scroll_delay_ms": 0,
-      "read_dwell_min_ms": 0,
-      "read_dwell_max_ms": 0,
-      "max_run_duration_ms": 1800000,
-      "min_interval_hours": 4,
-      "weekly_rest_days": 1,
-      "cooldown_captcha_hours": 24,
-      "cooldown_rate_limit_hours": 48,
-      "cooldown_account_flag_hours": 72,
-      "daily_count_cap": 5
-    },
-    "required_login_url": "https://creator.xiaohongshu.com/",
-    "tab_url_pattern": "xiaohongshu",
-    "anchor_url": "https://www.xiaohongshu.com",
-    "entry_urls": {},
-    "creator_urls": {
-      "publish": "https://creator.xiaohongshu.com/publish/publish?source=official"
-    },
-    "skills": {
-      "prompts": {
-        "composer": "prompts/composer.txt"
-      },
-      "config": "config.json",
-      "orchestrator": "orchestrator.js",
-      "upload_draft_script": "upload_draft.js",
-      "draft_uploader": "draft_uploader.json"
-    }
-  },
-  {
     "id": "douyin_image_text",
     "version": "1.1.0",
     "platform": "douyin",
-    "workflow_type": "image_text_creation",
+    "workflow_type": "douyin_image_text_creation",
     "category": "knowledge",
     "name_zh": "抖音 · 图文创作",
     "name_en": "Douyin Image-Text Creation",
-    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓网络图（2-6 张可调）。整完发布到抖音(或存草稿/仅本地保存)。",
-    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Douyin image-text note. Image source: AI-generated OR scraped real photos from Douyin's image-text filter (2-6 configurable). Auto-publishes (or saves draft / local).",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓实景图（2-6 张可调）。整完发布到抖音(或存草稿/仅本地保存)。",
+    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Douyin image-text note. Image source: AI-generated OR scraped real photos from Douyin's image-text filter by keyword (2-6 configurable). Auto-publishes (or saves draft / local).",
     "icon": "📝",
     "default_config": {
       "keywords": [],
@@ -904,7 +851,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     },
     "skills": {
       "prompts": {
-        "composer": "prompts/composer.txt"
+        "composer": "prompts/composer.txt",
+        "composer_realphoto": "prompts/composer_realphoto.txt"
       },
       "config": "config.json",
       "orchestrator": "orchestrator.js",
@@ -952,8 +900,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "max_follows_per_day": 100,
       "max_comments_per_day": 100,
       "daily_count_cap": 30,
-      "min_action_interval_ms": 20000,
-      "max_action_interval_ms": 180000,
+      "min_action_interval_ms": 30000,
+      "max_action_interval_ms": 240000,
       "feed_scroll_min": 4,
       "feed_scroll_max": 12
     },
@@ -1673,7 +1621,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
   },
   {
     "id": "x_auto_engage",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "platform": "x",
     "workflow_type": "auto_reply",
     "category": "engagement",
@@ -1882,12 +1830,12 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_captcha_hours": 24,
       "cooldown_rate_limit_hours": 48,
       "cooldown_account_flag_hours": 72,
-      "min_reply_interval_ms": 30000,
+      "min_reply_interval_ms": 45000,
       "max_reply_interval_ms": 480000,
-      "min_article_interval_ms": 30000,
+      "min_article_interval_ms": 60000,
       "max_article_interval_ms": 480000,
-      "min_article_interval_light_ms": 10000,
-      "max_article_interval_light_ms": 180000,
+      "min_article_interval_light_ms": 30000,
+      "max_article_interval_light_ms": 240000,
       "min_comments_for_pick": 20,
       "min_likes_for_pick": 300,
       "comment_replies_per_article": 1,
@@ -1917,6 +1865,60 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       },
       "config": "config.json",
       "orchestrator": "orchestrator.js"
+    }
+  },
+  {
+    "id": "xhs_image_text",
+    "version": "1.0.0",
+    "platform": "xhs",
+    "workflow_type": "xhs_image_text_creation",
+    "category": "knowledge",
+    "name_zh": "小红书 · 图文创作",
+    "name_en": "Xiaohongshu Image-Text Creation",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到小红书创作者中心草稿箱。",
+    "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Xiaohongshu note. Image source: AI-generated OR scraped real photos by keyword (2-6 configurable). Auto-uploads to Xiaohongshu creator center drafts.",
+    "icon": "📝",
+    "default_config": {
+      "keywords": [],
+      "persona": "",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-22:00",
+      "use_real_photos": false,
+      "real_photo_count": 6,
+      "real_photo_keywords": ""
+    },
+    "risk_caps": {
+      "max_daily_runs": 3,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 1800000,
+      "min_interval_hours": 4,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 5
+    },
+    "required_login_url": "https://creator.xiaohongshu.com/",
+    "tab_url_pattern": "xiaohongshu",
+    "anchor_url": "https://www.xiaohongshu.com",
+    "entry_urls": {},
+    "creator_urls": {
+      "publish": "https://creator.xiaohongshu.com/publish/publish?source=official"
+    },
+    "skills": {
+      "prompts": {
+        "composer": "prompts/composer.txt",
+        "composer_realphoto": "prompts/composer_realphoto.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js",
+      "upload_draft_script": "upload_draft.js",
+      "draft_uploader": "draft_uploader.json"
     }
   },
   {

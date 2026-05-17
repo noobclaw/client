@@ -172,7 +172,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const IMAGE_TEXT_FALLBACK: Scenario = {
     ...FALLBACK_SCENARIO,
     id: 'xhs_image_text',
-    workflow_type: 'image_text_creation' as any,
+    workflow_type: 'xhs_image_text_creation' as any,
     name_zh: '小红书 · 图文创作',
     name_en: 'XHS Image-Text Creation',
     description_zh: '填 3 段灵感, AI 改写成小红书笔记。配图二选一: AI 生图 或 关键词去小红书抓网络图(2-6 张可调)。整完上传到草稿箱。',

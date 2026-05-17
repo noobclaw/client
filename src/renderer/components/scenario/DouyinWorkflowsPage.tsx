@@ -107,7 +107,7 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     id: 'douyin_image_text',
     version: '1.1.0',
     platform: 'douyin' as any,
-    workflow_type: 'image_text_creation' as any,
+    workflow_type: 'douyin_image_text_creation' as any,
     category: 'knowledge',
     name_zh: '抖音 · 图文创作',
     name_en: 'Douyin Image-Text Creation',

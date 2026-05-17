@@ -34,6 +34,19 @@ const WORKFLOW_META: Record<string, { icon: string; titleKey: string; descKey: s
   },
   // v1.1.x: image-text 独立 workflow_type,跟 viral_production 分开避免 .find 撞车。
   // 没单独 i18n key 时复用 viral 的标题(图文创作也算"爆款生产"的一种)。
+  // v1.x: 进一步拆成 douyin / xhs 各自独立 workflow_type,满足"每张卡片用
+  //   独立 workflow_type"规则。保留旧 image_text_creation key 兜底,防止
+  //   老 run record(刚升级前的存档)在历史页渲染时拿不到 meta。
+  douyin_image_text_creation: {
+    icon: '📝',
+    titleKey: 'scenarioWorkflowViral',
+    descKey: 'scenarioWorkflowViralDesc',
+  },
+  xhs_image_text_creation: {
+    icon: '📝',
+    titleKey: 'scenarioWorkflowViral',
+    descKey: 'scenarioWorkflowViralDesc',
+  },
   image_text_creation: {
     icon: '📝',
     titleKey: 'scenarioWorkflowViral',
