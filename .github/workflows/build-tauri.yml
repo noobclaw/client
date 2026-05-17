@@ -256,3 +256,4 @@ jobs:
           name: noobclaw-tauri-${{ matrix.target }}
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
+          retention-days: 7
