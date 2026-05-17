@@ -814,7 +814,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "knowledge",
     "name_zh": "小红书 · 图文创作",
     "name_en": "Xiaohongshu Image-Text Creation",
-    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到小红书创作者中心草稿箱。",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓网络图（2-6 张可调）。整完上传到小红书创作者中心草稿箱。",
     "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Xiaohongshu note. Image source: AI-generated OR scraped real photos by keyword (2-6 configurable). Auto-uploads to Xiaohongshu creator center drafts.",
     "icon": "📝",
     "default_config": {
@@ -867,7 +867,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "knowledge",
     "name_zh": "抖音 · 图文创作",
     "name_en": "Douyin Image-Text Creation",
-    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓实景图（2-6 张可调）。整完发布到抖音(或存草稿/仅本地保存)。",
+    "description_zh": "你填 3 段灵感来源，每次任务运行随机抽 1 段，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓网络图（2-6 张可调）。整完发布到抖音(或存草稿/仅本地保存)。",
     "description_en": "Fill 3 source snippets; each run picks one at random, AI rewrites into a Douyin image-text note. Image source: AI-generated OR scraped real photos from Douyin's image-text filter (2-6 configurable). Auto-publishes (or saves draft / local).",
     "icon": "📝",
     "default_config": {

@@ -152,7 +152,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
     2: dailyCount < DAILY_COUNT_MIN
       ? { ok: false, reason: isZh ? '每次生成至少 1 条' : 'At least 1 per run' }
       : useRealPhotos && keywordCount === 0
-        ? { ok: false, reason: isZh ? '实景图模式需要至少 1 个关键词' : 'Real-photo mode needs at least 1 keyword' }
+        ? { ok: false, reason: isZh ? '网络图模式需要至少 1 个关键词' : 'Web-image mode needs at least 1 keyword' }
         : useRealPhotos && keywordOverLimit
           ? { ok: false, reason: isZh ? `关键词最多 ${KEYWORDS_MAX_COUNT} 个，当前 ${keywordCount} 个` : `Max ${KEYWORDS_MAX_COUNT} keywords (you have ${keywordCount})` }
           : { ok: true },
@@ -393,20 +393,24 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 </div>
               )}
 
-              {/* 实景图关键词输入框 — 仅 useRealPhotos=true 时显示 */}
+              {/* 网络图关键词输入框 — 仅 useRealPhotos=true 时显示。
+                  v1.x: input → textarea(3 行)。用户反馈输入区太矮,凑齐 10 个关键词
+                  需要左右滚动看不到全部;改成 3 行 textarea 让 10 个词都能一眼看完。 */}
               {useRealPhotos && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                    {isZh ? `🔍 实景图搜索关键词（最多 ${KEYWORDS_MAX_COUNT} 个，空格分隔）` : `🔍 Search keywords (max ${KEYWORDS_MAX_COUNT}, space-separated)`}
+                    {isZh
+                      ? `🔍 网络图搜索关键词（请务必贴近你的上一步的三段文案，最多 ${KEYWORDS_MAX_COUNT} 个，空格分隔）`
+                      : `🔍 Web image search keywords (must align with your 3 reference paragraphs above, max ${KEYWORDS_MAX_COUNT}, space-separated)`}
                   </label>
-                  <input
-                    type="text"
+                  <textarea
+                    rows={3}
                     value={realPhotoKeywords}
                     onChange={e => setRealPhotoKeywords(e.target.value)}
                     placeholder={isZh
                       ? '比如：杭州西湖 春天 樱花 旅游攻略'
                       : 'e.g. coffee latte cafe interior'}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40"
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-violet-500/40 resize-none"
                     disabled={saving}
                   />
                   <div className="text-[11px] mt-1 flex items-center gap-2">
@@ -533,7 +537,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 <SummaryRow
                   label={isZh ? '配图' : 'Images'}
                   value={useRealPhotos
-                    ? (isZh ? `📷 实景图 ${realPhotoCount} 张/篇 · 关键词 "${keywordTokens.join(' ')}"` : `📷 Real ${realPhotoCount}/post · "${keywordTokens.join(' ')}"`)
+                    ? (isZh ? `📷 网络图 ${realPhotoCount} 张/篇 · 关键词 "${keywordTokens.join(' ')}"` : `📷 Web ${realPhotoCount}/post · "${keywordTokens.join(' ')}"`)
                     : (isZh ? `🎨 AI 生图 ${realPhotoCount} 张/篇` : `🎨 AI ${realPhotoCount}/post`)} />
                 <SummaryRow label={isZh ? '生成后' : 'After gen'} value={
                   uploadMode === 'publish'

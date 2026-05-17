@@ -858,7 +858,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <div className="text-xs text-gray-600 dark:text-gray-300">
                         <span className="text-gray-500">{isZh ? '配图模式:' : 'Image source:'}</span>{' '}
                         {useRealPhotos
-                          ? (isZh ? '📷 网络真实图片' : '📷 Real photos from web')
+                          ? (isZh ? '📷 网络图' : '📷 Web images')
                           : (isZh ? '🎨 AI 生成图片' : '🎨 AI-generated images')}
                       </div>
                       {typeof realPhotoCount === 'number' && (

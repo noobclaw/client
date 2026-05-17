@@ -175,7 +175,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     workflow_type: 'image_text_creation' as any,
     name_zh: '小红书 · 图文创作',
     name_en: 'XHS Image-Text Creation',
-    description_zh: '填 3 段灵感, AI 改写成小红书笔记。配图二选一: AI 生图 或 关键词去小红书抓实景图(2-6 张可调)。整完上传到草稿箱。',
+    description_zh: '填 3 段灵感, AI 改写成小红书笔记。配图二选一: AI 生图 或 关键词去小红书抓网络图(2-6 张可调)。整完上传到草稿箱。',
     description_en: 'Fill 3 source snippets; AI rewrites into a Xiaohongshu note. Image source: AI-generated OR scraped real photos by keyword.',
     icon: '📝',
     default_config: {
@@ -412,7 +412,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '填 3 段灵感来源，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓实景图（2-6 张可调）。整完上传到草稿箱手动审核发布。'
+                ? '填 3 段灵感来源，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓网络图（2-6 张可调）。整完上传到草稿箱手动审核发布。'
                 : 'Fill 3 source snippets; AI rewrites into a XHS note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable). Uploads to drafts for manual review.'}
             </p>
             <button

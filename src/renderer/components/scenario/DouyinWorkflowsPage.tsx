@@ -111,7 +111,7 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
     category: 'knowledge',
     name_zh: '抖音 · 图文创作',
     name_en: 'Douyin Image-Text Creation',
-    description_zh: '你填 3 段灵感来源，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓实景图（2-6 张可调）。',
+    description_zh: '你填 3 段灵感来源，AI 改写成抖音图文笔记。配图二选一：AI 生图 或 关键词去抖音「图文」筛选下抓网络图（2-6 张可调）。',
     description_en: 'Fill 3 source snippets; AI rewrites into Douyin image-text note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable).',
     icon: '📝',
     default_config: {
