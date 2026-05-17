@@ -1237,7 +1237,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   <div className="flex items-center justify-center gap-2 mb-4">
                     <ChainLogo chain={pendingChain} size={20} />
                     <h4 className="text-sm font-bold dark:text-claude-darkText text-claude-text text-center">
-                      {isTron ? 'Send USDT (TRC20) to complete payment' : i18nService.t('walletSendBnb')}
+                      {isTron ? i18nService.t('walletSendUsdt') : i18nService.t('walletSendBnb')}
                     </h4>
                   </div>
 
@@ -1252,7 +1252,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
                   {/* Treasury address label — explicit network so users don't
                       mis-route their funds via the wrong chain (unrecoverable). */}
-                  <p className="text-xs text-primary text-center mb-3">{`Receiving address (${networkLabel} only)`}</p>
+                  <p className="text-xs text-primary text-center mb-3">{i18nService.t('walletReceivingAddressOnly').replace('{network}', networkLabel)}</p>
 
                   {/* QR Code */}
                   {treasury && (
