@@ -16,6 +16,7 @@ import { i18nService } from '../../services/i18n';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import type { ScenarioRunProgress } from '../../types/scenario';
 import LuckyBag from '../cowork/LuckyBag';
+import { FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
 // detail 页面被翻译,会回落到原始 ID(如 'web3_alpha'),用户看到「人设: web3_alpha」。
@@ -790,9 +791,24 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {(() => {
               const isLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
               const taskUrls: string[] = (task as any).urls || [];
-              // 抖音图文创作场景:不展示 赛道 / 人设 / 关键词,只展示 3 段参考文案
+              // 图文创作场景(抖音 + 小红书):不展示 赛道 / 人设 / 关键词,
+              // 只展示 3 段参考文案 + 配图配置(模式 / 风格 / 张数 / 关键词)。
+              // 两个场景的 wizard schema 完全一致(source_segments / use_real_photos
+              // / real_photo_count / real_photo_keywords / ai_image_style),
+              // 详情页用同一段渲染逻辑覆盖。
               const isDouyinImageText = task.scenario_id === 'douyin_image_text';
+              const isXhsImageText = task.scenario_id === 'xhs_image_text';
+              const isImageTextTask = isDouyinImageText || isXhsImageText;
               const sourceSegments: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
+              // v1.x: 配图配置 — 两个图文场景共用同一组字段,详情页统一渲染。
+              const useRealPhotos = !!(task as any).use_real_photos;
+              const realPhotoCount = (typeof (task as any).real_photo_count === 'number')
+                ? (task as any).real_photo_count : null;
+              const realPhotoKeywords = String((task as any).real_photo_keywords || '').trim();
+              const aiImageStyleId = String((task as any).ai_image_style || '').trim();
+              const aiImageStyle = aiImageStyleId
+                ? FALLBACK_IMAGE_STYLES.find(s => s.id === aiImageStyleId)
+                : null;
               return (
                 <>
                   {/* v4.28.x: 链接仿写场景(XHS link mode / x_link_rewrite / binance_from_x_link)
@@ -800,7 +816,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       这一行的 link-mode label 跟 badge 完全重复,#ID 也已在标题区显示;
                       用户根本没填 track / persona,展示出来纯属噪音。
                       v5.x+: douyin_image_text 同理 — 只有参考文案,没赛道没人设。 */}
-                  {!isLinkMode && !isDouyinImageText && (
+                  {!isLinkMode && !isImageTextTask && (
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">
                         {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
@@ -809,7 +825,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
                     </div>
                   )}
-                  {isDouyinImageText && (
+                  {isImageTextTask && (
                     <div className="flex items-center gap-3">
                       <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
                     </div>
@@ -818,13 +834,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       列表页(MyTasksPage)只截取首行 80 字,用户进到详情想看完整身份
                       描述只能去 wizard 编辑里翻,体验不好。这里展示完整 persona。
                       Link 模式 + 图文创作没人设概念跳过。 */}
-                  {!isLinkMode && !isDouyinImageText && (task.persona || '').trim() && (
+                  {!isLinkMode && !isImageTextTask && (task.persona || '').trim() && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
                       <span className="text-gray-500 font-medium">{isZh ? '人设:' : 'Persona:'}</span>{' '}
                       {(task.persona || '').trim()}
                     </div>
                   )}
-                  {isDouyinImageText && sourceSegments.length > 0 && (
+                  {isImageTextTask && sourceSegments.length > 0 && (
                     <div className="space-y-1.5 pl-1">
                       {sourceSegments.map((s, i) => (
                         <div key={i} className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
@@ -832,6 +848,39 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           <span className="whitespace-pre-wrap">{s}</span>
                         </div>
                       ))}
+                    </div>
+                  )}
+                  {/* v1.x: 图文创作场景 — 配图配置块。
+                      模式(AI 生图 / 网络图片) + 张数 + 关键词(网络图) / 风格(AI 图)。
+                      抖音 + 小红书共用同一段渲染,字段 schema 一致。 */}
+                  {isImageTextTask && (
+                    <div className="space-y-1 pl-1 pt-1 border-t border-gray-200 dark:border-gray-800 mt-1.5">
+                      <div className="text-xs text-gray-600 dark:text-gray-300">
+                        <span className="text-gray-500">{isZh ? '配图模式:' : 'Image source:'}</span>{' '}
+                        {useRealPhotos
+                          ? (isZh ? '📷 网络真实图片' : '📷 Real photos from web')
+                          : (isZh ? '🎨 AI 生成图片' : '🎨 AI-generated images')}
+                      </div>
+                      {typeof realPhotoCount === 'number' && (
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <span className="text-gray-500">{isZh ? '每篇配图:' : 'Images per post:'}</span>{' '}
+                          {realPhotoCount} {isZh ? '张' : (realPhotoCount === 1 ? 'image' : 'images')}
+                        </div>
+                      )}
+                      {useRealPhotos && realPhotoKeywords && (
+                        <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+                          <span className="text-gray-500">{isZh ? '抓图关键词:' : 'Photo keywords:'}</span>{' '}
+                          <span className="whitespace-pre-wrap">{realPhotoKeywords}</span>
+                        </div>
+                      )}
+                      {!useRealPhotos && (
+                        <div className="text-xs text-gray-600 dark:text-gray-300">
+                          <span className="text-gray-500">{isZh ? 'AI 风格:' : 'AI style:'}</span>{' '}
+                          {aiImageStyle
+                            ? `${aiImageStyle.icon} ${isZh ? aiImageStyle.zh : aiImageStyle.en}`
+                            : (aiImageStyleId || (isZh ? '默认' : 'Default'))}
+                        </div>
+                      )}
                     </div>
                   )}
                   {isLinkMode ? (
@@ -868,8 +917,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           post_creator uses topic_context, link_rewrite is
                           URL-driven). Hide on X to avoid showing a misleading
                           empty/default keyword list.
-                          v5.x+: douyin_image_text 也跳过 — 只看参考文案,没关键词。 */}
-                      {!isXTask && !isDouyinImageText && (
+                          v5.x+: 图文创作(抖音 + 小红书)也跳过 — 只看参考文案,没关键词。 */}
+                      {!isXTask && !isImageTextTask && (
                         <div>
                           {(/^binance/.test(task.scenario_id) ? (isZh ? 'Token tag' : 'Token tag') : (isZh ? '关键词' : 'Keywords'))}
                           : {task.keywords.join(' · ')}
