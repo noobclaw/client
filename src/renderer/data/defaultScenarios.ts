@@ -54,7 +54,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
         900000
       ],
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -119,7 +119,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "min_long_tweet_chars": 80,
       "min_rewrite_views": 5000,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 2100,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -243,7 +243,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_account_flag_hours": 72,
       "max_posts_per_day": 200,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 2100,
       "weights": {
         "originator": 100,
         "rewrite": 0,
