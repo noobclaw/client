@@ -34,7 +34,7 @@ export const LoginWall: React.FC<LoginWallProps> = ({ onDismiss }) => {
           {i18nService.t('loginWallDescOpenSource')}
           <span
             className="text-blue-400 hover:text-blue-300 cursor-pointer font-medium"
-            onClick={() => window.electron?.shell?.openExternal?.('https://github.com/noobclaw/client')}
+            onClick={() => window.electron?.shell?.openExternal?.('https://github.com/noobclaw')}
           >
             {i18nService.t('loginWallViewSource')}
           </span>
