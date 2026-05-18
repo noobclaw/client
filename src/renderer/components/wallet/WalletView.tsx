@@ -97,7 +97,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
-  const [, setOrderTotal] = useState(0);
   const [pendingOrderNo, setPendingOrderNo] = useState('');
   // pendingAmount is the on-chain amount string the user must transfer
   // (e.g. "0.025154" for BNB or "10.003472" for USDT). pendingChain records
@@ -197,7 +196,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     // 之前在 loadData 里 eager fetch getOrderHistory 是死代码 + 拖慢首屏:
     //   1) 大多数用户不会进二级页,这条请求是纯浪费
     //   2) order history 比 payment info 大,慢的话拖累整页 paint
-    //   3) orderTotal 这个 state 根本没人读(只 set 不读,见 line 100)
+    //   3) orderTotal 这个 state 根本没人读(已随本次清掉)
     // 删除后:首次进我的充值少一个网络请求,二级页体验不变(进去时自己加载)。
 
     noobClawApi.getUserProfile().then((profileData) => {
@@ -228,7 +227,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const loadOrders = useCallback(async (status?: string, orderNo?: string, from?: string, to?: string) => {
     const data = await noobClawApi.getOrderHistory(status || undefined, orderNo || undefined, from || undefined, to || undefined);
     setOrderHistory(data.orders);
-    setOrderTotal(data.total);
   }, []);
 
   // Countdown timer
