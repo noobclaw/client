@@ -41,6 +41,7 @@ import TokenInsufficientDialog from './components/TokenInsufficientDialog';
 import { noobClawAuth } from './services/noobclawAuth';
 import { noobClawApi } from './services/noobclawApi';
 import { writeCachedPaymentInfo } from './services/paymentInfoCache';
+import { noobClawSSE } from './services/noobclawSSE';
 
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
@@ -534,6 +535,22 @@ const App: React.FC = () => {
       if (info) writeCachedPaymentInfo(info);
     }).catch(() => { /* 静默 — 失败不影响主流程,WalletView mount 时会自己重试 */ });
   }, [authState.isAuthenticated]);
+
+  // v1.x: SSE 实时推送通道。认证后 open EventSource('/api/me/events/stream'),
+  // 服务器在 rebate batch 上链确认后立即 push,客户端 0 延迟弹 RebateDrawer
+  // (对比之前最多 15s polling 延迟)。
+  // /balance pendingRebates 轮询保留作为兜底:SSE 没连上 / 浏览器不支持 /
+  // 服务端推送漏发的话,polling 还能托底,两条路径靠后端 notified_at 原子
+  // 标记自动去重(同一笔不会被两边都触发)。
+  // EventSource 不支持 custom header,token 走 query param,后端 SSE 路由
+  // 单独做 JWT 验证。logout / authExpired → stop(),自动清理重连 timer。
+  useEffect(() => {
+    if (authState.isAuthenticated && authState.authToken) {
+      noobClawSSE.start(authState.authToken);
+    } else {
+      noobClawSSE.stop();
+    }
+  }, [authState.isAuthenticated, authState.authToken]);
 
   // Listen for token-insufficient event from api.ts
   useEffect(() => {
