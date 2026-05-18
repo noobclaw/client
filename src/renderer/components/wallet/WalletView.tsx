@@ -1080,7 +1080,30 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
   // ─── Main page ───
   return (
-    <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative">
+    <div
+      className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}
+      style={partnerColor ? ({
+        '--invite-partner-color': partnerColor,
+        '--invite-partner-glow': partnerColor + '40',
+      } as React.CSSProperties) : undefined}
+    >
+      {/* Inline scoped <style> 三重保险 — 即使外部 noobclaw-theme.css 没加载
+          或被覆盖,这块 inline CSS 也能保证按钮 / tab / 边框 / 文字跟 tier 走 */}
+      {partnerColor && (
+        <style>{`
+          .wallet-view--partner .text-primary { color: var(--invite-partner-color) !important; }
+          .wallet-view--partner .bg-primary { background-color: var(--invite-partner-color) !important; color:#0a0a0a !important; }
+          .wallet-view--partner .bg-primary:hover { background-color: var(--invite-partner-color) !important; filter:brightness(0.92); }
+          .wallet-view--partner .bg-primary\\/5  { background-color: color-mix(in srgb, var(--invite-partner-color) 6%, transparent) !important; }
+          .wallet-view--partner .bg-primary\\/10 { background-color: color-mix(in srgb, var(--invite-partner-color) 10%, transparent) !important; }
+          .wallet-view--partner .bg-primary\\/15 { background-color: color-mix(in srgb, var(--invite-partner-color) 15%, transparent) !important; }
+          .wallet-view--partner .bg-primary\\/20 { background-color: color-mix(in srgb, var(--invite-partner-color) 20%, transparent) !important; }
+          .wallet-view--partner .border-primary { border-color: var(--invite-partner-color) !important; }
+          .wallet-view--partner .border-primary\\/20 { border-color: color-mix(in srgb, var(--invite-partner-color) 28%, transparent) !important; }
+          .wallet-view--partner .focus\\:border-primary:focus { border-color: var(--invite-partner-color) !important; }
+          .wallet-view--partner .hover\\:bg-primary-hover:hover { background-color: var(--invite-partner-color) !important; filter:brightness(1.08); }
+        `}</style>
+      )}
       {header}
       {copyToast && (
         <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-black text-xs font-medium shadow-lg animate-fade-in">
