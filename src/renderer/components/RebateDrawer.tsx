@@ -43,11 +43,17 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
   const [detail, setDetail] = useState<RebateDetail | null>(null);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  // enterTimerRef 是触发 entering→visible 的 30ms 微延后,用 ref 包住为了在
+  // unmount / 新事件接管 / clearTimers 路径中能取消。漏了它会出现:组件 unmount
+  // 在 30ms 内的 race window 时,timer 仍然 fire 一次 setPhase('visible'),React
+  // 报 "state update on unmounted component" 警告(微内存泄漏)。
+  const enterTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const isHoveringRef = useRef(false);
 
   const clearTimers = () => {
     if (dismissTimerRef.current) { clearTimeout(dismissTimerRef.current); dismissTimerRef.current = undefined; }
     if (exitTimerRef.current) { clearTimeout(exitTimerRef.current); exitTimerRef.current = undefined; }
+    if (enterTimerRef.current) { clearTimeout(enterTimerRef.current); enterTimerRef.current = undefined; }
   };
 
   const startAutoDismiss = () => {
@@ -75,8 +81,9 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
       clearTimers();
       setDetail(d);
       setPhase('entering');
-      // 微延后切到 visible,触发 transition
-      setTimeout(() => setPhase('visible'), 30);
+      // 微延后切到 visible,触发 transition;放在 ref 里方便 clearTimers 取消,
+      // 避免 unmount race window 里的 setPhase-on-unmounted 警告。
+      enterTimerRef.current = setTimeout(() => setPhase('visible'), 30);
       startAutoDismiss();
     };
     window.addEventListener('noobclaw:rebate-received', handler);
