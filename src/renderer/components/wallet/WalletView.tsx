@@ -241,6 +241,35 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return () => clearInterval(interval);
   }, [step, pendingOrderNo, isExpired]);
 
+  // v1.x: 合伙人在"我的充值"页也享受跟"邀请返佣"页一样的金/银/铜/钻石主题色
+  // cascade。partnerColor 算法跟 InviteView 同一份(同一组 tier 颜色),通过
+  // useEffect 设到 <body> 上,让 Sidebar(active 高亮)、scrollbar 都跟着换色。
+  // 页面内部的卡片/按钮/数字用 .wallet-view--partner 局部 class 走全局
+  // noobclaw-theme.css 里的 cascade 规则(跟 InviteView 一对兄弟,共享同一
+  // 套 body.invite-partner-active CSS 变量)。
+  const TIER_BODY_COLORS: Record<string, string> = {
+    bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+  };
+  const partnerColor: string | null = profile?.partner?.is_partner
+    ? (TIER_BODY_COLORS[profile.partner.tier as string] || '#facc15')
+    : null;
+
+  useEffect(() => {
+    if (!partnerColor) return;
+    const body = document.body;
+    // 同 InviteView 用同一个 body class —— 这样 Sidebar/scrollbar 的 partner
+    // 主题在两个页面之间无缝切换不闪烁。两个页面 mount/unmount 时各自加/删,
+    // 同一时刻只会有一个页面挂载所以不冲突。
+    body.classList.add('invite-partner-active');
+    body.style.setProperty('--invite-partner-color', partnerColor);
+    body.style.setProperty('--invite-partner-glow', partnerColor + '40');
+    return () => {
+      body.classList.remove('invite-partner-active');
+      body.style.removeProperty('--invite-partner-color');
+      body.style.removeProperty('--invite-partner-glow');
+    };
+  }, [partnerColor]);
+
   const handleSelectPackage = async (amount: number, chain: 'BSC' | 'TRON' = currentChain) => {
     setLoading(true);
     setError('');
@@ -447,7 +476,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // ─── Order History sub-page ───
   if (subPage === 'orderHistory') {
     return (
-      <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative">
+      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
         {header}
         {confirmDialogEl}
 
@@ -607,7 +636,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     };
 
     return (
-      <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative">
+      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
         {header}
         <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
 
@@ -713,7 +742,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     }
 
     return (
-      <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative">
+      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
         {header}
         {copyToast && (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-black text-xs font-medium shadow-lg animate-fade-in">
