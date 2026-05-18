@@ -41,6 +41,13 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
   // 'idle' = 隐藏 / 'entering' = 滑入中 / 'visible' = 已停留 / 'exiting' = 滑出中
   const [phase, setPhase] = useState<'idle' | 'entering' | 'visible' | 'exiting'>('idle');
   const [detail, setDetail] = useState<RebateDetail | null>(null);
+  // 关闭按钮的 hover state — 单独管 visual,不污染卡片整体的 cursor:pointer。
+  // v1.x bugfix: 这个 useState 原来定义在 phase==='idle' 的 early return 之后,
+  // 第一次 render(idle 状态)从未注册到 React hooks 链表,事件触发 phase→visible
+  // 后不再 early return,这个 hook 突然多出来,React Hooks 规则破坏 → 抛 #310
+  // → 整个 RebateDrawer crash → 上层无 ErrorBoundary 时整 App 黑屏。
+  // Hooks 必须在 early return **之前**,顺序固定,所以提到这里。
+  const [closeHover, setCloseHover] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const exitTimerRef = useRef<ReturnType<typeof setTimeout>>();
   // enterTimerRef 是触发 entering→visible 的 30ms 微延后,用 ref 包住为了在
@@ -124,8 +131,7 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
     }, SLIDE_ANIM_MS);
   };
 
-  // 关闭按钮的 hover state — 单独管 visual,不污染卡片整体的 cursor:pointer
-  const [closeHover, setCloseHover] = useState(false);
+  // (closeHover 已经在组件顶部所有 hooks 一起定义,见上面的 bugfix 注释)
 
   return (
     <div
