@@ -257,7 +257,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // 一致,用户在两页看到的是同一个等级标记。
   const TIER_BADGE: Record<string, { emoji: string; label: string }> = {
     bronze:  { emoji: '🥉', label: 'Bronze' },
-    silver:  { emoji: '🥈', label: 'Silver' },
+    // v2.x: 'silver' key 显示为 Platinum 🏆 (档位高于 Gold,DB enum 不变)
+    silver:  { emoji: '🏆', label: 'Platinum' },
     gold:    { emoji: '👑', label: 'Gold' },
     diamond: { emoji: '💎', label: 'Diamond' },
   };
