@@ -140,6 +140,30 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     });
   }, [authState.isAuthenticated]);
 
+  // v1.x: cascade partner tier color out to <body> so the Sidebar(active 邀请返佣)
+  // + 全局 webkit-scrollbar 都能跟着金/银/铜/钻石走。InviteView 的 partnerColor
+  // 之前只 scoped 在自己的 div(.invite-view--partner)上,外层 Sidebar/scrollbar
+  // 都拿不到。这个 effect 在 partner 用户进入 InviteView 时给 body 加 class +
+  // 设两个 CSS var,unmount 时清掉,只影响"我在这一页"。
+  useEffect(() => {
+    const TIER_BODY_COLORS: Record<string, string> = {
+      bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+    };
+    const color = profile?.partner?.is_partner
+      ? (TIER_BODY_COLORS[profile.partner.tier as string] || '#facc15')
+      : null;
+    if (!color) return;
+    const body = document.body;
+    body.classList.add('invite-partner-active');
+    body.style.setProperty('--invite-partner-color', color);
+    body.style.setProperty('--invite-partner-glow', color + '40');
+    return () => {
+      body.classList.remove('invite-partner-active');
+      body.style.removeProperty('--invite-partner-color');
+      body.style.removeProperty('--invite-partner-glow');
+    };
+  }, [profile?.partner?.is_partner, profile?.partner?.tier]);
+
   // Affiliate rules doc URL — only the zh family points to the Chinese page;
   // every other locale (ko/ja/ru/fr/de/...) falls back to English, which is
   // what we ship until those translations exist on docs.noobclaw.com.
@@ -473,6 +497,42 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             33%      { transform: translate(20px, -10px); }
             66%      { transform: translate(-10px, 15px); }
           }
+
+          /* ── 全局级 cascade:Sidebar(claude-accent)+ 全局 scrollbar 跟 tier 色 ──
+             InviteView 内部的 .invite-view--partner 只能管自己 DOM 子树。Sidebar
+             在外层兄弟,scrollbar 是 browser 级,都拿不到。所以 useEffect 把
+             --invite-partner-color 设到 <body>,这里写 body.invite-partner-active
+             开头的全局选择器,在 body class 存在期间能渗到 Sidebar 和 scrollbar。
+             specificity 比 .dark .bg-claude-accent\\/10 高一级(body 多一个 class)
+             + !important,稳压 noobclaw-theme.css 里那套 neon 绿默认色。 */
+          body.invite-partner-active .bg-claude-accent\\/10,
+          body.invite-partner-active [class*="bg-claude-accent/10"] {
+            background-color: color-mix(in srgb, var(--invite-partner-color) 12%, transparent) !important;
+          }
+          body.invite-partner-active .bg-claude-accent\\/20,
+          body.invite-partner-active [class*="bg-claude-accent/20"] {
+            background-color: color-mix(in srgb, var(--invite-partner-color) 22%, transparent) !important;
+          }
+          body.invite-partner-active .hover\\:bg-claude-accent\\/20:hover,
+          body.invite-partner-active [class*="hover:bg-claude-accent/20"]:hover {
+            background-color: color-mix(in srgb, var(--invite-partner-color) 30%, transparent) !important;
+          }
+          body.invite-partner-active .text-claude-accent {
+            color: var(--invite-partner-color) !important;
+          }
+          body.invite-partner-active .border-claude-accent {
+            border-color: color-mix(in srgb, var(--invite-partner-color) 50%, transparent) !important;
+          }
+
+          /* 全局 webkit-scrollbar — 默认是 rgba(0,255,136,...) 霓虹绿,partner
+             生效时换成 tier 色半透明 thumb。覆盖 noobclaw-theme.css 和
+             index.css 里两套定义,所以选择器写 body 限定。 */
+          body.invite-partner-active ::-webkit-scrollbar-thumb {
+            background: color-mix(in srgb, var(--invite-partner-color) 30%, transparent) !important;
+          }
+          body.invite-partner-active ::-webkit-scrollbar-thumb:hover {
+            background: color-mix(in srgb, var(--invite-partner-color) 55%, transparent) !important;
+          }
         `}</style>
       )}
       {header}
@@ -488,10 +548,14 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
         <div className="mb-3">
           <InviteTicker />
         </div>
-        <div className="flex gap-4 h-full">
+        {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
+            高,右栏 details 容器靠 flex-1 应该撑满,实际不撑满)。grid 行内 cells
+            默认 align: stretch,左右两栏一定等高,右栏 details 的 flex-1 在
+            grid cell 内能正确 expand 填满剩余高度。 */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
 
           {/* ── Left Column: Referrer + Link + How it works ── */}
-          <div className="flex-1 min-w-0 space-y-3 flex flex-col">
+          <div className="min-w-0 flex flex-col gap-3">
             {/* My Referrer (upper level) */}
             {hasReferrer && (
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
@@ -645,7 +709,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
           </div>
 
           {/* ── Right Column: Stats + Invite Details / Rewards ── */}
-          <div className="flex-1 min-w-0 space-y-3 flex flex-col">
+          <div className="min-w-0 flex flex-col gap-3">
             {/* Stats: Direct Referrals + Total Network + USDT total earned + NOOB earned.
                 v5.x+: grid is 4 cols on md+ for the full row, falls back to
                 2 cols on narrow widths so the labels don't squash on phones.
