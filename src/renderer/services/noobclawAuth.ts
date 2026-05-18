@@ -64,20 +64,38 @@ class NoobClawAuthService {
   // 启动全局 balance 轮询。重复调用幂等(已经在跑的不会被重复启动)。
   // refreshBalance 内部会把 pendingRebates 派 DOM 事件给 RebateDrawer,
   // 所以这个 interval 是"佣金到账通知"机制的核心心跳。
+  // v1.x perf:document.hidden = true 时跳过 fetch(窗口最小化 / 切到后台),
+  //   不增加无效请求。从 hidden 切回 visible 时立即补一次(visibilitychange
+  //   listener),所以用户切回来不用等下一个 15s tick 才看到最新余额/佣金。
   private startBalancePolling() {
     if (this._balancePollTimer) return;
     this._balancePollTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       // 静默 catch:这是后台定时器,失败不应该污染 console.error(单次失败的话
       // 下一轮 15s 再试;真彻底挂了 401 路径会走 handleAuthExpired 清登录态)。
       this.refreshBalance().catch(() => {});
     }, NoobClawAuthService.BALANCE_POLL_MS);
+    // visibilitychange:用户切回来立刻 refresh 一次,不等下一个 tick。
+    // 仅在第一次 startBalancePolling 时挂(整个 service 生命周期一份)。
+    if (typeof document !== 'undefined' && !this._visibilityListenerAttached) {
+      this._visibilityListenerAttached = true;
+      document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && this.state.isAuthenticated) {
+          this.refreshBalance().catch(() => {});
+        }
+      });
+    }
   }
+  private _visibilityListenerAttached = false;
 
   private stopBalancePolling() {
     if (this._balancePollTimer) {
       clearInterval(this._balancePollTimer);
       this._balancePollTimer = null;
     }
+    // 不解绑 visibilitychange — listener 内部已经判断 isAuthenticated,
+    // 退登期间触发只是一次 no-op,下次登录直接复用,免去重复 addEventListener
+    // 引起的累积监听器。
   }
 
   // Load avatar from local disk cache (instant, no flicker)
