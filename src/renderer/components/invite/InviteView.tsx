@@ -22,6 +22,14 @@ function maskWallet(addr: string): string {
   return `${addr.slice(0, 6)}****${addr.slice(-4)}`;
 }
 
+// 区块链交易 hash 通常 66 字符(0x + 64 hex)。前 8 + **** + 后 6 = 18 字符可读,
+// 用户在 bscscan 上对账时前缀和后缀都能 match 上,中间 **** 占位避免一长串
+// 撑爆 cell 宽度。跟 maskWallet 同款"前后真实 + 中间 ****"风格。
+function maskTxHash(hash: string | null | undefined): string {
+  if (!hash || hash.length < 20) return hash || '';
+  return `${hash.slice(0, 8)}****${hash.slice(-6)}`;
+}
+
 function formatDate(dateStr: string): string {
   try {
     const d = new Date(dateStr);
@@ -828,14 +836,14 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   <div className="space-y-1">
                     {usdtEarnings.map((row) => {
                       const sent = row.status === 'sent';
-                      // Status cell: 已发 = link to BscScan; 待发 = plain chip
-                      // v1.x bugfix: 原来用 <a target="_blank"> 在 Tauri webview
-                      // 里会被默认拦截后转 plugin:shell|open;但 capabilities/
-                      // default.json 只 grant 了 opener:default 没 grant
-                      // shell:allow-open,导致 "Command plugin:shell|open not
-                      // allowed by ACL" 报错。改成跟整个 client 其他地方一样
-                      // 走 window.electron.shell.openExternal() — 内部走的是
-                      // plugin:opener|open_url(opener:default 已配),通过。
+                      // Status cell: 已发 = chip + masked tx_hash 双行,点击整 cell
+                      // 打开 bscscan;待发 = plain chip。
+                      // v1.x bugfix: 原 <a target="_blank"> 走 plugin:shell|open
+                      // 被 ACL 拒,改成 button + openExternal helper(走 opener
+                      // 插件,已 grant)。
+                      // v2.x: 用户要求 list 露 tx_id — 在 chip 下面加一行 mono
+                      // masked tx_hash(0xabcd1234****56789a),整 cell 还是点击
+                      // 打开 bscscan,跟原来的"已发 ↗"行为一致。
                       const statusCell = sent && row.tx_hash ? (
                         <button
                           type="button"
@@ -845,10 +853,15 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                             if (!url) return;
                             try { window.electron?.shell?.openExternal(url); } catch {}
                           }}
-                          className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline cursor-pointer"
+                          className="flex flex-col items-start gap-0.5 cursor-pointer"
                           title={row.tx_hash}
                         >
-                          ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'} ↗
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline">
+                            ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'} ↗
+                          </span>
+                          <span className="font-mono text-[9px] dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary transition-colors">
+                            {maskTxHash(row.tx_hash)}
+                          </span>
                         </button>
                       ) : sent ? (
                         <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
@@ -863,9 +876,11 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         <div key={row.id} className="grid grid-cols-4 gap-1 items-center px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
                           {/* 金额 */}
                           <span className="font-semibold text-primary">+${parseFloat(row.amount_usdt).toFixed(4)}</span>
-                          {/* 来源 / 层级 — 钱包 + L1-L6 chip 同 cell,跟官网格式一致 */}
+                          {/* 来源 / 层级 — 钱包 + L1-L6 chip 同 cell,跟官网格式一致。
+                              v2.x: 去掉 truncate,完整 0xabcd****1234 14 字符直接显示;
+                              column 比 truncate 后多占一点宽度但用户能看清前后两端。 */}
                           <span className="flex items-center gap-1 min-w-0">
-                            <span className="font-mono dark:text-claude-darkText text-claude-text truncate text-[10px]">
+                            <span className="font-mono dark:text-claude-darkText text-claude-text text-[10px]">
                               {row.contributor_wallet ? maskWallet(row.contributor_wallet) : '-'}
                             </span>
                             {row.level && (
@@ -968,7 +983,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                             <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium ${badgeColor}`}>
                               <span className="mr-0.5">{badgeIcon}</span>{badgeText}
                             </span>
-                            <span className="font-mono dark:text-claude-darkText text-claude-text truncate"
+                            {/* v2.x: 去掉 truncate,完整露 0xabcd****1234 */}
+                            <span className="font-mono dark:text-claude-darkText text-claude-text"
                               title={item.contributorWallet || ''}>
                               {item.contributorWallet ? maskWallet(item.contributorWallet) : '-'}
                             </span>
