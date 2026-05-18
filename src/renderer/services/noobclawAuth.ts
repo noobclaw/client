@@ -162,6 +162,22 @@ class NoobClawAuthService {
         const data = await res.json();
         this.state.tokenBalance = data.tokenBalance;
         this.notify();
+        // v1.x: 后端在 /api/ai/balance 顺道返回"已上链已结算但还没通知客户端"
+        // 的 BUSDT 返佣列表(并原子标记 notified_at)。客户端每 15s 调一次本接口,
+        // 所以新到账的返佣最多延迟 15s 弹 RebateDrawer 抽屉。
+        // 多笔时错开 4.6s 触发,让 RebateDrawer 的"新事件接管旧事件"逻辑给
+        // 每一笔一个完整的 4s 展示窗口。
+        const pending = (data as any).pendingRebates as Array<{ id: string; amount: string; fromWallet: string | null; level: number | null }> | undefined;
+        if (Array.isArray(pending) && pending.length > 0) {
+          pending.forEach((item, idx) => {
+            if (!item || item.amount === undefined || item.amount === null) return;
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent('noobclaw:rebate-received', {
+                detail: { amount: item.amount, fromWallet: item.fromWallet ?? undefined, level: item.level ?? undefined },
+              }));
+            }, idx * (4000 + 600));
+          });
+        }
         return data.tokenBalance;
       }
       if (res.status === 401) {
