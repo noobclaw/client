@@ -609,7 +609,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
       {/* NoobCoin 福袋红包空投 — self-positioned overlay,监听 backend SSE 触发。
           逻辑跟 chat 对话框那个一致(同 LuckyBag 组件)。 */}
-      <ErrorBoundary name="LuckyBag" fallback={null}>
+      <ErrorBoundary name="LuckyBag">
         <LuckyBag />
       </ErrorBoundary>
       {/* Header */}

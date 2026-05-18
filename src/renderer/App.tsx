@@ -848,7 +848,7 @@ const App: React.FC = () => {
           SSE handler 在 _noobclaw payload 含 rebate 字段时桥接派发。点击跳邀请页。
           v2.x: ErrorBoundary fallback={null} — 浮层组件出错不显示红色错误卡,
           安静失败,避免黑屏。具体报错仍打到 console 方便排查。 */}
-      <ErrorBoundary name="RebateDrawer" fallback={null}>
+      <ErrorBoundary name="RebateDrawer">
         <RebateDrawer onShowInvite={handleShowInvite} />
       </ErrorBoundary>
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -873,6 +873,13 @@ const App: React.FC = () => {
         />
         <div className={`flex-1 min-w-0 py-1.5 pr-1.5 ${isSidebarCollapsed ? 'pl-1.5' : ''}`}>
           <div className="h-full min-h-0 rounded-xl dark:bg-claude-darkBg bg-claude-bg overflow-hidden">
+            {/* v1.x: 包整个 mainView 切换区。real partner real rebate 到账后切
+                菜单导致黑屏的真实路径:新 view (InviteView / WalletView 等) 在
+                render 时读到刚更新的 profile.partner / pendingRebates / usdtSummary
+                数据,某行炸 → 整棵 React 树没保护就全 unmount → 用户看到 body
+                暗色背景 (#09090E) = 黑屏。包一层 ErrorBoundary,出错时让用户至少
+                看到"哪个 view 哪一行炸了"的红色卡片 + Reload 按钮,而不是死黑屏。 */}
+            <ErrorBoundary name={`MainView:${mainView}`} key={mainView}>
             {mainView === 'skills' ? (
               <SkillsView
                 isSidebarCollapsed={isSidebarCollapsed}
@@ -954,6 +961,7 @@ const App: React.FC = () => {
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
               />
             )}
+            </ErrorBoundary>
           </div>
         </div>
       </div>
@@ -992,7 +1000,7 @@ const App: React.FC = () => {
           + OS push, all from /api/me/notifications/unread. Renders only
           when authenticated.
           v2.x: 用 ErrorBoundary 包住,出错不再让整棵 React 树 unmount → 黑屏。 */}
-      <ErrorBoundary name="NotificationCenter" fallback={null}>
+      <ErrorBoundary name="NotificationCenter">
         <NotificationCenter />
       </ErrorBoundary>
     </div>

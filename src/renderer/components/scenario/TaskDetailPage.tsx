@@ -757,7 +757,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* NoobCoin 福袋红包 — 任务跑/扣费时 backend 通过 SSE 触发,跟 chat 框那个同源 */}
-      <ErrorBoundary name="LuckyBag" fallback={null}>
+      <ErrorBoundary name="LuckyBag">
         <LuckyBag />
       </ErrorBoundary>
       <button type="button" onClick={onBack}
