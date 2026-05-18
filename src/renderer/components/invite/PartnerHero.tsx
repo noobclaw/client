@@ -78,14 +78,10 @@ function useCountUp(target: number, durationMs = 600): number {
 
 export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
   const visual = (partner.tier && TIER_VISUAL[partner.tier]) || DEFAULT_VISUAL;
-  // Display rate_pct (admin-set pool size) as the headline number, not the
-  // derived L1 share. Admin sets "30%" → user sees "30%"; the internal
-  // 50/10/10/10/10/10 split is a hidden detail. Multiplier compares total
-  // pool vs system default pool (e.g. 30 / 10 = 3x).
-  const multiplier = partner.default_pool_pct > 0 ? partner.rate_pct / partner.default_pool_pct : 0;
-
+  // Display rate_pct (admin-set pool size) as the headline number. The "vs
+  // regular X% · Nx" multiplier was removed per UX feedback ("不需要,改成
+  // 按充值金额" — labeling the unit instead of comparing tiers).
   const animatedRate = useCountUp(partner.rate_pct);
-  const animatedMult = useCountUp(multiplier);
 
   return (
     <div
@@ -143,11 +139,9 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
             >
               {animatedRate.toFixed(1)}%
             </span>
-            {multiplier >= 1.1 && (
-              <span className="text-xs font-medium" style={{ color: visual.color + 'cc' }}>
-                ({i18nService.t('partnerVsRegular') || 'vs 普通用户'} {partner.default_pool_pct.toFixed(0)}% · {animatedMult.toFixed(1)}x)
-              </span>
-            )}
+            <span className="text-xs font-medium" style={{ color: visual.color + 'cc' }}>
+              ({i18nService.t('partnerByDepositAmount') || '按充值金额'})
+            </span>
           </div>
         </div>
       </div>
