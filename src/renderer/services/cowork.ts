@@ -145,23 +145,13 @@ class CoworkService {
           detail: { balance: payload.remainingTokens },
         }));
       }
-      // v1.x: BUSDT 返佣到账通知 — backend 在 rebate batch 上链确认后,把
-      // { amount, fromWallet?, level? } 塞进下一个 AI SSE 响应的 _noobclaw 块。
-      // 沿用 luckyBag 的事件桥接模式;<RebateDrawer> 全局组件监听这个 DOM 事件
-      // 弹右侧抽屉。多笔 rebate 可能装在数组里(rebate batch 一次发 N 笔),所以
-      // 同时兼容单对象 + 数组两种 shape。
-      const rebate = payload.rebate as { amount: string | number; fromWallet?: string; level?: number } | Array<{ amount: string | number; fromWallet?: string; level?: number }> | undefined;
-      if (rebate) {
-        const items = Array.isArray(rebate) ? rebate : [rebate];
-        items.forEach((item, idx) => {
-          if (item?.amount === undefined || item?.amount === null) return;
-          // 多笔时错开 600ms 触发,让用户能看到每一笔(连续派发会被
-          // RebateDrawer 内部的"新事件接管旧事件"逻辑覆盖,只剩最后一笔)。
-          setTimeout(() => {
-            window.dispatchEvent(new CustomEvent('noobclaw:rebate-received', { detail: item }));
-          }, idx * (4000 + 600));
-        });
-      }
+      // 关于"BUSDT 返佣到账通知":此处不读 payload.rebate。返佣的事件源是 client
+      // refreshBalance 拉 /api/ai/balance 后的 pendingRebates(见
+      // noobclawAuth.refreshBalance),走 atomic UPDATE...RETURNING 路径,带去重。
+      // backend 的 AI SSE _noobclaw payload 不发 rebate 字段(仅 remainingTokens /
+      // tokensUsed / luckyBag / priceUsdPerMillion / costUsd),所以这里没桥接。
+      // 如果将来真要走 SSE 桥接,记得跟 notified_at 标记打通,否则会跟 balance
+      // 轮询路径双重派发同一笔。
     });
     if (noobclawCleanup) this.streamListenerCleanups.push(noobclawCleanup);
 
