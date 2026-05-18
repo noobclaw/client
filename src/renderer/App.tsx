@@ -39,6 +39,8 @@ import PersonalityView from './components/personality/PersonalityView';
 import LoginWall from './components/LoginWall';
 import TokenInsufficientDialog from './components/TokenInsufficientDialog';
 import { noobClawAuth } from './services/noobclawAuth';
+import { noobClawApi } from './services/noobclawApi';
+import { writeCachedPaymentInfo } from './services/paymentInfoCache';
 
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
@@ -518,6 +520,20 @@ const App: React.FC = () => {
     const unsub = noobClawAuth.subscribe(setAuthState);
     return unsub;
   }, []);
+
+  // v1.x: 启动预拉 paymentInfo —— 用户反馈"客户端加载套餐还是很慢"。
+  // 对照官网快是因为 ucRender 进 UC 页面那一刻就并行 fetch /api/payment/info,
+  // 等用户点"我的充值"tab 时数据早就到了内存。客户端之前没做预拉,WalletView
+  // mount 那一刻才开始 fetch,首次进我的充值就要等 200~800ms 网络。
+  // 这里在认证完成的瞬间 fire-and-forget 拉一次,响应写 paymentInfoCache
+  // localStorage,后续 WalletView lazy-init 从 cache 拿,套餐卡秒出。
+  // 已认证状态下做,避免给登录前的用户白触发一次 401。
+  useEffect(() => {
+    if (!authState.isAuthenticated) return;
+    noobClawApi.getPaymentInfo().then((info) => {
+      if (info) writeCachedPaymentInfo(info);
+    }).catch(() => { /* 静默 — 失败不影响主流程,WalletView mount 时会自己重试 */ });
+  }, [authState.isAuthenticated]);
 
   // Listen for token-insufficient event from api.ts
   useEffect(() => {
