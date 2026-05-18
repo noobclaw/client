@@ -689,3 +689,20 @@ body.invite-partner-active ::-webkit-scrollbar-thumb:hover {
   -webkit-text-fill-color: transparent !important;
   color: transparent !important;
 }
+
+/* ── Partner VIP frame keyframes:可被任何组件复用 ──
+   原本只在 PartnerHero 组件内 inline,提到这里之后 WalletView 的
+   wallet header card 也能直接用同一套动画,视觉上跟邀请页 PartnerHero
+   是一对兄弟(同 shimmer 4s 周期、同 conic 6s 转速、同 twinkle 3s 节奏)。 */
+@keyframes partner-frame-conic {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+@keyframes partner-frame-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@keyframes partner-frame-spark {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  50%      { opacity: 1; transform: scale(1.2); }
+}

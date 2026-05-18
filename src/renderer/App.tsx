@@ -890,6 +890,7 @@ const App: React.FC = () => {
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
+                onShowInvite={handleShowInvite}
               />
             ) : mainView === 'invite' ? (
               <InviteView

@@ -13,6 +13,8 @@ interface WalletViewProps {
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
+  /** 合伙人在 wallet header 看到 tier 徽章后,点击跳到邀请返佣页 */
+  onShowInvite?: () => void;
 }
 
 const ORDER_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -89,7 +91,7 @@ function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON') {
   return null;
 }
 
-export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
+export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge, onShowInvite }) => {
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
   const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
@@ -250,8 +252,20 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const TIER_BODY_COLORS: Record<string, string> = {
     bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
   };
+  // tier emoji + 标签 — 跟 PartnerHero 的 TIER_VISUAL 同 source 同款,这样
+  // wallet 顶部小徽章("👑 Gold ↗")的 emoji 跟 InviteView PartnerHero 视觉
+  // 一致,用户在两页看到的是同一个等级标记。
+  const TIER_BADGE: Record<string, { emoji: string; label: string }> = {
+    bronze:  { emoji: '🥉', label: 'Bronze' },
+    silver:  { emoji: '🥈', label: 'Silver' },
+    gold:    { emoji: '👑', label: 'Gold' },
+    diamond: { emoji: '💎', label: 'Diamond' },
+  };
   const partnerColor: string | null = profile?.partner?.is_partner
     ? (TIER_BODY_COLORS[profile.partner.tier as string] || '#facc15')
+    : null;
+  const partnerBadge = profile?.partner?.is_partner
+    ? (TIER_BADGE[profile.partner.tier as string] || TIER_BADGE.gold)
     : null;
 
   useEffect(() => {
@@ -1059,8 +1073,65 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
 
         {/* Wallet Header */}
-        <div className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
-          {/* Avatar + Wallet Info */}
+        {/* v1.x: 合伙人 VIP 视觉框 — 跟 InviteView 顶部 PartnerHero 同一套:
+            conic 旋转金边 + 4s shimmer 光带 + 6 个 sparkle 粒子 + ✦ VIP ✦
+            角标。普通用户 partnerColor=null,整段 effects 不渲染,体验跟从
+            前一样;合伙人多了一圈 VIP 氛围。 */}
+        <div className="relative overflow-hidden p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+          {partnerColor && (
+            <>
+              {/* Conic gradient rotating border ring */}
+              <div className="absolute pointer-events-none" style={{
+                inset: -2,
+                borderRadius: 14,
+                padding: 2,
+                background: `conic-gradient(from 0deg, transparent 0%, var(--invite-partner-color) 20%, transparent 40%, transparent 60%, var(--invite-partner-color) 80%, transparent 100%)`,
+                WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+                WebkitMaskComposite: 'xor',
+                maskComposite: 'exclude' as React.CSSProperties['maskComposite'],
+                animation: 'partner-frame-conic 6s linear infinite',
+                opacity: 0.55,
+                zIndex: 0,
+              }} />
+              {/* Shimmer light beam — 横向 4s 周期 */}
+              <div className="absolute inset-0 pointer-events-none" style={{
+                background: `linear-gradient(90deg, transparent 0%, color-mix(in srgb, var(--invite-partner-color) 18%, transparent) 50%, transparent 100%)`,
+                animation: 'partner-frame-shimmer 4s ease-in-out infinite',
+                zIndex: 0,
+              }} />
+              {/* 6 个 sparkle 粒子 — 错开 delay,各自 twinkle */}
+              {[
+                { top: '12%', left: '6%',  delay: '0s'   },
+                { top: '74%', left: '14%', delay: '1.4s' },
+                { top: '28%', left: '46%', delay: '2.5s' },
+                { top: '60%', left: '68%', delay: '0.7s' },
+                { top: '18%', left: '88%', delay: '1.9s' },
+                { top: '82%', left: '94%', delay: '2.7s' },
+              ].map((p, i) => (
+                <span key={i} className="absolute pointer-events-none" style={{
+                  top: p.top, left: p.left,
+                  width: 5, height: 5, borderRadius: '50%',
+                  background: `radial-gradient(circle, var(--invite-partner-color) 0%, transparent 70%)`,
+                  animation: 'partner-frame-spark 3s ease-in-out infinite',
+                  animationDelay: p.delay,
+                  zIndex: 0,
+                }} />
+              ))}
+              {/* ✦ VIP ✦ 角标 — 右上角金色胶囊 */}
+              <div className="absolute font-bold pointer-events-none" style={{
+                top: 6, right: 10, fontSize: 9, letterSpacing: 2,
+                padding: '2px 8px', borderRadius: 10,
+                background: `linear-gradient(135deg, var(--invite-partner-color), color-mix(in srgb, var(--invite-partner-color) 100%, black 40%))`,
+                color: '#0a0a0a',
+                boxShadow: `0 0 8px var(--invite-partner-glow)`,
+                zIndex: 5,
+              }}>✦ VIP ✦</div>
+            </>
+          )}
+
+          {/* Avatar + Wallet Info — 所有原内容包一层 relative z-10 让它压在
+              effects 之上 */}
+          <div className="relative z-10">
           <div className="flex items-center gap-4 mb-4">
             <div className="relative group shrink-0">
               <button
@@ -1087,9 +1158,31 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               </button>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('walletMyWalletBsc')}</span>
-                <div className="flex items-center gap-1.5">
+              <div className="flex items-center justify-between mb-1 gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">{i18nService.t('walletMyWalletBsc')}</span>
+                  {/* v1.x: 合伙人小徽章 — 显示 tier emoji + 等级名,点击跳到邀请
+                      返佣页详细看返佣比例 + 邀请明细。普通用户不渲染。 */}
+                  {partnerBadge && (
+                    <button
+                      type="button"
+                      onClick={onShowInvite}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition-transform hover:scale-105 cursor-pointer shrink-0"
+                      style={{
+                        background: `linear-gradient(135deg, color-mix(in srgb, var(--invite-partner-color) 28%, transparent), color-mix(in srgb, var(--invite-partner-color) 45%, transparent))`,
+                        color: 'var(--invite-partner-color)',
+                        border: `1px solid color-mix(in srgb, var(--invite-partner-color) 60%, transparent)`,
+                        boxShadow: `0 0 10px var(--invite-partner-glow)`,
+                      }}
+                      title={i18nService.t('inviteRebateMenu')}
+                    >
+                      <span className="text-[12px] leading-none">{partnerBadge.emoji}</span>
+                      <span>{partnerBadge.label}</span>
+                      <span className="opacity-70">→</span>
+                    </button>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
                   <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
                   <span className="text-xs text-primary">{i18nService.t('walletConnected')}</span>
                 </div>
@@ -1152,6 +1245,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               {i18nService.t('walletLowBalance')}
             </div>
           )}
+          </div>{/* /relative z-10 wrapper */}
         </div>
 
         {/* Buy Tokens */}
