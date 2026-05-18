@@ -309,9 +309,38 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const recordsTotalPages = Math.ceil(inviteListTotal / PAGE_SIZE);
   const rewardsTotalPages = Math.ceil(rewardListTotal / PAGE_SIZE);
 
+  // ─── Partner tier theme — sets CSS variables on the page root + injects
+  //   one-time scoped <style> that overrides .text-primary / .bg-primary /
+  //   .border-primary across the entire page when invite-view--partner is
+  //   on the root. This makes the WHOLE page feel gold/silver/bronze/diamond
+  //   for partners, not just the hero banner. ───
+  const TIER_PAGE_COLORS: Record<string, string> = {
+    bronze: '#cd7f32', silver: '#c8c8c8', gold: '#facc15', diamond: '#b9f2ff',
+  };
+  const partnerColor = profile?.partner?.is_partner
+    ? (TIER_PAGE_COLORS[profile.partner.tier] || '#facc15')
+    : null;
+
   // ─── Main page ───
   return (
-    <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
+    <div
+      className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg ${partnerColor ? 'invite-view--partner' : ''}`}
+      style={partnerColor ? ({ '--partner-color': partnerColor, '--partner-glow': partnerColor + '40' } as React.CSSProperties) : undefined}
+    >
+      {partnerColor && (
+        <style>{`
+          .invite-view--partner .text-primary { color: var(--partner-color) !important; }
+          .invite-view--partner .bg-primary { background-color: var(--partner-color) !important; color:#0a0a0a !important; }
+          .invite-view--partner .bg-primary:hover { background-color: var(--partner-color) !important; opacity:0.85; }
+          .invite-view--partner .bg-primary\\/10 { background-color: var(--partner-color) !important; opacity:0.10; }
+          .invite-view--partner .bg-primary\\/20 { background-color: var(--partner-color) !important; opacity:0.20; }
+          .invite-view--partner .bg-primary\\/5  { background-color: var(--partner-color) !important; opacity:0.05; }
+          .invite-view--partner .border-primary { border-color: var(--partner-color) !important; }
+          .invite-view--partner .border-primary\\/20 { border-color: var(--partner-color) !important; opacity:0.20; }
+          .invite-view--partner .focus\\:border-primary:focus { border-color: var(--partner-color) !important; }
+          .invite-view--partner .hover\\:bg-primary-hover:hover { background-color: var(--partner-color) !important; filter:brightness(1.1); }
+        `}</style>
+      )}
       {header}
       <div className="flex-1 overflow-y-auto p-4">
         {/* v2.x partner program: 尊贵版 banner — 只在合伙人(profile.partner.is_partner=true)
