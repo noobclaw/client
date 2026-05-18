@@ -6,6 +6,7 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import InviteTicker from './InviteTicker';
+import PartnerHero from './PartnerHero';
 
 interface InviteViewProps {
   isSidebarCollapsed?: boolean;
@@ -313,6 +314,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     <div className="flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg">
       {header}
       <div className="flex-1 overflow-y-auto p-4">
+        {/* v2.x partner program: 尊贵版 banner — 只在合伙人(profile.partner.is_partner=true)
+            时渲染。普通用户看不到这块,页面其它部分完全不变,合伙人多一块顶部金色显示
+            自己的 L1 返佣比例 + 倍数对比。后端 /api/me/profile 已下发 partner block。*/}
+        {profile?.partner?.is_partner && <PartnerHero partner={profile.partner} />}
         {/* v5.x+: marquee at the TOP of the entire InviteView (was nested inside
             the right column's rebate tab). Social proof for ALL users on this
             page regardless of which tab they're on — encourages sharing the
