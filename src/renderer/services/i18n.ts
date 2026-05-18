@@ -950,7 +950,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletCreditPrompt: '输入',
     walletCreditCompletion: '输出',
     walletCreditNoRecords: '暂无消耗记录',
-    walletExactAmountWarning: '请务必使用 BNB Chain 转账精确金额，否则无法自动匹配，汇款可用您任何有 BNB 的钱包', walletExactAmountWarningTron: '请务必使用 TRC20 转账精确金额 USDT，否则无法自动匹配，汇款可用您任何有 TRC20 USDT 的钱包',
+    walletExactAmountWarning: '请务必使用 BNB Chain 转账精确金额 BNB，否则无法自动匹配，汇款可用您任何有 BNB 的钱包', walletExactAmountWarningTron: '请务必使用 TRC20 转账精确金额 USDT，否则无法自动匹配，汇款可用您任何有 TRC20 USDT 的钱包',
     walletFeeWarning: '如果您从交易所汇出，务必注意扣除手续费后真实到账金额是否与上面数字相符',
     walletWaitingConfirmation: '等待转账确认中，转账后将自动到账...',
     // Web3
@@ -2207,7 +2207,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletCreditPrompt: 'Input',
     walletCreditCompletion: 'Output',
     walletCreditNoRecords: 'No usage records yet',
-    walletExactAmountWarning: 'Please transfer the exact amount via BNB Chain for automatic matching. Use any wallet that holds BNB.', walletExactAmountWarningTron: 'Please transfer the exact USDT amount via TRC20 for automatic matching. Use any wallet that holds TRC20 USDT.',
+    walletExactAmountWarning: 'Please transfer the exact BNB amount via BNB Chain for automatic matching. Use any wallet that holds BNB.', walletExactAmountWarningTron: 'Please transfer the exact USDT amount via TRC20 for automatic matching. Use any wallet that holds TRC20 USDT.',
     walletFeeWarning: 'If transferring from an exchange, make sure the actual amount received after fees matches the number above.',
     walletWaitingConfirmation: 'Waiting for transfer confirmation, credits will be added automatically...',
     // Web3
@@ -3044,7 +3044,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: '點擊更換頭像',
     walletNoobCoinTotal: '（總計）',
     walletView: '查看',
-    walletExactAmountWarning: '請務必使用 BNB Chain 轉帳精確金額，否則無法自動匹配，匯款可用您任何有 BNB 的錢包', walletExactAmountWarningTron: '請務必使用 TRC20 轉帳精確金額 USDT，否則無法自動匹配，匯款可用您任何有 TRC20 USDT 的錢包',
+    walletExactAmountWarning: '請務必使用 BNB Chain 轉帳精確金額 BNB，否則無法自動匹配，匯款可用您任何有 BNB 的錢包', walletExactAmountWarningTron: '請務必使用 TRC20 轉帳精確金額 USDT，否則無法自動匹配，匯款可用您任何有 TRC20 USDT 的錢包',
     walletFeeWarning: '如果您從交易所匯出，務必注意扣除手續費後真實到帳金額是否與上面數字相符',
     walletWaitingConfirmation: '等待轉帳確認中，轉帳後將自動到帳...',
     // Web3
@@ -3693,7 +3693,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: '아바타 변경',
     walletNoobCoinTotal: ' (총계)',
     walletView: '보기',
-    walletExactAmountWarning: 'BNB Chain을 통해 정확한 금액을 전송하세요. BNB가 있는 모든 지갑을 사용할 수 있습니다.', walletExactAmountWarningTron: 'TRC20를 통해 정확한 USDT 금액을 전송하세요. TRC20 USDT가 있는 모든 지갑을 사용할 수 있습니다.',
+    walletExactAmountWarning: 'BNB Chain을 통해 정확한 BNB 금액을 전송하세요. BNB가 있는 모든 지갑을 사용할 수 있습니다.', walletExactAmountWarningTron: 'TRC20를 통해 정확한 USDT 금액을 전송하세요. TRC20 USDT가 있는 모든 지갑을 사용할 수 있습니다.',
     walletFeeWarning: '거래소에서 송금하는 경우, 수수료 공제 후 실제 입금 금액이 위 숫자와 일치하는지 반드시 확인하세요.',
     walletWaitingConfirmation: '전송 확인 대기 중, 크레딧이 자동으로 입금됩니다...',
     // Web3
@@ -4342,7 +4342,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'アバターを変更',
     walletNoobCoinTotal: '（合計）',
     walletView: '表示',
-    walletExactAmountWarning: 'BNB Chain で正確な金額を送金してください。BNB を保有するウォレットなら何でも使用可能です。', walletExactAmountWarningTron: 'TRC20 で正確な USDT 金額を送金してください。TRC20 USDT を保有するウォレットなら何でも使用可能です。',
+    walletExactAmountWarning: 'BNB Chain で正確な BNB 金額を送金してください。BNB を保有するウォレットなら何でも使用可能です。', walletExactAmountWarningTron: 'TRC20 で正確な USDT 金額を送金してください。TRC20 USDT を保有するウォレットなら何でも使用可能です。',
     walletFeeWarning: '取引所から送金する場合、手数料控除後の実際の入金額が上記の数字と一致するか必ずご確認ください。',
     walletWaitingConfirmation: '送金確認待ち、クレジットは自動で入金されます...',
     // Web3
@@ -4940,7 +4940,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Сменить аватар',
     walletNoobCoinTotal: ' (Всего)',
     walletView: 'Просмотр',
-    walletExactAmountWarning: 'Переведите точную сумму через BNB Chain для автоматического сопоставления. Подойдёт любой кошелёк с BNB.', walletExactAmountWarningTron: 'Переведите точную сумму USDT через TRC20 для автоматического сопоставления. Подойдёт любой кошелёк с TRC20 USDT.',
+    walletExactAmountWarning: 'Переведите точную сумму BNB через BNB Chain для автоматического сопоставления. Подойдёт любой кошелёк с BNB.', walletExactAmountWarningTron: 'Переведите точную сумму USDT через TRC20 для автоматического сопоставления. Подойдёт любой кошелёк с TRC20 USDT.',
     walletFeeWarning: 'При переводе с биржи убедитесь, что фактическая сумма после вычета комиссии совпадает с указанной выше.',
     walletWaitingConfirmation: 'Ожидание подтверждения перевода, кредиты зачислятся автоматически...',
     // Web3
@@ -5537,7 +5537,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Changer l\'avatar',
     walletNoobCoinTotal: ' (Total)',
     walletView: 'Voir',
-    walletExactAmountWarning: 'Veuillez transférer le montant exact via BNB Chain pour le rapprochement automatique. Tout portefeuille contenant du BNB convient.', walletExactAmountWarningTron: 'Veuillez transférer le montant USDT exact via TRC20 pour le rapprochement automatique. Tout portefeuille contenant de l\'USDT TRC20 convient.',
+    walletExactAmountWarning: 'Veuillez transférer le montant BNB exact via BNB Chain pour le rapprochement automatique. Tout portefeuille contenant du BNB convient.', walletExactAmountWarningTron: 'Veuillez transférer le montant USDT exact via TRC20 pour le rapprochement automatique. Tout portefeuille contenant de l\'USDT TRC20 convient.',
     walletFeeWarning: 'Si vous transférez depuis un exchange, vérifiez que le montant réel reçu après déduction des frais correspond au montant indiqué ci-dessus.',
     walletWaitingConfirmation: 'En attente de confirmation, les crédits seront ajoutés automatiquement...',
     // Web3
@@ -6133,7 +6133,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     walletChangeAvatar: 'Avatar ändern',
     walletNoobCoinTotal: ' (Gesamt)',
     walletView: 'Anzeigen',
-    walletExactAmountWarning: 'Bitte den genauen Betrag via BNB Chain für automatische Zuordnung überweisen. Jede Wallet mit BNB ist nutzbar.', walletExactAmountWarningTron: 'Bitte den genauen USDT-Betrag via TRC20 für automatische Zuordnung überweisen. Jede Wallet mit TRC20 USDT ist nutzbar.',
+    walletExactAmountWarning: 'Bitte den genauen BNB-Betrag via BNB Chain für automatische Zuordnung überweisen. Jede Wallet mit BNB ist nutzbar.', walletExactAmountWarningTron: 'Bitte den genauen USDT-Betrag via TRC20 für automatische Zuordnung überweisen. Jede Wallet mit TRC20 USDT ist nutzbar.',
     walletFeeWarning: 'Bei Überweisungen von einer Börse stellen Sie sicher, dass der tatsächlich eingegangene Betrag nach Abzug der Gebühren mit der oben genannten Zahl übereinstimmt.',
     walletWaitingConfirmation: 'Warte auf Überweisungsbestätigung, Credits werden automatisch gutgeschrieben...',
     // Web3
