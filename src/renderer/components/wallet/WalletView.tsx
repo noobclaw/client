@@ -1229,7 +1229,6 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 const block = chainBlockFor(paymentInfo, pendingChain);
                 const treasury = block?.treasuryWallet || '';
                 const unit = isTron ? 'USDT' : 'BNB';
-                const networkLabel = isTron ? 'TRC20 (TRON)' : 'BSC (BNB Chain)';
                 return (
                 /* Payment info */
                 <>
@@ -1242,17 +1241,27 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
 
                   {/* Amount */}
+                  {/* v1.x: send-label 内嵌 countdown(同 tip2 那个 state),把"剩余
+                      时间"和"应付金额"放一起,用户一眼看到紧迫感+金额。i18n 字
+                      符串模板:'请在 {countdown} 内准确发送如下金额',用 split
+                      切出 {countdown} 占位符再渲染 red span 保留样式。 */}
                   <div className="text-center mb-1">
-                    <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletSendExactly')}</p>
+                    {(() => {
+                      const tpl = i18nService.t('walletSendExactly');
+                      const parts = tpl.split('{countdown}');
+                      return (
+                        <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">
+                          {parts[0]}
+                          <span className="font-mono font-bold text-red-500">{countdown || '0:30:00'}</span>
+                          {parts[1] ?? ''}
+                        </p>
+                      );
+                    })()}
                     <div className="flex items-center justify-center gap-2">
                       <code className="font-bold text-primary text-lg">{pendingAmount} {unit}</code>
                       <button onClick={() => copyToClipboard(pendingAmount)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors">{i18nService.t('walletCopy')}</button>
                     </div>
                   </div>
-
-                  {/* Treasury address label — explicit network so users don't
-                      mis-route their funds via the wrong chain (unrecoverable). */}
-                  <p className="text-xs text-primary text-center mb-3">{i18nService.t('walletReceivingAddressOnly').replace('{network}', networkLabel)}</p>
 
                   {/* QR Code */}
                   {treasury && (
@@ -1264,7 +1273,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   )}
 
-                  {/* Address */}
+                  {/* Address (with 充值地址 prefix label per user feedback) */}
+                  <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary text-center mb-1">{i18nService.t('walletPaymentAddress')}</p>
                   <div className="flex items-center justify-center gap-2 mb-4">
                     <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all text-center">{treasury || 'Loading...'}</code>
                     <button onClick={() => copyToClipboard(treasury)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
