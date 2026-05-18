@@ -829,16 +829,27 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     {usdtEarnings.map((row) => {
                       const sent = row.status === 'sent';
                       // Status cell: 已发 = link to BscScan; 待发 = plain chip
+                      // v1.x bugfix: 原来用 <a target="_blank"> 在 Tauri webview
+                      // 里会被默认拦截后转 plugin:shell|open;但 capabilities/
+                      // default.json 只 grant 了 opener:default 没 grant
+                      // shell:allow-open,导致 "Command plugin:shell|open not
+                      // allowed by ACL" 报错。改成跟整个 client 其他地方一样
+                      // 走 window.electron.shell.openExternal() — 内部走的是
+                      // plugin:opener|open_url(opener:default 已配),通过。
                       const statusCell = sent && row.tx_hash ? (
-                        <a
-                          href={row.bscscan_url || '#'}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline"
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const url = row.bscscan_url;
+                            if (!url) return;
+                            try { window.electron?.shell?.openExternal(url); } catch {}
+                          }}
+                          className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline cursor-pointer"
                           title={row.tx_hash}
                         >
                           ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'} ↗
-                        </a>
+                        </button>
                       ) : sent ? (
                         <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
                           ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'}
