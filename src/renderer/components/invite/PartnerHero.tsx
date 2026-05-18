@@ -33,26 +33,31 @@ interface TierTheme {
   bgGrad: string;
   shimmerColor: string;
 }
+// v2.x:tier 主色重新调过,Diamond / Silver 和 Gold / Bronze 视觉差异显著拉开
+//   Bronze  深暖铜(redder), 跟 Gold 区分
+//   Silver  经典银灰,冷调
+//   Gold    更纯的金黄,跟 Bronze 区分
+//   Diamond 鲜艳蓝宝石青(saturated),跟 Silver 区分(不是 pale ice)
 const TIER_VISUAL: Record<string, TierTheme> = {
   bronze: {
-    emoji: '🥉', label: 'Bronze', color: '#cd7f32',
-    bgGrad: 'linear-gradient(135deg, #1a0e07 0%, #2d1a09 50%, #1a0e07 100%)',
-    shimmerColor: 'rgba(205, 127, 50, 0.18)',
+    emoji: '🥉', label: 'Bronze', color: '#c46e2a',
+    bgGrad: 'linear-gradient(135deg, #1f0e04 0%, #3a1d08 50%, #1f0e04 100%)',
+    shimmerColor: 'rgba(196, 110, 42, 0.20)',
   },
   silver: {
-    emoji: '🥈', label: 'Silver', color: '#c8c8c8',
+    emoji: '🥈', label: 'Silver', color: '#c0c0c0',
     bgGrad: 'linear-gradient(135deg, #0e0e10 0%, #1c1e22 50%, #0e0e10 100%)',
-    shimmerColor: 'rgba(200, 200, 200, 0.20)',
+    shimmerColor: 'rgba(192, 192, 192, 0.20)',
   },
   gold: {
-    emoji: '👑', label: 'Gold', color: '#facc15',
-    bgGrad: 'linear-gradient(135deg, #1a1208 0%, #2d2208 50%, #1a1208 100%)',
-    shimmerColor: 'rgba(250, 204, 21, 0.18)',
+    emoji: '👑', label: 'Gold', color: '#fbbf24',
+    bgGrad: 'linear-gradient(135deg, #1f1306 0%, #3a2607 50%, #1f1306 100%)',
+    shimmerColor: 'rgba(251, 191, 36, 0.20)',
   },
   diamond: {
-    emoji: '💎', label: 'Diamond', color: '#b9f2ff',
-    bgGrad: 'linear-gradient(135deg, #08151a 0%, #0e2530 50%, #08151a 100%)',
-    shimmerColor: 'rgba(185, 242, 255, 0.22)',
+    emoji: '💎', label: 'Diamond', color: '#22d3ee',
+    bgGrad: 'linear-gradient(135deg, #061a20 0%, #0b3340 50%, #061a20 100%)',
+    shimmerColor: 'rgba(34, 211, 238, 0.24)',
   },
 };
 const DEFAULT_VISUAL: TierTheme = TIER_VISUAL.gold;

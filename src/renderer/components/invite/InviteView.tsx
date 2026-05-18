@@ -314,8 +314,9 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   //   .border-primary across the entire page when invite-view--partner is
   //   on the root. This makes the WHOLE page feel gold/silver/bronze/diamond
   //   for partners, not just the hero banner. ───
+  // v2.x 区分配色:每档色相差异显著,避免 Diamond/Silver 互撞 + Gold/Bronze 互撞。
   const TIER_PAGE_COLORS: Record<string, string> = {
-    bronze: '#cd7f32', silver: '#c8c8c8', gold: '#facc15', diamond: '#b9f2ff',
+    bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
   };
   const partnerColor = profile?.partner?.is_partner
     ? (TIER_PAGE_COLORS[profile.partner.tier] || '#facc15')
@@ -350,34 +351,29 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
           .invite-view--partner .focus\\:border-primary:focus { border-color: var(--partner-color) !important; }
           .invite-view--partner .hover\\:bg-primary-hover:hover { background-color: var(--partner-color) !important; filter:brightness(1.1); }
 
-          /* ── 大卡片:脉冲发光 + 旋转 conic 边框 ── */
+          /* ── 大卡片:只发光,不再旋转(用户反馈旋转太丑) ── */
+          /* 上下两条 box-shadow(0 -Y 和 0 +Y)突出顶/底光带,脉冲呼吸更明显 */
           .invite-view--partner .rounded-xl.dark\\:bg-claude-darkSurface,
           .invite-view--partner .rounded-xl.bg-claude-surface {
             position: relative;
             border-color: var(--partner-color) !important;
-            animation: invite-card-pulse 3.5s ease-in-out infinite;
+            animation: invite-card-pulse 3.2s ease-in-out infinite;
             transition: transform 0.25s ease, box-shadow 0.25s ease;
           }
-          .invite-view--partner .rounded-xl.dark\\:bg-claude-darkSurface::before,
-          .invite-view--partner .rounded-xl.bg-claude-surface::before {
-            content: '';
-            position: absolute;
-            inset: -1px;
-            border-radius: inherit;
-            padding: 1px;
-            background: conic-gradient(from 0deg, transparent 0%, var(--partner-color) 25%, transparent 50%, transparent 75%, var(--partner-color) 95%, transparent 100%);
-            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-            -webkit-mask-composite: xor;
-            mask-composite: exclude;
-            animation: invite-card-spin 8s linear infinite;
-            pointer-events: none;
-            opacity: 0.55;
-          }
           @keyframes invite-card-pulse {
-            0%, 100% { box-shadow: 0 0 20px var(--partner-glow); }
-            50%      { box-shadow: 0 0 42px var(--partner-glow), 0 0 70px var(--partner-glow); }
+            0%, 100% {
+              box-shadow:
+                0 -6px 22px -4px var(--partner-glow),
+                0  6px 22px -4px var(--partner-glow),
+                0 0 16px var(--partner-glow);
+            }
+            50% {
+              box-shadow:
+                0 -10px 40px -2px var(--partner-color),
+                0  10px 40px -2px var(--partner-color),
+                0 0 30px var(--partner-glow);
+            }
           }
-          @keyframes invite-card-spin { 100% { transform: rotate(360deg); } }
 
           /* ── 4 张统计卡 (text-xl.font-bold.text-primary 是数字大字标识) ── */
           /* 顶部水平 tier 色光条 + hover 上浮 + 投影 */
