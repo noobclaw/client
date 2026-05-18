@@ -559,8 +559,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               title={i18nService.t('inviteRebateMenu') || ''}
             >
               <span className="text-base leading-none" aria-hidden>
-                {/* v2.x: 'silver' key = Platinum 🏆 (档位高于 Gold) */}
-                {partnerInfo.tier === 'silver' ? '🏆'
+                {/* v3.x: 'silver' enum 已 rename 成 'platinum'(档位高于 Gold) */}
+                {partnerInfo.tier === 'platinum' ? '🏆'
                   : partnerInfo.tier === 'bronze' ? '🥉'
                   : partnerInfo.tier === 'diamond' ? '💎'
                   : '👑'}

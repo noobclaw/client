@@ -272,17 +272,17 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // noobclaw-theme.css 里的 cascade 规则(跟 InviteView 一对兄弟,共享同一
   // 套 body.invite-partner-active CSS 变量)。
   const TIER_BODY_COLORS: Record<string, string> = {
-    bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
+    bronze: '#c46e2a', gold: '#fbbf24', platinum: '#dde4ef', diamond: '#22d3ee',
   };
   // tier emoji + 标签 — 跟 PartnerHero 的 TIER_VISUAL 同 source 同款,这样
   // wallet 顶部小徽章("👑 Gold ↗")的 emoji 跟 InviteView PartnerHero 视觉
   // 一致,用户在两页看到的是同一个等级标记。
+  // v3.x: 'silver' enum 已 rename 成 'platinum'(DB + 代码统一)
   const TIER_BADGE: Record<string, { emoji: string; label: string }> = {
-    bronze:  { emoji: '🥉', label: 'Bronze' },
-    // v2.x: 'silver' key 显示为 Platinum 🏆 (档位高于 Gold,DB enum 不变)
-    silver:  { emoji: '🏆', label: 'Platinum' },
-    gold:    { emoji: '👑', label: 'Gold' },
-    diamond: { emoji: '💎', label: 'Diamond' },
+    bronze:   { emoji: '🥉', label: 'Bronze' },
+    gold:     { emoji: '👑', label: 'Gold' },
+    platinum: { emoji: '🏆', label: 'Platinum' },
+    diamond:  { emoji: '💎', label: 'Diamond' },
   };
   const partnerColor: string | null = profile?.partner?.is_partner
     ? (TIER_BODY_COLORS[profile.partner.tier as string] || '#facc15')

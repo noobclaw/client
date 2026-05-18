@@ -34,30 +34,29 @@ interface TierTheme {
   bgGrad: string;
   shimmerColor: string;
 }
-// v2.x:tier 主色重新调过,Diamond / Silver 和 Gold / Bronze 视觉差异显著拉开
+// v2.x:tier 主色重新调过,Diamond / Platinum 和 Gold / Bronze 视觉差异显著拉开
 //   Bronze    深暖铜(redder), 跟 Gold 区分
 //   Gold      更纯的金黄,跟 Bronze 区分
-//   Platinum  (字典 key 'silver',显示 Platinum)铂金白冷调,档位高于 Gold
+//   Platinum  铂金白冷调,档位高于 Gold(v3.x 之前 key 叫 'silver')
 //   Diamond   鲜艳蓝宝石青(saturated),跟 Platinum 区分(不是 pale ice)
-// 档位顺序(rate range 见 partnerTier.ts): bronze < gold < platinum(silver) < diamond
+// 档位顺序(rate range 见 partnerTier.ts): bronze < gold < platinum < diamond
 const TIER_VISUAL: Record<string, TierTheme> = {
   bronze: {
     emoji: '🥉', label: 'Bronze', color: '#c46e2a',
     bgGrad: 'linear-gradient(135deg, #1f0e04 0%, #3a1d08 50%, #1f0e04 100%)',
     shimmerColor: 'rgba(196, 110, 42, 0.20)',
   },
-  silver: {
-    // v2.x: 'silver' key 显示为 Platinum 🏆 — DB enum 保留 'silver' 避免迁移,
-    //   语义/显示是 Platinum (铂金,档位高于 Gold)。色 = 铂金白 + 深钢蓝底 +
-    //   alpha 0.30 shimmer,金属高光质感。
-    emoji: '🏆', label: 'Platinum', color: '#dde4ef',
-    bgGrad: 'linear-gradient(135deg, #0c1220 0%, #1e2840 50%, #0c1220 100%)',
-    shimmerColor: 'rgba(221, 228, 239, 0.30)',
-  },
   gold: {
     emoji: '👑', label: 'Gold', color: '#fbbf24',
     bgGrad: 'linear-gradient(135deg, #1f1306 0%, #3a2607 50%, #1f1306 100%)',
     shimmerColor: 'rgba(251, 191, 36, 0.20)',
+  },
+  platinum: {
+    // v3.x: 旧 'silver' key 改名 'platinum',DB + 代码统一。
+    //   色 = 铂金白 + 深钢蓝底 + alpha 0.30 shimmer,金属高光质感。
+    emoji: '🏆', label: 'Platinum', color: '#dde4ef',
+    bgGrad: 'linear-gradient(135deg, #0c1220 0%, #1e2840 50%, #0c1220 100%)',
+    shimmerColor: 'rgba(221, 228, 239, 0.30)',
   },
   diamond: {
     emoji: '💎', label: 'Diamond', color: '#22d3ee',
