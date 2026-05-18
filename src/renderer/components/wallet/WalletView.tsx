@@ -171,21 +171,34 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   }, [authState.isAuthenticated]);
 
   const loadData = async () => {
-    const [info, historyData, profileData, noobCfg] = await Promise.all([
-      noobClawApi.getPaymentInfo(),
-      noobClawApi.getOrderHistory(),
-      noobClawApi.getUserProfile(),
-      noobClawApi.getNoobConfig(),
-    ]);
-    setPaymentInfo(info);
-    setOrderHistory(historyData.orders);
-    setOrderTotal(historyData.total);
-    setProfile(profileData);
-    setNoobConfig(noobCfg);
-    // Default the picker to TRON (USDT) when the backend reports it as
-    // available — matches the website's product decision that stablecoin
-    // deposit is the more discoverable first option for new users.
-    if (info?.chains?.TRON) setCurrentChain('TRON');
+    // v1.x:之前用 Promise.all([...]) 一把等齐 4 个请求才 set 任何 state,
+    // 导致只要 getOrderHistory 或 getNoobConfig 慢,套餐卡就要等到最慢的那个
+    // 回来才能渲染(用户反馈"我的充值页加载很慢,官网很快")。
+    // 官网那边各请求独立 set,快的先 paint,体感快得多。
+    //
+    // 现在四个请求并发发出(不再 await Promise.all),各自 .then 独立 set,
+    // 谁先回谁先渲染。一个失败也不会拖垮其他三个。每个独立 catch 防止
+    // unhandled promise rejection 污染 devtools。
+    noobClawApi.getPaymentInfo().then((info) => {
+      setPaymentInfo(info);
+      // Default the picker to TRON (USDT) when the backend reports it as
+      // available — matches the website's product decision that stablecoin
+      // deposit is the more discoverable first option for new users.
+      if (info?.chains?.TRON) setCurrentChain('TRON');
+    }).catch(() => { /* network/auth failure — leave paymentInfo null so the "套餐加载中..." text stays */ });
+
+    noobClawApi.getOrderHistory().then((historyData) => {
+      setOrderHistory(historyData.orders);
+      setOrderTotal(historyData.total);
+    }).catch(() => { /* leave orderHistory empty; orders tab will show empty state */ });
+
+    noobClawApi.getUserProfile().then((profileData) => {
+      setProfile(profileData);
+    }).catch(() => { /* partner theming will degrade to default neon-green; everything else still works */ });
+
+    noobClawApi.getNoobConfig().then((noobCfg) => {
+      setNoobConfig(noobCfg);
+    }).catch(() => { /* noob-related copy falls back to defaults */ });
   };
 
   const loadNoobEarnings = useCallback(async (page = 1, reason = '', from = '', to = '') => {
