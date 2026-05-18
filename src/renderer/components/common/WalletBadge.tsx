@@ -72,7 +72,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
             ? 'bg-yellow-500 text-white hover:bg-yellow-600 shadow-yellow-500/30'
             : 'bg-green-500 text-white hover:bg-green-600 shadow-green-500/30'
         }`}
-        title={isZh ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
+        title={isZh ? '点击去「我的充值」' : 'Open Top Up'}
       >
         {low ? i18nService.t('coworkLowBalance') : (isZh ? '💰 充值' : '💰 Top up')}
       </button>

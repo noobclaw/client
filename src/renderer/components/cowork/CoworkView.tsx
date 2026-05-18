@@ -421,7 +421,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                       ? 'bg-yellow-500 text-white hover:bg-yellow-600 shadow-yellow-500/30'
                       : 'bg-green-500 text-white hover:bg-green-600 shadow-green-500/30'
                   }`}
-                  title={i18nService.currentLanguage === 'zh' ? '点击到「我的钱包」充值' : 'Top up — opens My Wallet'}
+                  title={i18nService.currentLanguage === 'zh' ? '点击去「我的充值」' : 'Open Top Up'}
                 >
                   {authState.tokenBalance < 1000
                     ? i18nService.t('coworkLowBalance')
