@@ -59,6 +59,8 @@ interface ScenarioViewProps {
   updateBadge?: React.ReactNode;
   /** v4.31.44: 主页涨粉标签传入,初始选中对应 platform tab。undefined 时默认 binance */
   initialPlatform?: PlatformId;
+  /** v1.x: 顶栏右上角"分享给好友"按钮点击 → 跳邀请返佣页 */
+  onShowInvite?: () => void;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -91,6 +93,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onNewChat,
   updateBadge,
   initialPlatform,
+  onShowInvite,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   // Default landing section is now 'tasks' (was 'create'). Users open
@@ -642,7 +645,25 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <WalletBadge />
           </div>
         </div>
-        <WindowTitleBar inline />
+        {/* v1.x: 顶栏右上角"分享给好友"入口 — 一键使用页是用户日常驻留点之一,
+            把邀请入口顶到这儿让"邀请赚 BUSDT"在用户视线里。点击跳邀请返佣页。
+            包裹 div 不加 non-draggable(否则 macOS 拖窗口热区丢失),仅 button
+            本身 non-draggable 让点击事件不被 -webkit-app-region:drag 吃掉。 */}
+        <div className="flex items-center gap-2 h-8">
+          {onShowInvite && (
+            <button
+              type="button"
+              onClick={onShowInvite}
+              className="non-draggable inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap bg-green-500/10 text-green-500 border border-green-500/40 hover:bg-green-500/20 hover:border-green-500/60 active:scale-95"
+              title={i18nService.currentLanguage === 'zh' ? '分享邀请链接给好友,赚 BUSDT 返佣' : 'Share your invite link and earn BUSDT rebate'}
+              aria-label={i18nService.currentLanguage === 'zh' ? '分享给好友' : 'Share to friends'}
+            >
+              <span aria-hidden>🎁</span>
+              <span>{i18nService.currentLanguage === 'zh' ? '分享给好友' : 'Share to friends'}</span>
+            </button>
+          )}
+          <WindowTitleBar inline />
+        </div>
       </div>
 
       {/* L1 — section tabs (Create / My Tasks / History). Hidden when in

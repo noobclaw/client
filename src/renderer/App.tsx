@@ -939,6 +939,7 @@ const App: React.FC = () => {
                 onNewChat={handleNewChat}
                 updateBadge={isSidebarCollapsed ? updateBadge : null}
                 initialPlatform={quickUseInitialPlatform}
+                onShowInvite={handleShowInvite}
               />
             ) : mainView === 'partners' ? (
               <PartnersView
