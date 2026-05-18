@@ -320,12 +320,22 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const partnerColor = profile?.partner?.is_partner
     ? (TIER_PAGE_COLORS[profile.partner.tier] || '#facc15')
     : null;
+  // shiftColor variant for the metallic-gradient digit fill
+  const shift = (hex: string, d: number) => '#' + (hex.slice(1).match(/.{2}/g) || []).map((c) =>
+    Math.max(0, Math.min(255, parseInt(c, 16) + d)).toString(16).padStart(2, '0')).join('');
+  const partnerColorLight = partnerColor ? shift(partnerColor, 60) : null;
+  const partnerColorDark = partnerColor ? shift(partnerColor, -60) : null;
 
   // ─── Main page ───
   return (
     <div
       className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg ${partnerColor ? 'invite-view--partner' : ''}`}
-      style={partnerColor ? ({ '--partner-color': partnerColor, '--partner-glow': partnerColor + '40' } as React.CSSProperties) : undefined}
+      style={partnerColor ? ({
+        '--partner-color': partnerColor,
+        '--partner-glow': partnerColor + '40',
+        '--partner-color-light': partnerColorLight,
+        '--partner-color-dark': partnerColorDark,
+      } as React.CSSProperties) : undefined}
     >
       {partnerColor && (
         <style>{`
@@ -339,6 +349,57 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
           .invite-view--partner .border-primary\\/20 { border-color: var(--partner-color) !important; opacity:0.20; }
           .invite-view--partner .focus\\:border-primary:focus { border-color: var(--partner-color) !important; }
           .invite-view--partner .hover\\:bg-primary-hover:hover { background-color: var(--partner-color) !important; filter:brightness(1.1); }
+
+          /* ── 大卡片:脉冲发光 + 旋转 conic 边框 ── */
+          .invite-view--partner .rounded-xl.dark\\:bg-claude-darkSurface,
+          .invite-view--partner .rounded-xl.bg-claude-surface {
+            position: relative;
+            border-color: var(--partner-color) !important;
+            animation: invite-card-pulse 3.5s ease-in-out infinite;
+          }
+          .invite-view--partner .rounded-xl.dark\\:bg-claude-darkSurface::before,
+          .invite-view--partner .rounded-xl.bg-claude-surface::before {
+            content: '';
+            position: absolute;
+            inset: -1px;
+            border-radius: inherit;
+            padding: 1px;
+            background: conic-gradient(from 0deg, transparent 0%, var(--partner-color) 25%, transparent 50%, transparent 75%, var(--partner-color) 95%, transparent 100%);
+            -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            animation: invite-card-spin 8s linear infinite;
+            pointer-events: none;
+            opacity: 0.5;
+          }
+          @keyframes invite-card-pulse {
+            0%, 100% { box-shadow: 0 0 18px var(--partner-glow), inset 0 0 10px transparent; }
+            50%      { box-shadow: 0 0 36px var(--partner-glow), 0 0 60px var(--partner-color)20, inset 0 0 14px var(--partner-color)10; }
+          }
+          @keyframes invite-card-spin { 100% { transform: rotate(360deg); } }
+
+          /* ── 数字 / 关键文本:金属三色渐变填充 ── */
+          .invite-view--partner .invite-stat-num {
+            background: linear-gradient(135deg, var(--partner-color-light) 0%, var(--partner-color) 50%, var(--partner-color-dark) 100%) !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: transparent !important;
+            filter: drop-shadow(0 0 5px var(--partner-glow));
+          }
+
+          /* ── 复制 / 主按钮:跑光泽 ── */
+          .invite-view--partner button.bg-primary {
+            background: linear-gradient(135deg, var(--partner-color-light), var(--partner-color), var(--partner-color-dark)) !important;
+            background-size: 200% 200% !important;
+            box-shadow: 0 0 14px var(--partner-glow);
+            animation: invite-btn-shine 3s ease-in-out infinite;
+            font-weight: 700;
+          }
+          @keyframes invite-btn-shine {
+            0%, 100% { background-position: 0% 50%; }
+            50%      { background-position: 100% 50%; }
+          }
         `}</style>
       )}
       {header}
