@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
+import { useCountUp } from '../../hooks/useCountUp';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -350,6 +351,14 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     Math.max(0, Math.min(255, parseInt(c, 16) + d)).toString(16).padStart(2, '0')).join('');
   const partnerColorLight = partnerColor ? shift(partnerColor, 60) : null;
   const partnerColorDark = partnerColor ? shift(partnerColor, -60) : null;
+
+  // v1.x: 右上 4 张统计卡的数字滚动效果 — 跟 PartnerHero 顶部"返佣比例"同款。
+  // useCountUp 在 target=0 时立刻 setVal(0) 不跑动画(避免新用户 0 抖动);
+  // target 变化时从 0 ease-out 滚到 target。展示侧再做 toFixed / toLocaleString。
+  const animDirect  = useCountUp(profile?.directReferrals || 0);
+  const animNetwork = useCountUp(profile?.totalNetwork || profile?.totalReferrals || 0);
+  const animUsdt    = useCountUp(parseFloat(usdtSummary?.total_earned || '0'));
+  const animNoob    = useCountUp(Number(profile?.totalNoob || 0));
 
   // ─── Main page ───
   return (
@@ -718,19 +727,19 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 served by /api/user/referral). */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary">{profile?.directReferrals || 0}</div>
+                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animDirect)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteDirectReferrals')}</div>
               </div>
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary">{profile?.totalReferrals || 0}</div>
+                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNetwork)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteTotalNetwork')}</div>
               </div>
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary">${parseFloat(usdtSummary?.total_earned || '0').toFixed(2)}</div>
+                <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
               </div>
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
-                <div className="text-xl font-bold text-primary">{Number(profile?.totalNoob || 0).toLocaleString()}</div>
+                <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
               </div>
             </div>

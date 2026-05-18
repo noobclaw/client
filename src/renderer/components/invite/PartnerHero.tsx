@@ -10,8 +10,9 @@
 // Props 来源:GET /api/me/profile.partner block(step 6 后端已下发)。
 // 普通用户拿到 profile.partner === null,父组件直接不渲染 PartnerHero。
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { i18nService } from '../../services/i18n';
+import { useCountUp } from '../../hooks/useCountUp';
 
 interface PartnerInfo {
   is_partner: boolean;
@@ -76,23 +77,7 @@ function shiftColor(hex: string, delta: number): string {
   );
 }
 
-// 轻量数字滚动 — 600ms ease-out,从 0 到 target。
-function useCountUp(target: number, durationMs = 600): number {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    const start = performance.now();
-    let raf = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / durationMs);
-      const eased = 1 - Math.pow(1 - t, 3);  // ease-out cubic
-      setVal(target * eased);
-      if (t < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, durationMs]);
-  return val;
-}
+// useCountUp 已抽到 ../../hooks/useCountUp,InviteView 4 张统计卡复用同一份。
 
 // Sparkle particles — 8 个固定位置 + 错开 delay,各自 twinkle 节奏
 const SPARK_POSITIONS = [
