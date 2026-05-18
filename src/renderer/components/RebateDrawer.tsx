@@ -98,6 +98,15 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
     return n.toFixed(n >= 1 ? 2 : 4);
   })();
 
+  const dismissNow = () => {
+    clearTimers();
+    setPhase('exiting');
+    exitTimerRef.current = setTimeout(() => {
+      setPhase('idle');
+      setDetail(null);
+    }, SLIDE_ANIM_MS);
+  };
+
   const handleClick = () => {
     clearTimers();
     setPhase('exiting');
@@ -107,6 +116,9 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
       setDetail(null);
     }, SLIDE_ANIM_MS);
   };
+
+  // 关闭按钮的 hover state — 单独管 visual,不污染卡片整体的 cursor:pointer
+  const [closeHover, setCloseHover] = useState(false);
 
   return (
     <div
@@ -122,11 +134,14 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
         right: offscreen ? -380 : 16,
         zIndex: 10000,
         width: 340,
-        padding: '14px 16px',
+        padding: '14px 36px 14px 16px',  // 右内边距留给 × 按钮
         borderRadius: 14,
-        background: 'linear-gradient(135deg, rgba(15,24,18,0.96) 0%, rgba(20,38,28,0.96) 100%)',
-        border: '1px solid rgba(0,255,136,0.45)',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,255,136,0.12), 0 0 28px rgba(0,255,136,0.18)',
+        background: 'linear-gradient(135deg, rgba(8,16,10,0.97) 0%, rgba(12,28,18,0.97) 100%)',
+        // v1.x 用户反馈:边框要"显眼的绿色框"、统一(非合伙人也是绿色,不跟 partner tier 走)
+        // 所以 border 用 inline solid #00FF88,绕开 body.invite-partner-active 的
+        // .border-claude-accent cascade(本组件本来也没用那个 class,但加注释挡一下未来改动)。
+        border: '2px solid #00FF88',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(0,255,136,0.2), 0 0 32px rgba(0,255,136,0.35)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
         cursor: 'pointer',
@@ -182,6 +197,37 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
           <span style={{ fontSize: 14, lineHeight: 1 }}>›</span>
         </div>
       </div>
+      {/* 关闭按钮 — 右上角小 ×。stopPropagation 防止冒泡到卡片 onClick(跳转邀请页)。
+          仍然保留 4s 自动消失;这个按钮是给"想立刻清掉"的用户用的逃生口。 */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); dismissNow(); }}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); dismissNow(); } }}
+        onMouseEnter={() => setCloseHover(true)}
+        onMouseLeave={() => setCloseHover(false)}
+        aria-label={i18nService.t('rebateNotifyClose') || 'Close'}
+        style={{
+          position: 'absolute',
+          top: 6,
+          right: 6,
+          width: 22,
+          height: 22,
+          borderRadius: 6,
+          border: 'none',
+          background: closeHover ? 'rgba(0,255,136,0.18)' : 'transparent',
+          color: closeHover ? '#00FF88' : 'rgba(230,255,238,0.7)',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontSize: 14,
+          lineHeight: 1,
+          padding: 0,
+          transition: 'background 120ms ease, color 120ms ease',
+        }}
+      >
+        ✕
+      </button>
     </div>
   );
 };
