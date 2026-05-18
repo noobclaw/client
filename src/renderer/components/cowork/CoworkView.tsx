@@ -10,6 +10,7 @@ import { quickActionService } from '../../services/quickAction';
 import { i18nService } from '../../services/i18n';
 import { noobClawAuth, type AuthState } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
+import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { configService } from '../../services/config';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import CoworkSessionDetail from './CoworkSessionDetail';
@@ -41,8 +42,8 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const [authState, setAuthState] = useState<AuthState>(noobClawAuth.getState());
   // v1.x: 合伙人欢迎页 banner — 仅在 profile.partner.is_partner=true 时渲染。
   // 同 InviteView/WalletView 用同一份 profile.partner shape;数据来源 /api/user/profile。
-  // 缓存优先,首屏不闪;后台 fetch 静默更新。
-  const [profile, setProfile] = useState<any>(null);
+  // Lazy-init 从 localStorage cache 读,首屏就有数据;后台 fetch 静默覆盖 + 写 cache。
+  const [profile, setProfile] = useState<any>(() => readCachedProfile(noobClawAuth.getState().walletAddress));
 
   useEffect(() => {
     const unsub = noobClawAuth.subscribe(setAuthState);
@@ -52,25 +53,21 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   }, []);
 
   // Fetch profile so we know if user is partner (for the welcome banner +
-  // body partner cascade). Cached read first to avoid first-paint flicker;
-  // network fetch overwrites in the background.
+  // body partner cascade). Lazy-init already read cache;here we refresh on
+  // auth-state change. 同 InviteView/WalletView 走 readCachedProfile + writeCachedProfile
+  // 一套,缓存键 + TTL 跨页一致。
   useEffect(() => {
     if (!authState.isAuthenticated) {
       setProfile(null);
       return;
     }
-    try {
-      const wallet = authState.walletAddress?.toLowerCase();
-      if (wallet) {
-        const raw = localStorage.getItem(`noobclaw_profile_cache:${wallet}`);
-        if (raw) {
-          const obj = JSON.parse(raw);
-          if (obj?.data) setProfile(obj.data);
-        }
-      }
-    } catch { /* ignore cache parse errors */ }
+    const cached = readCachedProfile(authState.walletAddress);
+    if (cached) setProfile(cached);
     noobClawApi.getUserProfile().then((fresh) => {
-      if (fresh) setProfile(fresh);
+      if (fresh) {
+        setProfile(fresh);
+        writeCachedProfile(authState.walletAddress, fresh);
+      }
     }).catch(() => {});
   }, [authState.isAuthenticated, authState.walletAddress]);
 

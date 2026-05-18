@@ -3,6 +3,7 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
 import { useCountUp } from '../../hooks/useCountUp';
+import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -37,28 +38,7 @@ function formatDate(dateStr: string): string {
 // returns. Without this cache the section flickered in 100-300ms after page
 // open — visually annoying enough that users called it out.
 //
-// Per-wallet key so a user-switch (rare but possible on this client) doesn't
-// leak the previous user's data. 1 day TTL — referrer binding rarely changes,
-// avatar/balance can mildly drift between page opens which is fine since
-// we always re-fetch fresh in the background to overwrite.
-const PROFILE_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
-function readCachedProfile(wallet: string | null | undefined): any | null {
-  if (!wallet) return null;
-  try {
-    const raw = localStorage.getItem(`noobclaw_profile_cache:${wallet.toLowerCase()}`);
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    if (!obj?.data || !obj?.ts) return null;
-    if (Date.now() - obj.ts > PROFILE_CACHE_TTL_MS) return null;
-    return obj.data;
-  } catch { return null; }
-}
-function writeCachedProfile(wallet: string | null | undefined, data: any) {
-  if (!wallet || !data) return;
-  try {
-    localStorage.setItem(`noobclaw_profile_cache:${wallet.toLowerCase()}`, JSON.stringify({ data, ts: Date.now() }));
-  } catch { /* quota exceeded / disabled — degrade silently */ }
-}
+// profile 缓存逻辑已抽到 ../../services/profileCache;CoworkView/WalletView 同源复用。
 
 export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
   const isMac = window.electron.platform === 'darwin';

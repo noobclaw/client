@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo } from '../../services/noobclawApi';
+import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -113,7 +114,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [profile, setProfile] = useState<any>(null);
+  // v1.x: lazy-init profile from cache — without this, every nav into 我的充值
+  // page would show no partner theming + no partner badge until /api/user/profile
+  // round-trips finish, which user reported as "有时候连我是不是合伙人都加载
+  // 不出来"。InviteView/CoworkView already do this; WalletView was the laggard.
+  const [profile, setProfile] = useState<any>(() => readCachedProfile(authState.walletAddress));
   const [subPage, setSubPage] = useState<'main' | 'orderHistory' | 'noobCoinDetail' | 'creditDetail'>('main');
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [searchOrderNo, setSearchOrderNo] = useState('');
@@ -193,7 +198,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     }).catch(() => { /* leave orderHistory empty; orders tab will show empty state */ });
 
     noobClawApi.getUserProfile().then((profileData) => {
-      setProfile(profileData);
+      if (profileData) {
+        setProfile(profileData);
+        writeCachedProfile(authState.walletAddress, profileData);  // 下次进页面 lazy-init 直接拿,partner 主题秒应用
+      }
     }).catch(() => { /* partner theming will degrade to default neon-green; everything else still works */ });
 
     noobClawApi.getNoobConfig().then((noobCfg) => {
