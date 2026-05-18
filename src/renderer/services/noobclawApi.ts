@@ -238,9 +238,17 @@ class NoobClawApiService {
     }
   }
 
-  async getReferralRewards(page = 1, pageSize = 20): Promise<{ list: Array<{ noobAmount: number; reason: string; status: string; createdAt: string; contributorWallet?: string; level?: number }>; total: number; totalEarned: number }> {
+  /**
+   * v2.x: backend now returns ALL noob_earnings reasons when `reason=all` is
+   * passed (referral_bonus / purchase_bonus / lucky_bag). Default behavior of
+   * this method changed from "only referral_bonus" to "all" so the InviteView
+   * 邀请奖励 tab shows the full picture per user feedback:
+   *   "除了展示邀请奖励,还要展示充值奖励".
+   * Pass an explicit reason to keep the old filtered shape.
+   */
+  async getReferralRewards(page = 1, pageSize = 20, reason: 'all' | 'referral_bonus' | 'purchase_bonus' | 'lucky_bag' = 'all'): Promise<{ list: Array<{ noobAmount: number; reason: string; status: string; createdAt: string; contributorWallet?: string; level?: number }>; total: number; totalEarned: number }> {
     try {
-      const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/rewards?page=${page}&pageSize=${pageSize}`, {
+      const res = await this.authedFetch(`${this.backendUrl}/api/user/referral/rewards?page=${page}&pageSize=${pageSize}&reason=${reason}`, {
         headers: this.getAuthHeaders(),
       });
       if (!res.ok) return { list: [], total: 0, totalEarned: 0 };

@@ -921,28 +921,50 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                 ) : (
                   <div>
-                    {/* Table header */}
+                    {/* Table header — v2.x: 来源列替换原 contributor 列。每行用 reason +
+                        contributorWallet 推断出"邀请奖励 L1 / 充值奖励 / 福袋"标签,
+                        鼠标悬停看具体钱包。 */}
                     <div className="grid grid-cols-4 gap-1 px-2 py-1.5 text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary border-b dark:border-claude-darkBorder border-claude-border mb-1">
                       <span>{i18nService.t('inviteRewardColAmount')}</span>
-                      <span>{i18nService.t('inviteRewardColTime')}</span>
+                      <span>{i18nService.currentLanguage === 'zh' ? '来源' : 'Source'}</span>
                       <span>{i18nService.t('inviteRewardColContributor')}</span>
-                      <span>{i18nService.t('inviteRewardColLevel')}</span>
+                      <span>{i18nService.t('inviteRewardColTime')}</span>
                     </div>
                     <div className="space-y-1">
-                      {rewardList.map((item, idx) => (
-                        <div key={idx} className="grid grid-cols-4 gap-1 items-center px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
-                          <span className="font-semibold text-primary">+{item.noobAmount.toLocaleString()}</span>
-                          <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">{formatDate(item.createdAt)}</span>
-                          <span className="font-mono dark:text-claude-darkText text-claude-text truncate">{item.contributorWallet ? maskWallet(item.contributorWallet) : '-'}</span>
-                          <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                            item.level === 1
-                              ? 'bg-primary/10 text-primary'
-                              : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
-                          }`}>
-                            {item.level ? `L${item.level}` : '-'}
-                          </span>
-                        </div>
-                      ))}
+                      {rewardList.map((item, idx) => {
+                        // v2.x: 来源徽章 — 按 reason 区分
+                        //   referral_bonus  → 🔗 邀请奖励 L{level}(下级贡献的)
+                        //   purchase_bonus  → 💵 充值奖励 (自己充值触发的)
+                        //   lucky_bag       → 🎁 福袋 (聊天随机)
+                        const isZh = i18nService.currentLanguage === 'zh';
+                        let badgeIcon = '🪂', badgeText = isZh ? '空投' : 'Airdrop', badgeColor = 'bg-gray-500/10 text-gray-400';
+                        if (item.reason === 'referral_bonus') {
+                          badgeIcon = '🔗';
+                          badgeText = isZh ? `邀请奖励${item.level ? ' L'+item.level : ''}` : `Invite${item.level ? ' L'+item.level : ''}`;
+                          badgeColor = item.level === 1 ? 'bg-primary/10 text-primary' : 'bg-blue-500/10 text-blue-400';
+                        } else if (item.reason === 'purchase_bonus') {
+                          badgeIcon = '💵';
+                          badgeText = isZh ? '充值奖励' : 'Top-up';
+                          badgeColor = 'bg-green-500/10 text-green-400';
+                        } else if (item.reason === 'lucky_bag') {
+                          badgeIcon = '🎁';
+                          badgeText = isZh ? '福袋' : 'Lucky Bag';
+                          badgeColor = 'bg-yellow-500/10 text-yellow-400';
+                        }
+                        return (
+                          <div key={idx} className="grid grid-cols-4 gap-1 items-center px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
+                            <span className="font-semibold text-primary">+{item.noobAmount.toLocaleString()}</span>
+                            <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium ${badgeColor}`}>
+                              <span className="mr-0.5">{badgeIcon}</span>{badgeText}
+                            </span>
+                            <span className="font-mono dark:text-claude-darkText text-claude-text truncate"
+                              title={item.contributorWallet || ''}>
+                              {item.contributorWallet ? maskWallet(item.contributorWallet) : '-'}
+                            </span>
+                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">{formatDate(item.createdAt)}</span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
