@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo } from '../../services/noobclawApi';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
+import { readCachedPaymentInfo, writeCachedPaymentInfo } from '../../services/paymentInfoCache';
 import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -95,7 +96,12 @@ function chainBlockFor(info: PaymentInfo | null, chain: 'BSC' | 'TRON') {
 export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge, onShowInvite }) => {
   const isMac = window.electron.platform === 'darwin';
   const [authState, setAuthState] = useState(noobClawAuth.getState());
-  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(null);
+  // v1.x: lazy-init paymentInfo from cache. 用户反馈"客户端加载套餐还是很慢" —
+  // 即使后端 /api/payment/info 自带 5 分钟内存缓存命中只要几毫秒,客户端到 API
+  // 之间还是有一次 HTTPS 往返(200~800ms 网络延迟),套餐卡得等到那一刻才显示。
+  // 跟 profile 一样做 localStorage 缓存(同 5 分钟 TTL),第二次进我的充值套餐
+  // 秒出,后台 fetch 静默覆盖。bnbPriceUsd 5 分钟漂移 0.x% 完全可接受。
+  const [paymentInfo, setPaymentInfo] = useState<PaymentInfo | null>(() => readCachedPaymentInfo());
   const [orderHistory, setOrderHistory] = useState<any[]>([]);
   const [pendingOrderNo, setPendingOrderNo] = useState('');
   // pendingAmount is the on-chain amount string the user must transfer
@@ -108,8 +114,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [pendingCreatedAt, setPendingCreatedAt] = useState('');
   // Currently selected deposit chain on the package picker. Defaulted to
   // TRON in loadData() when the backend reports TRON is available, since
-  // USDT is the more common new-user path.
-  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON'>('BSC');
+  // USDT is the more common new-user path. lazy-init reads the cached
+  // paymentInfo so on second-and-later visits the picker doesn't flash
+  // BSC for one frame before flipping to TRON.
+  const [currentChain, setCurrentChain] = useState<'BSC' | 'TRON'>(() => {
+    const cached = readCachedPaymentInfo();
+    return cached?.chains?.TRON ? 'TRON' : 'BSC';
+  });
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -184,12 +195,14 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     // 谁先回谁先渲染。一个失败也不会拖垮其他三个。每个独立 catch 防止
     // unhandled promise rejection 污染 devtools。
     noobClawApi.getPaymentInfo().then((info) => {
+      if (!info) return;  // network 失败时 fetch 通常返 null,保持 cache 渲染
       setPaymentInfo(info);
+      writeCachedPaymentInfo(info);  // 下次进我的充值 lazy-init 直接拿,无需网络
       // Default the picker to TRON (USDT) when the backend reports it as
       // available — matches the website's product decision that stablecoin
       // deposit is the more discoverable first option for new users.
       if (info?.chains?.TRON) setCurrentChain('TRON');
-    }).catch(() => { /* network/auth failure — leave paymentInfo null so the "套餐加载中..." text stays */ });
+    }).catch(() => { /* network/auth failure — keep showing cached info or "套餐加载中..." */ });
 
     // 充值记录是二级页(subPage='orderHistory'),用户点 "充值记录 →" 才进去,
     // 进去时会自己调 loadOrders('') 拉数据(见 main 页"充值记录"入口的 onClick)。
