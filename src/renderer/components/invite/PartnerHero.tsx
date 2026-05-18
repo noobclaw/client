@@ -1,9 +1,11 @@
 // PartnerHero — 尊贵版邀请页顶部 banner,只在 profile.partner.is_partner=true 时渲染。
 //
-// Design:
-//   - 黑底 + 香槟金 (#facc15) + 玫瑰金渐变,自带 4s shimmer 光带
-//   - 大字突出"L1 返佣 N%" + 等级勋章 + "您是普通用户的 X 倍"对比
-//   - 数字滚动入场(react-countup 没装,自己用 requestAnimationFrame 写一个轻量版)
+// v2.x "炫酷" upgrade:
+//   - 黑底 + tier 色渐变 + 旋转 conic gradient 光环边框
+//   - 4s shimmer 光带 + 8 个 twinkle 金粉粒子
+//   - emoji 上下浮动 + drop-shadow 发光
+//   - 数字 background-clip:text 渐变金属字效
+//   - 右上 ✦ VIP ✦ 角标
 //
 // Props 来源:GET /api/me/profile.partner block(step 6 后端已下发)。
 // 普通用户拿到 profile.partner === null,父组件直接不渲染 PartnerHero。
@@ -15,8 +17,8 @@ interface PartnerInfo {
   is_partner: boolean;
   rate_pct: number;
   tier: string | null;
-  l1_share_pct: number;        // pool_pct × 50%
-  default_pool_pct: number;    // system default,通常 10
+  l1_share_pct: number;
+  default_pool_pct: number;
   granted_at: string | null;
 }
 
@@ -24,15 +26,12 @@ interface PartnerHeroProps {
   partner: PartnerInfo;
 }
 
-// 完整每档主题色:每档独立的渐变背景 / shimmer 颜色 / 描边 / 阴影
-// 不再是"全部金色 + 文字颜色微调",而是整张 banner 完全换色调,炫酷感
-// bronze 暖铜  silver 冷银  gold 暖金  diamond 冰蓝
 interface TierTheme {
   emoji: string;
   label: string;
-  color: string;          // 主色
-  bgGrad: string;         // 整张背景渐变
-  shimmerColor: string;   // 光带扫过颜色
+  color: string;
+  bgGrad: string;
+  shimmerColor: string;
 }
 const TIER_VISUAL: Record<string, TierTheme> = {
   bronze: {
@@ -58,6 +57,16 @@ const TIER_VISUAL: Record<string, TierTheme> = {
 };
 const DEFAULT_VISUAL: TierTheme = TIER_VISUAL.gold;
 
+// 颜色 helper:基于主色做 lighter / darker,用于数字三色金属渐变。
+function shiftColor(hex: string, delta: number): string {
+  return (
+    '#' +
+    (hex.slice(1).match(/.{2}/g) || []).map((c) =>
+      Math.max(0, Math.min(255, parseInt(c, 16) + delta)).toString(16).padStart(2, '0'),
+    ).join('')
+  );
+}
+
 // 轻量数字滚动 — 600ms ease-out,从 0 到 target。
 function useCountUp(target: number, durationMs = 600): number {
   const [val, setVal] = useState(0);
@@ -76,23 +85,50 @@ function useCountUp(target: number, durationMs = 600): number {
   return val;
 }
 
+// Sparkle particles — 8 个固定位置 + 错开 delay,各自 twinkle 节奏
+const SPARK_POSITIONS = [
+  { top: '18%', left: '8%',  delay: '0s'   },
+  { top: '60%', left: '18%', delay: '1.1s' },
+  { top: '28%', left: '34%', delay: '2.3s' },
+  { top: '78%', left: '42%', delay: '0.6s' },
+  { top: '22%', left: '62%', delay: '1.8s' },
+  { top: '68%', left: '74%', delay: '2.7s' },
+  { top: '38%', left: '88%', delay: '0.4s' },
+  { top: '82%', left: '92%', delay: '1.5s' },
+];
+
 export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
   const visual = (partner.tier && TIER_VISUAL[partner.tier]) || DEFAULT_VISUAL;
-  // Display rate_pct (admin-set pool size) as the headline number. The "vs
-  // regular X% · Nx" multiplier was removed per UX feedback ("不需要,改成
-  // 按充值金额" — labeling the unit instead of comparing tiers).
   const animatedRate = useCountUp(partner.rate_pct);
+  const colorLight = shiftColor(visual.color, 60);
+  const colorDark = shiftColor(visual.color, -60);
 
   return (
     <div
-      className="relative overflow-hidden rounded-2xl mb-3 px-5 py-4 border"
+      className="relative overflow-hidden rounded-2xl mb-3 px-6 py-5 border"
       style={{
         background: visual.bgGrad,
         borderColor: visual.color + '60',
         boxShadow: `0 0 24px ${visual.color}25, inset 0 0 14px ${visual.color}10`,
       }}
     >
-      {/* shimmer 光带 — 颜色跟着等级走 */}
+      {/* 旋转 conic gradient 光环边框 — 比静态描边更 premium */}
+      <div
+        className="absolute pointer-events-none"
+        style={{
+          inset: -2,
+          borderRadius: 18,
+          padding: 2,
+          background: `conic-gradient(from 0deg, transparent 0%, ${visual.color} 20%, transparent 40%, transparent 60%, ${visual.color} 80%, transparent 100%)`,
+          WebkitMask: 'linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)',
+          WebkitMaskComposite: 'xor',
+          maskComposite: 'exclude',
+          animation: 'partner-conic 6s linear infinite',
+          opacity: 0.55,
+        }}
+      />
+
+      {/* shimmer 光带 — 颜色跟 tier 走 */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
@@ -100,41 +136,114 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
           animation: 'partner-hero-shimmer 4s ease-in-out infinite',
         }}
       />
+
+      {/* 金粉粒子 — 8 个 */}
+      {SPARK_POSITIONS.map((p, i) => (
+        <span
+          key={i}
+          className="absolute pointer-events-none"
+          style={{
+            top: p.top,
+            left: p.left,
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: `radial-gradient(circle, ${visual.color} 0%, transparent 70%)`,
+            animation: `partner-spark-twinkle 3s ease-in-out infinite`,
+            animationDelay: p.delay,
+          }}
+        />
+      ))}
+
+      {/* 右上 VIP 角标 */}
+      <div
+        className="absolute font-bold"
+        style={{
+          top: 8,
+          right: 14,
+          fontSize: 9,
+          letterSpacing: 2,
+          padding: '2px 8px',
+          borderRadius: 10,
+          background: `linear-gradient(135deg, ${visual.color}, ${colorDark})`,
+          color: '#0a0a0a',
+          boxShadow: `0 0 8px ${visual.color}80`,
+        }}
+      >
+        ✦ VIP ✦
+      </div>
+
       <style>{`
         @keyframes partner-hero-shimmer {
           0% { transform: translateX(-100%); }
           100% { transform: translateX(100%); }
         }
+        @keyframes partner-conic {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+        @keyframes partner-spark-twinkle {
+          0%, 100% { opacity: 0; transform: scale(0.4); }
+          50%      { opacity: 1; transform: scale(1.2); }
+        }
+        @keyframes partner-emoji-float {
+          0%, 100% { transform: translateY(0) rotate(-2deg); }
+          50%      { transform: translateY(-3px) rotate(2deg); }
+        }
       `}</style>
 
       <div className="relative z-10 flex items-center gap-4 flex-wrap">
-        {/* 等级勋章 */}
-        <div className="flex items-center gap-2">
-          <span style={{ fontSize: 32, lineHeight: 1 }}>{visual.emoji}</span>
+        {/* 等级勋章 + 浮动 */}
+        <div className="flex items-center gap-3">
+          <span
+            style={{
+              fontSize: 42,
+              lineHeight: 1,
+              display: 'inline-block',
+              animation: 'partner-emoji-float 3.5s ease-in-out infinite',
+              filter: `drop-shadow(0 0 8px ${visual.color}60)`,
+            }}
+          >
+            {visual.emoji}
+          </span>
           <div>
-            <div className="text-[10px] tracking-wider font-semibold uppercase" style={{ color: visual.color }}>
+            <div
+              className="text-[10px] font-semibold uppercase"
+              style={{ color: visual.color, letterSpacing: 3 }}
+            >
               {i18nService.t('partnerBannerTitle') || 'Partner'}
             </div>
-            <div className="text-sm font-bold text-white">{visual.label}</div>
+            <div className="text-base font-bold text-white tracking-wider">
+              {visual.label}
+            </div>
           </div>
         </div>
 
-        <div className="h-10 w-px" style={{ background: visual.color + '40' }} />
+        <div
+          className="h-12 w-px"
+          style={{ background: `linear-gradient(180deg, transparent, ${visual.color}80, transparent)` }}
+        />
 
-        {/* 返佣总比例(大字 + 滚动) */}
+        {/* 返佣总比例 — 金属渐变文本填充 */}
         <div className="flex-1 min-w-0">
-          <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: visual.color + 'cc' }}>
+          <div
+            className="text-[10px] uppercase font-semibold"
+            style={{ color: visual.color + 'cc', letterSpacing: 2 }}
+          >
             {i18nService.t('partnerRebateRate') || '您的返佣比例'}
           </div>
           <div className="flex items-baseline gap-2 flex-wrap">
             <span
               className="font-bold tabular-nums"
               style={{
-                fontSize: 32,
-                lineHeight: 1.1,
-                color: visual.color,
-                textShadow: `0 0 12px ${visual.color}40`,
-                letterSpacing: '0.5px',
+                fontSize: 42,
+                lineHeight: 1.05,
+                letterSpacing: 1,
+                background: `linear-gradient(135deg, ${colorLight} 0%, ${visual.color} 50%, ${colorDark} 100%)`,
+                WebkitBackgroundClip: 'text',
+                backgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                filter: `drop-shadow(0 0 8px ${visual.color}30)`,
               }}
             >
               {animatedRate.toFixed(1)}%
