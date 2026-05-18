@@ -342,12 +342,21 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
         <style>{`
           .invite-view--partner .text-primary { color: var(--partner-color) !important; }
           .invite-view--partner .bg-primary { background-color: var(--partner-color) !important; color:#0a0a0a !important; }
-          .invite-view--partner .bg-primary:hover { background-color: var(--partner-color) !important; opacity:0.85; }
-          .invite-view--partner .bg-primary\\/10 { background-color: var(--partner-color) !important; opacity:0.10; }
-          .invite-view--partner .bg-primary\\/20 { background-color: var(--partner-color) !important; opacity:0.20; }
-          .invite-view--partner .bg-primary\\/5  { background-color: var(--partner-color) !important; opacity:0.05; }
+          .invite-view--partner .bg-primary:hover { background-color: var(--partner-color) !important; filter:brightness(0.9); }
+          /* color-mix:把 tier 色按比例混到 transparent,得到半透明背景,不影响子元素文字 */
+          .invite-view--partner .bg-primary\\/10 {
+            background-color: color-mix(in srgb, var(--partner-color) 10%, transparent) !important;
+          }
+          .invite-view--partner .bg-primary\\/20 {
+            background-color: color-mix(in srgb, var(--partner-color) 20%, transparent) !important;
+          }
+          .invite-view--partner .bg-primary\\/5 {
+            background-color: color-mix(in srgb, var(--partner-color) 6%, transparent) !important;
+          }
           .invite-view--partner .border-primary { border-color: var(--partner-color) !important; }
-          .invite-view--partner .border-primary\\/20 { border-color: var(--partner-color) !important; opacity:0.20; }
+          .invite-view--partner .border-primary\\/20 {
+            border-color: color-mix(in srgb, var(--partner-color) 28%, transparent) !important;
+          }
           .invite-view--partner .focus\\:border-primary:focus { border-color: var(--partner-color) !important; }
           .invite-view--partner .hover\\:bg-primary-hover:hover { background-color: var(--partner-color) !important; filter:brightness(1.1); }
 
