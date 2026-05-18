@@ -16,6 +16,7 @@ import { i18nService } from '../../services/i18n';
 import { friendlyRunError } from '../../services/runErrorMessage';
 import type { ScenarioRunProgress } from '../../types/scenario';
 import LuckyBag from '../cowork/LuckyBag';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { FALLBACK_IMAGE_STYLES } from '../../services/imageStyles';
 
 // v4.28.x: 之前只放了 XHS tracks,Twitter / Binance 的 web3_* track 没法在
@@ -756,7 +757,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   return (
     <div className="p-6 max-w-5xl mx-auto">
       {/* NoobCoin 福袋红包 — 任务跑/扣费时 backend 通过 SSE 触发,跟 chat 框那个同源 */}
-      <LuckyBag />
+      <ErrorBoundary name="LuckyBag" fallback={null}>
+        <LuckyBag />
+      </ErrorBoundary>
       <button type="button" onClick={onBack}
         className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">
         ← {isZh ? '返回' : 'Back'}

@@ -4,6 +4,7 @@ import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
 import { i18nService } from '../../services/i18n';
 import LuckyBag from '../cowork/LuckyBag';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface QuickUseViewProps {
   isSidebarCollapsed?: boolean;
@@ -21,7 +22,9 @@ export const QuickUseView: React.FC<QuickUseViewProps> = ({ isSidebarCollapsed, 
           原本只在 chat 对话框(CoworkSessionDetail) + scenario 页(ScenarioView)
           有,一键使用页漏挂导致这页用户永远抽不到红包。这里补齐,跟其他两页
           用同一份 LuckyBag 组件,行为完全一致。 */}
-      <LuckyBag />
+      <ErrorBoundary name="LuckyBag" fallback={null}>
+        <LuckyBag />
+      </ErrorBoundary>
       {/* Header */}
       <div className="draggable flex h-12 items-center justify-between px-4 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
         <div className="flex items-center space-x-3 h-8">

@@ -20,6 +20,7 @@ import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import TickerMarquee from './TickerMarquee';
 import LuckyBag from './LuckyBag';
+import { ErrorBoundary } from '../ErrorBoundary';
 import PuzzleIcon from '../icons/PuzzleIcon';
 import EllipsisHorizontalIcon from '../icons/EllipsisHorizontalIcon';
 import PencilSquareIcon from '../icons/PencilSquareIcon';
@@ -2133,7 +2134,9 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         </div>
 
         {/* Lucky Bag */}
-        <LuckyBag />
+        <ErrorBoundary name="LuckyBag" fallback={null}>
+          <LuckyBag />
+        </ErrorBoundary>
 
         {/* Turn Navigation Buttons */}
         {turns.length > 1 && isScrollable && (

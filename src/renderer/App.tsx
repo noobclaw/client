@@ -5,6 +5,7 @@ import Settings, { type SettingsOpenOptions } from './components/Settings';
 import Sidebar from './components/Sidebar';
 import Toast from './components/Toast';
 import RebateDrawer from './components/RebateDrawer';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import WindowTitleBar from './components/window/WindowTitleBar';
 import { CoworkView } from './components/cowork';
 import { SkillsView } from './components/skills';
@@ -844,8 +845,12 @@ const App: React.FC = () => {
       )}
       {/* v1.x: 全局合伙人佣金到账抽屉 — 任何 view 下都会触发,不依赖 mainView。
           监听 `noobclaw:rebate-received` DOM 事件;事件由 services/cowork.ts 的
-          SSE handler 在 _noobclaw payload 含 rebate 字段时桥接派发。点击跳邀请页。 */}
-      <RebateDrawer onShowInvite={handleShowInvite} />
+          SSE handler 在 _noobclaw payload 含 rebate 字段时桥接派发。点击跳邀请页。
+          v2.x: ErrorBoundary fallback={null} — 浮层组件出错不显示红色错误卡,
+          安静失败,避免黑屏。具体报错仍打到 console 方便排查。 */}
+      <ErrorBoundary name="RebateDrawer" fallback={null}>
+        <RebateDrawer onShowInvite={handleShowInvite} />
+      </ErrorBoundary>
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <Sidebar
           onShowLogin={handleShowLogin}
@@ -985,8 +990,11 @@ const App: React.FC = () => {
       {/* v5.x+: global notification center — handles critical full-screen
           modal (USDT 返佣 ≥ $50), important bottom-right banner ($5-50)
           + OS push, all from /api/me/notifications/unread. Renders only
-          when authenticated. */}
-      <NotificationCenter />
+          when authenticated.
+          v2.x: 用 ErrorBoundary 包住,出错不再让整棵 React 树 unmount → 黑屏。 */}
+      <ErrorBoundary name="NotificationCenter" fallback={null}>
+        <NotificationCenter />
+      </ErrorBoundary>
     </div>
   );
 };
