@@ -652,7 +652,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     return (
       <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
         {header}
-        <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
           {/* Back + Title */}
           <div className="flex items-center gap-2 mb-2">
@@ -763,7 +763,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             {i18nService.t('walletCopiedToClipboard')}
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
+        <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
           {/* Intro card */}
           <div className="rounded-2xl overflow-hidden border dark:border-primary/20 border-primary/15 shadow-lg" style={{ background: 'linear-gradient(145deg, rgba(74,222,128,0.12) 0%, rgba(74,222,128,0.03) 50%, rgba(74,222,128,0.08) 100%)' }}>
@@ -1070,7 +1070,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
         </div>
       )}
       {confirmDialogEl}
-      <div className="flex-1 overflow-y-auto p-5 max-w-xl mx-auto w-full space-y-4">
+      <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
         {/* Wallet Header */}
         {/* v1.x: 合伙人 VIP 视觉框 — 跟 InviteView 顶部 PartnerHero 同一套:
@@ -1396,10 +1396,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   )}
 
-                  {/* Address (with 充值地址 prefix label per user feedback) */}
-                  <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary text-center mb-1">{i18nService.t('walletPaymentAddress')}</p>
-                  <div className="flex items-center justify-center gap-2 mb-4">
-                    <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all text-center">{treasury || 'Loading...'}</code>
+                  {/* Address — label + address + copy on ONE line per user feedback.
+                      Layout: 标签:|address(flex-1, monospace, truncates if too long)|复制按钮 */}
+                  <div className="flex items-center gap-2 mb-4">
+                    <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">{i18nService.t('walletPaymentAddress')}:</span>
+                    <code className="flex-1 text-xs font-mono dark:text-claude-darkText text-claude-text break-all">{treasury || 'Loading...'}</code>
                     <button onClick={() => copyToClipboard(treasury)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
                   </div>
 
