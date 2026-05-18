@@ -12,6 +12,32 @@ function maskWallet(addr: string): string {
   return `${addr.slice(0, 6)}****${addr.slice(-4)}`;
 }
 
+// ─── Stale-while-revalidate cache for the ticker ───
+// v1.x: 用户反馈"为啥要等一会才会出现",根因是首次进页面要等 API 来才有
+// items。ticker 是全局社会证明(对所有用户内容一致,后端用 day-seeded
+// 假名 + 当日真实 rebate_sends 填到 50 行),所以可以走 localStorage 缓
+// 存,进页面瞬间从缓存渲染,背景再 fetch 刷新。
+//   - cache key 全局共享(不分钱包),50 行内容对每个用户一样
+//   - TTL 1 小时:后端 ticker 每 10 分钟级别才有新东西爬上来,1h 内的缓
+//     存绝对够用,过期了组件也会被 setInterval 那条 10min 路径覆盖。
+const TICKER_CACHE_KEY = 'noobclaw_invite_ticker_v1';
+const TICKER_CACHE_TTL_MS = 60 * 60 * 1000;
+function readCachedTicker(): Item[] | null {
+  try {
+    const raw = localStorage.getItem(TICKER_CACHE_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!Array.isArray(obj?.items) || typeof obj?.ts !== 'number') return null;
+    if (Date.now() - obj.ts > TICKER_CACHE_TTL_MS) return null;
+    return obj.items as Item[];
+  } catch { return null; }
+}
+function writeCachedTicker(items: Item[]) {
+  try {
+    localStorage.setItem(TICKER_CACHE_KEY, JSON.stringify({ items, ts: Date.now() }));
+  } catch { /* quota / disabled — degrade silently */ }
+}
+
 /**
  * Scrolling marquee of "wallet earned X USDT today" lines for the Rebate tab.
  * Pulls from /api/user/referral/ticker, which mixes real rebate_sends (today)
@@ -27,20 +53,27 @@ function maskWallet(addr: string): string {
  * specific line that catches their eye.
  */
 const InviteTicker: React.FC = () => {
-  const [items, setItems] = useState<Item[]>([]);
+  // Lazy-init from localStorage cache so the marquee renders on first paint
+  // (no API round-trip wait). Background fetch in the effect below overrides
+  // with fresh data + re-writes cache.
+  const [items, setItems] = useState<Item[]>(() => readCachedTicker() || []);
 
   useEffect(() => {
     let cancelled = false;
-    noobClawApi.getReferralTicker().then(data => {
-      if (!cancelled) setItems(data.items || []);
-    }).catch(() => {});
+    const refresh = () => {
+      noobClawApi.getReferralTicker().then(data => {
+        if (cancelled) return;
+        const fresh = data.items || [];
+        if (fresh.length > 0) {
+          setItems(fresh);
+          writeCachedTicker(fresh);
+        }
+      }).catch(() => {});
+    };
+    refresh();
     // Refresh every 10 minutes so a late real payout climbs in within a
     // reasonable window without hammering the API.
-    const t = setInterval(() => {
-      noobClawApi.getReferralTicker().then(data => {
-        if (!cancelled) setItems(data.items || []);
-      }).catch(() => {});
-    }, 10 * 60 * 1000);
+    const t = setInterval(refresh, 10 * 60 * 1000);
     return () => { cancelled = true; clearInterval(t); };
   }, []);
 
