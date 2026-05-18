@@ -24,6 +24,14 @@ class NoobClawAuthService {
   };
 
   private listeners: Array<(state: AuthState) => void> = [];
+  // v1.x: 全局 15s 轮询 /api/ai/balance — 之前这个 interval 只挂在 WalletView 内部,
+  // 用户停在 InviteView / CoworkView 等其它页面时不轮询 → 新到账的 BUSDT 返佣
+  // pendingRebates 永远没人拉,RebateDrawer 永远不弹(用户反馈"明明有佣金但抽
+  // 屉没弹")。提到 service 全局后,只要 authToken 存在就持续 poll,跨 view 不丢。
+  // logout / 401 失效时停止。15s 跟原 WalletView interval 保持一致。
+  private _balancePollTimer: ReturnType<typeof setInterval> | null = null;
+  private static readonly BALANCE_POLL_MS = 15_000;
+
   // Dynamically read, supports local/production environment switching
   private get backendUrl() { return getBackendApiUrl(); }
 
@@ -49,6 +57,26 @@ class NoobClawAuthService {
       }, 0);
       this.refreshBalance().catch(console.error);
       this.refreshAvatar().catch(console.error);
+      this.startBalancePolling();
+    }
+  }
+
+  // 启动全局 balance 轮询。重复调用幂等(已经在跑的不会被重复启动)。
+  // refreshBalance 内部会把 pendingRebates 派 DOM 事件给 RebateDrawer,
+  // 所以这个 interval 是"佣金到账通知"机制的核心心跳。
+  private startBalancePolling() {
+    if (this._balancePollTimer) return;
+    this._balancePollTimer = setInterval(() => {
+      // 静默 catch:这是后台定时器,失败不应该污染 console.error(单次失败的话
+      // 下一轮 15s 再试;真彻底挂了 401 路径会走 handleAuthExpired 清登录态)。
+      this.refreshBalance().catch(() => {});
+    }, NoobClawAuthService.BALANCE_POLL_MS);
+  }
+
+  private stopBalancePolling() {
+    if (this._balancePollTimer) {
+      clearInterval(this._balancePollTimer);
+      this._balancePollTimer = null;
     }
   }
 
@@ -113,6 +141,7 @@ class NoobClawAuthService {
     this.refreshBalance();
     this.refreshAvatar();
     this.reportDeviceInfo(token);
+    this.startBalancePolling();  // 登录后启动全局心跳,跨 view 拉 pendingRebates
     this.notify();
   }
 
@@ -255,6 +284,7 @@ class NoobClawAuthService {
     localStorage.removeItem('noobclaw_social_email');
     localStorage.removeItem('noobclaw_social_provider');
     this.syncTokenToMain(null);
+    this.stopBalancePolling();  // 退登后停掉全局心跳,避免对 401 旧 token 持续打/balance
     this.notify();
   }
 

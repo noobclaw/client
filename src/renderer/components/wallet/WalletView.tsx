@@ -179,11 +179,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     }
   }, [authState.isAuthenticated]);
 
-  useEffect(() => {
-    if (!authState.isAuthenticated) return;
-    const timer = setInterval(() => noobClawAuth.refreshBalance(), 15000);
-    return () => clearInterval(timer);
-  }, [authState.isAuthenticated]);
+  // v1.x: 之前这里挂了一个 15s setInterval 调 refreshBalance — 但只在 WalletView
+  // 内有效。用户停在 InviteView/CoworkView/etc. 时不轮询,导致新到账的 BUSDT
+  // 返佣 pendingRebates 永远没人拉,RebateDrawer 永远不弹(用户反馈"有佣金
+  // 但抽屉没弹")。轮询已经提到 noobclawAuth 全局服务里,这里就不重复了 ——
+  // 全局 15s 心跳 + WalletView mount 时再额外触发一次(上面的 effect)就够了。
 
   const loadData = async () => {
     // v1.x:之前用 Promise.all([...]) 一把等齐 4 个请求才 set 任何 state,
