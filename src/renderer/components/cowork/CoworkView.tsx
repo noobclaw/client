@@ -9,6 +9,7 @@ import { skillService } from '../../services/skill';
 import { quickActionService } from '../../services/quickAction';
 import { i18nService } from '../../services/i18n';
 import { noobClawAuth, type AuthState } from '../../services/noobclawAuth';
+import { noobClawApi } from '../../services/noobclawApi';
 import { configService } from '../../services/config';
 import CoworkPromptInput, { type CoworkPromptInputRef } from './CoworkPromptInput';
 import CoworkSessionDetail from './CoworkSessionDetail';
@@ -25,17 +26,23 @@ export interface CoworkViewProps {
   onShowWallet?: () => void;
   /** v4.31.44: 主页 6 个涨粉标签调用,可选 platform 直跳到对应平台 tab */
   onShowQuickUse?: (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin') => void;
+  /** v1.x partner banner: 合伙人卡片点击跳到邀请返佣页 */
+  onShowInvite?: () => void;
   isSidebarCollapsed?: boolean;
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
 }
 
-const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSkills, onShowWallet, onShowQuickUse, isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
+const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSkills, onShowWallet, onShowQuickUse, onShowInvite, isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge }) => {
   const dispatch = useDispatch();
   const isMac = window.electron.platform === 'darwin';
   const [isInitialized, setIsInitialized] = useState(false);
   const [authState, setAuthState] = useState<AuthState>(noobClawAuth.getState());
+  // v1.x: 合伙人欢迎页 banner — 仅在 profile.partner.is_partner=true 时渲染。
+  // 同 InviteView/WalletView 用同一份 profile.partner shape;数据来源 /api/user/profile。
+  // 缓存优先,首屏不闪;后台 fetch 静默更新。
+  const [profile, setProfile] = useState<any>(null);
 
   useEffect(() => {
     const unsub = noobClawAuth.subscribe(setAuthState);
@@ -43,6 +50,53 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
     noobClawAuth.refreshBalance().catch(() => {});
     return unsub;
   }, []);
+
+  // Fetch profile so we know if user is partner (for the welcome banner +
+  // body partner cascade). Cached read first to avoid first-paint flicker;
+  // network fetch overwrites in the background.
+  useEffect(() => {
+    if (!authState.isAuthenticated) {
+      setProfile(null);
+      return;
+    }
+    try {
+      const wallet = authState.walletAddress?.toLowerCase();
+      if (wallet) {
+        const raw = localStorage.getItem(`noobclaw_profile_cache:${wallet}`);
+        if (raw) {
+          const obj = JSON.parse(raw);
+          if (obj?.data) setProfile(obj.data);
+        }
+      }
+    } catch { /* ignore cache parse errors */ }
+    noobClawApi.getUserProfile().then((fresh) => {
+      if (fresh) setProfile(fresh);
+    }).catch(() => {});
+  }, [authState.isAuthenticated, authState.walletAddress]);
+
+  // v1.x partner color cascade — 同 InviteView/WalletView 用同一个 body class +
+  // CSS var。合伙人在 CoworkView (新建对话页) 时:
+  //   - Sidebar 新建对话按钮 (.bg-claude-accent) 自动换 tier 色
+  //   - 输入框 focus ring / border 自动换 tier 色
+  //   - 发送按钮 (.bg-claude-accent 圆按钮) 也换 tier 色
+  // 普通用户 partnerColor=null,这段 effect 不跑,保持原 neon-green 视觉。
+  const partnerInfo = profile?.partner?.is_partner ? profile.partner : null;
+  useEffect(() => {
+    if (!partnerInfo) return;
+    const TIER_BODY_COLORS: Record<string, string> = {
+      bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+    };
+    const color = TIER_BODY_COLORS[partnerInfo.tier as string] || '#facc15';
+    const body = document.body;
+    body.classList.add('invite-partner-active');
+    body.style.setProperty('--invite-partner-color', color);
+    body.style.setProperty('--invite-partner-glow', color + '40');
+    return () => {
+      body.classList.remove('invite-partner-active');
+      body.style.removeProperty('--invite-partner-color');
+      body.style.removeProperty('--invite-partner-glow');
+    };
+  }, [partnerInfo?.tier, partnerInfo?.is_partner]);
   // Track if we're starting a session to prevent duplicate submissions
   const isStartingRef = useRef(false);
   // Track pending start request so stop can cancel delayed startup.
@@ -491,6 +545,41 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
               {i18nService.t('coworkDescription')}
             </p>
           </div>
+
+          {/* v1.x: 合伙人欢迎横幅 — 仅 partner 用户渲染。一行高度,贴 subtitle
+              与 6 卡之间,不增加纵向滚动风险(高度 ~36px 远小于 space-y-6 间距)。
+              点击跳到邀请返佣页;颜色 + emoji 跟 tier 走;rate_pct 取整数显示。 */}
+          {partnerInfo && (
+            <button
+              type="button"
+              onClick={() => onShowInvite?.()}
+              className="group w-full flex items-center justify-center gap-3 px-4 py-1.5 rounded-xl border transition-all hover:scale-[1.01] cursor-pointer"
+              style={{
+                background: `linear-gradient(90deg, color-mix(in srgb, var(--invite-partner-color) 8%, transparent), color-mix(in srgb, var(--invite-partner-color) 18%, transparent), color-mix(in srgb, var(--invite-partner-color) 8%, transparent))`,
+                borderColor: 'color-mix(in srgb, var(--invite-partner-color) 55%, transparent)',
+                boxShadow: '0 0 16px color-mix(in srgb, var(--invite-partner-color) 25%, transparent)',
+              }}
+              title={i18nService.t('inviteRebateMenu') || ''}
+            >
+              <span className="text-base leading-none" aria-hidden>
+                {partnerInfo.tier === 'silver' ? '🥈'
+                  : partnerInfo.tier === 'bronze' ? '🥉'
+                  : partnerInfo.tier === 'diamond' ? '💎'
+                  : '👑'}
+              </span>
+              <span className="text-xs font-semibold tracking-wide" style={{ color: 'var(--invite-partner-color)' }}>
+                {i18nService.t('partnerBannerTitle') || '尊贵的合伙人'}
+              </span>
+              <span className="text-[10px] opacity-70 dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
+              <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                {i18nService.t('partnerRebateRate') || '您的返佣比例'}
+                <span className="ml-1 font-bold tabular-nums" style={{ color: 'var(--invite-partner-color)' }}>
+                  {Math.round(partnerInfo.rate_pct)}%
+                </span>
+              </span>
+              <span className="text-xs opacity-60 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--invite-partner-color)' }}>→</span>
+            </button>
+          )}
 
           {/* v4.31.44: 六个涨粉入口,点击后跳"一键使用"对应平台。
               紧凑款 — emoji 包在小色块里,主体是中性卡片,hover 时

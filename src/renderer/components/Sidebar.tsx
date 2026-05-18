@@ -160,11 +160,17 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
         <div className="mt-3 space-y-1 px-3">
-          {/* New Chat - prominent button */}
+          {/* New Chat - prominent only in cowork view; dimmed when another
+              menu is active so the bright green doesn't compete visually with
+              the highlighted menu item (per user feedback 2026-05-18). */}
           <button
             type="button"
             onClick={onNewChat}
-            className="w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-semibold transition-colors bg-claude-accent text-white hover:bg-claude-accentHover"
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
+              activeView === 'cowork'
+                ? 'font-semibold bg-claude-accent text-white hover:bg-claude-accentHover'
+                : 'font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
           >
             <ComposeIcon className="h-4 w-4" />
             + {i18nService.t('newChat')}

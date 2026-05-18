@@ -576,6 +576,35 @@ body.invite-partner-active .text-claude-accent { color: var(--invite-partner-col
 body.invite-partner-active .border-claude-accent {
   border-color: color-mix(in srgb, var(--invite-partner-color) 50%, transparent) !important;
 }
+/* v1.x cascade(2026-05-18):合伙人进入"新建对话(cowork)"页面时,Sidebar 新建对话按钮
+   (.bg-claude-accent) + 输入框发送按钮 (.bg-claude-accent rounded) + drag-over indicator
+   (.bg-claude-accent/10) + focus ring 全部跟 tier 色走。不限于 cowork 页 — 任何带
+   body.invite-partner-active 的页面都适用,跨页一致。 */
+body.invite-partner-active .bg-claude-accent {
+  background-color: var(--invite-partner-color) !important;
+  color: #0a0a0a !important;
+}
+body.invite-partner-active .bg-claude-accent .text-white,
+body.invite-partner-active button.bg-claude-accent { color: #0a0a0a !important; }
+body.invite-partner-active .hover\:bg-claude-accentHover:hover,
+body.invite-partner-active [class*="hover:bg-claude-accentHover"]:hover {
+  background-color: var(--invite-partner-color) !important;
+  filter: brightness(1.1);
+}
+body.invite-partner-active .ring-claude-accent\/40,
+body.invite-partner-active .ring-claude-accent\/50,
+body.invite-partner-active [class*="ring-claude-accent/40"],
+body.invite-partner-active [class*="ring-claude-accent/50"],
+body.invite-partner-active .focus-within\:ring-claude-accent\/40:focus-within,
+body.invite-partner-active [class*="focus-within:ring-claude-accent/40"]:focus-within {
+  --tw-ring-color: color-mix(in srgb, var(--invite-partner-color) 55%, transparent) !important;
+}
+body.invite-partner-active .focus-within\:border-claude-accent:focus-within,
+body.invite-partner-active [class*="focus-within:border-claude-accent"]:focus-within,
+body.invite-partner-active .border-claude-accent\/60,
+body.invite-partner-active [class*="border-claude-accent/60"] {
+  border-color: var(--invite-partner-color) !important;
+}
 body.invite-partner-active ::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--invite-partner-color) 30%, transparent) !important;
 }
@@ -596,6 +625,7 @@ body.invite-partner-active ::-webkit-scrollbar-thumb:hover {
 }
 .wallet-view--partner .bg-primary\/5  { background-color: color-mix(in srgb, var(--invite-partner-color)  6%, transparent) !important; }
 .wallet-view--partner .bg-primary\/10 { background-color: color-mix(in srgb, var(--invite-partner-color) 10%, transparent) !important; }
+.wallet-view--partner .bg-primary\/15 { background-color: color-mix(in srgb, var(--invite-partner-color) 15%, transparent) !important; }
 .wallet-view--partner .bg-primary\/20 { background-color: color-mix(in srgb, var(--invite-partner-color) 20%, transparent) !important; }
 .wallet-view--partner .border-primary { border-color: var(--invite-partner-color) !important; }
 .wallet-view--partner .border-primary\/20 {
@@ -615,27 +645,33 @@ body.invite-partner-active ::-webkit-scrollbar-thumb:hover {
   filter: brightness(1.08);
 }
 
-/* 大卡片脉冲呼吸光晕 + 顶光带 — 跟 InviteView 大卡同款 */
+/* 大卡片脉冲呼吸光晕 + 顶光带 — 跟 InviteView 大卡同款。
+   v1.x update 2026-05-18:边框 1px → 1.5px 让 tier 色更显眼;
+   keyframe shadow blur / spread 全面加大,确保任何 tier(浅银亦然)
+   都能看到呼吸光晕,不再只在深色 tier(diamond/bronze)下勉强可见。 */
 .wallet-view--partner .rounded-xl.dark\:bg-claude-darkSurface,
 .wallet-view--partner .rounded-xl.bg-claude-surface,
 .wallet-view--partner .rounded-2xl.dark\:bg-claude-darkSurface,
 .wallet-view--partner .rounded-2xl.bg-claude-surface {
   position: relative;
   border-color: var(--invite-partner-color) !important;
+  border-width: 1.5px !important;
   animation: wallet-card-pulse 3.2s ease-in-out infinite;
 }
 @keyframes wallet-card-pulse {
   0%, 100% {
     box-shadow:
-      0 -6px 22px -4px var(--invite-partner-glow),
-      0  6px 22px -4px var(--invite-partner-glow),
-      0 0 16px var(--invite-partner-glow);
+      0 0 0 1px color-mix(in srgb, var(--invite-partner-color) 35%, transparent),
+      0 -8px 28px -2px var(--invite-partner-glow),
+      0  8px 28px -2px var(--invite-partner-glow),
+      0 0 22px 2px var(--invite-partner-glow);
   }
   50% {
     box-shadow:
-      0 -10px 40px -2px var(--invite-partner-color),
-      0  10px 40px -2px var(--invite-partner-color),
-      0 0 30px var(--invite-partner-glow);
+      0 0 0 2px color-mix(in srgb, var(--invite-partner-color) 55%, transparent),
+      0 -14px 48px 0  var(--invite-partner-color),
+      0  14px 48px 0  var(--invite-partner-color),
+      0 0 40px 4px var(--invite-partner-glow);
   }
 }
 

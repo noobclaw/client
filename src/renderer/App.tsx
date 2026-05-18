@@ -937,6 +937,7 @@ const App: React.FC = () => {
                 onShowSkills={handleShowSkills}
                 onShowWallet={handleShowWallet}
                 onShowQuickUse={handleShowQuickUse}
+                onShowInvite={handleShowInvite}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}

@@ -1177,7 +1177,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       title={i18nService.t('inviteRebateMenu')}
                     >
                       <span className="text-[12px] leading-none">{partnerBadge.emoji}</span>
-                      <span>{partnerBadge.label}</span>
+                      <span>{i18nService.t('partnerBannerTitle')}</span>
                       <span className="opacity-70">→</span>
                     </button>
                   )}

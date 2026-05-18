@@ -251,7 +251,7 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
                 filter: `drop-shadow(0 0 8px ${visual.color}30)`,
               }}
             >
-              {animatedRate.toFixed(1)}%
+              {Math.round(animatedRate)}%
             </span>
             <span className="text-xs font-medium" style={{ color: visual.color + 'cc' }}>
               ({i18nService.t('partnerByDepositAmount') || '按充值金额'})
