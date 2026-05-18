@@ -435,9 +435,14 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'real-cash rebate'}
                       </div>
                       <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {i18nService.currentLanguage === 'zh'
-                          ? '好友每充值 $1，充值金额的 10% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金 5 分钟内以 BNB Chain 上的 USDT 形式实时自动发放到您钱包。'
-                          : 'For every $1 your friend tops up, 10% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid in real-time (within 5 min) as USDT on BNB Chain, straight to your wallet.'}
+                        {/* Partner-aware rate: if the logged-in wallet is a partner,
+                            substitute their personal rate_pct for the default 10%. */}
+                        {(() => {
+                          const rate = profile?.partner?.is_partner ? profile.partner.rate_pct : 10;
+                          return i18nService.currentLanguage === 'zh'
+                            ? `好友每充值 $1，充值金额的 ${rate}% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金 5 分钟内以 BNB Chain 上的 USDT 形式实时自动发放到您钱包。`
+                            : `For every $1 your friend tops up, ${rate}% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid in real-time (within 5 min) as USDT on BNB Chain, straight to your wallet.`;
+                        })()}
                       </div>
                     </div>
                     {/* NoobCoin airdrop */}

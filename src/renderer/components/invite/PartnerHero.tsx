@@ -53,11 +53,13 @@ function useCountUp(target: number, durationMs = 600): number {
 
 export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
   const visual = (partner.tier && TIER_VISUAL[partner.tier]) || DEFAULT_VISUAL;
-  // L1 default share = default_pool_pct × 50%. e.g. default 10% → L1 5%.
-  const defaultL1Share = partner.default_pool_pct * 0.5;
-  const multiplier = defaultL1Share > 0 ? partner.l1_share_pct / defaultL1Share : 0;
+  // Display rate_pct (admin-set pool size) as the headline number, not the
+  // derived L1 share. Admin sets "30%" → user sees "30%"; the internal
+  // 50/10/10/10/10/10 split is a hidden detail. Multiplier compares total
+  // pool vs system default pool (e.g. 30 / 10 = 3x).
+  const multiplier = partner.default_pool_pct > 0 ? partner.rate_pct / partner.default_pool_pct : 0;
 
-  const animatedRate = useCountUp(partner.l1_share_pct);
+  const animatedRate = useCountUp(partner.rate_pct);
   const animatedMult = useCountUp(multiplier);
 
   return (
@@ -98,10 +100,10 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
 
         <div className="h-10 w-px" style={{ background: visual.color + '40' }} />
 
-        {/* L1 返佣比例(大字 + 滚动) */}
+        {/* 返佣总比例(大字 + 滚动) */}
         <div className="flex-1 min-w-0">
           <div className="text-[10px] uppercase tracking-wider font-semibold" style={{ color: visual.color + 'cc' }}>
-            {i18nService.t('partnerL1Share') || 'Your L1 Rebate'}
+            {i18nService.t('partnerRebateRate') || '您的返佣比例'}
           </div>
           <div className="flex items-baseline gap-2 flex-wrap">
             <span
@@ -118,7 +120,7 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
             </span>
             {multiplier >= 1.1 && (
               <span className="text-xs font-medium" style={{ color: visual.color + 'cc' }}>
-                ({i18nService.t('partnerVsRegular') || 'vs 普通用户'} {defaultL1Share.toFixed(1)}% · {animatedMult.toFixed(1)}x)
+                ({i18nService.t('partnerVsRegular') || 'vs 普通用户'} {partner.default_pool_pct.toFixed(0)}% · {animatedMult.toFixed(1)}x)
               </span>
             )}
           </div>
