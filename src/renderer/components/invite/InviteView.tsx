@@ -423,6 +423,18 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     <div className="text-sm dark:text-claude-darkText text-claude-text">
                       {i18nService.currentLanguage === 'zh' ? '好友每次充值，触发双重奖励：' : 'Each friend deposit triggers dual rewards:'}
                     </div>
+                    {/* v1.x: USDT 真金返佣放上面 — 现金返佣比代币空投更直接,作为主
+                        奖励先展示;website uc/ir 卡片同序。 */}
+                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
+                      <div className="text-xs font-medium text-primary mb-1">
+                        💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'real-cash rebate'}
+                      </div>
+                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                        {i18nService.currentLanguage === 'zh'
+                          ? '好友每充值 $1，充值金额的 10% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金每日 02:00 UTC 以 BNB Chain 上的 USDT 形式自动发放到您钱包。'
+                          : 'For every $1 your friend deposits, 10% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid daily at 02:00 UTC as USDT on BNB Chain, straight to your wallet.'}
+                      </div>
+                    </div>
                     {/* NoobCoin airdrop */}
                     <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
                       <div className="text-xs font-medium text-primary mb-1">
@@ -432,17 +444,6 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                         {i18nService.currentLanguage === 'zh'
                           ? `好友每充值 $1，获得 ${purchaseMin}~${purchaseMax} 随机数量的 $NoobCoin。按 6 层邀请链路进行空投，您额外获得 50%+ 同等数量代币。`
                           : `Friend gets ${purchaseMin}-${purchaseMax} random $NoobCoin per $1 deposited. Airdropped across your 6-level invite chain — you earn 50%+ of the same amount.`}
-                      </div>
-                    </div>
-                    {/* USDT real-cash rebate */}
-                    <div className="mt-2 p-2.5 rounded-lg bg-primary/5 border border-primary/20">
-                      <div className="text-xs font-medium text-primary mb-1">
-                        💰 USDT {i18nService.currentLanguage === 'zh' ? '真金返佣' : 'real-cash rebate'}
-                      </div>
-                      <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                        {i18nService.currentLanguage === 'zh'
-                          ? '好友每充值 $1，充值金额的 10% 作为返佣奖励，按 6 层邀请链路进行返佣。佣金每日 02:00 UTC 以 BNB Chain 上的 USDT 形式自动发放到您钱包。'
-                          : 'For every $1 your friend deposits, 10% becomes rebate reward, distributed across your 6-level invite chain. Auto-paid daily at 02:00 UTC as USDT on BNB Chain, straight to your wallet.'}
                       </div>
                     </div>
                   </div>
