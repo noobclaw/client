@@ -24,14 +24,39 @@ interface PartnerHeroProps {
   partner: PartnerInfo;
 }
 
-// 等级 → emoji + 主色调。null tier 走默认 gold 配色。
-const TIER_VISUAL: Record<string, { emoji: string; color: string; label: string }> = {
-  bronze:  { emoji: '🥉', color: '#cd7f32', label: 'Bronze' },
-  silver:  { emoji: '🥈', color: '#c0c0c0', label: 'Silver' },
-  gold:    { emoji: '👑', color: '#facc15', label: 'Gold' },
-  diamond: { emoji: '💎', color: '#b9f2ff', label: 'Diamond' },
+// 完整每档主题色:每档独立的渐变背景 / shimmer 颜色 / 描边 / 阴影
+// 不再是"全部金色 + 文字颜色微调",而是整张 banner 完全换色调,炫酷感
+// bronze 暖铜  silver 冷银  gold 暖金  diamond 冰蓝
+interface TierTheme {
+  emoji: string;
+  label: string;
+  color: string;          // 主色
+  bgGrad: string;         // 整张背景渐变
+  shimmerColor: string;   // 光带扫过颜色
+}
+const TIER_VISUAL: Record<string, TierTheme> = {
+  bronze: {
+    emoji: '🥉', label: 'Bronze', color: '#cd7f32',
+    bgGrad: 'linear-gradient(135deg, #1a0e07 0%, #2d1a09 50%, #1a0e07 100%)',
+    shimmerColor: 'rgba(205, 127, 50, 0.18)',
+  },
+  silver: {
+    emoji: '🥈', label: 'Silver', color: '#c8c8c8',
+    bgGrad: 'linear-gradient(135deg, #0e0e10 0%, #1c1e22 50%, #0e0e10 100%)',
+    shimmerColor: 'rgba(200, 200, 200, 0.20)',
+  },
+  gold: {
+    emoji: '👑', label: 'Gold', color: '#facc15',
+    bgGrad: 'linear-gradient(135deg, #1a1208 0%, #2d2208 50%, #1a1208 100%)',
+    shimmerColor: 'rgba(250, 204, 21, 0.18)',
+  },
+  diamond: {
+    emoji: '💎', label: 'Diamond', color: '#b9f2ff',
+    bgGrad: 'linear-gradient(135deg, #08151a 0%, #0e2530 50%, #08151a 100%)',
+    shimmerColor: 'rgba(185, 242, 255, 0.22)',
+  },
 };
-const DEFAULT_VISUAL = { emoji: '👑', color: '#facc15', label: 'Partner' };
+const DEFAULT_VISUAL: TierTheme = TIER_VISUAL.gold;
 
 // 轻量数字滚动 — 600ms ease-out,从 0 到 target。
 function useCountUp(target: number, durationMs = 600): number {
@@ -66,16 +91,16 @@ export const PartnerHero: React.FC<PartnerHeroProps> = ({ partner }) => {
     <div
       className="relative overflow-hidden rounded-2xl mb-3 px-5 py-4 border"
       style={{
-        background: 'linear-gradient(135deg, #1a1208 0%, #2d2208 50%, #1a1208 100%)',
+        background: visual.bgGrad,
         borderColor: visual.color + '60',
-        boxShadow: `0 0 24px ${visual.color}15, inset 0 0 12px ${visual.color}08`,
+        boxShadow: `0 0 24px ${visual.color}25, inset 0 0 14px ${visual.color}10`,
       }}
     >
-      {/* shimmer 光带 — 纯 CSS keyframe,4s 循环,合伙人页面持续金色光泽感 */}
+      {/* shimmer 光带 — 颜色跟着等级走 */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
-          background: `linear-gradient(90deg, transparent 0%, ${visual.color}1c 50%, transparent 100%)`,
+          background: `linear-gradient(90deg, transparent 0%, ${visual.shimmerColor} 50%, transparent 100%)`,
           animation: 'partner-hero-shimmer 4s ease-in-out infinite',
         }}
       />
