@@ -147,7 +147,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   // 设两个 CSS var,unmount 时清掉,只影响"我在这一页"。
   useEffect(() => {
     const TIER_BODY_COLORS: Record<string, string> = {
-      bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+      bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
     };
     const color = profile?.partner?.is_partner
       ? (TIER_BODY_COLORS[profile.partner.tier as string] || '#facc15')
@@ -340,7 +340,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   //   for partners, not just the hero banner. ───
   // v2.x 区分配色:每档色相差异显著,避免 Diamond/Silver 互撞 + Gold/Bronze 互撞。
   const TIER_PAGE_COLORS: Record<string, string> = {
-    bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+    bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
   };
   const partnerColor = profile?.partner?.is_partner
     ? (TIER_PAGE_COLORS[profile.partner.tier] || '#facc15')

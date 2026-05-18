@@ -84,7 +84,7 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   useEffect(() => {
     if (!partnerInfo) return;
     const TIER_BODY_COLORS: Record<string, string> = {
-      bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+      bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
     };
     const color = TIER_BODY_COLORS[partnerInfo.tier as string] || '#facc15';
     const body = document.body;

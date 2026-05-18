@@ -250,7 +250,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // noobclaw-theme.css 里的 cascade 规则(跟 InviteView 一对兄弟,共享同一
   // 套 body.invite-partner-active CSS 变量)。
   const TIER_BODY_COLORS: Record<string, string> = {
-    bronze: '#c46e2a', silver: '#c0c0c0', gold: '#fbbf24', diamond: '#22d3ee',
+    bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
   };
   // tier emoji + 标签 — 跟 PartnerHero 的 TIER_VISUAL 同 source 同款,这样
   // wallet 顶部小徽章("👑 Gold ↗")的 emoji 跟 InviteView PartnerHero 视觉

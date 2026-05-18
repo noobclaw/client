@@ -45,9 +45,12 @@ const TIER_VISUAL: Record<string, TierTheme> = {
     shimmerColor: 'rgba(196, 110, 42, 0.20)',
   },
   silver: {
-    emoji: '🥈', label: 'Silver', color: '#c0c0c0',
-    bgGrad: 'linear-gradient(135deg, #0e0e10 0%, #1c1e22 50%, #0e0e10 100%)',
-    shimmerColor: 'rgba(192, 192, 192, 0.20)',
+    // v2.x: 提亮 — 老 #c0c0c0 死灰色配近黑底 + 20% shimmer 整体暗淡,跟 Gold/
+    //   Diamond 摆一起就是"哑"的;改成铂金白 + 深钢蓝底 + alpha 0.30 shimmer,
+    //   立刻有金属高光质感。跟 website index.html PARTNER_TIER_VISUAL 同步。
+    emoji: '🥈', label: 'Silver', color: '#dde4ef',
+    bgGrad: 'linear-gradient(135deg, #0c1220 0%, #1e2840 50%, #0c1220 100%)',
+    shimmerColor: 'rgba(221, 228, 239, 0.30)',
   },
   gold: {
     emoji: '👑', label: 'Gold', color: '#fbbf24',
