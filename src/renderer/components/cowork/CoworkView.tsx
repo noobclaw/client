@@ -568,13 +568,16 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
                   : '👑'}
               </span>
               <span className="text-xs font-semibold tracking-wide" style={{ color: 'var(--invite-partner-color)' }}>
-                {i18nService.t('partnerBannerTitle') || '尊贵的合伙人'}
+                {i18nService.currentLanguage === 'zh' ? '欢迎尊贵的合伙人' : 'Welcome Partner'}
               </span>
               <span className="text-[10px] opacity-70 dark:text-claude-darkTextSecondary text-claude-textSecondary">·</span>
               <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
                 {i18nService.t('partnerRebateRate') || '您的返佣比例'}
                 <span className="ml-1 font-bold tabular-nums" style={{ color: 'var(--invite-partner-color)' }}>
                   {Math.round(partnerInfo.rate_pct)}%
+                </span>
+                <span className="ml-1 opacity-70">
+                  {i18nService.currentLanguage === 'zh' ? '(按好友充值金额返佣)' : '(of friend\'s deposit)'}
                 </span>
               </span>
               <span className="text-xs opacity-60 group-hover:opacity-100 transition-opacity" style={{ color: 'var(--invite-partner-color)' }}>→</span>

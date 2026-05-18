@@ -490,7 +490,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // ─── Order History sub-page ───
   if (subPage === 'orderHistory') {
     return (
-      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
+      <div
+        className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}
+        style={partnerColor ? ({
+          '--invite-partner-color': partnerColor,
+          '--invite-partner-glow': partnerColor + '40',
+        } as React.CSSProperties) : undefined}
+      >
         {header}
         {confirmDialogEl}
 
@@ -650,7 +656,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     };
 
     return (
-      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
+      <div
+        className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}
+        style={partnerColor ? ({
+          '--invite-partner-color': partnerColor,
+          '--invite-partner-glow': partnerColor + '40',
+        } as React.CSSProperties) : undefined}
+      >
         {header}
         <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
@@ -756,7 +768,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     }
 
     return (
-      <div className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}>
+      <div
+        className={`flex flex-col h-full dark:bg-claude-darkBg bg-claude-bg relative ${partnerColor ? 'wallet-view--partner' : ''}`}
+        style={partnerColor ? ({
+          '--invite-partner-color': partnerColor,
+          '--invite-partner-glow': partnerColor + '40',
+        } as React.CSSProperties) : undefined}
+      >
         {header}
         {copyToast && (
           <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg bg-primary text-black text-xs font-medium shadow-lg animate-fade-in">
@@ -1396,11 +1414,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     </div>
                   )}
 
-                  {/* Address — label + address + copy on ONE line per user feedback.
-                      Layout: 标签:|address(flex-1, monospace, truncates if too long)|复制按钮 */}
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary shrink-0">{i18nService.t('walletPaymentAddress')}:</span>
-                    <code className="flex-1 text-xs font-mono dark:text-claude-darkText text-claude-text break-all">{treasury || 'Loading...'}</code>
+                  {/* Address — 标签 + 地址 + 复制按钮 紧凑居中,不再 flex-1 撑开 */}
+                  <div className="flex items-center justify-center gap-2 mb-4 flex-wrap">
+                    <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('walletPaymentAddress')}:</span>
+                    <code className="text-xs font-mono dark:text-claude-darkText text-claude-text break-all">{treasury || 'Loading...'}</code>
                     <button onClick={() => copyToClipboard(treasury)} className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-primary px-2 py-1 rounded-lg border dark:border-claude-darkBorder border-claude-border transition-colors shrink-0">{i18nService.t('walletCopy')}</button>
                   </div>
 
