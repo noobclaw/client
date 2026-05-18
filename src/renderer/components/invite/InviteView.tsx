@@ -356,6 +356,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             position: relative;
             border-color: var(--partner-color) !important;
             animation: invite-card-pulse 3.5s ease-in-out infinite;
+            transition: transform 0.25s ease, box-shadow 0.25s ease;
           }
           .invite-view--partner .rounded-xl.dark\\:bg-claude-darkSurface::before,
           .invite-view--partner .rounded-xl.bg-claude-surface::before {
@@ -370,16 +371,46 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             mask-composite: exclude;
             animation: invite-card-spin 8s linear infinite;
             pointer-events: none;
-            opacity: 0.5;
+            opacity: 0.55;
           }
           @keyframes invite-card-pulse {
-            0%, 100% { box-shadow: 0 0 18px var(--partner-glow), inset 0 0 10px transparent; }
-            50%      { box-shadow: 0 0 36px var(--partner-glow), 0 0 60px var(--partner-color)20, inset 0 0 14px var(--partner-color)10; }
+            0%, 100% { box-shadow: 0 0 20px var(--partner-glow); }
+            50%      { box-shadow: 0 0 42px var(--partner-glow), 0 0 70px var(--partner-glow); }
           }
           @keyframes invite-card-spin { 100% { transform: rotate(360deg); } }
 
-          /* ── 数字 / 关键文本:金属三色渐变填充 ── */
-          .invite-view--partner .invite-stat-num {
+          /* ── 4 张统计卡 (text-xl.font-bold.text-primary 是数字大字标识) ── */
+          /* 顶部水平 tier 色光条 + hover 上浮 + 投影 */
+          .invite-view--partner .p-3.rounded-xl.dark\\:bg-claude-darkSurface.text-center::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 12%; right: 12%;
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--partner-color), transparent);
+            filter: drop-shadow(0 0 4px var(--partner-color));
+            border-radius: 2px;
+            pointer-events: none;
+          }
+          .invite-view--partner .p-3.rounded-xl.dark\\:bg-claude-darkSurface.text-center:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 22px var(--partner-glow);
+          }
+
+          /* ── 数字大字:金属三色渐变文字填充 ── */
+          /* 精确选中:.text-xl.font-bold.text-primary = 4 张统计卡中央数字 */
+          .invite-view--partner .text-xl.font-bold.text-primary {
+            background: linear-gradient(135deg, var(--partner-color-light) 0%, var(--partner-color) 50%, var(--partner-color-dark) 100%) !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: transparent !important;
+            filter: drop-shadow(0 0 6px var(--partner-glow));
+            font-size: 24px !important;
+            letter-spacing: 0.5px;
+          }
+          /* 中等数字 (USDT 已到账 / 待发放 等):同效果但稍小 */
+          .invite-view--partner .text-base.font-bold.text-primary,
+          .invite-view--partner .text-base.font-bold.text-yellow-500 {
             background: linear-gradient(135deg, var(--partner-color-light) 0%, var(--partner-color) 50%, var(--partner-color-dark) 100%) !important;
             -webkit-background-clip: text !important;
             background-clip: text !important;
@@ -388,17 +419,54 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             filter: drop-shadow(0 0 5px var(--partner-glow));
           }
 
-          /* ── 复制 / 主按钮:跑光泽 ── */
+          /* ── 复制 / 绑定按钮:跑光泽 + tier 色 ── */
           .invite-view--partner button.bg-primary {
             background: linear-gradient(135deg, var(--partner-color-light), var(--partner-color), var(--partner-color-dark)) !important;
             background-size: 200% 200% !important;
-            box-shadow: 0 0 14px var(--partner-glow);
+            box-shadow: 0 0 16px var(--partner-glow);
             animation: invite-btn-shine 3s ease-in-out infinite;
             font-weight: 700;
           }
           @keyframes invite-btn-shine {
             0%, 100% { background-position: 0% 50%; }
             50%      { background-position: 100% 50%; }
+          }
+
+          /* ── 邀请链接 / 邀请人 — 整行 mono code 也用 tier 色 ── */
+          .invite-view--partner code.text-primary,
+          .invite-view--partner span.font-mono.text-primary {
+            background: linear-gradient(135deg, var(--partner-color-light) 0%, var(--partner-color) 50%, var(--partner-color-dark) 100%) !important;
+            -webkit-background-clip: text !important;
+            background-clip: text !important;
+            -webkit-text-fill-color: transparent !important;
+            color: transparent !important;
+          }
+
+          /* ── 页面背景 ambient 粒子(全局浮粉) ── */
+          /* 8 颗淡淡的金粉,让整个邀请页有"VIP 区域"的氛围感 */
+          .invite-view--partner > div.flex-1 {
+            position: relative;
+          }
+          .invite-view--partner > div.flex-1::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            background-image:
+              radial-gradient(circle at 12% 22%, var(--partner-color)22 0px, transparent 2px),
+              radial-gradient(circle at 78% 18%, var(--partner-color)22 0px, transparent 2px),
+              radial-gradient(circle at 32% 70%, var(--partner-color)22 0px, transparent 2px),
+              radial-gradient(circle at 88% 78%, var(--partner-color)22 0px, transparent 2px),
+              radial-gradient(circle at 52% 38%, var(--partner-color)18 0px, transparent 2px),
+              radial-gradient(circle at 18% 88%, var(--partner-color)18 0px, transparent 2px);
+            animation: invite-ambient-drift 12s ease-in-out infinite;
+            opacity: 0.5;
+            z-index: 0;
+          }
+          @keyframes invite-ambient-drift {
+            0%, 100% { transform: translate(0, 0); }
+            33%      { transform: translate(20px, -10px); }
+            66%      { transform: translate(-10px, 15px); }
           }
         `}</style>
       )}
