@@ -70,7 +70,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [purchaseMax, setPurchaseMax] = useState(150);
   // v5.x+ USDT rebate state — populated when usdt_rebate tab is opened.
   const [usdtSummary, setUsdtSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null>(null);
-  const [usdtBreakdown, setUsdtBreakdown] = useState<Array<{ level: number; amount: string; contributor_count: number }>>([]);
+  // v6.x: usdtBreakdown 状态保留 — dashboard endpoint 仍然返回 levels 字段,
+  //   data.breakdown.levels 拿到后存进来供未来 reuse;UI 上"来源拆解"strip 已
+  //   下线(用户反馈表头列已涵盖 level 信息),但 setter 保留避免 dashboard 调用
+  //   方 break。前缀 _ 提示 React-hooks rule:setter 用,getter 暂未用。
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_usdtBreakdown, setUsdtBreakdown] = useState<Array<{ level: number; amount: string; contributor_count: number }>>([]);
   // v5.x+: replaces the old "到账历史" panel. Each row is a rebate_earnings
   // entry annotated with its payout status via FIFO matching against
   // rebate_sends. 'sent' rows carry tx_hash + paid_at; 'pending' rows
@@ -114,6 +119,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
       // shows a real number from the moment the page mounts — without forcing
       // the user to switch into the Rebate→USDT sub-tab first.
       noobClawApi.getUsdtRebateSummary().then(s => { if (s) setUsdtSummary(s); }).catch(() => {});
+      // v6.x: prefetch invite-only NOOB total so the "$Noob 邀请奖励" stat card
+      // shows the invite-reward number (not user's global totalNoob balance).
+      // 走 loadRewards(1) 顺手把 noob tab 第一页也预热好,切 tab 不再卡。
+      loadRewards(1).catch(() => {});
     }
     noobClawApi.getPaymentInfo().then(info => {
       if (info?.purchaseNoobPerDollarMin) setPurchaseMin(info.purchaseNoobPerDollarMin);
@@ -340,7 +349,11 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const animDirect  = useCountUp(profile?.directReferrals || 0);
   const animNetwork = useCountUp(profile?.totalNetwork || profile?.totalReferrals || 0);
   const animUsdt    = useCountUp(parseFloat(usdtSummary?.total_earned || '0'));
-  const animNoob    = useCountUp(Number(profile?.totalNoob || 0));
+  // v6.x: 顶部 $Noob 卡只统计 邀请奖励 (rewardList.totalEarned),不再混入用户
+  //   总 NOOB 余额(profile.totalNoob)。totalEarned 在 mount 时通过
+  //   loadRewards(1) 顺手预热,user 进 noob tab 时该值已经在,切 tab 不再卡;
+  //   user 切到别的 tab 也不会因为缺数据让卡里数字回退到 0。
+  const animNoob    = useCountUp(totalEarned);
 
   // ─── Main page ───
   return (
@@ -788,117 +801,80 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               per UX request — visible across all tabs. */}
           <div className="flex-1 overflow-y-auto p-3">
             {detailTab === 'rebate' && rebateSubTab === 'usdt' ? (
-              // v5.x+ USDT real-cash rebate panel — sourced from /api/me/rebate/*
-              //   - Summary: 待发放 / 已到账 (2 cards, was 3, dropped "累计赚到")
-              //   - Level breakdown (L1-L6 with contributor count + amount)
-              //   - Earnings ledger (replaces "到账历史"): every rebate_earnings
-              //     row with sent/pending status badge from FIFO matching
-              // The "how it works" explainer paragraph used to live here too —
-              // moved to the left-column "如何运作" section per UX request.
+              // v6.x USDT real-cash rebate panel — slimmed down to mirror the
+              // website's flat list:
+              //   - dropped 待发放/已到账 summary cards (totals live in the top
+              //     stats row's "USDT 总返佣" card already)
+              //   - dropped 来源拆解 L1~L6 strip (the per-row level chip + the
+              //     site-style summary cover the same ground)
+              //   - 4-col grid table mirroring noob list (金额/来源.层级/状态/时间)
               usdtLoading ? (
                 <div className="flex items-center justify-center py-12 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
                   Loading...
                 </div>
+              ) : usdtEarnings.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                  <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有返佣记录' : 'No rebate records yet'}</p>
+                </div>
               ) : (
-                <div className="space-y-3">
-                  {/* Summary: 2 cards, 待发放 first */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="p-2.5 rounded-lg bg-primary/5 border border-primary/20 text-center">
-                      <div className="text-base font-bold text-yellow-500">${parseFloat(usdtSummary?.total_pending || '0').toFixed(2)}</div>
-                      <div className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
-                        {i18nService.currentLanguage === 'zh' ? '待发放' : 'Pending'}
-                      </div>
-                    </div>
-                    <div className="p-2.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 border dark:border-claude-darkBorder border-claude-border text-center">
-                      <div className="text-base font-bold text-primary">${parseFloat(usdtSummary?.total_sent || '0').toFixed(2)}</div>
-                      <div className="text-[10px] dark:text-claude-darkTextSecondary text-claude-textSecondary mt-0.5">
-                        {i18nService.currentLanguage === 'zh' ? '已到账' : 'Sent on-chain'}
-                      </div>
-                    </div>
+                <div>
+                  {/* Table header — mirrors noob list header style for consistency */}
+                  <div className="grid grid-cols-4 gap-1 px-2 py-1.5 text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary border-b dark:border-claude-darkBorder border-claude-border mb-1">
+                    <span>{i18nService.t('inviteUsdtColAmount')}</span>
+                    <span>{i18nService.t('inviteUsdtColFrom')}</span>
+                    <span>{i18nService.t('inviteUsdtColStatus')}</span>
+                    <span>{i18nService.t('inviteUsdtColTime')}</span>
                   </div>
-
-                  {/* Level breakdown */}
-                  {usdtBreakdown.length > 0 && (
-                    <div>
-                      <div className="text-xs font-medium dark:text-claude-darkText text-claude-text mb-1.5">
-                        {i18nService.currentLanguage === 'zh' ? '来源拆解' : 'By level'}
-                      </div>
-                      <div className="space-y-1">
-                        {usdtBreakdown.map((lvl) => (
-                          <div key={lvl.level} className="flex items-center justify-between px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
-                            <span className={`inline-flex items-center justify-center w-fit px-1.5 py-0.5 rounded-full text-xs font-medium ${
-                              lvl.level === 1 ? 'bg-primary/10 text-primary' : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
-                            }`}>
-                              L{lvl.level}
+                  <div className="space-y-1">
+                    {usdtEarnings.map((row) => {
+                      const sent = row.status === 'sent';
+                      // Status cell: 已发 = link to BscScan; 待发 = plain chip
+                      const statusCell = sent && row.tx_hash ? (
+                        <a
+                          href={row.bscscan_url || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 hover:underline"
+                          title={row.tx_hash}
+                        >
+                          ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'} ↗
+                        </a>
+                      ) : sent ? (
+                        <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500">
+                          ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-yellow-500/10 text-yellow-500">
+                          ⏳ {i18nService.currentLanguage === 'zh' ? '待发' : 'Pending'}
+                        </span>
+                      );
+                      return (
+                        <div key={row.id} className="grid grid-cols-4 gap-1 items-center px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
+                          {/* 金额 */}
+                          <span className="font-semibold text-primary">+${parseFloat(row.amount_usdt).toFixed(4)}</span>
+                          {/* 来源 / 层级 — 钱包 + L1-L6 chip 同 cell,跟官网格式一致 */}
+                          <span className="flex items-center gap-1 min-w-0">
+                            <span className="font-mono dark:text-claude-darkText text-claude-text truncate text-[10px]">
+                              {row.contributor_wallet ? maskWallet(row.contributor_wallet) : '-'}
                             </span>
-                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                              {lvl.contributor_count} {i18nService.currentLanguage === 'zh' ? '位下级' : 'downlines'}
-                            </span>
-                            <span className="font-semibold text-primary">${parseFloat(lvl.amount).toFixed(4)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Full earnings ledger — every rebate_earnings row, newest-first,
-                      with sent/pending status. Sent rows expose TX hash (truncated,
-                      click-through to BscScan) + payout time. */}
-                  {usdtEarnings.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
-                      <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有返佣记录' : 'No rebate records yet'}</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {usdtEarnings.map((row) => (
-                        <div key={row.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
-                          {/* Amount */}
-                          <span className="font-semibold text-primary flex-shrink-0 w-20">
-                            +${parseFloat(row.amount_usdt).toFixed(4)}
-                          </span>
-                          {/* L1-L6 chip */}
-                          {row.level && (
-                            <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0 ${
-                              row.level === 1 ? 'bg-primary/10 text-primary' : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
-                            }`}>
-                              L{row.level}
-                            </span>
-                          )}
-                          {/* Status badge */}
-                          {row.status === 'sent' ? (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-500/10 text-green-500 flex-shrink-0">
-                              ✓ {i18nService.currentLanguage === 'zh' ? '已发' : 'Sent'}
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-yellow-500/10 text-yellow-500 flex-shrink-0">
-                              ⏳ {i18nService.currentLanguage === 'zh' ? '待发' : 'Pending'}
-                            </span>
-                          )}
-                          {/* Earned-at + paid-at */}
-                          <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary flex-1 truncate text-[10px]">
-                            {formatDate(row.earned_at)}
-                            {row.status === 'sent' && row.paid_at && (
-                              <span className="ml-2 text-green-500">→ {formatDate(row.paid_at)}</span>
+                            {row.level && (
+                              <span className={`inline-flex items-center justify-center px-1 py-0.5 rounded text-[9px] font-medium flex-shrink-0 ${
+                                row.level === 1 ? 'bg-primary/10 text-primary' : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
+                              }`}>
+                                L{row.level}
+                              </span>
                             )}
                           </span>
-                          {/* TX link if sent */}
-                          {row.status === 'sent' && row.tx_hash ? (
-                            <a
-                              href={row.bscscan_url!}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-primary hover:underline font-mono flex-shrink-0 text-[10px]"
-                              title={row.tx_hash}
-                            >
-                              {row.tx_hash.slice(0, 6)}...{row.tx_hash.slice(-4)} ↗
-                            </a>
-                          ) : (
-                            <span className="text-gray-500 text-[10px] flex-shrink-0">—</span>
-                          )}
+                          {/* 状态 */}
+                          {statusCell}
+                          {/* 时间 */}
+                          <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate text-[10px]">
+                            {formatDate(row.earned_at)}
+                          </span>
                         </div>
-                      ))}
-                    </div>
-                  )}
+                      );
+                    })}
+                  </div>
                 </div>
               )
             ) : detailTab === 'records' ? (
@@ -935,12 +911,9 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               )
             ) : (
               <>
-                {totalEarned > 0 && (
-                  <div className="mb-2 px-2 py-1.5 rounded-lg bg-primary/5 border border-primary/20 flex items-center justify-between">
-                    <span className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteTotalEarned')}</span>
-                    <span className="text-sm font-bold text-primary">{totalEarned.toLocaleString()} NOOB</span>
-                  </div>
-                )}
+                {/* v6.x: dropped inline "累计邀请奖励 X NOOB" card — the same value
+                    now lives in the top stats row's "$Noob 邀请奖励" card, so
+                    repeating it just above the list was redundant. */}
                 {rewardList.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
                     <svg className="w-8 h-8 mb-2 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
