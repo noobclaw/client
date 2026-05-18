@@ -192,10 +192,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       if (info?.chains?.TRON) setCurrentChain('TRON');
     }).catch(() => { /* network/auth failure — leave paymentInfo null so the "套餐加载中..." text stays */ });
 
-    noobClawApi.getOrderHistory().then((historyData) => {
-      setOrderHistory(historyData.orders);
-      setOrderTotal(historyData.total);
-    }).catch(() => { /* leave orderHistory empty; orders tab will show empty state */ });
+    // 充值记录是二级页(subPage='orderHistory'),用户点 "充值记录 →" 才进去,
+    // 进去时会自己调 loadOrders('') 拉数据(见 main 页"充值记录"入口的 onClick)。
+    // 之前在 loadData 里 eager fetch getOrderHistory 是死代码 + 拖慢首屏:
+    //   1) 大多数用户不会进二级页,这条请求是纯浪费
+    //   2) order history 比 payment info 大,慢的话拖累整页 paint
+    //   3) orderTotal 这个 state 根本没人读(只 set 不读,见 line 100)
+    // 删除后:首次进我的充值少一个网络请求,二级页体验不变(进去时自己加载)。
 
     noobClawApi.getUserProfile().then((profileData) => {
       if (profileData) {
