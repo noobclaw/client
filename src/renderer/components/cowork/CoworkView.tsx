@@ -80,8 +80,9 @@ const CoworkView: React.FC<CoworkViewProps> = ({ onRequestAppSettings, onShowSki
   const partnerInfo = profile?.partner?.is_partner ? profile.partner : null;
   useEffect(() => {
     if (!partnerInfo) return;
+    // v3.x: 'silver' enum 已 rename 成 'platinum'(DB + 代码统一)
     const TIER_BODY_COLORS: Record<string, string> = {
-      bronze: '#c46e2a', silver: '#dde4ef', gold: '#fbbf24', diamond: '#22d3ee',
+      bronze: '#c46e2a', gold: '#fbbf24', platinum: '#dde4ef', diamond: '#22d3ee',
     };
     const color = TIER_BODY_COLORS[partnerInfo.tier as string] || '#facc15';
     const body = document.body;
