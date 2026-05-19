@@ -102,6 +102,12 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
       startAutoDismiss();
     };
     window.addEventListener('noobclaw:rebate-received', handler);
+    // v1.x 关键 bugfix: 通知 noobclawAuth listener 已就绪。修复 module-singleton
+    // 在 React 渲染前就 atomic 标记 notified_at + dispatch 事件,但 listener
+    // 还没注册导致事件落入虚空的 race。先 addEventListener 再 dispatch ready
+    // 信号 — noobclawAuth 收到信号后 flush 暂存的 pending rebates,这次能被
+    // 上面的 listener 接到。
+    window.dispatchEvent(new Event('noobclaw:rebate-drawer-ready'));
     return () => {
       window.removeEventListener('noobclaw:rebate-received', handler);
       clearTimers();

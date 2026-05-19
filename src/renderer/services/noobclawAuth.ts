@@ -32,10 +32,30 @@ class NoobClawAuthService {
   private _balancePollTimer: ReturnType<typeof setInterval> | null = null;
   private static readonly BALANCE_POLL_MS = 15_000;
 
+  // v1.x: RebateDrawer 握手机制 —— singleton 在 import 时 new,可能比 React
+  // 渲染早。drawerReady=false 时收到的 pendingRebates 先 push 进 queue,等
+  // RebateDrawer mount 时通过 'noobclaw:rebate-drawer-ready' 事件 flush。
+  private _drawerReady = false;
+  private _pendingDrawerQueue: Array<{ amount: string; fromWallet?: string; level?: number }> = [];
+
   // Dynamically read, supports local/production environment switching
   private get backendUrl() { return getBackendApiUrl(); }
 
   constructor() {
+    // 监听 RebateDrawer mount 完成信号,flush 任何 ready 之前积压的 pending。
+    // typeof window check:服务端 import / unit test 没 window 时不挂 listener。
+    if (typeof window !== 'undefined') {
+      window.addEventListener('noobclaw:rebate-drawer-ready', () => {
+        if (this._drawerReady) return;  // 幂等,防 RebateDrawer 多次 remount 重复 flush
+        this._drawerReady = true;
+        const queue = this._pendingDrawerQueue;
+        this._pendingDrawerQueue = [];
+        if (queue.length > 0) {
+          console.log('[noobclawAuth] drawer ready, flushing ' + queue.length + ' queued rebate(s)');
+          this.dispatchRebatesNow(queue);
+        }
+      });
+    }
     // Restore from localStorage if available
     const savedToken = localStorage.getItem('noobclaw_auth_token');
     const savedWallet = localStorage.getItem('noobclaw_wallet_address');
@@ -224,18 +244,24 @@ class NoobClawAuthService {
           console.warn('[noobclawAuth] /balance response missing pendingRebates field (老版后端?):', data);
         }
         if (Array.isArray(pending) && pending.length > 0) {
-          pending.forEach((item, idx) => {
-            if (!item || item.amount === undefined || item.amount === null) {
-              console.warn('[noobclawAuth] pendingRebates[' + idx + '] skipped (no amount):', item);
-              return;
-            }
-            setTimeout(() => {
-              console.log('[noobclawAuth] dispatch noobclaw:rebate-received', item);
-              window.dispatchEvent(new CustomEvent('noobclaw:rebate-received', {
-                detail: { amount: item.amount, fromWallet: item.fromWallet ?? undefined, level: item.level ?? undefined },
-              }));
-            }, idx * (4000 + 600));
-          });
+          // v1.x 关键 bugfix: 这个 service 是 module-level singleton(line 153
+          // `export const noobClawAuth = new NoobClawAuthService()`),import 时
+          // 立即 new + constructor 直接调 this.refreshBalance() → 后端 atomic
+          // UPDATE 不可逆地把 notified_at = NOW(),返 pendingRebates。但此时
+          // React 还没渲染,RebateDrawer 还没 mount,listener 还没注册,
+          // setTimeout(..., 0) 派的事件落入虚空。等 React mount 完,notified_at
+          // 已经被标已通知,下次 polling 永远拿不到 → 抽屉永远不弹。
+          // 这就是"我明明有返佣收不到推送"的根因。LuckyBag 没事是因为它在
+          // AI task 跑起来之后才 fire,listener 早就 ready 了。
+          //
+          // 修法:不用 magic number 延迟,而是跟 RebateDrawer 握手 ——
+          //   RebateDrawer mount 时 dispatch 'noobclaw:rebate-drawer-ready',
+          //   本 service 监听这个信号,标 _drawerReady = true。
+          //   - ready: 立即 dispatch
+          //   - 未 ready: 把事件 push 进 _pendingDrawerQueue,等到 ready 信号
+          //     一次性 flush。
+          // 多笔间保持 4.6s 错峰(让"新事件接管"逻辑给每笔完整 4s 展示)。
+          this.enqueueOrDispatchRebates(pending);
         }
         return data.tokenBalance;
       }
@@ -244,8 +270,48 @@ class NoobClawAuthService {
       }
     } catch (err) {
       console.error('Failed to refresh balance:', err);
+      return this.state.tokenBalance;
     }
     return this.state.tokenBalance;
+  }
+
+  /**
+   * 决定是立即 dispatch 还是排队等 RebateDrawer ready 信号。
+   * - drawerReady=true: 直接走 dispatchRebatesNow,4.6s 错峰
+   * - drawerReady=false: push 进 _pendingDrawerQueue,等 ready 事件 flush
+   */
+  private enqueueOrDispatchRebates(
+    pending: Array<{ id: string; amount: string; fromWallet: string | null; level: number | null }>,
+  ): void {
+    const items = pending
+      .filter(item => item && item.amount !== undefined && item.amount !== null)
+      .map(item => ({
+        amount: item.amount,
+        fromWallet: item.fromWallet ?? undefined,
+        level: item.level ?? undefined,
+      }));
+    if (items.length === 0) return;
+    if (this._drawerReady) {
+      this.dispatchRebatesNow(items);
+    } else {
+      console.log('[noobclawAuth] drawer not ready yet, queueing ' + items.length + ' rebate(s)');
+      this._pendingDrawerQueue.push(...items);
+    }
+  }
+
+  /**
+   * 立即派发(假设 listener 已 ready)。多笔错峰 4.6s,让"新事件接管"逻辑给每
+   * 一笔完整 4s 展示窗口 + 600ms 切换间隙。
+   */
+  private dispatchRebatesNow(
+    items: Array<{ amount: string; fromWallet?: string; level?: number }>,
+  ): void {
+    items.forEach((item, idx) => {
+      setTimeout(() => {
+        console.log('[noobclawAuth] dispatch noobclaw:rebate-received', item);
+        window.dispatchEvent(new CustomEvent('noobclaw:rebate-received', { detail: item }));
+      }, idx * (4000 + 600));
+    });
   }
 
   async refreshAvatar(): Promise<void> {
