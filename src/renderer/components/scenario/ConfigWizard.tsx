@@ -353,7 +353,7 @@ interface Props {
     /** Twitter v1: content language mode. zh/en/mixed. Only shown on
      *  Twitter scenarios; XHS implicitly 'zh'. */
     language?: 'zh' | 'en' | 'mixed';
-    /** Twitter v1: URL list for x_link_rewrite (1-5 tweet URLs). */
+    /** Twitter v1: URL list for x_link_rewrite (1-20 tweet URLs, v6.x+). */
     urls?: string[];
     /** v4.31.27: binance_from_x_repost 媒体类型筛选(只该场景用)。
      *  all = 不过滤; image_only = 跳过视频; video_only = 优先视频,
