@@ -79,9 +79,17 @@ const RebateDrawer: React.FC<RebateDrawerProps> = ({ onShowInvite }) => {
   };
 
   useEffect(() => {
+    // 诊断日志:RebateDrawer mount 时打一次,F12 Console 一眼能验证"客户端有
+    // 没有装入这个组件"。线上排查"我有返佣但抽屉没弹"第一步就是看这条 —
+    // 没有这行就说明 user 装的是 5/18 21:11 之前的老客户端,本组件根本不存在。
+    console.log('[RebateDrawer] mounted, listening for noobclaw:rebate-received');
     const handler = (e: Event) => {
       const d = (e as CustomEvent).detail as RebateDetail | undefined;
-      if (!d || d.amount === undefined || d.amount === null) return;
+      console.log('[RebateDrawer] event received, detail=', d);
+      if (!d || d.amount === undefined || d.amount === null) {
+        console.warn('[RebateDrawer] dropped: missing amount in detail');
+        return;
+      }
       // 新事件直接接管:不论当前是 entering/visible/exiting,清旧计时,
       // 用新 detail 重新滑入。最差情况是用户错过上一笔的最后 0.x 秒,
       // 但保证最新的那笔一定能展示满 4s,符合"重要佣金不能漏"的产品诉求。
