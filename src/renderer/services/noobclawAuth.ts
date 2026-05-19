@@ -50,10 +50,7 @@ class NoobClawAuthService {
         this._drawerReady = true;
         const queue = this._pendingDrawerQueue;
         this._pendingDrawerQueue = [];
-        if (queue.length > 0) {
-          console.log('[noobclawAuth] drawer ready, flushing ' + queue.length + ' queued rebate(s)');
-          this.dispatchRebatesNow(queue);
-        }
+        if (queue.length > 0) this.dispatchRebatesNow(queue);
       });
     }
     // Restore from localStorage if available
@@ -235,14 +232,6 @@ class NoobClawAuthService {
         // 多笔时错开 4.6s 触发,让 RebateDrawer 的"新事件接管旧事件"逻辑给
         // 每一笔一个完整的 4s 展示窗口。
         const pending = (data as any).pendingRebates as Array<{ id: string; amount: string; fromWallet: string | null; level: number | null }> | undefined;
-        // 诊断日志:F12 Console 一眼能看到 polling 拿到几条 pending,以及每条
-        // detail。线上排查"我有返佣但抽屉没弹"必备 — 比 grep 服务器日志快太多。
-        // 留生产里也无所谓,15s 一次 + Console 只在用户开 DevTools 时才输出。
-        if (Array.isArray(pending)) {
-          console.log('[noobclawAuth] /balance pendingRebates count=' + pending.length, pending);
-        } else {
-          console.warn('[noobclawAuth] /balance response missing pendingRebates field (老版后端?):', data);
-        }
         if (Array.isArray(pending) && pending.length > 0) {
           // v1.x 关键 bugfix: 这个 service 是 module-level singleton(line 153
           // `export const noobClawAuth = new NoobClawAuthService()`),import 时
@@ -294,7 +283,6 @@ class NoobClawAuthService {
     if (this._drawerReady) {
       this.dispatchRebatesNow(items);
     } else {
-      console.log('[noobclawAuth] drawer not ready yet, queueing ' + items.length + ' rebate(s)');
       this._pendingDrawerQueue.push(...items);
     }
   }
@@ -308,7 +296,6 @@ class NoobClawAuthService {
   ): void {
     items.forEach((item, idx) => {
       setTimeout(() => {
-        console.log('[noobclawAuth] dispatch noobclaw:rebate-received', item);
         window.dispatchEvent(new CustomEvent('noobclaw:rebate-received', { detail: item }));
       }, idx * (4000 + 600));
     });

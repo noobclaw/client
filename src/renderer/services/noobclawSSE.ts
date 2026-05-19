@@ -94,13 +94,11 @@ class NoobClawSSEService {
 
     es.onopen = () => {
       this.attempts = 0;  // reset 退避计数
-      console.log('[SSE] connected to /api/me/events/stream');
     };
 
     es.onmessage = (e: MessageEvent) => {
       // 后端发的注释行(`: ping` / `: connected`)不触发 onmessage —
       // 它们只在网络层保活。这里只处理真正的 data 帧。
-      console.log('[SSE] raw message:', e.data);
       let frame: SSEFrame;
       try {
         frame = JSON.parse(e.data);
