@@ -12,10 +12,10 @@
 
 export function buildInviteShareMessage(inviteLink: string, lang: string): string {
   if (lang === 'zh') {
-    return `我发现一个AI自动化神器，完全AI模拟真人操作浏览器(0风控)，可以帮你在推特、小红书、币安广场、Youtube、抖音、Tiktok自动点赞，评论，批量原创/深度二创优质图文内容，200篇优质文章二创+1000次互动点赞+500次关注+300次评论成本<$1，是您的增粉神器，用AI自动赚钱！教程：https://docs.noobclaw.com  用我的链接免费赠送100万Token ：${inviteLink}`;
+    return `我发现一个AI自动化神器NoobClaw，完全AI模拟真人操作浏览器(0风控)，可以帮你在推特、小红书、币安广场、Youtube、抖音、Tiktok自动点赞，评论，批量原创/深度二创优质图文内容，200篇优质文章二创+1000次互动点赞+500次关注+300次评论成本<$1，是您的增粉神器，用AI自动赚钱！教程：https://docs.noobclaw.com  用我的链接免费赠送100万Token ：${inviteLink}`;
   }
   if (lang === 'zh-TW') {
-    return `我發現一個AI自動化神器，完全AI模擬真人操作瀏覽器(0風控)，可以幫你在推特、小紅書、幣安廣場、Youtube、抖音、Tiktok自動點讚，評論，批量原創/深度二創優質圖文內容，200篇優質文章二創+1000次互動點讚+500次關注+300次評論成本<$1，是您的增粉神器，用AI自動賺錢！教程：https://docs.noobclaw.com  用我的連結免費贈送100萬Token ：${inviteLink}`;
+    return `我發現一個AI自動化神器NoobClaw，完全AI模擬真人操作瀏覽器(0風控)，可以幫你在推特、小紅書、幣安廣場、Youtube、抖音、Tiktok自動點讚，評論，批量原創/深度二創優質圖文內容，200篇優質文章二創+1000次互動點讚+500次關注+300次評論成本<$1，是您的增粉神器，用AI自動賺錢！教程：https://docs.noobclaw.com  用我的連結免費贈送100萬Token ：${inviteLink}`;
   }
-  return `I found an AI automation tool that mimics real human browsing with zero risk. It can auto-like, comment, follow, and remix content on Twitter, Xiaohongshu, Binance Square, YouTube, Douyin, and TikTok. For less than $1, you get 200 remixed posts + 1,000 likes + 500 follows + 300 comments. This is your ultimate follower-growth hack — let AI make money for you! Tutorial: https://docs.noobclaw.com Use my link to get 1M free tokens: ${inviteLink}`;
+  return `I found an AI automation tool NoobClaw that mimics real human browsing with zero risk. It can auto-like, comment, follow, and remix content on Twitter, Xiaohongshu, Binance Square, YouTube, Douyin, and TikTok. For less than $1, you get 200 remixed posts + 1,000 likes + 500 follows + 300 comments. This is your ultimate follower-growth hack — let AI make money for you! Tutorial: https://docs.noobclaw.com Use my link to get 1M free tokens: ${inviteLink}`;
 }
