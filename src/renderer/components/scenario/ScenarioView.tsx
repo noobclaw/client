@@ -866,7 +866,8 @@ const LinkModeEditModal: React.FC<{
     if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
     // v4.28.x: 跟 ConfigWizard 创建流程对齐 —— 创建那边一直是 1-5,这里编辑 modal
     // 之前卡在 1-3,导致用户在编辑里加第 4 个 URL 直接被拒。统一为 1-5。
-    if (lines.length > 5) return { ok: [], err: isZh ? '最多 5 个链接' : 'Max 5 URLs' };
+    // v6.x: 上限从 5 提到 20。用户反馈"一次想批 10-20 条爆款链路",5 个太紧。
+    if (lines.length > 20) return { ok: [], err: isZh ? '最多 20 个链接' : 'Max 20 URLs' };
     for (const l of lines) {
       if (acceptsTwitterUrl) {
         if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
@@ -917,11 +918,11 @@ const LinkModeEditModal: React.FC<{
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           {isZh
             ? (acceptsTwitterUrl
-                ? '粘贴 1~5 个推特原文链接，图文视频均可，每行一个，AI 进行深度改写后发布。'
-                : '粘贴 1~5 个小红书原文链接，每行一个，AI 进行深度改写后发布。')
+                ? '粘贴 1~20 个推特原文链接，图文视频均可，每行一个，AI 进行深度改写后发布。'
+                : '粘贴 1~20 个小红书原文链接，每行一个，AI 进行深度改写后发布。')
             : (acceptsTwitterUrl
-                ? 'Paste 1-5 tweet URLs (images & videos both supported), one per line. AI will deep-rewrite and publish.'
-                : 'Paste 1-5 XHS URLs, one per line. AI will deep-rewrite and publish.')}
+                ? 'Paste 1-20 tweet URLs (images & videos both supported), one per line. AI will deep-rewrite and publish.'
+                : 'Paste 1-20 XHS URLs, one per line. AI will deep-rewrite and publish.')}
         </p>
         <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
           {isZh ? '原文链接' : 'Source URLs'}

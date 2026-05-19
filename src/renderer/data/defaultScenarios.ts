@@ -25,8 +25,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "creation",
     "name_zh": "币安广场 · 推特链接仿写",
     "name_en": "Binance Square · From X Link",
-    "description_zh": "粘贴 1-5 个推文链接,AI 改写成币安风格短帖,原推的图片/视频一并下载并上传,逐条间隔发到币安广场。手动一次性运行。运行期间占用推特+币安两个标签页,不能并发其他任务。",
-    "description_en": "Paste 1-5 X tweet URLs. AI rewrites each in Binance Square style, reuses the tweet's original media (images + videos), posts to Binance Square one by one. One-shot manual run. Locks both X + Binance tabs.",
+    "description_zh": "粘贴 1-20 个推文链接,AI 改写成币安风格短帖,原推的图片/视频一并下载并上传,逐条间隔发到币安广场。手动一次性运行。运行期间占用推特+币安两个标签页,不能并发其他任务。",
+    "description_en": "Paste 1-20 X tweet URLs. AI rewrites each in Binance Square style, reuses the tweet's original media (images + videos), posts to Binance Square one by one. One-shot manual run. Locks both X + Binance tabs.",
     "icon": "🔗",
     "default_config": {
       "keywords": [],
@@ -1687,8 +1687,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "creation",
     "name_zh": "推特爆款仿写",
     "name_en": "X Viral Rewrite",
-    "description_zh": "粘贴 1-5 条推文链接，AI 解构每条的钩子和结构，用你的人设和真实经历仿写成新推（不抄袭），逐条间隔安全发布。",
-    "description_en": "Paste 1-5 tweet URLs. AI deconstructs each hook + structure, rewrites a fresh tweet in your voice with your real experience (not a copy), posts them one by one with safe jitter.",
+    "description_zh": "粘贴 1-20 条推文链接，AI 解构每条的钩子和结构，用你的人设和真实经历仿写成新推（不抄袭），逐条间隔安全发布。",
+    "description_en": "Paste 1-20 tweet URLs. AI deconstructs each hook + structure, rewrites a fresh tweet in your voice with your real experience (not a copy), posts them one by one with safe jitter.",
     "icon": "✍️",
     "default_config": {
       "keywords": [],

@@ -260,8 +260,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '手动一次性' : 'One-shot'}
           titleZh="推特 · 指定链接仿写"
           titleEn="Tweet Rewrite (URL)"
-          descZh="粘贴 1-5 条推文链接，AI 解构每条钩子 + 结构，用你的人设仿写成新推（不抄袭），逐条间隔发布。"
-          descEn="Paste 1-5 tweet URLs. AI deconstructs hook + structure, rewrites in your voice (no copying), posts one by one."
+          descZh="粘贴 1-20 条推文链接，AI 解构每条钩子 + 结构，用你的人设仿写成新推（不抄袭），逐条间隔发布。"
+          descEn="Paste 1-20 tweet URLs. AI deconstructs hook + structure, rewrites in your voice (no copying), posts one by one."
           loading={loading}
           scenario={linkRewrite}
           existingTasks={linkRewrite ? tasksByScenario[linkRewrite.id] || [] : []}
@@ -365,8 +365,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh
-                ? '粘贴 1-5 条推文链接。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
-                : 'Paste 1-5 tweet URLs. AI deconstructs hook + structure, rewrites in source language/style (no copying), posts with 10-30 min spacing.'}
+                ? '粘贴 1-20 条推文链接。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
+                : 'Paste 1-20 tweet URLs. AI deconstructs hook + structure, rewrites in source language/style (no copying), posts with 10-30 min spacing.'}
             </p>
             <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
               {isZh ? '推文链接（每行 1 条）' : 'Tweet URLs (one per line)'}

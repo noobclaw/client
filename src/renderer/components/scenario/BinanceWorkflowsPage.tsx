@@ -155,7 +155,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     scenarios.find(s => s.id === 'binance_from_x_repost')
     || FROM_X_REPOST_FALLBACK;
 
-  // v4.31.18: 第 4 张卡 — 币安广场 · 推特链接仿写。手动一次性,粘 1-5 个推文 URL。
+  // v4.31.18: 第 4 张卡 — 币安广场 · 推特链接仿写。手动一次性,粘 1-20 个推文 URL。
   const FROM_X_LINK_FALLBACK: Scenario = {
     id: 'binance_from_x_link',
     version: '1.0.0',
@@ -164,8 +164,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 推特链接仿写',
     name_en: 'Binance Square · From X Link',
-    description_zh: '粘贴 1-5 个推文链接,AI 改写成币安风格短帖,原推图片/视频一并下载上传,逐条间隔发到币安广场。运行期间占用推特+币安两个标签页。',
-    description_en: 'Paste 1-5 X tweet URLs. AI rewrites in Binance style with original media (image + video). One-shot.',
+    description_zh: '粘贴 1-20 个推文链接,AI 改写成币安风格短帖,原推图片/视频一并下载上传,逐条间隔发到币安广场。运行期间占用推特+币安两个标签页。',
+    description_en: 'Paste 1-20 X tweet URLs. AI rewrites in Binance style with original media (image + video). One-shot.',
     icon: '🔗',
     default_config: {
       keywords: [],
@@ -297,16 +297,16 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           binanceDark={binanceDark}
         />
 
-        {/* v4.31.18: 第 4 张卡 — 推特链接仿写。手动一次,粘 1-5 个 URL */}
+        {/* v4.31.18: 第 4 张卡 — 推特链接仿写。手动一次,粘 1-20 个 URL */}
         <BinanceCard
           emoji="🔗"
           badgeZh="链接仿写"
           badgeEn="From URL"
           titleZh="币安广场 · 推特链接仿写"
           titleEn="Binance Square · From X Link"
-          descZh="粘贴 1-5 个推文链接(支持图文/视频帖),AI 改写成币安风格,原推图片 / 视频一并下载上传,逐条间隔发到广场。⚠️ 跨双 tab,需双平台都登录。"
-          descEn="Paste 1-5 X tweet URLs (image & video tweets both supported). AI rewrites in Binance style, reuses the tweet's original media. ⚠️ Locks both X + Binance tabs."
-          tagsLine={isZh ? '手动一次性 · 1-5 链接 · 图文 + 视频复用' : 'One-shot · 1-5 URLs · Reuse image + video'}
+          descZh="粘贴 1-20 个推文链接(支持图文/视频帖),AI 改写成币安风格,原推图片 / 视频一并下载上传,逐条间隔发到广场。⚠️ 跨双 tab,需双平台都登录。"
+          descEn="Paste 1-20 X tweet URLs (image & video tweets both supported). AI rewrites in Binance style, reuses the tweet's original media. ⚠️ Locks both X + Binance tabs."
+          tagsLine={isZh ? '手动一次性 · 1-20 链接 · 图文 + 视频复用' : 'One-shot · 1-20 URLs · Reuse image + video'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}

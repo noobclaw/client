@@ -764,7 +764,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const keywordList = useMemo(() => parseKeywords(customKeywordsText), [customKeywordsText]);
   const allTermsAccepted = termsAccepted.every(Boolean);
   // canFinish — different scenarios have different "minimum input":
-  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 5)
+  //   - x_link_rewrite : needs at least 1 valid tweet URL (max 20, v6.x+)
   //   - Twitter (auto_engage / post_creator) : needs persona only — no keywords
   //   - XHS scenarios  : needs ≥1 keyword + non-empty persona + a track
   // Always: terms accepted + a track selected.
@@ -776,7 +776,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   const canFinish = (() => {
     if (!allTermsAccepted || !trackId) return false;
     if (isLinkRewriteScenario) {
-      return parsedUrls.length >= 1 && parsedUrls.length <= 5;
+      return parsedUrls.length >= 1 && parsedUrls.length <= 20;
     }
     if (engageNoAction) return false;
     if (isXOrBinance) {
@@ -1207,7 +1207,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   {isLinkRewriteScenario && (
                     <div>
                       <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                        {isZh ? '🔗 推文链接（每行 1 个，最多 5 条）' : '🔗 Tweet URLs (1 per line, max 5)'}
+                        {isZh ? '🔗 推文链接（每行 1 个，最多 20 条）' : '🔗 Tweet URLs (1 per line, max 20)'}
                       </label>
                       <div className="mb-2 rounded-lg border border-violet-500/30 bg-violet-500/5 px-3 py-2 text-[11px] text-violet-700 dark:text-violet-400 leading-relaxed">
                         {isBinanceFromXLink
@@ -1231,8 +1231,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             ? '只接受 x.com / twitter.com 完整推文链接，其他自动忽略'
                             : 'Only x.com / twitter.com tweet URLs accepted; others ignored.'}
                         </span>
-                        <span className={parsedUrls.length > 5 ? 'text-red-500 font-medium' : 'text-gray-400'}>
-                          {isZh ? '识别到' : 'Parsed'}: {parsedUrls.length}/5
+                        <span className={parsedUrls.length > 20 ? 'text-red-500 font-medium' : 'text-gray-400'}>
+                          {isZh ? '识别到' : 'Parsed'}: {parsedUrls.length}/20
                         </span>
                       </div>
 
