@@ -4,6 +4,7 @@ import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
 import { useCountUp } from '../../hooks/useCountUp';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
+import { buildInviteShareMessage } from '../../utils/shareMessage';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
@@ -182,7 +183,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const referralLink = profile?.referralLink || `https://noobclaw.com/r/${authState.walletAddress}`;
 
   const copyLink = () => {
-    navigator.clipboard.writeText(referralLink);
+    // v1.x:复制的不是裸链接,而是营销介绍 + 教程 + 邀请链接的完整分享文,
+    // 用户粘到微信 / X / Telegram 直接是一段可读的招新文。中文/小语种由
+    // i18nService.currentLanguage 决定;文案与官网 index.html 同步,改这里
+    // 时也要去 website 那边同步改。
+    const message = buildInviteShareMessage(referralLink, i18nService.currentLanguage);
+    navigator.clipboard.writeText(message);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
