@@ -8,6 +8,7 @@ import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
+import PartnerApplyCard from '../invite/PartnerApplyCard';
 
 interface WalletViewProps {
   onOpenSettings?: () => void;
@@ -1148,6 +1149,10 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       )}
       {confirmDialogEl}
       <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
+
+        {/* v3.x partner program: 非合伙人在充值页顶部也展示 apply card,跟 InviteView
+            行为对齐。守卫 profile 已加载,避免登录前 / profile 还在拉时短暂闪。 */}
+        {profile && !profile.partner?.is_partner && <PartnerApplyCard />}
 
         {/* Wallet Header */}
         {/* v1.x: 合伙人 VIP 视觉框 — 跟 InviteView 顶部 PartnerHero 同一套:
