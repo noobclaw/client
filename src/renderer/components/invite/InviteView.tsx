@@ -568,9 +568,14 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             自己的 L1 返佣比例 + 倍数对比。后端 /api/me/profile 已下发 partner block。
             v3.x: 非合伙人显示申请卡片 — 展示当前 10% 默认返佣,引导申请合伙人提升费率。
             点击走外部浏览器打开 noobclaw.com/partner-apply.html。*/}
-        {profile?.partner?.is_partner
+        {/* v3.x bugfix: 三元的 else 分支会在 profile===undefined(未登录 / 还没拉到
+            profile 的初始 render)时也渲染,把 apply card 错误地展示给非登录用户 +
+            首屏闪一下。外层加 profile 守卫 — 只在已加载 profile 后才走二选一,
+            登录前一直 hide(跟原版 `profile?.partner?.is_partner && PartnerHero`
+            的行为对齐)。 */}
+        {profile && (profile?.partner?.is_partner
           ? <PartnerHero partner={profile.partner} />
-          : <PartnerApplyCard />}
+          : <PartnerApplyCard />)}
         {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
             高,右栏 details 容器靠 flex-1 应该撑满,实际不撑满)。grid 行内 cells
             默认 align: stretch,左右两栏一定等高,右栏 details 的 flex-1 在
