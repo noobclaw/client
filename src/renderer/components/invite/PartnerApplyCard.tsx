@@ -22,12 +22,15 @@ const PartnerApplyCard: React.FC = () => {
   const defaultRate = 10;
 
   const handleApply = () => {
-    // 走外部浏览器,URL 用干净的 /partner-apply 路径(website 那边是一个 thin
-    // redirect html,会 location.replace 到 #page-partner-apply SPA 路由)。
-    // 这样地址栏第一眼看到的是 /partner-apply,不是 /#page-partner-apply,
-    // 也方便外部分享 / SEO meta(redirect 设了 noindex)。SPA 仍然负责页面
-    // chrome / auth / 语言系统。
-    const url = `${getWebsiteUrl()}/partner-apply.html`;
+    // 走外部浏览器。URL 用 ?page=partner-apply 查询串而不是 #page-partner-apply
+    // hash,也不是独立的 /partner-apply.html 文件,出于两个坑:
+    //   ① Windows ShellExecute 把 URL 里的 # 片段 drop 掉(老的 #page-... 路径
+    //      在桌面端打开会拿到首页)
+    //   ② 任何独立 .html 文件一旦被浏览器 disk-cache 住,内容里如果有 bug
+    //      没法热修(用户得手动强刷,而且每次客户端打开还白屏 — 走过这条坑了)
+    // ?page=... 直接打在 index.html 主文件 URL 上,SPA bootstrap 里
+    // handleHashRoute 读 location.search 派发到 navigateTo,没独立缓存路径。
+    const url = `${getWebsiteUrl()}/?page=partner-apply`;
     try {
       window.electron?.shell?.openExternal?.(url);
     } catch {
