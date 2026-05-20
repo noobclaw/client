@@ -22,10 +22,12 @@ const PartnerApplyCard: React.FC = () => {
   const defaultRate = 10;
 
   const handleApply = () => {
-    // 走外部浏览器 — 落到 index.html 的 #page-partner-apply 路由(SPA hash).
-    // 这样网页表单页能直接复用站点 nav / footer / 语言系统 / auth(noobclaw_token
-    // localStorage 已经在用户登录时写入),比独立 html 体验一致得多。
-    const url = `${getWebsiteUrl()}/#page-partner-apply`;
+    // 走外部浏览器,URL 用干净的 /partner-apply 路径(website 那边是一个 thin
+    // redirect html,会 location.replace 到 #page-partner-apply SPA 路由)。
+    // 这样地址栏第一眼看到的是 /partner-apply,不是 /#page-partner-apply,
+    // 也方便外部分享 / SEO meta(redirect 设了 noindex)。SPA 仍然负责页面
+    // chrome / auth / 语言系统。
+    const url = `${getWebsiteUrl()}/partner-apply.html`;
     try {
       window.electron?.shell?.openExternal?.(url);
     } catch {
