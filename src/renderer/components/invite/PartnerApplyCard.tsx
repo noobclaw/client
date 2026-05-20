@@ -22,9 +22,10 @@ const PartnerApplyCard: React.FC = () => {
   const defaultRate = 10;
 
   const handleApply = () => {
-    // 走外部浏览器 — Tauri 把网页表单的鉴权 / 路由跟 app 隔开,用户可以在
-    // 浏览器里复制 wallet / 看 email,体验比客户端 webview 好。
-    const url = `${getWebsiteUrl()}/partner-apply.html`;
+    // 走外部浏览器 — 落到 index.html 的 #page-partner-apply 路由(SPA hash).
+    // 这样网页表单页能直接复用站点 nav / footer / 语言系统 / auth(noobclaw_token
+    // localStorage 已经在用户登录时写入),比独立 html 体验一致得多。
+    const url = `${getWebsiteUrl()}/#page-partner-apply`;
     try {
       window.electron?.shell?.openExternal?.(url);
     } catch {
