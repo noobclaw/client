@@ -161,6 +161,85 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   }
 }
 
+// ── Creator-center secondary check ──────────────────────────────────
+// 抖音 / 小红书 的图文创作任务要发到 creator.*.com 子域,主站登录态不等于
+// 创作者中心登录态(虽然 SSO 跨子域共享 cookie,但用户得真打开过 creator
+// tab 浏览器才认这个 origin)。LoginRequiredModal 跑预检时除了首页 tab 还要
+// 额外确认 creator.* tab 存在 + URL 不是登录重定向页 → 才能保证任务跑起
+// 来能直接进发布流程,不会卡在"请先登录"。
+//
+// 只有抖音 / 小红书有这层 secondary check;其他平台没有独立 creator 子域
+// (X/Binance 在主站发,TikTok/YouTube 的 creator URL 跟主站 SSO 共享更紧),
+// 不需要这个 gate。
+
+const CREATOR_TAB_PATTERNS: Partial<Record<LoginPlatform, RegExp>> = {
+  xhs: /creator\.xiaohongshu\.com/i,
+  douyin: /creator\.douyin\.com/i,
+};
+
+const CREATOR_URLS: Partial<Record<LoginPlatform, string>> = {
+  xhs: 'https://creator.xiaohongshu.com/',
+  douyin: 'https://creator.douyin.com/',
+};
+
+// 抖音 creator 未登录会 302 到 /passport/login;小红书会 hash 路由到 #/login。
+// URL 命中这些 → 视为未登录(tab 在,但还没认证)。
+const CREATOR_LOGIN_REDIRECT = /\/passport\/login|\/login(\?|#|\/|$)|#\/login/i;
+
+export function platformHasCreatorCenter(platform: LoginPlatform): boolean {
+  return !!CREATOR_TAB_PATTERNS[platform];
+}
+
+export async function checkCreatorCenter(platform: LoginPlatform): Promise<PlatformLoginStatus> {
+  const pattern = CREATOR_TAB_PATTERNS[platform];
+  // 没 creator 子域的平台 → 视为 no-op pass,避免 LoginRequiredModal 这边
+  // 调用方还得自己 if (platform === 'xhs' || ...)。
+  if (!pattern) return { loggedIn: true };
+
+  let tabs: any[] = [];
+  try {
+    const res = await sendBrowserCommand('tab_list', {}, 3000);
+    tabs = Array.isArray(res?.tabs) ? res.tabs : [];
+    if (!res || (!res.tabs && !Array.isArray(res))) {
+      return { loggedIn: false, reason: 'browser_not_connected' };
+    }
+  } catch (err) {
+    coworkLog('WARN', 'platformLoginDriver', 'creator tab_list failed — browser likely closed', { err: String(err) });
+    return { loggedIn: false, reason: 'browser_not_connected' };
+  }
+
+  const matchTab = tabs.find(
+    (t: any) => typeof t.url === 'string' && pattern.test(t.url)
+  );
+  if (!matchTab || typeof matchTab.id !== 'number') {
+    return { loggedIn: false, reason: 'creator_tab_not_reachable' };
+  }
+  if (typeof matchTab.url === 'string' && CREATOR_LOGIN_REDIRECT.test(matchTab.url)) {
+    return { loggedIn: false, reason: 'creator_not_logged_in' };
+  }
+  return { loggedIn: true };
+}
+
+export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: boolean; reason?: string }> {
+  const url = CREATOR_URLS[platform];
+  if (!url) return { ok: false, reason: 'no_creator_center' };
+  const tabPattern = CREATOR_TAB_PATTERNS[platform]?.source;
+  const tabGroup = PLATFORM_TAB_GROUPS[platform];
+  const routeOpts: any = {};
+  if (tabPattern) routeOpts.tabPattern = tabPattern;
+  if (tabGroup) routeOpts.tabGroup = tabGroup;
+  if (tabPattern && connectionHasCapability(tabPattern, 'isolated_windows')) {
+    routeOpts.isolate = true;
+  }
+  if (url) routeOpts.anchor_url = url;
+  try {
+    await sendBrowserCommand('tab_create', { url }, 8000, routeOpts);
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: String(err) };
+  }
+}
+
 // ── Backward-compat aliases ─────────────────────────────────────────
 // Old callers imported `checkXhsLogin` / `openXhsLogin` from `./xhsDriver`.
 // They now route here; the misleading-named exports are kept so any caller

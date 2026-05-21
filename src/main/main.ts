@@ -2840,6 +2840,16 @@ if (!gotTheLock) {
       const { openXhsLogin } = require('./libs/scenario/xhsDriver');
       return await openXhsLogin(platform);
     });
+
+    ipcMain.handle('scenario:checkCreatorCenter', async (_e, platform: 'xhs' | 'douyin') => {
+      const { checkCreatorCenter } = require('./libs/scenario/platformLoginDriver');
+      return await checkCreatorCenter(platform);
+    });
+
+    ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin') => {
+      const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
+      return await openCreatorCenter(platform);
+    });
   }
 
   // Set Content Security Policy

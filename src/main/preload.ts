@@ -89,6 +89,8 @@ contextBridge.exposeInMainWorld('electron', {
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
     checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
     openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
+    checkCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
+    openCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
   },
   api: {
     // Regular API request (non-streaming)

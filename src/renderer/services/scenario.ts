@@ -245,6 +245,26 @@ class ScenarioService {
     }
   }
 
+  // ── Creator center secondary gate (xhs / douyin 图文创作专用) ──
+  // 首页 tab 不等于创作者中心 tab,LoginRequiredModal 额外加一行检查保证用户
+  // 真打开过 creator.* 子域、且不是停在登录重定向页。
+
+  async checkCreatorCenter(platform: 'xhs' | 'douyin'): Promise<XhsLoginStatus> {
+    try {
+      return await window.electron.scenario.checkCreatorCenter(platform);
+    } catch (err) {
+      return { loggedIn: false, reason: 'browser_not_connected' };
+    }
+  }
+
+  async openCreatorCenter(platform: 'xhs' | 'douyin'): Promise<{ ok: boolean; reason?: string }> {
+    try {
+      return await window.electron.scenario.openCreatorCenter(platform);
+    } catch (err) {
+      return { ok: false, reason: String(err) };
+    }
+  }
+
   // ── Derived helpers ──
 
   /** Aggregate per-task stats the task dashboard likes to show.

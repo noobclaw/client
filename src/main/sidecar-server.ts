@@ -1690,6 +1690,24 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { ok: false, reason: e.message });
             }
           }
+          case 'scenario:checkCreatorCenter': {
+            try {
+              const { checkCreatorCenter } = require('./libs/scenario/platformLoginDriver');
+              const platform = (args && args[0]) as ('xhs' | 'douyin');
+              return writeJSON(res, 200, await checkCreatorCenter(platform));
+            } catch (e: any) {
+              return writeJSON(res, 200, { loggedIn: false, reason: 'sidecar_error: ' + e.message });
+            }
+          }
+          case 'scenario:openCreatorCenter': {
+            try {
+              const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
+              const platform = (args && args[0]) as ('xhs' | 'douyin');
+              return writeJSON(res, 200, await openCreatorCenter(platform));
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, reason: e.message });
+            }
+          }
 
           default:
             coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);

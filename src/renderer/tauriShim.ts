@@ -305,6 +305,10 @@ export function createTauriElectronShim(): typeof window.electron {
         ipcInvoke('scenario:checkXhsLogin', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
       openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') =>
         ipcInvoke('scenario:openXhsLogin', platform).then(r => r ?? { ok: false }),
+      checkCreatorCenter: (platform: 'xhs' | 'douyin') =>
+        ipcInvoke('scenario:checkCreatorCenter', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
+      openCreatorCenter: (platform: 'xhs' | 'douyin') =>
+        ipcInvoke('scenario:openCreatorCenter', platform).then(r => r ?? { ok: false }),
     },
 
     // ── API proxy (for Settings provider validation) ──

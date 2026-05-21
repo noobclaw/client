@@ -76,9 +76,22 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   const isTiktok = platform === 'tiktok' || secondaryPlatform === 'tiktok';
   const isYoutube = platform === 'youtube' || secondaryPlatform === 'youtube';
   // 抖音 (douyin) 是大陆站点,不参与 VPN 提示。
+  // 抖音 / 小红书的图文创作 / 爆款仿写都要发到 creator.*.com 子域,主站
+  // tab 在不等于 creator tab 在 — 用户得真打开过 creator 才会渲染那个
+  // origin 的页面、跑发布脚本。这里额外加一行 creator center 检查,只对
+  // 这两个平台启用。其他平台没有独立 creator 子域,沿用单行检查。
+  const requireCreatorCenter = platform === 'xhs' || platform === 'douyin';
+  function creatorLabelOf(p: LoginPlatform): string {
+    if (p === 'douyin') return isZh ? '抖音创作者中心 (creator.douyin.com)' : 'Douyin Creator Center (creator.douyin.com)';
+    if (p === 'xhs') return isZh ? '小红书创作者中心 (creator.xiaohongshu.com)' : 'Xiaohongshu Creator Center (creator.xiaohongshu.com)';
+    return platformLabelOf(p);
+  }
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
   const [secondaryTabStatus, setSecondaryTabStatus] = useState<StepStatus>(secondaryPlatform ? 'checking' : 'pass');
+  // creator center 默认 pass — 只有 xhs/douyin 会真正动它,其他平台保持 pass
+  // 不参与 allReady 判断。
+  const [creatorTabStatus, setCreatorTabStatus] = useState<StepStatus>(requireCreatorCenter ? 'checking' : 'pass');
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState(false);
   // Outdated extension warning — shown inline in step ② when an extension
@@ -149,6 +162,28 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         setExtensionStatus('pass');
         setXhsTabStatus('pass');
       }
+      // 抖音 / 小红书 创作者中心 secondary check — 只在插件已连接后跑。
+      // 跟主 tab 检查同一个 tab_list 来源,但用 creator.* 子域更严的正则
+      // 匹配,并把命中页面是登录重定向(/passport/login / #/login)的情况
+      // 显式判为未登录,而不是当成"已打开"。
+      if (requireCreatorCenter && status.reason !== 'browser_not_connected') {
+        try {
+          const cStatus = await scenarioService.checkCreatorCenter(platform as 'xhs' | 'douyin');
+          if (cStatus.reason === 'browser_not_connected') {
+            setCreatorTabStatus('waiting');
+          } else if (cStatus.loggedIn) {
+            setCreatorTabStatus('pass');
+          } else {
+            setCreatorTabStatus('fail');
+          }
+        } catch {
+          setCreatorTabStatus('fail');
+        }
+      } else if (requireCreatorCenter) {
+        // 主检查报 browser_not_connected,creator 检查没法独立判断,统一 waiting。
+        setCreatorTabStatus('waiting');
+      }
+
       // v4.25.4: cross-tab scenario — also probe the secondary platform tab.
       // Only runs once extension is confirmed connected (else status would
       // also report browser_not_connected and we already set 'waiting' above).
@@ -229,10 +264,11 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
       setExtensionStatus('fail');
       setXhsTabStatus('waiting');
       if (secondaryPlatform) setSecondaryTabStatus('waiting');
+      if (requireCreatorCenter) setCreatorTabStatus('waiting');
     } finally {
       setChecking(false);
     }
-  }, [platform, secondaryPlatform]);
+  }, [platform, secondaryPlatform, requireCreatorCenter]);
 
   useEffect(() => { void runCheck(); }, []); // eslint-disable-line
 
@@ -264,7 +300,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   };
 
   const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass'
-    && (!secondaryPlatform || secondaryTabStatus === 'pass');
+    && (!secondaryPlatform || secondaryTabStatus === 'pass')
+    && (!requireCreatorCenter || creatorTabStatus === 'pass');
   // v2.8+: 不再 client 主动 prepareTabsForRun(dedup + split)。chrome-extension
   // 1.4.22+ 在 _windowMutex 内自治,任何会动 chrome.windows / tabGroups 的
   // 路径都串行 enforce,不需要 client 提前 nudge。
@@ -276,6 +313,21 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     try {
       const res = await scenarioService.openXhsLogin(secondaryPlatform);
       if (!res.ok) { try { window.open(platformUrlOf(secondaryPlatform), '_blank'); } catch {} }
+      setTimeout(() => void runCheck(), 2000);
+    } finally {
+      setOpening(false);
+    }
+  };
+
+  // 一键打开 creator center tab(xhs / douyin 图文创作必需)
+  const handleOpenCreator = async () => {
+    if (!requireCreatorCenter) return;
+    const p = platform as 'xhs' | 'douyin';
+    const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
+    setOpening(true);
+    try {
+      const res = await scenarioService.openCreatorCenter(p);
+      if (!res.ok) { try { window.open(creatorUrl, '_blank'); } catch {} }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
@@ -363,6 +415,51 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
                     <button type="button" onClick={handleOpenXhs} disabled={opening}
                       className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
                       {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Step 1a: 创作者中心 —— 仅 xhs / douyin 图文/爆款仿写 scenario 需要。
+              主站登录态 SSO 共享到 creator 子域,但用户得真打开过 creator tab
+              那个 origin 的脚本才能跑起来。命中 /passport/login 之类的重定向
+              URL 会显式判 fail(creator_not_logged_in),让用户知道要去补登录,
+              而不是误以为"已打开 = OK"。 */}
+          {requireCreatorCenter && (() => {
+            const cLabel = creatorLabelOf(platform);
+            const realPass = extensionStatus === 'pass' && creatorTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && creatorTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `① 打开 ${cLabel} 并登录` : `① Open ${cLabel} & login`}
+                  </div>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开并已登录' : 'Open & logged in'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${cLabel} 登录态(可能未打开,或停在登录页)` : `${cLabel} not logged in (tab missing or on login page)`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenCreator} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${cLabel}` : `🌐 Open ${cLabel}`)}
                     </button>
                   )}
                 </div>
