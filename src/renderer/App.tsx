@@ -651,20 +651,45 @@ const App: React.FC = () => {
       /Unexpected end of JSON input/i,
       /Failed to execute 'json' on 'Response'/i,
       /JSON\.parse:/i,
+      // URL-parse failures from `new URL(badStr)` / `fetch(badStr)`. Each
+      // WebView engine words it differently — silence all three so users
+      // on every OS get the same (clean) experience. Stack still hits the
+      // console via the onRejection logger below; open DevTools console
+      // next time it happens to pinpoint the callsite passing a bad URL.
+      //   WebKit (macOS WKWebView / Safari)
+      /The string did not match the expected pattern/i,
+      //   Chromium (Windows WebView2 / older Linux WebKitGTK builds)
+      /Failed to construct 'URL'/i,
+      //   Firefox / fetch spec wording
+      /Invalid URL/i,
     ];
     const shouldSilence = (msg: string) => SILENT_PATTERNS.some((re) => re.test(msg));
 
     const onError = (event: ErrorEvent) => {
       const msg = (event.message || 'unknown');
+      // For Error objects the console formats stack automatically; only
+      // append .stack explicitly when event.error isn't an Error (rare —
+      // some libs throw strings/POJOs and lose the stack otherwise).
+      const extra = (event.error instanceof Error) ? [] : [event.error?.stack || ''];
       // eslint-disable-next-line no-console
-      console.error('[window.error]', event.error || msg);
+      console.error('[window.error]', event.error || msg, ...extra);
       if (shouldSilence(msg)) return;
       setToastMessage(`Error: ${msg.slice(0, 80)}`);
     };
     const onRejection = (event: PromiseRejectionEvent) => {
       const msg = event.reason instanceof Error ? event.reason.message : String(event.reason);
-      // eslint-disable-next-line no-console
-      console.error('[unhandledrejection]', event.reason);
+      // For Error objects the console already prints stack — don't dupe.
+      // For non-Error rejections (string / POJO / null), JSON-dump so we
+      // still get *something* in the console to debug from.
+      if (event.reason instanceof Error) {
+        // eslint-disable-next-line no-console
+        console.error('[unhandledrejection]', event.reason);
+      } else {
+        let dump = '';
+        try { dump = JSON.stringify(event.reason) ?? ''; } catch { /* circular */ }
+        // eslint-disable-next-line no-console
+        console.error('[unhandledrejection]', event.reason, '\nDUMP:', dump);
+      }
       if (shouldSilence(msg)) {
         // Mark as handled so it stops bubbling to the host (Electron) too.
         event.preventDefault?.();
