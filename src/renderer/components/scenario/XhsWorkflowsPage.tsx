@@ -485,7 +485,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       <section className="mb-6 flex flex-wrap items-center gap-2">
         {[
           { icon: '✨', zh: '原创质量高', en: 'High-quality original output' },
-          { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
+          { icon: '💰', zh: '成本超低（百篇好文<$1）', en: 'Ultra-low cost (<$1 for 100 posts)' },
           { icon: '🛡️', zh: '完全模拟人类行为不封号', en: 'Fully human-like, no ban risk' },
           { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement = rapid follow gains)' },
           { icon: '🤖', zh: '全智能控制', en: 'Fully intelligent control' },

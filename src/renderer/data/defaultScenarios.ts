@@ -840,7 +840,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_captcha_hours": 24,
       "cooldown_rate_limit_hours": 48,
       "cooldown_account_flag_hours": 72,
-      "daily_count_cap": 5
+      "daily_count_cap": 50
     },
     "required_login_url": "https://www.douyin.com/jingxuan",
     "tab_url_pattern": "^https?://creator\\.douyin\\.com/",
@@ -1901,7 +1901,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_captcha_hours": 24,
       "cooldown_rate_limit_hours": 48,
       "cooldown_account_flag_hours": 72,
-      "daily_count_cap": 5
+      "daily_count_cap": 50
     },
     "required_login_url": "https://creator.xiaohongshu.com/",
     "tab_url_pattern": "xiaohongshu",

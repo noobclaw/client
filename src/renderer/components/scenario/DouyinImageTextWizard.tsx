@@ -28,7 +28,7 @@ type WizardStep = 1 | 2 | 3;
 const SEGMENT_MIN_CHARS = 10;
 const SEGMENT_MAX_CHARS = 800;
 const DAILY_COUNT_MIN = 1;
-const DAILY_COUNT_MAX = 5;
+const DAILY_COUNT_MAX = 50;
 // v1.1.0: 配图新选项 — 实景图模式 + 张数 + 关键词
 // v1.1.x: AI 生图贵($0.04/张) → 默认 2 张省钱;实景图免费抓 → 默认 6 张铺满
 const REAL_PHOTO_MIN = 2;
@@ -489,7 +489,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
                   {uploadMode === 'publish' && (
-                    <li>{isZh ? '直接发布模式 — 跑完立即可见,慎用,日 >5 篇有封号风险' : 'Publish mode — posts go live immediately; >5/day risks ban'}</li>
+                    <li>{isZh ? '直接发布模式 — 跑完立即可见' : 'Publish mode — posts go live immediately'}</li>
                   )}
                   {uploadMode === 'draft' && (
                     <li>{isZh ? '抖音侧只保留最新 1 篇草稿,daily_count > 1 时只剩最后一篇' : 'Douyin keeps only 1 draft — multi-post runs leave just the last'}</li>

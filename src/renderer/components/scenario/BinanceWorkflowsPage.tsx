@@ -326,7 +326,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           {[
             { icon: '✨', zh: '深度二创', en: 'Deep AI rewrite' },
             { icon: '🎬', zh: '图文 + 视频全支持', en: 'Image + video both supported' },
-            { icon: '💰', zh: '成本超低（百篇好文<1U）', en: 'Ultra-low cost (<$1 for 100 posts)' },
+            { icon: '💰', zh: '成本超低（百篇好文<$1）', en: 'Ultra-low cost (<$1 for 100 posts)' },
             { icon: '🛡️', zh: '严风控,完全模拟人类行为(动作间隔时间 + 随机)', en: 'Strict anti-detection, fully human-like (jittered intervals + randomization)' },
             { icon: '🚀', zh: '涨粉丝快(真实互动飞速涨粉)', en: 'Fast follower growth (real engagement → rapid gain)' },
           ].map((p, i) => (
