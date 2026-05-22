@@ -340,14 +340,21 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   };
 
   // 一键打开 creator center tab(xhs / douyin 图文创作必需)
+  //
+  // v6.x: 改成直接 window.open,不走扩展 (scenarioService.openCreatorCenter)。
+  //   原因:扩展开 creator tab 时会把 tab 移进 MCP group(noobclaw managed),
+  //   会跟用户原本已经开着的 creator tab 串台 / 登录态被打散。
+  //   现在 window.open 直接开普通新 tab,verify 这一步仍然是扩展的 tab_list
+  //   probe(tab_list 看的是所有 tab 不限 MCP group),所以 check 还是会 pass。
+  //   实际跑任务时,orchestrator 的 ctx.navigate 会在它管理的 tab 上自己跳到
+  //   creator URL,不需要"这里开的 tab" 必须在 MCP group 内。
   const handleOpenCreator = async () => {
     if (!requireCreatorCenter) return;
     const p = platform as 'xhs' | 'douyin';
     const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
     setOpening(true);
     try {
-      const res = await scenarioService.openCreatorCenter(p);
-      if (!res.ok) { try { window.open(creatorUrl, '_blank'); } catch {} }
+      try { window.open(creatorUrl, '_blank'); } catch { /* popup blocker / no shell — verify probe will still run */ }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
