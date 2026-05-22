@@ -217,6 +217,10 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
         <LoginRequiredModal
           mode="create"
           platform="douyin"
+          /* v6.x: 只有图文创作要发到 creator.douyin.com 子域,需要 creator 中心
+             登录;auto_engage 只跟 www.douyin.com 主站打交道,不需要。
+             loginModalReason = scenario.id;'douyin_image_text' 命中 → true。 */
+          requireCreatorCenter={loginModalReason === 'douyin_image_text'}
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />

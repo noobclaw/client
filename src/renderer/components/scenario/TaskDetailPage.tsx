@@ -1452,6 +1452,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             mode="run"
             platform={platform}
             secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
+            /* v6.x: 只有 publish-to-creator-center 类场景才检查 creator 子域登录。
+               douyin_auto_engage / xhs_auto_reply_universal 只用主站交互,不要
+               卡 creator 中心(否则用户每次 run 任务都得开 creator tab,体验差)。 */
+            requireCreatorCenter={
+              task.scenario_id === 'douyin_image_text'
+              || task.scenario_id === 'xhs_image_text'
+              || task.scenario_id === 'xhs_viral_production_career'
+            }
             onCancel={() => setLoginModalOpen(false)}
             onConfirmed={handleLoginConfirmed}
           />

@@ -30,13 +30,20 @@ interface Props {
    *  open + logged in. Pass the secondary platform here — modal will render
    *  an extra row and gate the "下一步" button until BOTH check pass. */
   secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+  /** v6.x: 是否需要 creator.*.com 子域登录检查 — 只有图文创作 / 爆款仿写等
+   *  "发布到 creator center" 类场景需要 (douyin_image_text / xhs_image_text /
+   *  xhs_viral_production_career)。互动涨粉 / auto_reply 类场景只用主站,
+   *  传 false 跳过该 row。默认 undefined → 走老的"按平台默认 xhs/douyin
+   *  都加"逻辑(向后兼容,旧调用点不传也不会回归)。
+   *  最佳实践:新调用点显式传 true/false。 */
+  requireCreatorCenter?: boolean;
   onCancel: () => void;
   onConfirmed: () => void;
 }
 
 type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 
-export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, onCancel, onConfirmed }) => {
+export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, requireCreatorCenter: requireCreatorCenterProp, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
 
   type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
@@ -84,9 +91,16 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // 抖音 (douyin) 是大陆站点,不参与 VPN 提示。
   // 抖音 / 小红书的图文创作 / 爆款仿写都要发到 creator.*.com 子域,主站
   // tab 在不等于 creator tab 在 — 用户得真打开过 creator 才会渲染那个
-  // origin 的页面、跑发布脚本。这里额外加一行 creator center 检查,只对
-  // 这两个平台启用。其他平台没有独立 creator 子域,沿用单行检查。
-  const requireCreatorCenter = platform === 'xhs' || platform === 'douyin';
+  // origin 的页面、跑发布脚本。这里额外加一行 creator center 检查。
+  //
+  // v6.x bug fix: 老版无条件按"平台 === xhs || douyin"开,把互动涨粉
+  //   (douyin_auto_engage / xhs_auto_reply_universal)这类只浏览主站
+  //   的场景也卡住,弹"请登录创作者中心"。新版让调用点显式声明
+  //   requireCreatorCenter — 不传 → 回落到老逻辑(向后兼容),显式传
+  //   true/false → 直接生效。auto_engage 调用点传 false 即可放行。
+  const requireCreatorCenter = (typeof requireCreatorCenterProp === 'boolean')
+    ? requireCreatorCenterProp
+    : (platform === 'xhs' || platform === 'douyin');
   function creatorLabelOf(p: LoginPlatform): string {
     if (p === 'douyin') return isZh ? '抖音创作者中心 (creator.douyin.com)' : 'Douyin Creator Center (creator.douyin.com)';
     if (p === 'xhs') return isZh ? '小红书创作者中心 (creator.xiaohongshu.com)' : 'Xiaohongshu Creator Center (creator.xiaohongshu.com)';

@@ -576,6 +576,12 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
+          /* v6.x: 只有发布到 creator.xiaohongshu.com 子域的场景才需要 creator
+             中心登录 — image_text(图文创作) 和 linkmode/quickstart(爆款仿写
+             也是发到 creator)。autoreply(互动)只用主站,跳过 creator 检查。
+             loginModalReason 在调用点 setLoginModalReason 时传的关键字 —
+             见 line 283/301/313/328。 */
+          requireCreatorCenter={loginModalReason !== 'autoreply'}
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />
