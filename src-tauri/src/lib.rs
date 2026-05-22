@@ -467,6 +467,32 @@ fn sidecar_log_path() -> Option<PathBuf> {
     Some(logs.join("sidecar.log"))
 }
 
+/// Ensure the default cowork workspace directory (`~/noobclaw/project`)
+/// exists at app startup.
+///
+/// Tauri builds run the Node side as a sidecar whose entry is
+/// `sidecar-server.ts`, **not** `main.ts`. The Electron-only path in
+/// `main.ts` (mkdirSync at app.whenReady) therefore never executes for
+/// Mac users running the Tauri .dmg, and `~/noobclaw/project` is left
+/// uncreated. Every fresh-install Mac user then hits
+/// `Working directory does not exist: ~/noobclaw/project` on the first
+/// cowork chat, because the renderer skips its folder-required warning
+/// in Tauri mode (CoworkPromptInput.tsx) under the assumption that the
+/// sidecar will fall back to this default — but nobody actually
+/// creates it.
+///
+/// Mirrors the Electron-side mkdir at `src/main/main.ts:3179`. Path
+/// segments stay in lockstep with `coworkStore.ts:getDefaultWorkingDirectory`
+/// (`path.join(os.homedir(), 'noobclaw', 'project')`). Idempotent —
+/// `create_dir_all` is a no-op when the directory already exists. Silent
+/// on failure (matches `sidecar_log_path` policy: never let filesystem
+/// plumbing take down app startup).
+fn ensure_default_workspace_dir() {
+    let Some(home) = dirs::home_dir() else { return };
+    let workspace = home.join("noobclaw").join("project");
+    let _ = fs::create_dir_all(&workspace);
+}
+
 /// Append a line to the sidecar log. Silent on failure — we never want
 /// log plumbing to take down the app. Rotates when the file exceeds
 /// ~512 KB by renaming the current file to `sidecar.log.1` and starting
@@ -1020,6 +1046,14 @@ pub fn run() {
         }))
         .setup(move |app| {
             let handle = app.handle().clone();
+
+            // ── Ensure default cowork workspace dir exists ──
+            // Tauri sidecar entry (sidecar-server.ts) does NOT mkdir
+            // ~/noobclaw/project the way the Electron main.ts path does,
+            // so without this every fresh-install Mac user hits
+            // "Working directory does not exist: ~/noobclaw/project" on
+            // their first cowork chat. Idempotent + silent on failure.
+            ensure_default_workspace_dir();
 
             // ── Windows: clean up legacy NM host registry residue ──
             // Older client builds (<= v2.6.x) registered Native Messaging
