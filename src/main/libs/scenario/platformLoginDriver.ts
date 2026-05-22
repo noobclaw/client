@@ -31,7 +31,12 @@ export type XhsLoginStatus = PlatformLoginStatus;
 export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
 
 const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
-  xhs: /xiaohongshu\.com/i,
+  // (?<!creator\.) 排除 creator.xiaohongshu.com 子域 —— 用户只打开
+  // 创作者中心(未登录会落到 /login)时,主站 check 必须报 fail,而不是
+  // 误以为"主站已登录"。creator 子域走独立的 checkCreatorCenter 检查,
+  // 那里有真正的登录重定向 URL 判断。lookbehind 在 Node 20+ / Chrome 62+
+  // 支持,sidecar / 扩展 / browserBridge 三端都能跑。
+  xhs: /(?<!creator\.)xiaohongshu\.com/i,
   // ⚠️ The previous attempt was `(?:^|\.)(?:twitter|x)\.com` — required the
   // domain to be preceded by start-of-string or a literal dot. That broke on
   // real URLs like `https://x.com/home` (the char before `x` is `/`, neither).
@@ -48,11 +53,14 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   tiktok: /tiktok\.com/i,
   // YouTube — main domain + m.youtube.com mobile + youtube-nocookie embeds.
   youtube: /(?:^|\.)(?:youtube|youtube-nocookie)\.com/i,
-  // 抖音 web — jingxuan / 推荐 / 视频详情 / creator.* 都在 douyin.com 下,
-  // 任意子域路径都算。图文创作场景跟 auto_engage 共用同一个 platform 代码:
-  // SSO 跨子域共享,登一次哪都通;任务跑时 ctx.navigate(creator.* URL) 会
-  // 把这个匹配 tab 的 URL 直接更新成 creator URL,无需单独路由。
-  douyin: /douyin\.com/i,
+  // 抖音 web — jingxuan / 推荐 / 视频详情 等主站路径。
+  // (?<!creator\.) 排除 creator.douyin.com 子域 —— 用户只打开创作者中心
+  // (未登录会 302 到 /passport/login)时,主站 check 必须报 fail,不能
+  // 因为 URL 串里有 "douyin.com" 就当成"主站已登录"。creator 子域走独立
+  // 的 checkCreatorCenter 检查(那里有 /passport/login 重定向判断)。
+  // 任务执行时 ctx.navigate(creator.* URL) 走 manifest 的 tab_url_pattern,
+  // 跟这个 client 端 TAB_PATTERNS 是分开的,不受这条改动影响。
+  douyin: /(?<!creator\.)douyin\.com/i,
 };
 
 const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {

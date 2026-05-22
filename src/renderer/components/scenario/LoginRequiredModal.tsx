@@ -1,10 +1,16 @@
 /**
  * LoginRequiredModal — checklist before running XHS task.
  *
- *   ① 在浏览器中打开小红书并登录
- *   ② 安装并连接浏览器插件
+ *   ① 安装并连接浏览器插件
+ *   ② 在浏览器中打开小红书并登录
  *   ③ 使用须知
  *   → 底部居中按钮
+ *
+ * 顺序说明:插件是其他所有检测的依赖根节点 — 没插件就探测不到
+ * 任何 tab 状态。早期版本把"打开平台 tab"放第一,首次用户进
+ * 来看到 step ① 一堆 ⏳ + 提示"装好插件后自动确认",得反向
+ * 往下扫到 step ② 才知道要先装插件,直觉错位。改成依赖优先
+ * 的顺序后,首次用户从上往下读一遍就能 onboard。
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
@@ -376,141 +382,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         </div>
 
         <div className="px-6 py-2 space-y-2.5 overflow-y-auto flex-1">
-          {/* Step 1: 平台 tab —— 不依赖插件,先让用户打开页面。
-              v4.25.4: 之前 step ① 的真实状态要等 step ② 装好插件才能查,
-              UI 显示"请先安装浏览器插件(步骤②)" — 用户被两步互锁绕晕。
-              改成:不论插件状态,这一步都允许用户立刻点 "打开" 按钮 → 浏览器
-              开页;插件已连接时再用真检测 (✓/✗);未连接时显示"待插件检测",
-              但按钮仍可用,用户可以在装插件之前先把页面打开。 */}
-          {(() => {
-            // 只有在插件已连接 + tab 检测真过了的时候才算 pass。其他都让用户能动作。
-            const realPass = extensionStatus === 'pass' && xhsTabStatus === 'pass';
-            const realFail = extensionStatus === 'pass' && xhsTabStatus === 'fail';
-            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
-            return (
-              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
-                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
-                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
-                  : 'border-gray-200 dark:border-gray-700'
-              }`}>
-                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `① 在浏览器中打开 ${platformLabel} 并登录` : `① Open ${platformLabel} in browser & login`}
-                  </div>
-                  {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
-                  )}
-                  {realFail && (
-                    <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
-                    </div>
-                  )}
-                  {!realPass && extensionStatus !== 'pass' && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
-                    </div>
-                  )}
-                  {!realPass && (
-                    <button type="button" onClick={handleOpenXhs} disabled={opening}
-                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Step 1a: 创作者中心 —— 仅 xhs / douyin 图文/爆款仿写 scenario 需要。
-              主站登录态 SSO 共享到 creator 子域,但用户得真打开过 creator tab
-              那个 origin 的脚本才能跑起来。命中 /passport/login 之类的重定向
-              URL 会显式判 fail(creator_not_logged_in),让用户知道要去补登录,
-              而不是误以为"已打开 = OK"。 */}
-          {requireCreatorCenter && (() => {
-            const cLabel = creatorLabelOf(platform);
-            const realPass = extensionStatus === 'pass' && creatorTabStatus === 'pass';
-            const realFail = extensionStatus === 'pass' && creatorTabStatus === 'fail';
-            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
-            return (
-              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
-                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
-                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
-                  : 'border-gray-200 dark:border-gray-700'
-              }`}>
-                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `① 打开 ${cLabel} 并登录` : `① Open ${cLabel} & login`}
-                  </div>
-                  {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开并已登录' : 'Open & logged in'}</div>
-                  )}
-                  {realFail && (
-                    <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${cLabel} 登录态(可能未打开,或停在登录页)` : `${cLabel} not logged in (tab missing or on login page)`}
-                    </div>
-                  )}
-                  {!realPass && extensionStatus !== 'pass' && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
-                    </div>
-                  )}
-                  {!realPass && (
-                    <button type="button" onClick={handleOpenCreator} disabled={opening}
-                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${cLabel}` : `🌐 Open ${cLabel}`)}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Step 1b: 副 tab —— 仅跨 tab scenario(binance_from_x_repost)展示。
-              v4.25.4: 推特搬运任务两个 tab 都得登录,只检查 binance 不够。
-              用同一套 真检测 + 按钮兜底 模式渲染。 */}
-          {secondaryPlatform && (() => {
-            const sLabel = platformLabelOf(secondaryPlatform);
-            const realPass = extensionStatus === 'pass' && secondaryTabStatus === 'pass';
-            const realFail = extensionStatus === 'pass' && secondaryTabStatus === 'fail';
-            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
-            return (
-              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
-                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
-                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
-                  : 'border-gray-200 dark:border-gray-700'
-              }`}>
-                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium dark:text-white">
-                    {isZh ? `① 同时打开 ${sLabel} 并登录(跨 tab 任务必需)` : `① Also open ${sLabel} & login (required for cross-tab task)`}
-                  </div>
-                  {realPass && (
-                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
-                  )}
-                  {realFail && (
-                    <div className="text-xs text-red-500 mt-1">
-                      {isZh ? `未检测到 ${sLabel} 页面` : `${sLabel} page not detected`}
-                    </div>
-                  )}
-                  {!realPass && extensionStatus !== 'pass' && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
-                    </div>
-                  )}
-                  {!realPass && (
-                    <button type="button" onClick={handleOpenSecondary} disabled={opening}
-                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
-                      {opening ? '...' : (isZh ? `🌐 打开 ${sLabel}` : `🌐 Open ${sLabel}`)}
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Step 2: Extension — 再检查插件 */}
+          {/* Step 1: Extension — 依赖根节点,所有 tab 检测都靠它,放最前 */}
           <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
             extensionStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
               : extensionStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
@@ -518,7 +390,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           }`}>
             <div className="text-xl shrink-0 mt-0.5">{ICON[extensionStatus]}</div>
             <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium dark:text-white">{isZh ? '② 安装并连接浏览器插件' : '② Install & connect browser extension'}</div>
+              <div className="text-sm font-medium dark:text-white">{isZh ? '① 安装并连接浏览器插件' : '① Install & connect browser extension'}</div>
               {extensionStatus === 'fail' && (
                 <div className="mt-2 space-y-2">
                   <div className="text-xs text-red-500">{isZh ? '插件未连接，请选择安装方式：' : 'Extension not connected. Choose install method:'}</div>
@@ -568,6 +440,141 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               )}
             </div>
           </div>
+
+          {/* Step 2: 平台 tab —— 不依赖插件即可点"打开"按钮,但真实
+              的 ✓/✗ 检测要等 step ① 插件连接后才能跑。未连接时显示
+              "装好插件后这里会自动确认",按钮仍可用,用户可以在装插
+              件之前先把页面开起来。
+              历史:v4.25.4 解锁这一步的按钮(之前两步互锁、用户被
+              绕晕);后续把插件移到 step ①,这一步顺位变 ② —
+              依赖根节点排前面,首次用户从上往下读更顺。 */}
+          {(() => {
+            // 只有在插件已连接 + tab 检测真过了的时候才算 pass。其他都让用户能动作。
+            const realPass = extensionStatus === 'pass' && xhsTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && xhsTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `② 在浏览器中打开 ${platformLabel} 并登录` : `② Open ${platformLabel} in browser & login`}
+                  </div>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${platformLabel} 页面` : `${platformLabel} page not detected`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenXhs} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${platformLabel}` : `🌐 Open ${platformLabel}`)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Step 2a: 创作者中心 —— 仅 xhs / douyin 图文/爆款仿写 scenario 需要。
+              主站登录态 SSO 共享到 creator 子域,但用户得真打开过 creator tab
+              那个 origin 的脚本才能跑起来。命中 /passport/login 之类的重定向
+              URL 会显式判 fail(creator_not_logged_in),让用户知道要去补登录,
+              而不是误以为"已打开 = OK"。 */}
+          {requireCreatorCenter && (() => {
+            const cLabel = creatorLabelOf(platform);
+            const realPass = extensionStatus === 'pass' && creatorTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && creatorTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `② 打开 ${cLabel} 并登录` : `② Open ${cLabel} & login`}
+                  </div>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开并已登录' : 'Open & logged in'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${cLabel} 登录态(可能未打开,或停在登录页)` : `${cLabel} not logged in (tab missing or on login page)`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenCreator} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${cLabel}` : `🌐 Open ${cLabel}`)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Step 2b: 副 tab —— 仅跨 tab scenario(binance_from_x_repost)展示。
+              v4.25.4: 推特搬运任务两个 tab 都得登录,只检查 binance 不够。
+              用同一套 真检测 + 按钮兜底 模式渲染。 */}
+          {secondaryPlatform && (() => {
+            const sLabel = platformLabelOf(secondaryPlatform);
+            const realPass = extensionStatus === 'pass' && secondaryTabStatus === 'pass';
+            const realFail = extensionStatus === 'pass' && secondaryTabStatus === 'fail';
+            const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
+            return (
+              <div className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
+                visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
+                  : visualStatus === 'pass' ? 'border-green-500/30 bg-green-500/5'
+                  : 'border-gray-200 dark:border-gray-700'
+              }`}>
+                <div className="text-xl shrink-0 mt-0.5">{ICON[visualStatus]}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium dark:text-white">
+                    {isZh ? `② 同时打开 ${sLabel} 并登录(跨 tab 任务必需)` : `② Also open ${sLabel} & login (required for cross-tab task)`}
+                  </div>
+                  {realPass && (
+                    <div className="text-xs text-green-500 mt-1">{isZh ? '已打开' : 'Connected'}</div>
+                  )}
+                  {realFail && (
+                    <div className="text-xs text-red-500 mt-1">
+                      {isZh ? `未检测到 ${sLabel} 页面` : `${sLabel} page not detected`}
+                    </div>
+                  )}
+                  {!realPass && extensionStatus !== 'pass' && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      {isZh ? '装好插件后这里会自动确认' : 'Auto-verifies once extension is installed'}
+                    </div>
+                  )}
+                  {!realPass && (
+                    <button type="button" onClick={handleOpenSecondary} disabled={opening}
+                      className="mt-2 text-xs font-medium px-3 py-1.5 rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors disabled:opacity-50">
+                      {opening ? '...' : (isZh ? `🌐 打开 ${sLabel}` : `🌐 Open ${sLabel}`)}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Step 3: Usage notes */}
           <div className={`rounded-xl p-3 border ${
