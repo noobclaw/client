@@ -2154,7 +2154,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     inviteRebateUsdtSub: 'USDT Rebate',
     inviteRebateNoobSub: 'NoobCoin Reward',
     inviteViewRules: 'View Rules',
-    inviteUsdtTotal: 'USDT Earned',
+    inviteUsdtTotal: 'USDT Rebate',
     inviteNoobReward: '$Noob Invite Reward',
     inviteTickerEarned: 'earned',
     inviteNoRecords: 'No records yet',
