@@ -393,7 +393,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               <div className="text-sm font-medium dark:text-white">{isZh ? '① 安装并连接浏览器插件' : '① Install & connect browser extension'}</div>
               {extensionStatus === 'fail' && (
                 <div className="mt-2 space-y-2">
-                  <div className="text-xs text-red-500">{isZh ? '插件未连接，请选择安装方式：' : 'Extension not connected. Choose install method:'}</div>
+                  <div className="text-xs text-red-500">{isZh ? '插件未连接，请打开浏览器，如尚未安装，点击下方选项进行安装：' : 'Extension not connected. Open your browser; if not yet installed, click an option below to install:'}</div>
                   {installActionButtons}
                 </div>
               )}
