@@ -168,6 +168,19 @@ interface BrowserConn {
    *  the user must update. */
   connectedAt: number;
   lastActivityAt: number;
+  /** D1: Last time the bridge received ANY inbound message on this conn
+   *  (ping / pong / hello / tabs_changed / command response). Different
+   *  from lastActivityAt which only updates on command-correlated traffic.
+   *  Used by the global stale-conn scanner to detect "插件 SW 被 Chrome 杀
+   *  了 + WS 半开残留" — extension stops sending its 25s ping, we notice
+   *  within ~60s and force-destroy the socket. Without this, a dead conn
+   *  sits in browserConns until a command happens to be routed to it +
+   *  hits the B1 consecutiveTimeouts threshold (which itself takes 2 ×
+   *  command timeout = ~60s).
+   *
+   *  Initialized to connectedAt so a brand-new conn isn't immediately
+   *  flagged as stale before its first ping arrives. */
+  lastInboundAt: number;
   /** Consecutive sendBrowserCommand timeouts on this conn. After 2 in a
    *  row the socket is considered dead and force-destroyed (the close
    *  handler then removes it from browserConns). Reset to 0 on every
@@ -459,6 +472,9 @@ function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
     capabilities: new Set<string>(),
     connectedAt: Date.now(),
     lastActivityAt: Date.now(),
+    // D1: 初始化成 connectedAt,避免刚连上还没握手就被 60s 扫描器误杀。
+    // 之后任何 inbound message 都会刷新它(见 socket.on('data') 顶部)。
+    lastInboundAt: Date.now(),
     consecutiveTimeouts: 0,
   };
   // OS-level TCP keepalive — if the socket goes silently dead (system
@@ -480,6 +496,10 @@ function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
 
   let recvBuf = '';
   socket.on('data', (data) => {
+    // D1: 任何 inbound data 都算 conn "活着" — 哪怕是 ping、空帧、解析失败的
+    // 残片。早到上面是因为某些消息类型(pong / 没人接的 ping)会在下面 early
+    // return 跳过后续 setter,如果只在每个 case 里写一次容易漏。
+    conn.lastInboundAt = Date.now();
     recvBuf += data.toString('utf8');
     let newlineIdx;
     while ((newlineIdx = recvBuf.indexOf('\n')) >= 0) {
@@ -885,6 +905,53 @@ export function attachBrowserBridgeSse(httpServer: http.Server): void {
   console.log('[BrowserBridge] SSE mounted at /browser-bridge/events + /browser-bridge/send (Origin-gated)');
 }
 
+// D1: 全局 stale-conn 扫描器 —— 每 30s 扫一遍 browserConns,任何 conn 60s
+// 没收到 inbound message(包括 ext 那条 25s 间隔的 app-level ping)就视为死,
+// 主动 destroy 触发 close handler 把它从 map 移除。
+//
+// 为什么 60s 阈值:ext 每 25s 发一个 ping,正常情况 2 个 ping 周期 = 50s 内
+// 必有消息。留 60s 给 1 个 ping 的容忍(网络抖动 / 事件循环抖动 / ext SW
+// 重启间隙)。再保守一档 90s 也行,但 60s 已经能在用户感知前清掉死 conn。
+//
+// 为什么 30s 间隔:扫描自身开销可忽略,30s 是"发现 → 清理"延迟的上限。
+// 死 conn 最坏情况 60s 静默 + 30s 等下一次扫描 = 90s 内被剔除。
+//
+// 跟 B1 的关系:
+//   - B1 治"命令在跑期间死" — 2 次连续 timeout(60s)触发 destroy
+//   - D1 治"闲置期间死"     — 60s 没消息触发 destroy
+//   合起来覆盖全场景。
+let staleConnScanInterval: ReturnType<typeof setInterval> | null = null;
+const STALE_CONN_THRESHOLD_MS = 60_000;
+const STALE_CONN_SCAN_INTERVAL_MS = 30_000;
+
+function startStaleConnScanner(): void {
+  if (staleConnScanInterval) return;
+  staleConnScanInterval = setInterval(() => {
+    const now = Date.now();
+    for (const conn of browserConns.values()) {
+      if (conn.socket.destroyed) continue;
+      // 刚连上(connectedAt 也 = lastInboundAt)还没 60s 的不扫,避免误杀
+      // 还在握手的 conn。
+      const silentMs = now - conn.lastInboundAt;
+      if (silentMs > STALE_CONN_THRESHOLD_MS) {
+        console.warn(`[BrowserBridge] conn ${conn.id} silent for ${Math.round(silentMs / 1000)}s (no ping/response/hello) — force-destroying to clear stale browserConns entry`);
+        try { conn.socket.destroy(); } catch {}
+      }
+    }
+  }, STALE_CONN_SCAN_INTERVAL_MS);
+  // 让 Node 进程在没别的事时能正常退出 —— 不让这个 interval 锁住事件循环。
+  // electron main process 一般有别的 keepalive(BrowserWindow / IPC),所以
+  // unref 主要是给 sidecar 模式准备的。
+  try { (staleConnScanInterval as any).unref?.(); } catch {}
+}
+
+function stopStaleConnScanner(): void {
+  if (staleConnScanInterval) {
+    clearInterval(staleConnScanInterval);
+    staleConnScanInterval = null;
+  }
+}
+
 /**
  * Single entry point: wire BOTH transports onto the given HTTP server.
  * Replaces the old startBrowserBridge() which used to spin up a separate
@@ -893,9 +960,10 @@ export function attachBrowserBridgeSse(httpServer: http.Server): void {
 export function attachBrowserBridge(httpServer: http.Server): void {
   attachBrowserBridgeWebSocket(httpServer);
   attachBrowserBridgeSse(httpServer);
+  startStaleConnScanner();
   bridgeAttached = true;
   bridgePort = 18800;
-  console.log('[BrowserBridge] Attached (ws + sse) on shared HTTP server');
+  console.log('[BrowserBridge] Attached (ws + sse + stale-scanner) on shared HTTP server');
 }
 
 // --- Lifecycle ---
@@ -906,6 +974,10 @@ export function attachBrowserBridge(httpServer: http.Server): void {
 // + pending requests; it cannot stop the HTTP server itself.
 
 export async function stopBrowserBridge(): Promise<void> {
+  // D1: 先停扫描器,免得它在我们 destroy 这些 conn 之后还跑一次空扫描
+  // (无害,但日志会噪)。
+  stopStaleConnScanner();
+
   for (const [id, pending] of pendingRequests) {
     clearTimeout(pending.timer);
     pending.reject(new Error('Bridge shutting down'));

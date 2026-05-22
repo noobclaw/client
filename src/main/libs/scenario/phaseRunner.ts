@@ -461,12 +461,22 @@ function buildContext(
   // v5.x+: 加一道 anchor 预检 —— 路由命令(带 tabPattern)前先确保有匹配 tab,
   //   否则按 manifest.anchor_url 自启,绕开 chrome-extension anchorUrlFor 缺
   //   douyin / tiktok / youtube 分支的问题。
-  const abortableCmd = async (command: string, params: any, timeout: number): Promise<any> => {
-    if (progress.isAbortRequested()) throw new Error('user_stopped');
-    if (activePattern && !PREFLIGHT_SKIP.has(command)) {
-      await ensureTabExistsForPattern(activePattern);
-    }
-    return Promise.race([
+  // D3: 只对真正幂等 + 副作用可重放的命令开启 retry。
+  //   - navigate: 重复 navigate 到同一 URL,浏览器要么 no-op 要么 reload,
+  //     都不破坏业务逻辑。CDN 冷启动 / captcha challenge / 网络抖动场景
+  //     一次 35-45s 不算少见,1 次 retry 能救回一大半 timeout 失败。
+  //   - scroll:   重复 scroll 一段距离至多多滚一点,不影响后续 read。
+  //   - tab_list: 纯读,完全幂等。
+  // 显式不在表里的(click / runScript / editor_insert_text / main_world_click
+  // 等):可能引发重复点击、重复发推、重复扣费,绝对不能 retry。
+  const RETRYABLE_ON_TIMEOUT = new Set(['navigate', 'scroll', 'tab_list']);
+  // 命中下列错误信息 → 视为"卡死类失败"可 retry;其他错误(BROWSER_NOT_CONNECTED /
+  // user_stopped / 业务级错误)直接传上层,retry 救不了或不能 retry。
+  const isRetryableTimeoutError = (msg: string): boolean =>
+    /timed out after|hard-timeout after/i.test(msg);
+
+  const runOnceRace = (command: string, params: any, timeout: number): Promise<any> =>
+    Promise.race([
       sendBrowserCommand(command, params, timeout, getBridgeOpts()),
       abortPoll(progress.isAbortRequested),
       // B3: hard-timeout 兜底 —— 对齐 ctx.browser 的同款保险。如果
@@ -482,6 +492,33 @@ function buildContext(
         );
       }),
     ]);
+
+  const abortableCmd = async (command: string, params: any, timeout: number): Promise<any> => {
+    if (progress.isAbortRequested()) throw new Error('user_stopped');
+    if (activePattern && !PREFLIGHT_SKIP.has(command)) {
+      await ensureTabExistsForPattern(activePattern);
+    }
+    try {
+      return await runOnceRace(command, params, timeout);
+    } catch (err) {
+      // D3: timeout 类失败重试一次。第一次失败往往是 CDN 冷启动 / 一次
+      // 网络抖动 / B1 刚自愈完死 conn 还在重连;给一次重试比直接整个 step
+      // 失败友好得多。失败信息会 throw 到上层,orchestrator 的常规错误处理
+      // 路径会接住(scenario 多数 step 有 item-level 容错)。
+      const msg = String((err as any)?.message || err);
+      if (
+        !RETRYABLE_ON_TIMEOUT.has(command) ||
+        !isRetryableTimeoutError(msg) ||
+        progress.isAbortRequested()  // 用户停了 task 就别 retry 浪费时间
+      ) {
+        throw err;
+      }
+      coworkLog('WARN', 'phaseRunner', `abortableCmd "${command}" first attempt timed out, retrying once`, { err: msg.slice(0, 200) });
+      // 第二次再失败就老老实实把第二次的错误 throw 出去 — 不再 retry,
+      // 否则 retry 链可能无限延长,navigate 真挂 60s+ × 多次 = task 不
+      // finish。
+      return await runOnceRace(command, params, timeout);
+    }
   };
 
   // All drafts collected during this run (for saveDrafts)
