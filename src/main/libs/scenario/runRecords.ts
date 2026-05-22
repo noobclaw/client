@@ -180,6 +180,34 @@ function flushPending(): void {
   if (_dirty) persist();
 }
 
+/** Merge `partial` into `target`, treating `undefined` values as "no update".
+ *
+ *  Use this instead of `{ ...target, ...partial }` when callers may legitimately
+ *  pass undefined for fields they want to leave alone. Plain spread writes
+ *  the undefined key VERBATIM (it does NOT skip it), silently erasing any
+ *  prior value at that key. Real bug we hit in this codebase: live mirror
+ *  writes `rec.result.action_counts = {post: 3}` mid-run; finishRecord
+ *  later patches with `action_counts: undefined` on failure paths → spread
+ *  wipes the mirror → UI shows "上次完成 0" even though 3 posts went out.
+ *
+ *  Edge cases handled:
+ *   - target undefined → start from {} so the merged object always exists
+ *   - partial undefined / null → no-op, return existing target shallow copy
+ *   - explicit `null` in partial → written through (distinct from undefined;
+ *     callers wanting to clear a field should pass null, not undefined)
+ */
+function mergeDefined<T extends Record<string, any>>(
+  target: T | undefined,
+  partial: T | undefined,
+): T {
+  const out = { ...(target || {}) } as T;
+  if (!partial) return out;
+  for (const [k, v] of Object.entries(partial)) {
+    if (v !== undefined) (out as Record<string, any>)[k] = v;
+  }
+  return out;
+}
+
 let _initOnce = false;
 /** Initialize on app boot. Safe to call multiple times — only the first
  *  call performs the stale-running sweep.
@@ -269,7 +297,15 @@ export function updateRecordResult(
   if (!_loaded || !recordId) return;
   const rec = _records.find(r => r.id === recordId);
   if (!rec) return;
-  rec.result = { ...rec.result, ...partial };
+  // ⚠️ JS spread footgun: `{ ...{a: undefined} }` writes the key as undefined
+  // (it doesn't skip it), which silently ERASES previously-written values.
+  // Real repro from this codebase: the live mirror sets
+  //   rec.result.action_counts = {post: 3}
+  // mid-run, then finishRecord (or another partial update) is called with
+  // action_counts: undefined — plain spread would wipe the {post:3} we
+  // mirrored. mergeDefined preserves existing fields when the patch is
+  // undefined, treating undefined as "no update for this key".
+  rec.result = mergeDefined(rec.result, partial);
   scheduleDebouncedPersist();
 }
 
@@ -297,7 +333,9 @@ export function finishRecord(recordId: string, args: {
   }
   if (args.error) rec.error = args.error;
   if (args.summary) rec.summary = args.summary;
-  if (args.result) rec.result = { ...rec.result, ...args.result };
+  // Same footgun guard as updateRecordResult — terminal patches must not
+  // erase counts the live mirror already wrote.
+  if (args.result) rec.result = mergeDefined(rec.result, args.result);
   if (args.output_dir) rec.output_dir = args.output_dir;
   // Force-flush any pending debounced step-log writes too, so the
   // terminal status hits disk in a single atomic write together with

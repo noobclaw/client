@@ -469,6 +469,18 @@ function buildContext(
     return Promise.race([
       sendBrowserCommand(command, params, timeout, getBridgeOpts()),
       abortPoll(progress.isAbortRequested),
+      // B3: hard-timeout 兜底 —— 对齐 ctx.browser 的同款保险。如果
+      // sendBrowserCommand 内部 setTimeout 因事件循环阻塞 / SW 半死 /
+      // 进程被挂起没 fire,整个 await 永远 pending → ctx.navigate /
+      // ctx.scroll 卡死,orchestrator 后续 step 永远不跑。timeout+2000ms
+      // 强行 reject 把症状盖住(让上层走失败分支),原 sendBrowserCommand
+      // 的 timer 终会 fire 清 pendingRequests,不会泄漏。
+      new Promise<never>((_, reject) => {
+        setTimeout(
+          () => reject(new Error(`abortableCmd "${command}" hard-timeout after ${timeout + 2000}ms`)),
+          timeout + 2000,
+        );
+      }),
     ]);
   };
 
@@ -2146,9 +2158,22 @@ export async function runOrchestrator(
   } catch (err) {
     const msg = String(err instanceof Error ? err.message : err);
     coworkLog('ERROR', 'phaseRunner', 'orchestrator threw', { err: msg });
-    if (msg.includes('user_stopped')) {
-      return { status: 'failed', reason: 'user_stopped' };
+    // v5.x+: pull whatever the orchestrator already booked via ctx.addActionCount
+    // BEFORE rethrowing. Without this, a follow run that succeeded on 3/5
+    // items then died on item 4 (navigate timeout, abort, browser crash)
+    // would lose all 3 follows from the run record — the success path above
+    // does this merge, but the catch path used to skip it, so users saw
+    // "上次完成 0" even though the platform really got 3 follows.
+    // scenarioManager has a separate rescue via progressByTaskId.action_progress,
+    // but that's not guaranteed populated (bumpActionProgress may have raced or
+    // never run for some action types). Belt-and-suspenders: surface counts here.
+    const actionCounts = ctx._getActionCounts() as Record<string, number>;
+    const failResult: RunResult = msg.includes('user_stopped')
+      ? { status: 'failed', reason: 'user_stopped' }
+      : { status: 'failed', reason: msg };
+    if (Object.keys(actionCounts).length > 0) {
+      failResult.action_counts = actionCounts;
     }
-    return { status: 'failed', reason: msg };
+    return failResult;
   }
 }

@@ -529,28 +529,34 @@ function updateTaskRecordResult(taskId: string, result: any): void {
     // system_config price — no hardcoded rate on the client).
     const tokens = tokensByTaskId.get(taskId) || 0;
     const costUsd = costUsdByTaskId.get(taskId) || 0;
+    // Build the result payload, but DO NOT include action_counts /
+    // action_targets keys when they're undefined — the live mirror
+    // (mirrorActionProgressToRecord) has been writing real values into
+    // rec.result.action_counts throughout the run; passing the key with
+    // value undefined here would let runRecords' merge see it and (in
+    // older spread-based code) wipe the mirrored counts. Even with the
+    // mergeDefined guard in runRecords, keeping undefined off the wire
+    // is cleaner and one less footgun.
+    const resultPayload: any = {
+      collected_count: result.collected_count,
+      draft_count: result.draft_count,
+      posted: result.posted,
+      tokens_used: tokens,
+      cost_usd: costUsd,
+      ...result,
+    };
+    // v5.x+: action_counts is forwarded straight through so the task
+    // detail page can aggregate "累计完成" / "上次完成". action_targets
+    // is the planned quota (set via ctx.setActionTargets). Both come
+    // from `result` via the spread above when present; strip the key
+    // entirely (don't leave it as undefined) when not.
+    if (resultPayload.action_counts === undefined) delete resultPayload.action_counts;
+    if (resultPayload.action_targets === undefined) delete resultPayload.action_targets;
     runRecords.finishRecord(recordId, {
       // Don't change status here — finishProgress already set it. We're
       // just adding the result counts.
       status: undefined as any,
-      result: {
-        collected_count: result.collected_count,
-        draft_count: result.draft_count,
-        posted: result.posted,
-        // v5.x+: action_counts is forwarded straight through so the
-        // task detail page can aggregate "累计完成" / "上次完成". Empty
-        // object for runs where the orchestrator didn't call
-        // ctx.addActionCount (e.g. older scenarios pre-rollout).
-        action_counts: result.action_counts || undefined,
-        // v5.x+: action_targets (planned quotas declared via
-        // ctx.setActionTargets at run start) are also persisted so the
-        // run history list can render "X/Y" — actually achieved over
-        // planned — without re-fetching live progress.
-        action_targets: result.action_targets || undefined,
-        tokens_used: tokens,
-        cost_usd: costUsd,
-        ...result,
-      },
+      result: resultPayload,
     });
   } catch { /* non-fatal */ }
 }

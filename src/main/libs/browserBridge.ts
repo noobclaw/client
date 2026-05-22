@@ -524,6 +524,11 @@ function attachBrowserConn(socket: net.Socket, transport: 'ws' | 'sse'): void {
           clearTimeout(pending.timer);
           pendingRequests.delete(msg.id);
           conn.lastActivityAt = Date.now();
+          // B1: 收到响应(无论 success/failure) → 证明这条 conn 还活着,
+          // 重置连续超时计数。配合 sendBrowserCommand timer 那边的 ++ 和
+          // ">=2 force destroy" 形成自愈环 — 死 conn 自动剔除,不会一直
+          // 堵在 pickConnForPattern 选不动。
+          conn.consecutiveTimeouts = 0;
           if (msg.success) {
             pending.resolve(msg.data);
           } else {
@@ -1040,6 +1045,17 @@ export function sendBrowserCommand(
     const id = randomUUID();
     const timer = setTimeout(() => {
       pendingRequests.delete(id);
+      // B1: 真正接上 consecutiveTimeouts —— 这条 conn 又超时一次,累加。
+      // 满 2 次连续超时(中间没收到任何成功响应)就视为死,主动 destroy 触发
+      // 'close' handler 把它从 browserConns 移除。下一次 sendBrowserCommand
+      // 的 pickConnForPattern 不会再选它,renderer 那边状态自然变 fail。
+      // 修之前:字段一直挂着但没人 ++,死 conn 永远是 0,每个新命令都被路由
+      // 到死 conn → 30s timeout 循环。
+      conn.consecutiveTimeouts += 1;
+      if (conn.consecutiveTimeouts >= 2 && !conn.socket.destroyed) {
+        console.warn(`[BrowserBridge] conn ${conn.id} hit ${conn.consecutiveTimeouts} consecutive timeouts on "${command}" — force-destroying socket so a fresh extension reconnect replaces it`);
+        try { conn.socket.destroy(); } catch {}
+      }
       reject(new Error(`Browser command "${command}" timed out after ${timeoutMs}ms`));
     }, timeoutMs);
 
