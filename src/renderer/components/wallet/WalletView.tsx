@@ -8,7 +8,8 @@ import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
 import WindowTitleBar from '../window/WindowTitleBar';
-import PartnerApplyCard from '../invite/PartnerApplyCard';
+// v6.x: PartnerApplyCard 已从 WalletView 移除(改成 balance row 第 3 列跳邀请页),import 不再需要
+// import PartnerApplyCard from '../invite/PartnerApplyCard';
 
 interface WalletViewProps {
   onOpenSettings?: () => void;
@@ -157,6 +158,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [noobConfig, setNoobConfig] = useState<{ tokenSymbol: string; totalSupply: string; contractAddress: string; taxRate: string }>({ tokenSymbol: 'Noob', totalSupply: '1000000000', contractAddress: '', taxRate: '2' });
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [avatarError, setAvatarError] = useState('');
+  // v6.x: 我的充值页 balance row 加第 3 列 "收到返佣(USDT)" — 数字来自
+  //   /api/me/rebate/summary。跟 InviteView 同一份 endpoint(那边也 prefetch
+  //   同 endpoint 给顶部 USDT 总返佣 stat card 用),WalletView 自己单独 fetch
+  //   保持组件解耦,不依赖 InviteView 是否已经挂载过。失败 fallback 显示 0。
+  const [usdtRebateSummary, setUsdtRebateSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null>(null);
 
   // Credit detail state
   const [creditRecords, setCreditRecords] = useState<any[]>([]);
@@ -223,6 +229,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     noobClawApi.getNoobConfig().then((noobCfg) => {
       setNoobConfig(noobCfg);
     }).catch(() => { /* noob-related copy falls back to defaults */ });
+
+    // v6.x: USDT 真金返佣 summary — 给 balance row 第 3 列 "收到返佣(USDT)" 用
+    noobClawApi.getUsdtRebateSummary().then(s => { if (s) setUsdtRebateSummary(s); }).catch(() => {});
   };
 
   const loadNoobEarnings = useCallback(async (page = 1, reason = '', from = '', to = '') => {
@@ -1150,9 +1159,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
       {confirmDialogEl}
       <div className="flex-1 overflow-y-auto p-5 max-w-3xl mx-auto w-full space-y-4">
 
-        {/* v3.x partner program: 非合伙人在充值页顶部也展示 apply card,跟 InviteView
-            行为对齐。守卫 profile 已加载,避免登录前 / profile 还在拉时短暂闪。 */}
-        {profile && !profile.partner?.is_partner && <PartnerApplyCard />}
+        {/* v6.x: 我的充值页顶部不再放 PartnerApplyCard — 用户反馈"充值中心顶部
+            应该先看到充值,返佣比例是次要信息"。改成 balance row 第 3 列
+            "收到返佣(USDT)" 展示数字 + 查看链接跳邀请页(包括引导申请合伙人)。 */}
 
         {/* Wallet Header */}
         {/* v1.x: 合伙人 VIP 视觉框 — 跟 InviteView 顶部 PartnerHero 同一套:
@@ -1287,6 +1296,9 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
               {avatarError && <p className="text-xs text-red-400 mt-1">{avatarError}</p>}
             </div>
           </div>
+          {/* v6.x: 2 列扩 3 列 — 加 "收到返佣 (USDT)" 跳邀请页。三列等宽,
+              视觉上 Credits / NoobCoin / 返佣 各 1/3。点查看跳邀请返佣页
+              (onShowInvite,WalletView 自己不 navigate)。 */}
           <div className="flex items-stretch gap-4">
             {/* Token Balance - Left */}
             <div className="flex-1">
@@ -1304,7 +1316,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
-            {/* NoobCoin - Right */}
+            {/* NoobCoin - Middle */}
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
               <div className="flex items-center gap-2 mb-1">
                 <img src="logo.png" alt="NoobCoin" className="w-6 h-6 rounded-full" />
@@ -1314,6 +1326,23 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 <span className="text-xl font-bold text-primary">{Number(profile?.totalNoob || 0).toLocaleString()}</span>
                 <button
                   onClick={() => setSubPage('noobCoinDetail')}
+                  className="text-xs text-primary hover:underline flex items-center gap-0.5"
+                >
+                  {i18nService.t('walletView')}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+            </div>
+            {/* USDT Rebate - Right (v6.x) */}
+            <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{i18nService.t('walletUsdtRebateReceived')}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-primary">
+                  ${parseFloat(usdtRebateSummary?.total_earned || '0').toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => { if (onShowInvite) onShowInvite(); }}
                   className="text-xs text-primary hover:underline flex items-center gap-0.5"
                 >
                   {i18nService.t('walletView')}

@@ -573,9 +573,51 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             首屏闪一下。外层加 profile 守卫 — 只在已加载 profile 后才走二选一,
             登录前一直 hide(跟原版 `profile?.partner?.is_partner && PartnerHero`
             的行为对齐)。 */}
-        {profile && (profile?.partner?.is_partner
-          ? <PartnerHero partner={profile.partner} />
-          : <PartnerApplyCard />)}
+        {/* v6.x: 社交媒体登录的非合伙人 — 顶部从单卡片改成左右双卡片布局:
+            左 = 我的钱包(头像 / 我的钱包(BSC) / 地址 / 社媒账号),
+            右 = PartnerApplyCard compact 模式(字号 + 按钮文本都精简)。
+            其他情况(无社媒登录 / 已是合伙人)保持原 full-width 单卡片行为。 */}
+        {profile && profile?.partner?.is_partner && (
+          <PartnerHero partner={profile.partner} />
+        )}
+        {profile && !profile?.partner?.is_partner && authState.socialEmail && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 items-stretch">
+            {/* 左:我的钱包卡片(社交登录用户视觉锚点 — 把他的"我是谁" 集中展示) */}
+            <div className="p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center gap-3 min-w-0">
+              {/* avatar */}
+              <div className="shrink-0 w-12 h-12 rounded-full overflow-hidden border dark:border-claude-darkBorder border-claude-border bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
+                {authState.avatarUrl
+                  ? <img src={authState.avatarUrl} alt="" className="w-full h-full object-cover" />
+                  : <span className="text-white text-sm font-bold">
+                      {(authState.walletAddress || '').slice(2, 4).toUpperCase()}
+                    </span>}
+              </div>
+              {/* main col */}
+              <div className="flex-1 min-w-0">
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">
+                  {i18nService.t('walletMyWalletBsc')}
+                </div>
+                <div className="text-sm font-mono dark:text-claude-darkText text-claude-text truncate">
+                  {authState.walletAddress
+                    ? `${authState.walletAddress.slice(0, 8)}…${authState.walletAddress.slice(-6)}`
+                    : '—'}
+                </div>
+                {/* social account row (always present in this branch since socialEmail truthy) */}
+                <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">
+                  {authState.socialProvider === 'google' && <span style={{ color: '#ea4335' }}>●</span>}
+                  {authState.socialProvider === 'twitter' && <span style={{ color: '#fff' }}>𝕏</span>}
+                  {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
+                  <span className="truncate">{authState.socialEmail}</span>
+                </div>
+              </div>
+            </div>
+            {/* 右:缩小版 PartnerApplyCard */}
+            <PartnerApplyCard compact />
+          </div>
+        )}
+        {profile && !profile?.partner?.is_partner && !authState.socialEmail && (
+          <PartnerApplyCard />
+        )}
         {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
             高,右栏 details 容器靠 flex-1 应该撑满,实际不撑满)。grid 行内 cells
             默认 align: stretch,左右两栏一定等高,右栏 details 的 flex-1 在
