@@ -305,6 +305,30 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     return () => clearInterval(h);
   }, [runCheck]);
 
+  // ── 3 个 "Open xxx" 按钮的路由策略 (v6.x) ──────────────────────────
+  //
+  // 模态框检查项里凡是要 open tab 的按钮,按以下规则走 MCP(扩展自动归到
+  // noobclaw managed group)还是 window.open(普通新 tab):
+  //
+  //   主站(handleOpenXhs,永远第 1 站) ───── MCP 优先,失败 fallback window.open
+  //   第 2 平台,跨 tab 搬运(handleOpenSecondary) ─ MCP 优先,失败 fallback window.open
+  //   创作中心(handleOpenCreator,普通场景的第 2 站) ─ 直接 window.open
+  //
+  // 设计理由:
+  //   1. 主站永远第 1 站 — orchestrator 跑任务时所有 ctx.navigate 都基于
+  //      managed 主站 tab,必须 MCP。
+  //   2. 跨 tab 搬运(币安 from X)的第 2 平台(X) — orchestrator 在主站和
+  //      第 2 平台之间切换执行,所以两个都得是 managed,secondary 也走 MCP。
+  //   3. 创作中心 — orchestrator 通过 ctx.navigate 把已 managed 的主站 tab
+  //      跳转到 creator URL 来发布,不需要"用户开的 creator tab"本身被
+  //      managed。改成 window.open 后,如果用户已经有自己开着的 creator
+  //      tab 不会被扩展强行拉进 MCP group 打散原本的工作流。verify probe
+  //      用 chrome.tabs.query,看的是全部 tab,所以 window.open 的 tab 也能
+  //      被检测到。
+  //
+  // 任何 MCP 调用 throw 都有 try { window.open } 兜底,保证 user 一定能开 tab。
+  // ────────────────────────────────────────────────────────────────────
+
   const handleOpenXhs = async () => {
     setOpening(true);
     try {
