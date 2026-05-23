@@ -361,8 +361,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '智能寻找最近一周的爆款图文（0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，按评论 30-80 秒、文章 60-200 秒随机间隔安全发布。每次再按 0-30% 概率关注作者（每日 0-5 人随机封顶）。'
-                : 'Smartly finds viral notes from the last 7 days (0-6 random), AI replies + per-comment replies, 30-80s/60-200s safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).'}
+                ? '按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，全程模拟真人节奏随机抖动安全互动。可选顺手关注高潜作者，被动涨粉不留痕。'
+                : 'Mines this week\'s viral notes in your niche, AI crafts heartfelt replies plus per-comment responses, paced like a real human to stay under the radar. Optionally auto-follow promising authors — hands-free growth, no fingerprints.'}
             </p>
             <button
               type="button"

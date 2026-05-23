@@ -222,8 +222,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '互动涨粉' : 'Engage & Grow'}
           titleZh="推特 · 互动涨粉"
           titleEn="X Engage & Grow"
-          descZh="关注 KOL + 评论已关注 + 浏览 feed 挑推评论，每天 0-5 个动作随机打散，每个动作间 30 秒-10 分钟随机。"
-          descEn="Follow KOLs + reply to followed + scroll feed & reply. 0-5 actions/day, 30s-10min between actions."
+          descZh="锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，全程模拟真人节奏自然冒泡，被算法标记的概率更低。"
+          descEn="Locks onto your Web3 KOL pool for fresh alpha — AI drops opinionated replies under followed accounts and pounces on viral takes in the For You feed, paced like a real human to dodge algo flags."
           loading={loading}
           scenario={autoEngage}
           existingTasks={autoEngage ? tasksByScenario[autoEngage.id] || [] : []}
@@ -241,8 +241,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
           badge={isZh ? '自动发推' : 'Daily post'}
           titleZh="推特 · 自动发推"
           titleEn="X Auto Post"
-          descZh="全智能深度写作,40% feed 爆款仿写（字数≥100、浏览≥1000）/ 40% 按热点原创 / 20% 转推回应，三机制随机保持多样性。"
-          descEn="Fully intelligent deep writing: 40% viral feed-rewrite (≥100 chars, ≥1K views) / 40% trending original / 20% quote-tweet, randomized for variety."
+          descZh="三路引擎防同质化：feed 爆款深度仿写、热点原创快评、对大 V 引用回应，AI 按你的人设随机轮换，每天稳定产出不留模板痕。"
+          descEn="Three engines, zero template fatigue: deep-rewrites viral feed posts, drafts originals on live trends, quote-tweets influential voices — AI rotates through your persona for variety algorithms reward."
           loading={loading}
           scenario={postCreator}
           existingTasks={postCreator ? tasksByScenario[postCreator.id] || [] : []}
@@ -365,8 +365,8 @@ export const XWorkflowsPage: React.FC<Props> = ({
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh
-                ? '粘贴 1-20 条推文链接。AI 会解构每条钩子+结构，仿原推语言和风格写一条新推（不抄袭），逐条间隔 10-30 分钟发布。'
-                : 'Paste 1-20 tweet URLs. AI deconstructs hook + structure, rewrites in source language/style (no copying), posts with 10-30 min spacing.'}
+                ? '粘贴你看中的爆款推文，AI 拆解每条的钩子和结构，用你的语言风格重写成新推（不是搬运），逐条按真人节奏间隔发布。'
+                : 'Paste viral tweets you like. AI deconstructs each hook + structure and rewrites in your voice (not a repost), posting one by one at human pace.'}
             </p>
             <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
               {isZh ? '推文链接（每行 1 条）' : 'Tweet URLs (one per line)'}
@@ -422,7 +422,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
                     {isZh ? '🚀 自动发布到推特' : '🚀 Auto-post to Twitter'}
                   </div>
                   <div className="text-gray-500 dark:text-gray-400">
-                    {isZh ? '逐条间隔 10-30 分钟随机发布。⚠️ 推文一旦发布无法撤回。' : 'Posts with 10-30 min jitter. ⚠️ Tweets cannot be unposted.'}
+                    {isZh ? '逐条按真人节奏随机间隔发布。⚠️ 推文一旦发布无法撤回。' : 'Posts one by one with human-pace jitter. ⚠️ Tweets cannot be unposted.'}
                   </div>
                 </div>
               </label>
