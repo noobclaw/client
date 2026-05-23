@@ -144,6 +144,70 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     }
   },
   {
+    "id": "binance_from_xhs_viral",
+    "version": "1.0.0",
+    "platform": "binance",
+    "workflow_type": "viral_production",
+    "category": "creation",
+    "name_zh": "币安广场 · 小红书搬运",
+    "name_en": "Binance Square · Repost from Xiaohongshu",
+    "description_zh": "按关键词检索小红书爆文(近一周,数据不够延半年),AI 改写为币安风格,原图/视频(无水印)一并搬运上传到币安广场。运行期间占用小红书+币安两个标签页,不能并发其他任务。",
+    "description_en": "Search Xiaohongshu by keywords for viral notes (last 7 days, fallback 6 months), AI rewrite into Binance-style posts, repost with original images/video (watermark-free) to Binance Square. Locks both Xiaohongshu + Binance tabs while running.",
+    "icon": "📕",
+    "default_config": {
+      "keywords": [],
+      "persona": "中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-23:00"
+    },
+    "risk_caps": {
+      "max_daily_runs": 1,
+      "max_scroll_per_run": 30,
+      "min_scroll_delay_ms": 3000,
+      "max_scroll_delay_ms": 10000,
+      "read_dwell_min_ms": 10000,
+      "read_dwell_max_ms": 45000,
+      "max_run_duration_ms": 3600000,
+      "min_interval_hours": 24,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "max_posts_per_day": 100,
+      "inter_post_jitter_ms": [
+        60000,
+        120000
+      ],
+      "feed_scroll_min": 3,
+      "feed_scroll_max": 12,
+      "min_xhs_likes": 50,
+      "min_post_chars": 100,
+      "max_post_chars": 1600,
+      "max_images_per_post": 4
+    },
+    "required_login_url": "https://www.binance.com/square",
+    "tab_url_pattern": "^https?://(www\\.)?binance\\.com/(?:[^/]+/)?square",
+    "anchor_url": "https://www.binance.com/square",
+    "secondary_anchor_url": "https://www.xiaohongshu.com/explore",
+    "additional_tab_patterns": [
+      "^https?://(www\\.)?xiaohongshu\\.com/"
+    ],
+    "secondary_tab_url_pattern": "^https?://(www\\.)?xiaohongshu\\.com/",
+    "entry_urls": {
+      "home": "https://www.binance.com/square",
+      "xhs_explore": "https://www.xiaohongshu.com/explore"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "rewriter": "prompts/rewriter.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "binance_square_auto_engage",
     "version": "1.0.0",
     "platform": "binance",
@@ -151,8 +215,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "币安广场互动涨粉",
     "name_en": "Binance Square Engage & Grow",
-    "description_zh": "每天随机做 0-5 个动作：关注币安广场加密 KOL、给热门帖子写有观点的 AI 回复。动作间隔 5 秒-1 分钟随机，模拟真人节奏，避免 spam。",
-    "description_en": "Each day randomly performs 0-5 actions: follow crypto KOLs on Binance Square and post AI-drafted opinionated replies to hot Square posts. 5s-1min randomized spacing between actions to mimic a real user.",
+    "description_zh": "锁定币安广场上的加密 KOL，AI 写出有观点的深度回复 + 真实点赞，贴着真人节奏自然冒泡，提高被广场推荐流抓到的概率。",
+    "description_en": "Locks onto Binance Square crypto KOLs — AI crafts opinionated replies and drops authentic likes, paced like a real user so the Square recommend engine picks you up.",
     "icon": "🤝",
     "default_config": {
       "keywords": [],
@@ -214,8 +278,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "creation",
     "name_zh": "币安广场自动发帖",
     "name_en": "Binance Square Auto Post",
-    "description_zh": "每日自动发一条币安广场短帖：从你关注的 token 列表里挑一个，AI 按你的 persona 写 200-300 字市场快评，自动加 #BTC 等 cashtag，安全发布或暂存草稿。",
-    "description_en": "Auto-post one Binance Square short note per day. Picks a token from your watchlist, AI drafts 200-300 char market commentary in your persona, auto-tags cashtags, publishes or saves draft.",
+    "description_zh": "每天从你关注的 token 里抽一个，AI 按你的人设原创写一条深度市场快评，自动挂 $BTC/$ETH 等 cashtag，蹭到币种页流量被币安老用户主动看到。",
+    "description_en": "Picks a token from your watchlist daily, AI drafts an opinionated market take in your persona, auto-tags with $BTC/$ETH cashtags to surface in token-page traffic where Binance veterans actually scroll.",
     "icon": "📊",
     "default_config": {
       "keywords": [
@@ -1627,8 +1691,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "推特互动涨粉",
     "name_en": "X Engage & Grow",
-    "description_zh": "每天随机做 0-3 个动作：关注 web3 KOL、评论已关注 KOL 的最新推、刷推荐流挑一条评论。所有动作随机时间随机间隔，模拟真人。",
-    "description_en": "Each day randomly performs 0-3 actions: follow web3 KOLs, reply to followed KOLs' latest tweets, scroll the For You feed and reply to one. All randomized to look human.",
+    "description_zh": "锁定 Web3 KOL 池跟踪 alpha，AI 给已关注大佬的新推写有观点的回复，再去推荐流抓爆点跟评，全程模拟真人节奏自然冒泡，被算法标记的概率更低。",
+    "description_en": "Locks onto your Web3 KOL pool for fresh alpha — AI drops opinionated replies under followed accounts and pounces on viral takes in the For You feed, paced like a real human to dodge algo flags.",
     "icon": "🐦",
     "default_config": {
       "keywords": [],
@@ -1739,8 +1803,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "creation",
     "name_zh": "推特自动发推",
     "name_en": "X Auto Post",
-    "description_zh": "每天随机抽一个机制自动发一条推：30% feed 仿写 / 30% 按热点原创 / 40% 引用 feed 推回应。每天 1 条，随机时间发布。",
-    "description_en": "Each day randomly pick one mechanism and post a single tweet: 30% rewrite from feed / 30% original on a current topic / 40% quote-tweet a feed post.",
+    "description_zh": "三路引擎防同质化：feed 爆款深度仿写、热点原创快评、对大 V 引用回应，AI 按你的人设随机轮换，每天稳定产出不留模板痕。",
+    "description_en": "Three engines, zero template fatigue: deep-rewrites viral feed posts, drafts originals on live trends, quote-tweets influential voices — AI rotates through your persona for variety algorithms reward.",
     "icon": "📝",
     "default_config": {
       "keywords": [],
@@ -1803,8 +1867,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "engagement",
     "name_zh": "小红书互动涨粉",
     "name_en": "XHS Engage & Grow",
-    "description_zh": "按赛道关键词找近一周高评论文章（每日 0-6 篇随机），AI 一次生成「文章评论 + 用户回复」，2-10 分钟随机间隔安全发布。每篇按 30% 概率关注作者（每日 0-5 人随机封顶）。",
-    "description_en": "Daily: 0-6 random high-comment articles by track keyword, AI replies + per-comment replies, 2-10 min safe jitter. Optionally follow the author (~30% chance, capped 0-5 follows/day).",
+    "description_zh": "按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，全程模拟真人节奏随机抖动安全互动。可选顺手关注高潜作者，被动涨粉不留痕。",
+    "description_en": "Mines this week's viral notes in your niche, AI crafts heartfelt replies plus per-comment responses, paced like a real human to stay under the radar. Optionally auto-follow promising authors — hands-free growth, no fingerprints.",
     "icon": "💬",
     "default_config": {
       "keywords": [
