@@ -18,6 +18,133 @@ import type { Scenario } from '../services/scenario';
 
 export const DEFAULT_SCENARIOS: Scenario[] = ([
   {
+    "id": "binance_from_douyin_viral",
+    "version": "1.0.0",
+    "platform": "binance",
+    "workflow_type": "viral_production",
+    "category": "creation",
+    "name_zh": "币安广场 · 抖音搬运",
+    "name_en": "Binance Square · Repost from Douyin",
+    "description_zh": "按关键词检索抖音爆文(视频 + 图文),AI 改写文案,视频去水印 + 图文一并搬运上传到币安广场。运行期间占用抖音+币安两个标签页。",
+    "description_en": "Search Douyin by keywords for viral content (video + image-text), AI rewrite caption, repost watermark-free video + image-text to Binance Square. Locks both Douyin + Binance tabs while running.",
+    "icon": "🎵",
+    "default_config": {
+      "keywords": [],
+      "persona": "中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-23:00"
+    },
+    "risk_caps": {
+      "max_daily_runs": 1,
+      "max_scroll_per_run": 20,
+      "min_scroll_delay_ms": 3000,
+      "max_scroll_delay_ms": 10000,
+      "read_dwell_min_ms": 10000,
+      "read_dwell_max_ms": 45000,
+      "max_run_duration_ms": 3600000,
+      "min_interval_hours": 24,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "max_posts_per_day": 100,
+      "inter_post_jitter_ms": [
+        60000,
+        120000
+      ],
+      "feed_scroll_min": 3,
+      "feed_scroll_max": 12,
+      "min_post_chars": 100,
+      "max_post_chars": 1600,
+      "max_images_per_post": 4,
+      "max_video_per_post": 1
+    },
+    "required_login_url": "https://www.binance.com/square",
+    "tab_url_pattern": "^https?://(www\\.)?binance\\.com/(?:[^/]+/)?square",
+    "anchor_url": "https://www.binance.com/square",
+    "secondary_anchor_url": "https://www.douyin.com/",
+    "additional_tab_patterns": [
+      "^https?://(www\\.)?douyin\\.com/"
+    ],
+    "secondary_tab_url_pattern": "^https?://(www\\.)?douyin\\.com/",
+    "entry_urls": {
+      "home": "https://www.binance.com/square",
+      "douyin_home": "https://www.douyin.com/"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "rewriter": "prompts/rewriter.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
+    "id": "binance_from_tiktok_viral",
+    "version": "1.0.0",
+    "platform": "binance",
+    "workflow_type": "viral_production",
+    "category": "creation",
+    "name_zh": "币安广场 · TikTok 搬运",
+    "name_en": "Binance Square · Repost from TikTok",
+    "description_zh": "按英文关键词检索 TikTok 视频,AI 改写文案,视频去水印一并搬运上传到币安广场。仅视频(TikTok 无图文)。运行期间占用 TikTok + 币安两个标签页。",
+    "description_en": "Search TikTok by EN keywords for viral videos, AI rewrite caption, repost watermark-free video to Binance Square. Video only (TikTok has no image-text feed). Locks both TikTok + Binance tabs while running.",
+    "icon": "🎬",
+    "default_config": {
+      "keywords": [],
+      "persona": "中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-23:00"
+    },
+    "risk_caps": {
+      "max_daily_runs": 1,
+      "max_scroll_per_run": 20,
+      "min_scroll_delay_ms": 3000,
+      "max_scroll_delay_ms": 10000,
+      "read_dwell_min_ms": 10000,
+      "read_dwell_max_ms": 45000,
+      "max_run_duration_ms": 3600000,
+      "min_interval_hours": 24,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "max_posts_per_day": 100,
+      "inter_post_jitter_ms": [
+        60000,
+        120000
+      ],
+      "feed_scroll_min": 2,
+      "feed_scroll_max": 8,
+      "min_post_chars": 100,
+      "max_post_chars": 1600,
+      "max_video_per_post": 1
+    },
+    "required_login_url": "https://www.binance.com/square",
+    "tab_url_pattern": "^https?://(www\\.)?binance\\.com/(?:[^/]+/)?square",
+    "anchor_url": "https://www.binance.com/square",
+    "secondary_anchor_url": "https://www.tiktok.com/explore",
+    "additional_tab_patterns": [
+      "^https?://(www\\.)?tiktok\\.com/"
+    ],
+    "secondary_tab_url_pattern": "^https?://(www\\.)?tiktok\\.com/",
+    "entry_urls": {
+      "home": "https://www.binance.com/square",
+      "tiktok_explore": "https://www.tiktok.com/explore"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "rewriter": "prompts/rewriter.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "binance_from_x_link",
     "version": "1.0.0",
     "platform": "binance",
@@ -1983,6 +2110,70 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "orchestrator": "orchestrator.js",
       "upload_draft_script": "upload_draft.js",
       "draft_uploader": "draft_uploader.json"
+    }
+  },
+  {
+    "id": "xhs_reply_fans_comment",
+    "version": "1.0.0",
+    "platform": "xhs",
+    "workflow_type": "xhs_reply_fans_comment",
+    "category": "engagement",
+    "name_zh": "小红书 · 回复粉丝评论",
+    "name_en": "Xiaohongshu Reply Fan Comments",
+    "description_zh": "自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应，可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。打开创作者中心 → 逐篇笔记 → 读粉丝评论 → AI 生成回复 → 模拟真人节奏发送，全程不碰主笔记输入框。",
+    "description_en": "Auto-reply to fan comments under your published Xiaohongshu notes. AI tailors each reply to the comment, with optional probability-based funnel phrase weaving. Skips comments you've already replied to or your own. Iterates note-by-note from Creator Center with human-paced timing.",
+    "icon": "💌",
+    "default_config": {
+      "funnel_phrase": "",
+      "funnel_probability": 50,
+      "daily_count_min": 5,
+      "daily_count_max": 15,
+      "max_replies_per_note": 5,
+      "schedule_window": "10:00-22:00"
+    },
+    "risk_caps": {
+      "max_daily_runs": 2,
+      "max_scroll_per_run": 30,
+      "min_scroll_delay_ms": 2000,
+      "max_scroll_delay_ms": 5000,
+      "read_dwell_min_ms": 5000,
+      "read_dwell_max_ms": 15000,
+      "max_run_duration_ms": 3600000,
+      "min_interval_hours": 4,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "min_reply_interval_ms": 30000,
+      "max_reply_interval_ms": 90000,
+      "min_note_interval_ms": 45000,
+      "max_note_interval_ms": 150000,
+      "max_replies_per_note": 10,
+      "max_notes_per_run": 30,
+      "daily_count_cap": 80,
+      "funnel_probability_min": 1,
+      "funnel_probability_max": 100,
+      "comment_list_load_scrolls": 6,
+      "comment_load_retry_max": 3,
+      "comment_load_retry_pause_ms": 2000
+    },
+    "required_login_url": "https://creator.xiaohongshu.com/",
+    "tab_url_pattern": "^https?://([\\w-]+\\.)?xiaohongshu\\.com/",
+    "anchor_url": [
+      "https://creator.xiaohongshu.com/new/note-manager",
+      "https://www.xiaohongshu.com/explore"
+    ],
+    "entry_urls": {
+      "note_manager": "https://creator.xiaohongshu.com/new/note-manager",
+      "note_detail": "https://www.xiaohongshu.com/explore/{noteId}?xsec_source=pc_creatormng"
+    },
+    "skills": {
+      "prompts": {
+        "fan_reply_body": "prompts/fan_reply_body.txt",
+        "funnel_polish": "prompts/funnel_polish.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
     }
   },
   {
