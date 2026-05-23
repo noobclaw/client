@@ -312,7 +312,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   //
   //   主站(handleOpenXhs,永远第 1 站) ───── MCP 优先,失败 fallback window.open
   //   第 2 平台,跨 tab 搬运(handleOpenSecondary) ─ MCP 优先,失败 fallback window.open
-  //   创作中心(handleOpenCreator,普通场景的第 2 站) ─ 直接 window.open
+  //   创作中心(handleOpenCreator,普通场景的第 2 站) ─ window.open + popup
+  //                                                  features 强制开**独立窗口**
   //
   // 设计理由:
   //   1. 主站永远第 1 站 — orchestrator 跑任务时所有 ctx.navigate 都基于
@@ -378,7 +379,18 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
     setOpening(true);
     try {
-      try { window.open(creatorUrl, '_blank'); } catch { /* popup blocker / no shell — verify probe will still run */ }
+      // v6.x: 在**独立窗口**里开 creator,而不是落到当前 noobclaw managed 窗口
+      //   的 tab strip 末尾(用户反馈"新 tab 紧挨着 XHS · NoobClaw 组,跟我
+      //   原本的 publishing 工作流又串到一起")。
+      //   `popup,width=...,height=...` features 让 Chrome / Edge / Firefox 把
+      //   新 tab 提升为独立窗口,跟原窗口完全分离 — verify probe (tab_list)
+      //   仍然看得到这个 tab(不限窗口),所以 check 一样能 pass。
+      try {
+        window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
+      } catch {
+        // popup blocker / 异常 features → fallback 普通 _blank,verify probe 仍跑
+        try { window.open(creatorUrl, '_blank'); } catch {}
+      }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
