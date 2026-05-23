@@ -13,6 +13,7 @@ import type { Scenario, Task } from '../../services/scenario';
 import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 import { TikTokConfigWizard } from './TikTokConfigWizard';
 import { DouyinConfigWizard } from './DouyinConfigWizard';
+import { BinanceSourceViralWizard } from './BinanceSourceViralWizard';
 import { DouyinImageTextWizard } from './DouyinImageTextWizard';
 import { XhsImageTextWizard } from './XhsImageTextWizard';
 
@@ -385,6 +386,24 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'tiktok_auto_engage') {
     return (
       <TikTokConfigWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // v6.x: 币安批量搬运的 3 个新源(xhs/douyin/tiktok)走独立 wizard。
+  //   推特 binance_from_x_repost / binance_from_x_link 沿用本文件下方的
+  //   通用 ConfigWizard 流程(它们认 binance_from_x 模式的字段)。
+  if (
+    scenario.id === 'binance_from_xhs_viral'
+    || scenario.id === 'binance_from_douyin_viral'
+    || scenario.id === 'binance_from_tiktok_viral'
+  ) {
+    return (
+      <BinanceSourceViralWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}

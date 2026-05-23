@@ -18,6 +18,7 @@ import { i18nService } from '../../services/i18n';
 import { type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
+import { SourcePickerModal, type RepostSource } from './SourcePickerModal';
 
 interface Props {
   scenarios: Scenario[];           // already filtered to platform='binance' by parent
@@ -44,6 +45,10 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
   const [loginModalReason, setLoginModalReason] = useState<string | null>(null);
   const [maxTasksModalOpen, setMaxTasksModalOpen] = useState(false);
   const [pendingScenario, setPendingScenario] = useState<Scenario | null>(null);
+  // v6.x: 批量搬运扩展到 4 源 (X / XHS / Douyin / TikTok) — 卡点击先弹源选择器,
+  // 选完后再走对应 secondaryPlatform 的 login 检查 + 对应 wizard。
+  // 不存"已选源",因为 pendingScenario.id 已经唯一编码了源。
+  const [sourcePickerOpen, setSourcePickerOpen] = useState(false);
 
   const MAX_TASKS = 5;
 
@@ -56,8 +61,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 自动发帖',
     name_en: 'Binance Square Auto Post',
-    description_zh: '每日 AI 写一条 100-300 字文章,自动带 $TOKEN cashtag,发到币安广场。',
-    description_en: 'Daily AI-drafted 100-300 char article, auto-tagged with $TOKEN cashtags, posted to Binance Square.',
+    description_zh: '每天从你关注的 token 里抽一个,AI 按你的人设原创写一条深度市场快评,自动挂 $BTC/$ETH 等 cashtag 蹭币种页流量。',
+    description_en: 'Picks a token from your watchlist daily, AI drafts an opinionated market take in your persona, auto-tags with $BTC/$ETH cashtags to surface in token-page traffic.',
     icon: '🔶',
     default_config: {
       keywords: ['BTC', 'ETH', 'SOL'],
@@ -94,8 +99,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'engagement',
     name_zh: '币安广场 · 互动涨粉',
     name_en: 'Binance Square Engage & Grow',
-    description_zh: '每次运行关注币安广场加密 KOL + 给热门帖写 AI 回复,动作间随机间隔。',
-    description_en: 'Daily follow Binance Square crypto KOLs + AI-drafted replies to hot posts.',
+    description_zh: '锁定币安广场上的加密 KOL,AI 写出有观点的深度回复 + 真实点赞,贴着真人节奏自然冒泡,提高被广场推荐流抓到的概率。',
+    description_en: 'Locks onto Binance Square crypto KOLs — AI crafts opinionated replies and authentic likes, paced like a real user so the Square recommend engine picks you up.',
     icon: '🤝',
     default_config: {
       keywords: [],
@@ -190,6 +195,111 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     scenarios.find(s => s.id === 'binance_from_x_link')
     || FROM_X_LINK_FALLBACK;
 
+  // v6.x: 3 个新搬运源 fallback。backend scenarios 待 PR2-4 落地。
+  // 这里的 fallback 让 PR1 阶段 UI 可点,wizard 可保存。
+  const FROM_XHS_VIRAL_FALLBACK: Scenario = {
+    id: 'binance_from_xhs_viral',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'viral_production',
+    category: 'creation',
+    name_zh: '币安广场 · 小红书搬运',
+    name_en: 'Binance Square · Repost from Xiaohongshu',
+    description_zh: '按关键词检索小红书一周爆文(数据不够延半年),AI 改写,图文/视频(无水印)搬到币安。',
+    description_en: 'Search Xiaohongshu by keywords (1-week, fallback 6-month), AI rewrite, repost image/video (watermark-free) to Binance.',
+    icon: '📕',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 30,
+      min_scroll_delay_ms: 3000, max_scroll_delay_ms: 10000,
+      read_dwell_min_ms: 10000, read_dwell_max_ms: 45000,
+      max_run_duration_ms: 3600000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const fromXhsViral =
+    scenarios.find(s => s.id === 'binance_from_xhs_viral')
+    || FROM_XHS_VIRAL_FALLBACK;
+
+  const FROM_DOUYIN_VIRAL_FALLBACK: Scenario = {
+    id: 'binance_from_douyin_viral',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'viral_production',
+    category: 'creation',
+    name_zh: '币安广场 · 抖音搬运',
+    name_en: 'Binance Square · Repost from Douyin',
+    description_zh: '按关键词搜抖音(优先一周),AI 改写文案,视频去水印 + 图文一并搬到币安。',
+    description_en: 'Search Douyin by keywords (prefer last week), AI rewrite, watermark-removed video + image-text repost to Binance.',
+    icon: '🎵',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 30,
+      min_scroll_delay_ms: 3000, max_scroll_delay_ms: 10000,
+      read_dwell_min_ms: 10000, read_dwell_max_ms: 45000,
+      max_run_duration_ms: 3600000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const fromDouyinViral =
+    scenarios.find(s => s.id === 'binance_from_douyin_viral')
+    || FROM_DOUYIN_VIRAL_FALLBACK;
+
+  // TikTok: 仅视频 (TikTok 无图文 feed)。Wizard 会 lock mediaFilter='video_only'。
+  const FROM_TIKTOK_VIRAL_FALLBACK: Scenario = {
+    id: 'binance_from_tiktok_viral',
+    version: '1.0.0',
+    platform: 'binance' as any,
+    workflow_type: 'viral_production',
+    category: 'creation',
+    name_zh: '币安广场 · TikTok 搬运',
+    name_en: 'Binance Square · Repost from TikTok',
+    description_zh: '按英文关键词搜 TikTok,AI 改写文案(中/英可选),视频去水印搬到币安。仅视频。',
+    description_en: 'Search TikTok by EN keywords, AI rewrite (zh/en optional), watermark-removed video repost to Binance. Video only.',
+    icon: '🎬',
+    default_config: {
+      keywords: [],
+      persona: '中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '09:00-23:00',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 1, max_scroll_per_run: 30,
+      min_scroll_delay_ms: 3000, max_scroll_delay_ms: 10000,
+      read_dwell_min_ms: 10000, read_dwell_max_ms: 45000,
+      max_run_duration_ms: 3600000, min_interval_hours: 24,
+      weekly_rest_days: 1, cooldown_captcha_hours: 24,
+      cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    },
+    required_login_url: 'https://www.binance.com/square',
+    entry_urls: {},
+    skills: {},
+  };
+  const fromTiktokViral =
+    scenarios.find(s => s.id === 'binance_from_tiktok_viral')
+    || FROM_TIKTOK_VIRAL_FALLBACK;
+
   // (previously we polled running task ids to drive the inline running-glow
   //  on the "已有任务" list. That list was removed — MyTasksPage is the
   //  single source of truth for running state now. No polling needed here.)
@@ -215,6 +325,22 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     }
   };
 
+  // 用户在 SourcePickerModal 选了源后走这里:
+  //   x       → 沿用原 binance_from_x_repost 流程 (推特保持现状)
+  //   xhs     → binance_from_xhs_viral
+  //   douyin  → binance_from_douyin_viral
+  //   tiktok  → binance_from_tiktok_viral
+  // 4 个都要再过一遍 LoginRequiredModal (币安 + 对应 secondaryPlatform)。
+  const handleSourcePicked = (source: RepostSource) => {
+    setSourcePickerOpen(false);
+    const scenarioForSource: Scenario =
+      source === 'x'      ? fromXRepost
+      : source === 'xhs'    ? fromXhsViral
+      : source === 'douyin' ? fromDouyinViral
+      :                       fromTiktokViral;
+    handleStart(scenarioForSource);
+  };
+
   const tasksByScenario: Record<string, Task[]> = {};
   for (const t of tasks) {
     const key = t.scenario_id;
@@ -231,22 +357,33 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     <div className="p-6 max-w-6xl mx-auto">
       {/* Scenario cards — same layout as X: jump straight to cards, no hero */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* v4.25.4: 推特搬运放第一个 — 主推卖点 */}
+        {/* v4.25.4: 推特搬运放第一个 — 主推卖点
+            v6.x: 扩展到 4 源(X / XHS / Douyin / TikTok),点卡先弹 SourcePickerModal */}
         <BinanceCard
           emoji="🔁"
           badgeZh="批量搬运"
-          badgeEn="X batch repost"
+          badgeEn="Batch repost"
           titleZh="币安广场 · 批量搬运"
-          titleEn="Binance Square · Repost from X"
-          descZh="从推特 feed 挑爆款帖(图文/视频贴),AI 进行内容深度改写为币安风格,原图片/视频一并搬过来发。⚠️ 运行期间占用推特 + 币安两个标签页,需双平台都登录。"
-          descEn="Pull viral tweets from X (images & videos both supported), AI rewrite in Chinese Binance style, repost with original media. ⚠️ Locks both X + Binance tabs while running."
-          tagsLine={isZh ? '跨平台搬运 · 图文 + 视频 · 深度二创 · 爆文接入' : 'Cross-platform · Image + video · Deep rewrite · Viral library'}
+          titleEn="Binance Square · Batch Repost"
+          descZh="从 X / 小红书 / 抖音 / TikTok 任选一个源挑爆款,AI 深度改写为币安风格,图文/视频(去水印)一并搬过来发。⚠️ 运行期间占用源平台 + 币安两个标签页,需双平台都登录。"
+          descEn="Pull viral posts from X / Xiaohongshu / Douyin / TikTok, AI rewrite in Binance style, repost with original media (watermark-free). ⚠️ Locks source + Binance tabs while running."
+          tagsLine={isZh ? '4 源可选 · 图文 + 视频 · 深度二创 · 去水印' : '4 sources · Image + video · Deep rewrite · Watermark-free'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
           loading={loading}
           scenario={fromXRepost}
-          onStart={() => handleStart(fromXRepost)}
+          onStart={() => {
+            if (tasks.length >= MAX_TASKS) {
+              setMaxTasksModalOpen(true);
+              return;
+            }
+            if (!noobClawAuth.getState().isAuthenticated) {
+              noobClawAuth.requireLoginUI();
+              return;
+            }
+            setSourcePickerOpen(true);
+          }}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
@@ -260,8 +397,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="Engage & Grow"
           titleZh="币安广场 · 互动涨粉"
           titleEn="Binance Square Engage & Grow"
-          descZh="关注币安广场加密 KOL +深度内容回复+点赞,每天 0-5 个动作随机打散,每个动作间 30 秒-10 分钟随机。"
-          descEn="Follow Binance Square crypto KOLs + AI-drafted opinionated replies to hot posts. 0-5 actions/day, 30s-10min spacing."
+          descZh="锁定币安广场上的加密 KOL，AI 写出有观点的深度回复 + 真实点赞，贴着真人节奏自然冒泡，提高被广场推荐流抓到的概率。"
+          descEn="Locks onto Binance Square crypto KOLs — AI crafts opinionated replies and drops authentic likes, paced like a real user so the Square recommend engine picks you up."
           tagsLine={isZh ? '关注 · 回复 · 点赞 · 随机节奏' : 'Follow · Reply · Like · Randomized pacing'}
           ctaZh={autoEngage ? '开始互动' : '敬请期待'}
           ctaEn={autoEngage ? 'Start' : 'Coming Soon'}
@@ -282,9 +419,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="Daily post"
           titleZh="币安广场 · 自动发帖"
           titleEn="Binance Square Auto Post"
-          descZh="AI 按你的人设原创写一条 100-1900 字文章或接入爆款文章进行改写,自动带 $BTC 等 Tag 触发 token 页流量。"
-          descEn="AI writes an original 100-300 char article in your persona, or picks from the viral library and rewrites it. Auto-tagged with $TICKER cashtags to drive token-page traffic."
-          tagsLine={isZh ? 'AI 原创 · $TICKER 导流 · 爆文接入' : 'AI original · $TICKER traffic · Viral library'}
+          descZh="每天从你关注的 token 里抽一个，AI 按你的人设原创写一条深度市场快评，自动挂 $BTC/$ETH 等 cashtag，蹭到币种页流量被币安老用户主动看到。"
+          descEn="Picks a token from your watchlist daily, AI drafts an opinionated market take in your persona, auto-tags with $BTC/$ETH cashtags to surface in the token page traffic where Binance veterans actually scroll."
+          tagsLine={isZh ? 'AI 原创 · 人设输出 · $TICKER 导流' : 'AI original · Persona-driven · $TICKER traffic'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}
@@ -349,14 +486,31 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
 
       {/* Login gate — binance platform opens binance.com/square.
           v4.25.4: 推特搬运是跨 tab 任务,要同时检查 X tab。其他 binance scenario
-          只检查 binance。 */}
+          只检查 binance。
+          v6.x: 批量搬运的 secondaryPlatform 跟着用户选的源走 (x/xhs/douyin/tiktok)。
+          binance_from_x_link 沿用 x,因为只有粘链接没走源选择器。 */}
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
           platform="binance"
-          secondaryPlatform={(pendingScenario?.id === 'binance_from_x_repost' || pendingScenario?.id === 'binance_from_x_link') ? 'x' : undefined}
+          secondaryPlatform={(() => {
+            const id = pendingScenario?.id;
+            if (id === 'binance_from_x_repost' || id === 'binance_from_x_link') return 'x';
+            if (id === 'binance_from_xhs_viral') return 'xhs';
+            if (id === 'binance_from_douyin_viral') return 'douyin';
+            if (id === 'binance_from_tiktok_viral') return 'tiktok';
+            return undefined;
+          })() as any}
           onCancel={() => { setLoginModalReason(null); setPendingScenario(null); }}
           onConfirmed={handleLoginConfirmed}
+        />
+      )}
+
+      {/* Source picker — 批量搬运卡的前置 modal。4 个源选其一。 */}
+      {sourcePickerOpen && (
+        <SourcePickerModal
+          onPick={handleSourcePicked}
+          onCancel={() => setSourcePickerOpen(false)}
         />
       )}
 
