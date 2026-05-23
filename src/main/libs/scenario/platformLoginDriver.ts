@@ -162,7 +162,10 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   }
   if (url) routeOpts.anchor_url = url;
   try {
-    await sendBrowserCommand('tab_create', { url }, 8000, routeOpts);
+    // v6.x: 8000ms → 3000ms。本地 IPC ACK 一般 50-200ms 就回,3 秒留 15x buffer
+    //   足够。扩展真挂死时,8s 等待对用户体感太长(只看到按钮转 "..."),3s
+    //   配合 renderer 端 probe-before-fallback 修了双开 race。
+    await sendBrowserCommand('tab_create', { url }, 3000, routeOpts);
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: String(err) };
@@ -241,7 +244,10 @@ export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: 
   }
   if (url) routeOpts.anchor_url = url;
   try {
-    await sendBrowserCommand('tab_create', { url }, 8000, routeOpts);
+    // v6.x: 8000ms → 3000ms,跟 openPlatformLogin 对齐。注:LoginRequiredModal
+    //   的 handleOpenCreator 已经改成直接 window.open,这函数当前不被 UI
+    //   调用 — 保留 + 缩短 timeout 是为了将来如果再启用时不出双开 race。
+    await sendBrowserCommand('tab_create', { url }, 3000, routeOpts);
     return { ok: true };
   } catch (err) {
     return { ok: false, reason: String(err) };

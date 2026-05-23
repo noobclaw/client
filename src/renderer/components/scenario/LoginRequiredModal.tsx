@@ -337,7 +337,18 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
       // sidecar's xhsDriver now respects the platform arg and tells the
       // extension to open the right URL.
       const res = await scenarioService.openXhsLogin(platform);
-      if (!res.ok) { try { window.open(platformUrl, '_blank'); } catch {} }
+      if (!res.ok) {
+        // v6.x race fix: MCP 调用超时不代表扩展没处理 — sendBrowserCommand
+        //   设 3s timeout,扩展实际开 tab 可能要 4-6s。直接 fallback window.open
+        //   就会"既开了扩展 tab,又开了 window.open tab"双开。这里给扩展再
+        //   1.5s buffer,然后 probe 一次 checkXhsLogin,看到 tab 已经存在就
+        //   skip fallback,避免重复 tab。
+        await new Promise(r => setTimeout(r, 1500));
+        const probe = await scenarioService.checkXhsLogin(platform);
+        if (!probe.loggedIn) {
+          try { window.open(platformUrl, '_blank'); } catch {}
+        }
+      }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
@@ -357,7 +368,14 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     setOpening(true);
     try {
       const res = await scenarioService.openXhsLogin(secondaryPlatform);
-      if (!res.ok) { try { window.open(platformUrlOf(secondaryPlatform), '_blank'); } catch {} }
+      if (!res.ok) {
+        // 同 handleOpenXhs 的 race 修复:probe 一次,扩展已经开了就 skip fallback
+        await new Promise(r => setTimeout(r, 1500));
+        const probe = await scenarioService.checkXhsLogin(secondaryPlatform);
+        if (!probe.loggedIn) {
+          try { window.open(platformUrlOf(secondaryPlatform), '_blank'); } catch {}
+        }
+      }
       setTimeout(() => void runCheck(), 2000);
     } finally {
       setOpening(false);
