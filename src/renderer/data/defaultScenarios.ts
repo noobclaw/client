@@ -2155,17 +2155,18 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "funnel_probability_max": 100,
       "comment_list_load_scrolls": 6,
       "comment_load_retry_max": 3,
-      "comment_load_retry_pause_ms": 2000
+      "comment_load_retry_pause_ms": 2000,
+      "new_tab_wait_ms": 4000,
+      "max_new_tab_wait_ms": 12000
     },
     "required_login_url": "https://creator.xiaohongshu.com/",
-    "tab_url_pattern": "^https?://([\\w-]+\\.)?xiaohongshu\\.com/",
-    "anchor_url": [
-      "https://creator.xiaohongshu.com/new/note-manager",
-      "https://www.xiaohongshu.com/explore"
-    ],
+    "tab_url_pattern": "^https?://creator\\.xiaohongshu\\.com/",
+    "anchor_url": "https://creator.xiaohongshu.com/new/note-manager",
+    "secondary_tab_url_pattern": "^https?://(www\\.)?xiaohongshu\\.com/(explore|search_result)",
+    "secondary_anchor_url": "https://www.xiaohongshu.com/explore",
     "entry_urls": {
       "note_manager": "https://creator.xiaohongshu.com/new/note-manager",
-      "note_detail": "https://www.xiaohongshu.com/explore/{noteId}?xsec_source=pc_creatormng"
+      "explore_home": "https://www.xiaohongshu.com/explore"
     },
     "skills": {
       "prompts": {
