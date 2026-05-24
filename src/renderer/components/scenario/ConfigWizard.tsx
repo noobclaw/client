@@ -13,7 +13,6 @@ import type { Scenario, Task } from '../../services/scenario';
 import { YoutubeConfigWizard } from './YoutubeConfigWizard';
 import { TikTokConfigWizard } from './TikTokConfigWizard';
 import { DouyinConfigWizard } from './DouyinConfigWizard';
-import { BinanceSourceViralWizard } from './BinanceSourceViralWizard';
 import { DouyinImageTextWizard } from './DouyinImageTextWizard';
 import { XhsImageTextWizard } from './XhsImageTextWizard';
 import { XhsReplyFansCommentWizard } from './XhsReplyFansCommentWizard';
@@ -395,23 +394,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     );
   }
 
-  // v6.x: 币安批量搬运的 3 个新源(xhs/douyin/tiktok)走独立 wizard。
-  //   推特 binance_from_x_repost / binance_from_x_link 沿用本文件下方的
-  //   通用 ConfigWizard 流程(它们认 binance_from_x 模式的字段)。
-  if (
-    scenario.id === 'binance_from_xhs_viral'
-    || scenario.id === 'binance_from_douyin_viral'
-    || scenario.id === 'binance_from_tiktok_viral'
-  ) {
-    return (
-      <BinanceSourceViralWizard
-        scenario={scenario}
-        initialTask={initialTask}
-        onCancel={onCancel}
-        onSave={onSave}
-      />
-    );
-  }
+  // v6.x removed: 之前给 binance_from_{xhs,douyin,tiktok}_viral 单独做了
+  //   BinanceSourceViralWizard。用户反馈"新 wizard 跟推特搬运不一致,统一即可"
+  //   后已删除,4 个源 (x/xhs/douyin/tiktok) 共用本文件下方的通用 ConfigWizard
+  //   流程 — 复用 isBinanceFromXRepost 分支的 keywords/persona/daily/media_filter
+  //   字段。TikTok 在 media_filter 区块被 lock 成 video_only(下面 mediaFilter
+  //   useState 初值 + 渲染时 disabled 处理)。
 
   // 抖音也走独立 wizard (TikTok 的中国版,但 DOM / 入口 / 登录都不同)。
   if (scenario.id === 'douyin_auto_engage') {
@@ -496,7 +484,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // v4.25+: 跨 tab 场景 —— 同 binance_square_post_creator 类似的表单结构
   // (keywords/persona/daily 条数),但跑时占用双 tab + 从 X 挑素材。Wizard
   // 走跟 binance_post_creator 完全同一份输入流程,orchestrator 内部差异。
-  const isBinanceFromXRepost = scenario.id === 'binance_from_x_repost';
+  //
+  // v6.x: 扩展到 4 源批量搬运(x/xhs/douyin/tiktok)— 都共享同一组字段
+  // (keywords/persona/daily/media_filter),只是 orchestrator 接的不同源平台。
+  // TikTok 在 media_filter 区块需要锁死 video_only(TikTok 无图文 feed)。
+  const isBinanceFromXRepost =
+    scenario.id === 'binance_from_x_repost'
+    || scenario.id === 'binance_from_xhs_viral'
+    || scenario.id === 'binance_from_douyin_viral'
+    || scenario.id === 'binance_from_tiktok_viral';
+  const isBinanceTiktokViral = scenario.id === 'binance_from_tiktok_viral';
   // v4.31.18: 币安广场 · 推特链接仿写 — 跟 x_link_rewrite 一样吃 URL 列表,
   // 一次性运行,**不**显示 token / 调度 / daily_post 这些常规发帖字段。
   const isBinanceFromXLink = scenario.id === 'binance_from_x_link';
@@ -628,6 +625,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // v4.31.27: binance_from_x_repost 媒体类型筛选 (all / image_only / video_only)。
   // image_only: 只挑图文推,跳过视频;video_only: 优先视频,无视频时降级图文。
   const [mediaFilter, setMediaFilter] = useState<'all' | 'image_only' | 'video_only'>(() => {
+    // v6.x: TikTok 无图文 feed,锁死 video_only(用户在 wizard 里也禁选别的)
+    if (isBinanceTiktokViral) return 'video_only';
     const v = (initialTask as any)?.media_filter;
     if (v === 'image_only' || v === 'video_only' || v === 'all') return v;
     return 'all';
@@ -1001,26 +1000,38 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                     {isZh ? '🎞 媒体类型' : '🎞 Media type'}
+                    {isBinanceTiktokViral && (
+                      <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
+                        {isZh ? '(TikTok 无图文 feed,锁仅视频)' : '(TikTok video-only, no image-text feed)'}
+                      </span>
+                    )}
                   </label>
                   <div className="flex gap-2">
                     {([
                       { v: 'all' as const,        label: isZh ? '全部'   : 'All' },
                       { v: 'image_only' as const, label: isZh ? '仅图文' : 'Images only' },
                       { v: 'video_only' as const, label: isZh ? '仅视频' : 'Videos only' },
-                    ]).map(opt => (
-                      <button
-                        key={opt.v}
-                        type="button"
-                        onClick={() => setMediaFilter(opt.v)}
-                        className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
-                          mediaFilter === opt.v
-                            ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
-                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
-                        }`}
-                      >
-                        {opt.label}
-                      </button>
-                    ))}
+                    ]).map(opt => {
+                      // v6.x: TikTok 锁死 video_only — 其他两项禁用
+                      const lockedForTiktok = isBinanceTiktokViral && opt.v !== 'video_only';
+                      return (
+                        <button
+                          key={opt.v}
+                          type="button"
+                          disabled={lockedForTiktok}
+                          onClick={() => { if (!lockedForTiktok) setMediaFilter(opt.v); }}
+                          className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
+                            lockedForTiktok
+                              ? 'border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed bg-gray-50 dark:bg-gray-900/40'
+                              : mediaFilter === opt.v
+                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                          }`}
+                        >
+                          {opt.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
