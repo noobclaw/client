@@ -201,6 +201,23 @@ const STEP_NAMES_AUTOREPLY_EN = [
   'Generate and post comments per article',
   'Save this run report to disk',
 ];
+// XHS 回复粉丝评论 4 步 — 跟 orchestrator.js 里的 stepLog 阶段对齐:
+//   STEP 1: 抓创作者中心笔记列表
+//   STEP 2: 探测当前登录用户 uid (去重判定用)
+//   STEP 3: 逐篇笔记进详情页 + AI 生成回复 + 发送
+//   STEP 4: 汇总报告
+const STEP_NAMES_XHS_REPLY_FANS_ZH = [
+  '进入创作者中心，扫描你已发布的笔记',
+  '探测当前登录账号',
+  '逐篇笔记读评论，AI 生成回复并发送',
+  '汇总本次任务',
+];
+const STEP_NAMES_XHS_REPLY_FANS_EN = [
+  'Enter Creator Center and scan your published notes',
+  'Detect current logged-in account',
+  'Walk each note, AI-generate replies and post',
+  'Summarize the run',
+];
 const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
   '准备本次动作清单',
   '逐个执行关注 / 回复 / 点赞',
@@ -377,6 +394,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
     if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
     if (sid === 'douyin_image_text') return isZh ? STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH : STEP_NAMES_DOUYIN_IMAGE_TEXT_EN;
+    if (sid === 'xhs_reply_fans_comment') return isZh ? STEP_NAMES_XHS_REPLY_FANS_ZH : STEP_NAMES_XHS_REPLY_FANS_EN;
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -736,6 +754,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'douyin_image_text')              return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'xhs_image_text')                 return { icon: '📝', label: isZh ? '小红书 · 图文创作' : 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+    if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: isZh ? '小红书 · 回复粉丝评论' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
     // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.
@@ -1454,11 +1473,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
             /* v6.x: 只有 publish-to-creator-center 类场景才检查 creator 子域登录。
                douyin_auto_engage / xhs_auto_reply_universal 只用主站交互,不要
-               卡 creator 中心(否则用户每次 run 任务都得开 creator tab,体验差)。 */
+               卡 creator 中心(否则用户每次 run 任务都得开 creator tab,体验差)。
+               xhs_reply_fans_comment 从创作者中心抓自己的笔记列表,然后跳主站
+               详情页发回复 — 两个站都要登录,所以也要 requireCreatorCenter。 */
             requireCreatorCenter={
               task.scenario_id === 'douyin_image_text'
               || task.scenario_id === 'xhs_image_text'
               || task.scenario_id === 'xhs_viral_production_career'
+              || task.scenario_id === 'xhs_reply_fans_comment'
             }
             onCancel={() => setLoginModalOpen(false)}
             onConfirmed={handleLoginConfirmed}
@@ -1504,11 +1526,15 @@ function formatActionBreakdown(
     const isEngageScenario = !isPostScenario && (
       sid.endsWith('_auto_engage')
       || sid === 'xhs_auto_reply_universal'
+      || sid === 'xhs_reply_fans_comment'
     );
     if (isPostScenario) {
       counts = { post: 0 };
     } else if (isEngageScenario) {
-      counts = { like: 0, comment: 0, follow: 0 };
+      // xhs_reply_fans_comment 只产生 'comment' 计数,不发 like/follow;
+      // 其他 engage 场景三档都跑 — 这里用 sid 区分,避免显示 "👍 0 · ➕ 0" 误导用户
+      // (回复粉丝评论不会涨赞数 / 不会关注新人)。
+      counts = sid === 'xhs_reply_fans_comment' ? { comment: 0 } : { like: 0, comment: 0, follow: 0 };
     } else {
       return '-';
     }

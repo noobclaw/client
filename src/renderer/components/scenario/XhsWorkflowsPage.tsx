@@ -190,6 +190,28 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     } as any,
   };
   const imageTextScenario = scenarios.find(s => s.id === 'xhs_image_text') || IMAGE_TEXT_FALLBACK;
+
+  // Reply-fans-comment scenario lookup (v6+). Fallback id must match backend
+  // scenario folder so the wizard can boot before /scenarios returns.
+  const REPLY_FANS_FALLBACK: Scenario = {
+    ...FALLBACK_SCENARIO,
+    id: 'xhs_reply_fans_comment',
+    workflow_type: 'xhs_reply_fans_comment' as any,
+    name_zh: '小红书 · 回复粉丝评论',
+    name_en: 'XHS Reply Fan Comments',
+    description_zh: '自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应,可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。',
+    description_en: 'Auto-reply to fan comments under your published Xiaohongshu notes. AI tailors each reply, with optional probability-based funnel weaving. Skips comments you\'ve already replied to or your own.',
+    icon: '💌',
+    default_config: {
+      funnel_phrase: '',
+      funnel_probability: 50,
+      daily_count_min: 5,
+      daily_count_max: 15,
+      max_replies_per_note: 5,
+      schedule_window: '10:00-22:00',
+    } as any,
+  };
+  const replyFansScenario = scenarios.find(s => s.id === 'xhs_reply_fans_comment') || REPLY_FANS_FALLBACK;
   // (autoReplyTask lookup removed v2.4.27 — card always opens wizard for
   //  a NEW task instead of resuming an existing one. Kept the scenario
   //  lookup above since the wizard still needs the scenario reference.)
@@ -313,6 +335,18 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     setLoginModalReason('image_text');
   };
 
+  const handleReplyFansClick = () => {
+    if (tasks.length >= MAX_TASKS) {
+      setMaxTasksModalOpen(true);
+      return;
+    }
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.requireLoginUI();
+      return;
+    }
+    setLoginModalReason('reply_fans');
+  };
+
   const handleQuickStart = () => {
     // Gate: max 5 tasks
     if (tasks.length >= MAX_TASKS) {
@@ -338,6 +372,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
       onConfigure(autoReplyScenario);
     } else if (reason === 'image_text') {
       onConfigure(imageTextScenario);
+    } else if (reason === 'reply_fans') {
+      onConfigure(replyFansScenario);
     } else {
       onConfigure(primaryScenario);
     }
@@ -400,7 +436,33 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 3. Image-text creation (3 段灵感 → AI 改写 → 配图二选一 → 草稿箱) */}
+        {/* 3. Reply fan comments (v6+) — 回自己笔记下的粉丝评论,可选引流尾巴 */}
+        <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '粉丝维护' : 'Fan Engagement'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              💌 {i18nService.currentLanguage === 'zh' ? '小红书 · 回复粉丝评论' : 'XHS Reply Fan Comments'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '自动打开创作者中心,逐篇笔记进去,AI 一条条回复粉丝评论。可填核心引流语,按你设的概率自然衔接到回复尾巴。已回复过的、自己留的评论自动跳过,真人节奏间隔,稳维护粉丝。'
+                : 'Auto-walks your Creator Center, replies to each fan comment via AI. Optional funnel phrase woven into reply tail by your set probability. Skips already-replied / self comments, human-paced.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleReplyFansClick}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-fuchsia-500 text-white hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
+            >
+              💌 {i18nService.currentLanguage === 'zh' ? '开始回复' : 'Start Replying'} →
+            </button>
+          </div>
+        </div>
+
+        {/* 4. Image-text creation (3 段灵感 → AI 改写 → 配图二选一 → 草稿箱) */}
         <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-pink-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
@@ -579,6 +641,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           /* v6.x: 只有发布到 creator.xiaohongshu.com 子域的场景才需要 creator
              中心登录 — image_text(图文创作) 和 linkmode/quickstart(爆款仿写
              也是发到 creator)。autoreply(互动)只用主站,跳过 creator 检查。
+             reply_fans(粉丝评论回复)从创作者中心进笔记列表,然后跳主站详情
+             页发回复,两个都要登录 → requireCreatorCenter=true。
              loginModalReason 在调用点 setLoginModalReason 时传的关键字 —
              见 line 283/301/313/328。 */
           requireCreatorCenter={loginModalReason !== 'autoreply'}

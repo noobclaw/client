@@ -16,6 +16,7 @@ import { DouyinConfigWizard } from './DouyinConfigWizard';
 import { BinanceSourceViralWizard } from './BinanceSourceViralWizard';
 import { DouyinImageTextWizard } from './DouyinImageTextWizard';
 import { XhsImageTextWizard } from './XhsImageTextWizard';
+import { XhsReplyFansCommentWizard } from './XhsReplyFansCommentWizard';
 
 // ── Track presets ──
 type TrackPreset = {
@@ -442,6 +443,20 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   if (scenario.id === 'xhs_image_text') {
     return (
       <XhsImageTextWizard
+        scenario={scenario}
+        initialTask={initialTask}
+        onCancel={onCancel}
+        onSave={onSave}
+      />
+    );
+  }
+
+  // 小红书自动回复粉丝评论 — 独立 wizard,字段全新:引流语 textarea + 概率
+  // slider + 每次目标 min/max + 单篇上限。跟 auto_reply 完全不同(那个是
+  // 给别人的爆文留评论涨粉,这个是回自己笔记下的粉丝评论)。
+  if (scenario.id === 'xhs_reply_fans_comment') {
+    return (
+      <XhsReplyFansCommentWizard
         scenario={scenario}
         initialTask={initialTask}
         onCancel={onCancel}
