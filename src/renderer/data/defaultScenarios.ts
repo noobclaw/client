@@ -2160,10 +2160,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "max_new_tab_wait_ms": 12000
     },
     "required_login_url": "https://creator.xiaohongshu.com/",
-    "tab_url_pattern": "^https?://creator\\.xiaohongshu\\.com/",
+    "tab_url_pattern": "^https?://([\\w-]+\\.)?xiaohongshu\\.com/",
     "anchor_url": "https://creator.xiaohongshu.com/new/note-manager",
-    "secondary_tab_url_pattern": "^https?://(www\\.)?xiaohongshu\\.com/explore/[a-f0-9]+",
-    "secondary_anchor_url": "https://creator.xiaohongshu.com/new/note-manager",
     "entry_urls": {
       "note_manager": "https://creator.xiaohongshu.com/new/note-manager",
       "explore_home": "https://www.xiaohongshu.com/explore"
