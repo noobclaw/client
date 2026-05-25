@@ -374,6 +374,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'binance_square_auto_engage')     return { icon: '🤝', zh: '币安广场 · 互动涨粉', en: 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
                 if (sid === 'binance_square_post_creator')    return { icon: '🔶', zh: '币安广场 · 自动发帖', en: 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
                 if (sid === 'binance_from_x_repost')          return { icon: '🔁', zh: '币安广场 · 推特批量搬运', en: 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                // v6.x: 3 个新搬运源 — 跟 binance_from_x_repost 同 family,各自独立 label
+                if (sid === 'binance_from_xhs_viral')         return { icon: '📕', zh: '币安广场 · 小红书批量搬运', en: 'Binance · Repost from Xiaohongshu', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+                if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', zh: '币安广场 · 抖音批量搬运', en: 'Binance · Repost from Douyin', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', zh: '币安广场 · TikTok 批量搬运', en: 'Binance · Repost from TikTok', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'binance_from_x_link')          return { icon: '🔗', zh: '币安广场 · 推特链接仿写', en: 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'youtube_auto_engage')          return { icon: '📺', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -527,8 +531,12 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `${rMin}-${rMax}` : `${task.daily_count || 1}`;
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
                           }
-                          // post_creator(Binance/X)+ binance_from_x_repost:daily_post_min/max
-                          if (sid === 'binance_square_post_creator' || sid === 'x_post_creator' || sid === 'binance_from_x_repost') {
+                          // post_creator(Binance/X)+ binance_from_x_repost + v6.x 3 个新源:daily_post_min/max
+                          if (sid === 'binance_square_post_creator' || sid === 'x_post_creator'
+                              || sid === 'binance_from_x_repost'
+                              || sid === 'binance_from_xhs_viral'
+                              || sid === 'binance_from_douyin_viral'
+                              || sid === 'binance_from_tiktok_viral') {
                             const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
                               ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
                             return `⏰ ${scheduleLabel(task, isZh)} · ${pStr} ${isZh ? '条/次' : '/run'}`;
@@ -578,6 +586,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'x_post_creator' ||
                       sid === 'binance_from_x_repost' ||
                       sid === 'binance_from_x_link' ||
+                      // v6.x: 3 个新源 wizard 共用同字段
+                      sid === 'binance_from_xhs_viral' ||
+                      sid === 'binance_from_douyin_viral' ||
+                      sid === 'binance_from_tiktok_viral' ||
                       sid === 'x_link_rewrite' ||
                       sid === 'douyin_image_text' ||
                       sid === 'xhs_viral_production_career'

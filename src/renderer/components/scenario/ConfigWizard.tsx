@@ -494,6 +494,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     || scenario.id === 'binance_from_douyin_viral'
     || scenario.id === 'binance_from_tiktok_viral';
   const isBinanceTiktokViral = scenario.id === 'binance_from_tiktok_viral';
+  // v6.x: 4 源批量搬运共用 wizard,但标题/描述/确认按钮要按源显示对应平台名,
+  // 否则用户从小红书搬运,UI 全是"推特"字样,体验断裂(user-reported bug)。
+  const repostSource: { zh: string; en: string; emoji: string; sourceTab: string } = (() => {
+    if (scenario.id === 'binance_from_xhs_viral')
+      return { zh: '小红书', en: 'Xiaohongshu', emoji: '📕', sourceTab: 'xiaohongshu.com' };
+    if (scenario.id === 'binance_from_douyin_viral')
+      return { zh: '抖音', en: 'Douyin', emoji: '🎵', sourceTab: 'douyin.com' };
+    if (scenario.id === 'binance_from_tiktok_viral')
+      return { zh: 'TikTok', en: 'TikTok', emoji: '🎬', sourceTab: 'tiktok.com' };
+    return { zh: '推特', en: 'X', emoji: '🐦', sourceTab: 'x.com' };
+  })();
   // v4.31.18: 币安广场 · 推特链接仿写 — 跟 x_link_rewrite 一样吃 URL 列表,
   // 一次性运行,**不**显示 token / 调度 / daily_post 这些常规发帖字段。
   const isBinanceFromXLink = scenario.id === 'binance_from_x_link';
@@ -971,7 +982,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               : isXPostCreator
                 ? (isZh ? '配置 Twitter 发推' : 'Configure X Post Creator')
                 : isBinanceFromXRepost
-                  ? (isZh ? '配置币安广场 · 推特批量搬运' : 'Configure Binance · Repost from X (Batch)')
+                  ? (isZh ? `配置币安广场 · ${repostSource.zh}批量搬运` : `Configure Binance · Repost from ${repostSource.en} (Batch)`)
                   : isBinancePostCreator
                     ? (isZh ? '配置币安广场发帖' : 'Configure Binance Square Post')
                   : isAutoReply
@@ -1837,12 +1848,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isBinanceFromXRepost ? (
                     <>
                       <li>{isZh
-                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从推特 feed 挑带图爆款,AI 进行深度改写为币安风格(语言跟随原帖),带图上传`
-                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral image tweets from X, AI rewrites in Binance style (matches source language), reuses original images`}</li>
-                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 运行期间占用 X + 币安两个标签页,不能同时跑其他任务 — 需要两个平台都打开并登录' : '⚠️ Locks both X + Binance tabs while running — other tasks on either platform are blocked. Both must be logged in before starting.'}</li>
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 从${repostSource.zh}爆款挑选(${isBinanceTiktokViral ? '仅视频' : '图文/视频'}),AI 深度改写为币安风格(语言跟随原帖),原媒体一并搬运`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · Picks viral posts from ${repostSource.en} (${isBinanceTiktokViral ? 'video only' : 'image + video'}), AI rewrites in Binance style (matches source language), reuses original media`}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh ? `⚠️ 运行期间占用 ${repostSource.sourceTab} + 币安两个标签页,不能同时跑其他任务 — 需要两个平台都打开并登录` : `⚠️ Locks both ${repostSource.sourceTab} + Binance tabs while running — other tasks on either platform are blocked. Both must be logged in before starting.`}</li>
                       <li>{isZh ? '· 每篇自动检测登录态,未登录直接报错终止(不会白跑)' : '· Auto-checks login on both platforms; if either is logged out the run aborts early'}</li>
                       <li>{isZh ? '· 帖子发布后无法撤回,建议第一次运行后人工检查改写风格' : '· Posts cannot be unposted — review output after first run to confirm the rewrite tone.'}</li>
-                      <li className="text-amber-600 dark:text-amber-400">{isZh ? '⚠️ 大陆用户:需要 VPN / 代理同时访问 x.com 和 binance.com' : '⚠️ Mainland China users: need VPN / proxy that reaches both x.com and binance.com'}</li>
+                      <li className="text-amber-600 dark:text-amber-400">{isZh
+                        ? (/x\.com|tiktok\.com/.test(repostSource.sourceTab)
+                            ? `⚠️ 大陆用户:需要 VPN / 代理同时访问 ${repostSource.sourceTab} 和 binance.com`
+                            : `⚠️ 大陆用户:确保 ${repostSource.sourceTab} 和 binance.com 都能正常访问(币安可能需要代理)`)
+                        : (/x\.com|tiktok\.com/.test(repostSource.sourceTab)
+                            ? `⚠️ Mainland China users: need VPN / proxy that reaches both ${repostSource.sourceTab} and binance.com`
+                            : `⚠️ Mainland China users: ensure both ${repostSource.sourceTab} and binance.com are reachable (Binance may need a proxy)`)}</li>
                     </>
                   ) : isBinancePostCreator ? (
                     <>
@@ -1885,7 +1902,7 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   : isXPostCreator
                     ? (isZh ? '确认并启用 Twitter 发推' : 'Confirm & Enable X Post Creator')
                     : isBinanceFromXRepost
-                      ? (isZh ? '确认并启用币安广场 · 推特批量搬运' : 'Confirm & Enable Binance · Repost from X (Batch) (Batch)')
+                      ? (isZh ? `确认并启用币安广场 · ${repostSource.zh}批量搬运` : `Confirm & Enable Binance · Repost from ${repostSource.en} (Batch)`)
                       : isBinancePostCreator
                         ? (isZh ? '确认并启用币安广场发帖' : 'Confirm & Enable Binance Square Post')
                         : isLinkRewriteScenario

@@ -67,6 +67,10 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (sid === 'binance_square_auto_engage')  return { icon: '🤝', label: isZh ? '币安广场 · 互动涨粉' : 'Binance Square Engage & Grow', color: 'text-yellow-500 bg-yellow-500/10 border-yellow-500/30' };
   if (sid === 'binance_square_post_creator') return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
   if (sid === 'binance_from_x_repost')       return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+  // v6.x: 3 个新搬运源 — 跟 MyTasksPage label 对齐
+  if (sid === 'binance_from_xhs_viral')      return { icon: '📕', label: isZh ? '币安广场 · 小红书批量搬运' : 'Binance · Repost from Xiaohongshu', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+  if (sid === 'binance_from_douyin_viral')   return { icon: '🎵', label: isZh ? '币安广场 · 抖音批量搬运' : 'Binance · Repost from Douyin', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+  if (sid === 'binance_from_tiktok_viral')   return { icon: '🎬', label: isZh ? '币安广场 · TikTok 批量搬运' : 'Binance · Repost from TikTok', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'binance_from_x_link')       return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   // Douyin / YouTube / TikTok — explicit sid matches BEFORE the workflow_type
   // fallback below, otherwise their workflow_type='auto_reply' / 'viral_production'
