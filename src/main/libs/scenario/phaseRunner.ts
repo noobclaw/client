@@ -593,7 +593,10 @@ function buildContext(
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       const t = timeout || 10000;
       // v5.x+: anchor 预检 — 路由命令前确保有匹配 tab(参考 abortableCmd)。
-      if (activePattern && !PREFLIGHT_SKIP.has(command)) {
+      // v5.27+: 调用方手动塞了 params.tabId(走 task-tab 显式路由)就跳过 preflight,
+      // 否则会按 activePattern 多开个 anchor tab。scoped 操作正确流程。
+      const hasExplicitTabId = params && (params as any).tabId;
+      if (activePattern && !PREFLIGHT_SKIP.has(command) && !hasExplicitTabId) {
         await ensureTabExistsForPattern(activePattern);
       }
       return Promise.race([
@@ -2134,9 +2137,187 @@ function buildContext(
     // Internal accessor used by runOrchestrator to fold counts into the
     // final RunResult so they get persisted on the run record.
     _getActionCounts: () => ({ ...actionCounts }),
+
+    // ── v5.27+ task-tab API (Phase D — explicit per-task tabId routing) ──
+    //
+    // 老架构问题:一个平台一个 NoobClaw managed group,同平台多 tab(XHS
+    // creator + explore)在同一 group 里 → findOrOpenTabByPattern 用 tabs[0]
+    // 拿 group 第一个 tab,多 tab 时返回顺序不定 → 路由歧义。
+    //
+    // 新架构(扩展 v1.5.3+):
+    //   - ctx.openTab() 显式开 owned window + tab + per-task group,返回 ScopedTab
+    //   - ScopedTab.* 自动给所有命令塞 tabId → 扩展按 tabId 直接 chrome.tabs.get
+    //     绕过 group lookup,不再有 group ambiguity
+    //   - ctx.registerChildExpectation() + ctx.waitChildTab() 配合用 — 显式等
+    //     XHS handler 触发的 window.open child tab,扩展 chrome.tabs.onCreated
+    //     listener 监听到 + 自动 detach 到新窗口 + 注册到 task registry
+    //
+    // 兼容性: orchestrator 必须先 `typeof ctx.openTab === 'function'` 探测,
+    // 没有就用老 setActiveTab/tabPattern 路径(fallback)。
+    taskId: task.id,
+    openTab: async (opts: {
+      platform: string;
+      role: string;
+      url: string;
+      windowed?: 'owned' | 'reuse';
+    }) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+      if (!opts || !opts.platform || !opts.role || !opts.url) {
+        throw new Error('openTab requires { platform, role, url }');
+      }
+      const res: any = await sendBrowserCommand(
+        'task_open_tab',
+        { taskId: task.id, platform: opts.platform, role: opts.role, url: opts.url, windowed: opts.windowed || 'owned' },
+        15000,
+        getBridgeOpts(),
+      );
+      if (!res || res.ok === false) {
+        throw new Error('openTab failed: ' + ((res && res.error) || 'unknown'));
+      }
+      return createScopedTab(res.tabId, res.windowId, task.id, opts.platform, opts.role,
+        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+    },
+    registerChildExpectation: async (opts: {
+      parentTab: { id: number };
+      role: string;
+      urlPattern: string;
+    }) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+      if (!opts || !opts.parentTab || !opts.parentTab.id || !opts.role || !opts.urlPattern) {
+        throw new Error('registerChildExpectation requires { parentTab:{id}, role, urlPattern }');
+      }
+      const res: any = await sendBrowserCommand(
+        'task_register_child_expect',
+        { taskId: task.id, parentTabId: opts.parentTab.id, role: opts.role, urlPattern: opts.urlPattern },
+        5000,
+        getBridgeOpts(),
+      );
+      if (!res || res.ok === false) {
+        throw new Error('registerChildExpectation failed: ' + ((res && res.error) || 'unknown'));
+      }
+    },
+    waitChildTab: async (opts: { role: string; platform?: string; timeout?: number }) => {
+      if (progress.isAbortRequested()) throw new Error('user_stopped');
+      if (!opts || !opts.role) throw new Error('waitChildTab requires { role }');
+      const timeout = opts.timeout || 12000;
+      const res: any = await sendBrowserCommand(
+        'task_wait_child_tab',
+        { taskId: task.id, role: opts.role, timeout },
+        timeout + 2000,
+        getBridgeOpts(),
+      );
+      if (!res || res.ok === false) {
+        return null; // timeout — orchestrator 自决重试 / 跳过 / 报错
+      }
+      return createScopedTab(res.tabId, res.windowId, task.id, opts.platform || '', opts.role,
+        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+    },
+    /** 已知 tabId 时直接构造一个 ScopedTab handle(不调扩展)。 */
+    scopedTab: (tabId: number, windowId?: number, platform?: string, role?: string) => {
+      return createScopedTab(tabId, windowId || -1, task.id, platform || '', role || '',
+        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+    },
+    /** 查 task 已注册的某 role 的 tab(extension 端 task_get_tab) */
+    getTaskTab: async (role: string) => {
+      const res: any = await sendBrowserCommand('task_get_tab', { taskId: task.id, role }, 3000, getBridgeOpts());
+      if (!res || res.ok === false) return null;
+      return createScopedTab(res.tabId, res.windowId, task.id, '', role,
+        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+    },
+    /** opt-in 收尾:关掉本 task 所有 tab。orchestrator 通常不调,留 tab 给用户查看 */
+    closeAllTaskTabs: async () => {
+      try { await sendBrowserCommand('task_close_all', { taskId: task.id }, 5000, getBridgeOpts()); } catch (_) {}
+    },
   };
 
   return ctx;
+}
+
+// ── ScopedTab — handle绑定到一个 tabId,所有方法自动塞 tabId ──
+//
+// 为啥 factory 不 class:phaseRunner 给 orchestrator 暴露的 ctx 是普通对象
+// (orchestrator 用 new AsyncFunction 执行,看不到 class 原型链)。返回普通
+// object 最稳。
+type ScopedTabDeps = {
+  sendBrowserCommand: typeof sendBrowserCommand;
+  progress: ProgressFns;
+  getBridgeOpts: () => any;
+  randInt: (a: number, b: number) => number;
+};
+
+function createScopedTab(
+  tabId: number,
+  windowId: number,
+  taskId: string,
+  platform: string,
+  role: string,
+  deps: ScopedTabDeps,
+) {
+  const browser = async (command: string, params: any = {}, timeout?: number): Promise<any> => {
+    if (deps.progress.isAbortRequested()) throw new Error('user_stopped');
+    const t = timeout || 10000;
+    // 注意:scoped 走 tabId 路径,不调 ensureTabExistsForPattern。
+    // 扩展按 params.tabId 直接 chrome.tabs.get,绕过所有 group lookup。
+    return Promise.race([
+      deps.sendBrowserCommand(command, { ...params, tabId }, t, deps.getBridgeOpts()),
+      new Promise<never>((_, reject) => {
+        const check = setInterval(() => {
+          if (deps.progress.isAbortRequested()) {
+            clearInterval(check);
+            reject(new Error('user_stopped'));
+          }
+        }, 300);
+        setTimeout(() => {
+          clearInterval(check);
+          reject(new Error('scopedTab.browser "' + command + '" hard-timeout after ' + (t + 2000) + 'ms'));
+        }, t + 2000);
+      }),
+    ]);
+  };
+
+  const getUrl = async (): Promise<string> => {
+    try {
+      const res: any = await browser('get_url', {});
+      return (res && res.url) || (res && res.data && res.data.url) || '';
+    } catch (_) { return ''; }
+  };
+
+  return {
+    id: tabId,
+    windowId,
+    taskId,
+    platform,
+    role,
+    browser,
+    navigate: (url: string) => browser('navigate', { url }, 30000),
+    scroll: (amount?: number) =>
+      browser('scroll', { direction: 'down', amount: amount || deps.randInt(2, 4) }, 3000),
+    cdpClick: (x: number, y: number) => browser('cdp_click', { x, y }),
+    cdpKey: (key: string, params?: any) => browser('cdp_key', { key, ...(params || {}) }),
+    cdpEval: (expression: string, awaitPromise?: boolean) =>
+      browser('cdp_eval', { expression, awaitPromise: awaitPromise !== false }),
+    cdpScreenshot: () => browser('cdp_screenshot', {}),
+    queryMany: (selector: string, limit?: number, attrs?: string) => {
+      const p: any = { selector, limit: limit || 50 };
+      if (attrs) p.attrs = attrs;
+      return browser('query_selector', p);
+    },
+    find: (query: string) => browser('find', { query }),
+    mainWorldClick: (selector: string, opts?: any) =>
+      browser('main_world_click', { selector, ...(opts || {}) }),
+    click: (x: number, y: number) => browser('click', { x, y }),
+    editorPasteText: (selector: string, text: string) =>
+      browser('editor_paste_text', { selector, text }),
+    editorInsertText: (selector: string, text: string) =>
+      browser('editor_insert_text', { selector, text }),
+    type: (selector: string, text: string) => browser('type', { selector, text }),
+    runScript: (code: string) => browser('javascript', { code }),
+    getUrl,
+    getPageText: () => browser('get_page_text', {}),
+    getHtml: () => browser('get_html', {}),
+    close: () => browser('tab_close', {}),
+    reload: () => browser('reload', {}),
+  };
 }
 
 // ── Main entry ──
