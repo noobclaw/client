@@ -292,7 +292,7 @@ const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH = [
   '发布到币安广场',
 ];
 const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_EN = [
-  'Verify both tabs + pick viral XHS note',
+  'Verify both tabs + pick viral post from Xiaohongshu',
   'AI rewrite + download images/video',
   'Write to Binance + upload images/video',
   'Publish to Binance Square',
@@ -304,7 +304,7 @@ const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH = [
   '发布到币安广场',
 ];
 const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN = [
-  'Verify both tabs + pick viral Douyin post',
+  'Verify both tabs + pick viral post from Douyin',
   'AI rewrite + download images/video',
   'Write to Binance + upload images/video',
   'Publish to Binance Square',
