@@ -207,16 +207,14 @@ const STEP_NAMES_AUTOREPLY_EN = [
 //   STEP 3: 逐篇笔记进详情页 + AI 生成回复 + 发送
 //   STEP 4: 汇总报告
 const STEP_NAMES_XHS_REPLY_FANS_ZH = [
-  '进入创作者中心，扫描你已发布的笔记',
-  '探测当前登录账号',
-  '逐篇笔记读评论，AI 生成回复并发送',
-  '汇总本次任务',
+  '进入创作者中心，读取你的笔记列表',
+  '打开笔记，自动回复粉丝评论',
+  '保存本次报告',
 ];
 const STEP_NAMES_XHS_REPLY_FANS_EN = [
-  'Enter Creator Center and scan your published notes',
-  'Detect current logged-in account',
-  'Walk each note, AI-generate replies and post',
-  'Summarize the run',
+  'Enter Creator Center, read your notes list',
+  'Open notes and auto-reply fan comments',
+  'Save run report',
 ];
 const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
   '准备本次动作清单',
@@ -312,15 +310,15 @@ const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN = [
   'Publish to Binance Square',
 ];
 const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH = [
-  '校验双平台 + 从 TikTok 挑爆款视频',
-  'AI 改写 + 下载视频',
-  '写入币安编辑器 + 上传视频',
+  '校验双平台 + 从 TikTok 挑爆款',
+  'AI 改写 + 下载原图/视频',
+  '写入币安编辑器 + 上传原图/视频',
   '发布到币安广场',
 ];
 const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_EN = [
-  'Verify both tabs + pick viral TikTok video',
-  'AI rewrite + download video',
-  'Write to Binance + upload video',
+  'Verify both tabs + pick viral post from TikTok',
+  'AI rewrite + download images/video',
+  'Write to Binance + upload images/video',
   'Publish to Binance Square',
 ];
 const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [
