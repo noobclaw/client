@@ -1602,7 +1602,11 @@ function formatActionBreakdown(
       sid === 'binance_from_x_link' ||
       sid === 'x_link_rewrite' ||
       sid === 'douyin_image_text' ||
-      sid === 'xhs_viral_production_career'
+      sid === 'xhs_viral_production_career' ||
+      // v6.x: 3 个新 source-viral 搬运也是 post-family,不加进来 fallthrough '-'
+      sid === 'binance_from_xhs_viral' ||
+      sid === 'binance_from_douyin_viral' ||
+      sid === 'binance_from_tiktok_viral'
     );
     const isEngageScenario = !isPostScenario && (
       sid.endsWith('_auto_engage')
