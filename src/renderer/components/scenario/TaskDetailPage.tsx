@@ -361,7 +361,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // Auto-reply tasks have a different step narrative and don't produce
   // local drafts (replies post directly), so the upload-mode badge and
   // the manual-upload step variant don't apply to them.
-  const isAutoReplyTask = (scenario?.workflow_type as any) === 'auto_reply';
+  // "Reply directly to platform" tasks: no local-draft mode, only run log to view.
+  //   - auto_reply: like / comment / follow on already-published content
+  //   - xhs_reply_fans_comment: AI-replies fan comments on user's own notes
+  // Excludes creator scenarios (xhs_viral / douyin_image_text) which DO have
+  // a draft / local-save mode.
+  const isAutoReplyTask =
+    (scenario?.workflow_type as any) === 'auto_reply' ||
+    scenario?.id === 'xhs_reply_fans_comment';
   // Platform detection — used for badge / step copy on the task detail page.
   // For Twitter scenarios (x_auto_engage / x_post_creator / x_link_rewrite)
   // we can't reuse XHS-specific copy like "直接发布到小红书".
@@ -749,6 +756,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_post_creator')    return { icon: '🔶', label: isZh ? '币安广场 · 自动发帖' : 'Binance Square Auto Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
     if (sid === 'binance_from_x_repost')          return { icon: '🔁', label: isZh ? '币安广场 · 推特批量搬运' : 'Binance · Repost from X (Batch)', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'binance_from_x_link')          return { icon: '🔗', label: isZh ? '币安广场 · 推特链接仿写' : 'Binance · From X Link', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'binance_from_xhs_viral')         return { icon: '📕', label: isZh ? '币安广场 · 小红书批量搬运' : 'Binance · Repost from Xiaohongshu (Batch)', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
+    if (sid === 'binance_from_douyin_viral')      return { icon: '🎵', label: isZh ? '币安广场 · 抖音批量搬运' : 'Binance · Repost from Douyin (Batch)', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
+    if (sid === 'binance_from_tiktok_viral')      return { icon: '🎬', label: isZh ? '币安广场 · TikTok 批量搬运' : 'Binance · Repost from TikTok (Batch)', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'youtube_auto_engage')            return { icon: '📺', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-indigo-500 bg-indigo-500/10 border-indigo-500/30' };
     if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
@@ -1470,7 +1480,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <LoginRequiredModal
             mode="run"
             platform={platform}
-            secondaryPlatform={(task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' : undefined}
+            secondaryPlatform={
+              (task.scenario_id === 'binance_from_x_repost' || task.scenario_id === 'binance_from_x_link') ? 'x' :
+              task.scenario_id === 'binance_from_xhs_viral' ? 'xhs' :
+              task.scenario_id === 'binance_from_douyin_viral' ? 'douyin' :
+              task.scenario_id === 'binance_from_tiktok_viral' ? 'tiktok' :
+              undefined
+            }
             /* v6.x: 只有 publish-to-creator-center 类场景才检查 creator 子域登录。
                douyin_auto_engage / xhs_auto_reply_universal 只用主站交互,不要
                卡 creator 中心(否则用户每次 run 任务都得开 creator tab,体验差)。
