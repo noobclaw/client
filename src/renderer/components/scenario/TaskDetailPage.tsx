@@ -286,6 +286,43 @@ const STEP_NAMES_BINANCE_FROM_X_REPOST_EN = [
   'Write to Binance + upload images/video',
   'Publish to Binance Square',
 ];
+// v6.x: 3 个 source-viral 搬运 — 流程跟 X repost 完全一致,只换"推特"→源平台
+const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH = [
+  '校验双平台 + 从小红书挑爆款',
+  'AI 改写 + 下载原图/视频',
+  '写入币安编辑器 + 上传原图/视频',
+  '发布到币安广场',
+];
+const STEP_NAMES_BINANCE_FROM_XHS_VIRAL_EN = [
+  'Verify both tabs + pick viral XHS note',
+  'AI rewrite + download images/video',
+  'Write to Binance + upload images/video',
+  'Publish to Binance Square',
+];
+const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH = [
+  '校验双平台 + 从抖音挑爆款',
+  'AI 改写 + 下载原图/视频',
+  '写入币安编辑器 + 上传原图/视频',
+  '发布到币安广场',
+];
+const STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN = [
+  'Verify both tabs + pick viral Douyin post',
+  'AI rewrite + download images/video',
+  'Write to Binance + upload images/video',
+  'Publish to Binance Square',
+];
+const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH = [
+  '校验双平台 + 从 TikTok 挑爆款视频',
+  'AI 改写 + 下载视频',
+  '写入币安编辑器 + 上传视频',
+  '发布到币安广场',
+];
+const STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_EN = [
+  'Verify both tabs + pick viral TikTok video',
+  'AI rewrite + download video',
+  'Write to Binance + upload video',
+  'Publish to Binance Square',
+];
 const STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH = [
   '打开 YouTube 首页 → 搜索关键词 → 采集候选视频',
   '逐个进视频执行点赞 / 订阅 / 评论',
@@ -397,6 +434,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'binance_square_post_creator') return isZh ? STEP_NAMES_BINANCE_POST_CREATOR_ZH : STEP_NAMES_BINANCE_POST_CREATOR_EN;
     if (sid === 'binance_from_x_repost') return isZh ? STEP_NAMES_BINANCE_FROM_X_REPOST_ZH : STEP_NAMES_BINANCE_FROM_X_REPOST_EN;
     if (sid === 'binance_from_x_link') return isZh ? STEP_NAMES_BINANCE_FROM_X_LINK_ZH : STEP_NAMES_BINANCE_FROM_X_LINK_EN;
+    if (sid === 'binance_from_xhs_viral') return isZh ? STEP_NAMES_BINANCE_FROM_XHS_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_XHS_VIRAL_EN;
+    if (sid === 'binance_from_douyin_viral') return isZh ? STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_DOUYIN_VIRAL_EN;
+    if (sid === 'binance_from_tiktok_viral') return isZh ? STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_ZH : STEP_NAMES_BINANCE_FROM_TIKTOK_VIRAL_EN;
     if (sid === 'youtube_auto_engage') return isZh ? STEP_NAMES_YOUTUBE_AUTO_ENGAGE_ZH : STEP_NAMES_YOUTUBE_AUTO_ENGAGE_EN;
     if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
     if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
