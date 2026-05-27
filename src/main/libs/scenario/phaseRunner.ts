@@ -2282,6 +2282,47 @@ function createScopedTab(
     } catch (_) { return ''; }
   };
 
+  // v6.x: per-tab uploadVideoFromDisk — top-level ctx.uploadVideoFromDisk 走
+  //   sendBrowserCommand 不塞 tabId,扩展 resolveTab 按 platform-level group
+  //   title 找 tab,跟 per-task tab 的 task-specific group title 不匹配 → 走
+  //   fallback 开新窗口 → 视频上传到错的 tab。给 ScopedTab 加这个方法,内部
+  //   localFileServer 注册 → upload_file_from_url 自动塞自己的 tabId → 命中
+  //   per-task tab(modal 所在的那个)。orchestrator 用 _activeTab.uploadVideoFromDisk
+  //   而非 ctx.uploadVideoFromDisk 就规避了 bug。
+  const uploadVideoFromDisk = async (
+    filePath: string,
+    opts: { targetSelector: string; fileName?: string; mimeType?: string; ttlMs?: number },
+  ): Promise<any> => {
+    if (deps.progress.isAbortRequested()) throw new Error('user_stopped');
+    try {
+      const { registerFile, buildUrl, unregister } = require('../localFileServer');
+      const fs = require('fs');
+      if (!fs.existsSync(filePath)) {
+        return { ok: false, reason: 'file_not_found' };
+      }
+      const fileName = opts.fileName || require('path').basename(filePath);
+      const ttl = opts.ttlMs || 5 * 60 * 1000;
+      const token = registerFile(filePath, { mimeType: opts.mimeType, fileName, ttlMs: ttl });
+      const port = parseInt(process.env.NOOBCLAW_SIDECAR_PORT || '18800', 10);
+      const fileUrl = buildUrl(token, port);
+      try {
+        const r = await deps.sendBrowserCommand('upload_file_from_url', {
+          selector: opts.targetSelector,
+          fileUrl,
+          fileName,
+          mimeType: opts.mimeType,
+          tabId, // 关键 — 扩展按 tabId 直接 chrome.tabs.get,绕开 platform group lookup
+        }, ttl, deps.getBridgeOpts());
+        return r;
+      } catch (err: any) {
+        unregister(token);
+        return { ok: false, reason: 'upload_command_failed:' + String(err?.message || err).slice(0, 100) };
+      }
+    } catch (err: any) {
+      return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+    }
+  };
+
   return {
     id: tabId,
     windowId,
@@ -2317,6 +2358,7 @@ function createScopedTab(
     getHtml: () => browser('get_html', {}),
     close: () => browser('tab_close', {}),
     reload: () => browser('reload', {}),
+    uploadVideoFromDisk,
   };
 }
 
