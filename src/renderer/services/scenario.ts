@@ -306,7 +306,14 @@ class ScenarioService {
     ]);
     const runs = Array.isArray(runStatusResult?.runs) ? runStatusResult.runs : [];
     const cooldown_ends_at = runStatusResult?.cooldown_ends_at || 0;
-    const last = runs.length > 0 ? runs[runs.length - 1] : null;
+    // v6.x: '上次完成' 是上一次真正跑完的统计 — 不能选 status='running' 的当前
+    //   in-progress run(那个 action_counts 永远是空/0,会把上次的正确数据顶掉)。
+    //   优先找最近一条 status≠'running' 的 run;全是 running 才回退到末尾。
+    let last: any = null;
+    for (let i = runs.length - 1; i >= 0; i--) {
+      if (runs[i] && runs[i].status !== 'running') { last = runs[i]; break; }
+    }
+    if (!last) last = runs.length > 0 ? runs[runs.length - 1] : null;
 
     // Cumulative aggregation. Iterate all runs (including failed/skipped —
     // an action that succeeded before a later failure still counts).
