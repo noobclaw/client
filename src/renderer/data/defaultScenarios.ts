@@ -56,7 +56,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "feed_scroll_min": 3,
       "feed_scroll_max": 12,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_images_per_post": 4,
       "max_video_per_post": 1
     },
@@ -120,7 +120,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "feed_scroll_min": 2,
       "feed_scroll_max": 8,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_video_per_post": 1
     },
     "required_login_url": "https://www.binance.com/square",
@@ -181,7 +181,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
         120000
       ],
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -246,7 +246,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "min_long_tweet_chars": 80,
       "min_rewrite_views": 2000,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -310,7 +310,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "feed_scroll_max": 12,
       "min_xhs_likes": 50,
       "min_post_chars": 100,
-      "max_post_chars": 1600,
+      "max_post_chars": 1900,
       "max_images_per_post": 4
     },
     "required_login_url": "https://www.binance.com/square",
@@ -2126,9 +2126,6 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "default_config": {
       "funnel_phrase": "",
       "funnel_probability": 50,
-      "daily_count_min": 5,
-      "daily_count_max": 15,
-      "max_replies_per_note": 5,
       "schedule_window": "10:00-22:00"
     },
     "risk_caps": {
@@ -2146,11 +2143,11 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
       "cooldown_account_flag_hours": 72,
       "min_reply_interval_ms": 30000,
       "max_reply_interval_ms": 90000,
-      "min_note_interval_ms": 45000,
-      "max_note_interval_ms": 150000,
-      "max_replies_per_note": 10,
+      "min_note_interval_ms": 120000,
+      "max_note_interval_ms": 300000,
+      "max_replies_per_note": 9999,
       "max_notes_per_run": 30,
-      "daily_count_cap": 80,
+      "daily_count_cap": 9999,
       "funnel_probability_min": 1,
       "funnel_probability_max": 100,
       "comment_list_load_scrolls": 6,

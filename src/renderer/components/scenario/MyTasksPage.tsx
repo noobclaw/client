@@ -131,17 +131,31 @@ const TRACK_ICONS: Record<string, { icon: string; name_zh: string }> = {
 };
 
 function scheduleLabel(task: Task, isZh: boolean): string {
+  // v6.x: 列表卡片频次文案跟 TaskDetailPage intervalMap (line ~1059) 严格对齐 —
+  //   核心字段同样的措辞(短间隔的 +1-10/+1-45 分钟随机延迟、daily_random 的
+  //   "每日随机时间一次(<window> 间)"、once 的"不重复（手动触发）")。
+  //   列表可以少展示一些字段(不带每次配额/动作明细),但展示的字段必须跟详情
+  //   页一字不差,否则用户会以为 list 和 detail 在描述两件事。
   const interval = (task as any).run_interval || 'daily_random';
+  const schedWin = (task as any).schedule_window || '09:00-23:00';
   const map: Record<string, string> = isZh
     ? {
-        '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时',
+        '30min': '每30分钟(+1-10 分钟随机延迟)',
+        '1h': '每小时(+1-10 分钟随机延迟)',
+        '3h': '每3小时(+1-45 分钟随机延迟)',
+        '6h': '每6小时(+1-45 分钟随机延迟)',
         'daily': '每天 ' + (task.daily_time || '08:00'),
-        'daily_random': '每日随机时间', 'once': '手动',
+        'daily_random': '每日随机时间一次(' + schedWin + ' 间)',
+        'once': '不重复（手动触发）',
       }
     : {
-        '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h',
+        '30min': 'Every 30min (+1-10min jitter)',
+        '1h': 'Hourly (+1-10min jitter)',
+        '3h': 'Every 3h (+1-45min jitter)',
+        '6h': 'Every 6h (+1-45min jitter)',
         'daily': 'Daily ' + (task.daily_time || '08:00'),
-        'daily_random': 'Once daily (random)', 'once': 'Manual',
+        'daily_random': 'Once daily (random within ' + schedWin + ')',
+        'once': 'Once (manual)',
       };
   return map[interval] || interval;
 }
@@ -363,6 +377,16 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // 隐藏 persona snippet 和 track 行(老任务 task.persona 字段还在
               // 但 wizard 不再让用户填,展示只会误导)。
               const isDouyinImageText = sid === 'douyin_image_text';
+              // v6.x: 跟 TaskDetailPage(line ~870/885)对齐 —
+              //   xhs_image_text 跟 douyin_image_text 同 family,详情页用 isImageTextTask 一并跳 persona;
+              //   3 个 binance source-viral 详情页用 isBinanceSourceViral 跳 persona(人设是固定模板,展示也只会误导)。
+              //   列表卡片这里跟着关掉 persona snippet,字段口径才跟详情一致。
+              const isXhsImageText = sid === 'xhs_image_text';
+              const isImageTextTask = isDouyinImageText || isXhsImageText;
+              const isBinanceSourceViral =
+                sid === 'binance_from_xhs_viral'
+                || sid === 'binance_from_douyin_viral'
+                || sid === 'binance_from_tiktok_viral';
               const taskUrls: string[] = (task as any).urls || [];
               // Type labels per user spec (v2.4.26):
               // Twitter: 推特 · 互动涨粉 / 推特 · 自动发推 / 指定链接仿写
@@ -474,7 +498,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       ("我没填怎么有身份"用户原话),所以这里跳过。
                       v5.x+: 抖音图文创作也不展示 — 老任务可能有 persona 字段(在
                       wizard 删 persona 之前创建的),展示出来跟详情页不一致。 */}
-                  {!isAnyLinkRewrite && !isDouyinImageText && personaSnippet && (
+                  {!isAnyLinkRewrite && !isImageTextTask && !isBinanceSourceViral && personaSnippet && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
                       👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
@@ -532,6 +556,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '关注' : 'Follow'} ${fStr} · ${isZh ? '评论' : 'Reply'} ${rStr}`;
                           }
                           // post_creator(Binance/X)+ binance_from_x_repost + v6.x 3 个新源:daily_post_min/max
+                          // v6.x: 跟 TaskDetailPage(line ~1130/1135/1140)同步用"每次 N 条"前缀
+                          //   而非旧的"N 条/次"——这些场景详情页统一用"每次 N 条 · <场景描述>",
+                          //   列表 card 砍掉场景描述但保留"每次 N 条"前缀,保证字段格式一致。
                           if (sid === 'binance_square_post_creator' || sid === 'x_post_creator'
                               || sid === 'binance_from_x_repost'
                               || sid === 'binance_from_xhs_viral'
@@ -539,7 +566,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               || sid === 'binance_from_tiktok_viral') {
                             const pStr = (typeof pMin === 'number' && typeof pMax === 'number' && pMin !== pMax)
                               ? `${pMin}-${pMax}` : String(pMin || pMax || task.daily_count || 1);
-                            return `⏰ ${scheduleLabel(task, isZh)} · ${pStr} ${isZh ? '条/次' : '/run'}`;
+                            return isZh
+                              ? `⏰ ${scheduleLabel(task, isZh)} · 每次 ${pStr} 条`
+                              : `⏰ ${scheduleLabel(task, isZh)} · ${pStr}/run`;
                           }
                           // XHS auto_reply:用 daily_count_min/max
                           if ((task as any).scenario_id?.includes('auto_reply') ||

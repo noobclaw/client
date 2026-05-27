@@ -981,7 +981,13 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
           daily_post_max: postCountMax,
         } : {}),
         // v4.31.27: 仅 binance_from_x_repost(批量搬运 feed)用,其他场景忽略
-        ...(isBinanceFromXRepost ? { media_filter: mediaFilter } : {}),
+        // v6.x: 3 个 source-viral 搬运(xhs/douyin/tiktok)也需要 media_filter ——
+        //   orchestrator 读 task.media_filter 决定点搜索页"图文/视频" channel tab
+        //   或 douyin 内容形式 chip;之前漏发字段导致 task.media_filter=undefined
+        //   → MEDIA_FILTER 默认 'all' → 不点 channel tab → 用户选了图文但日志看不到。
+        //   TikTok wizard 锁 video_only,orchestrator 也硬编码 video_only,但还是发
+        //   字段以保持 task 数据一致。
+        ...((isBinanceFromXRepost || isBinanceSourceViral) ? { media_filter: mediaFilter } : {}),
         // v6.x: 3 个 source-viral 搬运的 token 前缀池(空 → orchestrator 用内置 CASHTAG_POOL)
         ...(isBinanceSourceViral
             ? { cashtags: parseKeywords(tokenTagsText).map(s => s.replace(/^\$+/, '').toUpperCase()) }
