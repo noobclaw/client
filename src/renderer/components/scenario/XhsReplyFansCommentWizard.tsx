@@ -25,10 +25,6 @@ const FUNNEL_PHRASE_MAX = 200;
 const FUNNEL_PROB_MIN = 1;
 const FUNNEL_PROB_MAX = 100;
 const FUNNEL_PROB_DEFAULT = 50;
-const DAILY_MIN_FLOOR = 1;
-const DAILY_MAX_CEIL = 80;
-const PER_NOTE_MIN = 1;
-const PER_NOTE_MAX = 10;
 
 export const XhsReplyFansCommentWizard: React.FC<Props> = ({
   scenario,
@@ -54,25 +50,6 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
       : FUNNEL_PROB_DEFAULT
   );
 
-  // ── 每次回复目标 (min/max) ──
-  const [dailyMin, setDailyMin] = useState<number>(
-    typeof (initialTask as any)?.daily_count_min === 'number'
-      ? Math.max(DAILY_MIN_FLOOR, Math.min(DAILY_MAX_CEIL, (initialTask as any).daily_count_min))
-      : 5
-  );
-  const [dailyMax, setDailyMax] = useState<number>(
-    typeof (initialTask as any)?.daily_count_max === 'number'
-      ? Math.max(DAILY_MIN_FLOOR, Math.min(DAILY_MAX_CEIL, (initialTask as any).daily_count_max))
-      : 15
-  );
-
-  // ── 单篇笔记最多回复 ──
-  const [perNoteCap, setPerNoteCap] = useState<number>(
-    typeof (initialTask as any)?.max_replies_per_note === 'number'
-      ? Math.max(PER_NOTE_MIN, Math.min(PER_NOTE_MAX, (initialTask as any).max_replies_per_note))
-      : 5
-  );
-
   // ── 调度 ──
   const dailyTime = useMemo(() => {
     if (initialTask?.daily_time) return String(initialTask.daily_time);
@@ -92,17 +69,10 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
   useEffect(() => {
     if (saveError) setSaveError(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [funnelPhrase, funnelProb, dailyMin, dailyMax, perNoteCap, runInterval]);
-
-  // dailyMax 不能小于 dailyMin
-  useEffect(() => {
-    if (dailyMax < dailyMin) setDailyMax(dailyMin);
-  }, [dailyMin, dailyMax]);
+  }, [funnelPhrase, funnelProb, runInterval]);
 
   const canAdvance: Record<WizardStep, { ok: boolean; reason?: string }> = {
-    1: dailyMin >= 1 && dailyMax >= dailyMin
-      ? { ok: true }
-      : { ok: false, reason: isZh ? '每次回复目标至少 1，且上限 ≥ 下限' : 'Daily target ≥ 1 and max ≥ min' },
+    1: { ok: true },
     2: { ok: allTermsAccepted, reason: isZh ? '请勾选使用条款' : 'Please accept the terms' },
   };
 
@@ -119,15 +89,11 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
         track: 'reply_fan_comment',
         keywords: [],
         persona: '',
-        daily_count_min: dailyMin,
-        daily_count_max: dailyMax,
-        daily_count: dailyMax,  // back-compat field
         variants_per_post: 1,
         daily_time: dailyTime,
         run_interval: runInterval,
         funnel_phrase: funnelPhrase.trim(),
         funnel_probability: hasFunnel ? funnelProb : 0,
-        max_replies_per_note: perNoteCap,
         auto_upload: false,
         auto_publish: false,
       });
@@ -221,67 +187,6 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                   disabled={saving || !hasFunnel}
                   className="w-full accent-fuchsia-500 disabled:opacity-40"
                 />
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 leading-relaxed">
-                  {isZh
-                    ? '💡 推荐 30~60%。太高了所有回复带广告会被粉丝反感,太低看不出导流效果。每条回复独立抽签,统计上贴近你设的比例。'
-                    : '💡 Recommended 30-60%. Too high reads as spammy; too low loses funnel effect. Each reply is an independent dice roll.'}
-                </div>
-              </div>
-
-              {/* 每次回复目标 min/max + 单篇上限 */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? `每次最少回复 ${dailyMin} 条` : `Min per run: ${dailyMin}`}
-                  </label>
-                  <input
-                    type="range"
-                    min={DAILY_MIN_FLOOR}
-                    max={DAILY_MAX_CEIL}
-                    value={dailyMin}
-                    onChange={e => setDailyMin(parseInt(e.target.value, 10))}
-                    disabled={saving}
-                    className="w-full accent-fuchsia-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? `每次最多回复 ${dailyMax} 条` : `Max per run: ${dailyMax}`}
-                  </label>
-                  <input
-                    type="range"
-                    min={DAILY_MIN_FLOOR}
-                    max={DAILY_MAX_CEIL}
-                    value={dailyMax}
-                    onChange={e => setDailyMax(parseInt(e.target.value, 10))}
-                    disabled={saving}
-                    className="w-full accent-fuchsia-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                  {isZh ? `📌 单篇笔记最多回复 ${perNoteCap} 条` : `📌 Max replies per note: ${perNoteCap}`}
-                  <span className="text-xs text-gray-400 font-normal ml-1">
-                    {isZh ? '· 一篇笔记下回得太多会被风控盯上' : '· Too many on one note triggers anti-spam'}
-                  </span>
-                </label>
-                <input
-                  type="range"
-                  min={PER_NOTE_MIN}
-                  max={PER_NOTE_MAX}
-                  value={perNoteCap}
-                  onChange={e => setPerNoteCap(parseInt(e.target.value, 10))}
-                  disabled={saving}
-                  className="w-full accent-fuchsia-500"
-                />
-              </div>
-
-              <div className="rounded-md bg-amber-500/5 border border-amber-500/30 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
-                ⚠️ {isZh
-                  ? <>每条回复有 <strong>30~90 秒</strong> 节奏抖动,每篇笔记间 <strong>45~150 秒</strong>。AI token 按 Anthropic 标价扣;<strong>每条成功回复额外扣平台 token (跟点赞类似)</strong>,失败/跳过不扣。</>
-                  : <>Each reply: <strong>30-90s</strong> jitter; between notes: <strong>45-150s</strong>. AI tokens billed at provider rates; <strong>each successful reply also charges platform tokens (like the 点赞 model)</strong>; skipped/failed = no charge.</>}
               </div>
             </>
           )}
@@ -320,15 +225,12 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                     ? `"${funnelPhrase.trim().slice(0, 40)}${funnelPhrase.trim().length > 40 ? '...' : ''}" · ${funnelProb}%`
                     : (isZh ? '（未填,纯 AI 回复）' : '(empty, pure AI reply)')} />
                 <SummaryRow
-                  label={isZh ? '每次回复' : 'Per run'}
-                  value={`${dailyMin} ~ ${dailyMax} ${isZh ? '条 (随机)' : '(random)'}`} />
-                <SummaryRow
-                  label={isZh ? '单篇上限' : 'Per-note cap'}
-                  value={`${perNoteCap} ${isZh ? '条' : 'replies'}`} />
+                  label={isZh ? '回复范围' : 'Scope'}
+                  value={isZh ? '逐条回复全部粉丝评论' : 'Reply to every fan comment'} />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
                 <SummaryRow
                   label={isZh ? '安全节奏' : 'Pacing'}
-                  value={isZh ? '评论间 30~90s · 笔记间 45~150s' : 'Reply 30-90s · Note 45-150s'} />
+                  value={isZh ? '评论间 30~90s · 笔记间 2~5min' : 'Reply 30-90s · Note 2-5min'} />
               </div>
 
               <div className="space-y-2">
@@ -337,11 +239,11 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                 </div>
                 {[
                   isZh
-                    ? '我理解 NoobClaw 会在我本地浏览器里打开创作者中心 + 小红书主站,使用我自己的账号身份回复'
-                    : 'I understand NoobClaw drives Creator Center + Xiaohongshu main site in my own browser using my account.',
+                    ? '我理解 NoobClaw 会在我本地浏览器代我打开小红书创作者中心,所有行为使用我自己的 IP 和账号'
+                    : 'I understand NoobClaw drives the Xiaohongshu Creator Center inside my own browser using my IP and my account.',
                   isZh
-                    ? '我理解每条成功回复会额外扣平台 token (跟点赞模式类似),失败 / 跳过不扣'
-                    : 'I understand each successful reply incurs a platform token charge (similar to the like model); failed/skipped = no charge.',
+                    ? '我理解平台账号风险由我自己承担'
+                    : 'I accept platform account risk.',
                 ].map((term, i) => (
                   <label key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300 cursor-pointer">
                     <input
