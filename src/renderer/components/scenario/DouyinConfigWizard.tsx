@@ -384,7 +384,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 {runInterval === 'daily_random' && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? '⚠️ 互动类任务为避免被风控判定为机器人,禁止固定每日时间,每天会在随机时间点触发一次（每次距离上次至少 24 小时）。'
+                      ? '⚠️ 互动类任务为避免被风控判定为机器人,禁止固定每日时间,每天会在随机时间点触发一次。'
                       : '⚠️ Engagement tasks must not run at the same hour daily — that pattern flags as bot. Triggers once per day at a randomized time.'}
                   </p>
                 )}

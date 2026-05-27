@@ -1447,8 +1447,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {isAutoReply && runInterval === 'daily_random' && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? '⚠️ 评论类任务为避免被风控判定为机器人，禁止固定每日时间，每天会在随机时间点触发一次（每次距离上次至少 24 小时）'
-                      : '⚠️ Comment tasks must not run at the same hour daily — XHS flags that as bot behavior. Triggers once per day at a randomized time, with at least 24h between runs.'}
+                      ? '⚠️ 评论类任务为避免被风控判定为机器人,禁止固定每日时间,每天会在随机时间点触发一次'
+                      : '⚠️ Comment tasks must not run at the same hour daily — XHS flags that as bot behavior. Triggers once per day at a randomized time.'}
                   </p>
                 )}
                 {!isAutoReply && runInterval === 'daily_random' && (

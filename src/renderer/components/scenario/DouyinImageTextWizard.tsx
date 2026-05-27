@@ -530,7 +530,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 {runInterval === 'daily_random' && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? '✨ 推荐:每天随机时间触发,避免被风控判定为机器人(每次距离上次至少 24 小时)。'
+                      ? '✨ 推荐:每天随机时间触发,避免被风控判定为机器人。'
                       : '✨ Recommended: triggers at a different time each day, avoiding bot-pattern detection.'}
                   </p>
                 )}
