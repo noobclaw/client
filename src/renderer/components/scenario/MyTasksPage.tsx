@@ -592,6 +592,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid === 'binance_from_tiktok_viral' ||
                       sid === 'x_link_rewrite' ||
                       sid === 'douyin_image_text' ||
+                      sid === 'xhs_image_text' ||  // ← v6.x: 之前漏,跟 douyin_image_text 同 post 系
                       sid === 'xhs_viral_production_career'
                     );
                     // v5.x+: engage scenarios are 3-pronged (like / comment /

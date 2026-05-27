@@ -1602,6 +1602,7 @@ function formatActionBreakdown(
       sid === 'binance_from_x_link' ||
       sid === 'x_link_rewrite' ||
       sid === 'douyin_image_text' ||
+      sid === 'xhs_image_text' ||  // ← v6.x: 之前漏了, addActionCount('post') 写在 line 937
       sid === 'xhs_viral_production_career' ||
       // v6.x: 3 个新 source-viral 搬运也是 post-family,不加进来 fallthrough '-'
       sid === 'binance_from_xhs_viral' ||
