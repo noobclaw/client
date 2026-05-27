@@ -879,19 +879,41 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               const aiImageStyle = aiImageStyleId
                 ? FALLBACK_IMAGE_STYLES.find(s => s.id === aiImageStyleId)
                 : null;
+              // v6.x: 3 个币安"源平台 viral 搬运"(xhs/douyin/tiktok) — 人设是固定模板,
+              // 用户看不到 wizard 里也改不了,展示在详情页纯噪音。改为只显示本次搬运的媒体类型
+              // (task.media_filter: all=图文+视频 / image_only=仅图文 / video_only=仅视频)。
+              const isBinanceSourceViral =
+                task.scenario_id === 'binance_from_xhs_viral'
+                || task.scenario_id === 'binance_from_douyin_viral'
+                || task.scenario_id === 'binance_from_tiktok_viral';
+              const mediaFilterVal = (task as any).media_filter || 'all';
+              const mediaFilterLabel = ((): string => {
+                if (mediaFilterVal === 'image_only') return isZh ? '🖼 仅图文' : '🖼 Image only';
+                if (mediaFilterVal === 'video_only') return isZh ? '🎥 仅视频' : '🎥 Video only';
+                return isZh ? '🖼🎥 全部(图文 + 视频)' : '🖼🎥 All (image + video)';
+              })();
               return (
                 <>
                   {/* v4.28.x: 链接仿写场景(XHS link mode / x_link_rewrite / binance_from_x_link)
                       隐藏「赛道/人设: 🔗 ...」整行 —— 上面已经有 type badge 标明任务类型,
                       这一行的 link-mode label 跟 badge 完全重复,#ID 也已在标题区显示;
                       用户根本没填 track / persona,展示出来纯属噪音。
-                      v5.x+: douyin_image_text 同理 — 只有参考文案,没赛道没人设。 */}
-                  {!isLinkMode && !isImageTextTask && (
+                      v5.x+: douyin_image_text 同理 — 只有参考文案,没赛道没人设。
+                      v6.x: binance 源平台 viral 搬运 — 人设是固定模板,这一行也跳过。 */}
+                  {!isLinkMode && !isImageTextTask && !isBinanceSourceViral && (
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">
                         {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
                       </span>
                       <span className="dark:text-white font-medium">{trackName}</span>
+                      <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+                    </div>
+                  )}
+                  {/* v6.x: 源平台 viral 搬运 — task id + 媒体类型展示在头部 */}
+                  {isBinanceSourceViral && (
+                    <div className="flex items-center gap-3">
+                      <span className="text-gray-400">{isZh ? '本次搬运:' : 'Repost mode:'}</span>
+                      <span className="dark:text-white font-medium">{mediaFilterLabel}</span>
                       <span className="text-[10px] text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
                     </div>
                   )}
@@ -903,8 +925,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   {/* v4.28.x: 把 task.persona 文本展开显示在「人设: XXX」下面 ——
                       列表页(MyTasksPage)只截取首行 80 字,用户进到详情想看完整身份
                       描述只能去 wizard 编辑里翻,体验不好。这里展示完整 persona。
-                      Link 模式 + 图文创作没人设概念跳过。 */}
-                  {!isLinkMode && !isImageTextTask && (task.persona || '').trim() && (
+                      Link 模式 + 图文创作 + 源平台 viral 搬运 没人设概念跳过。 */}
+                  {!isLinkMode && !isImageTextTask && !isBinanceSourceViral && (task.persona || '').trim() && (
                     <div className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-wrap pl-1">
                       <span className="text-gray-500 font-medium">{isZh ? '人设:' : 'Persona:'}</span>{' '}
                       {(task.persona || '').trim()}
@@ -1030,9 +1052,29 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         return <div>{isZh ? '搬运类型' : 'Media filter'}: 🎞 {lab}</div>;
                       })()}
                       <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
+                        // v6.x: 详情页频次显示加上随机时间信息 — 短间隔展示 jitter 范围,
+                        //   daily_random 展示 schedule_window。跟 wizard step3 那行 hint 对齐,
+                        //   用户跑起任务后还能看到自己设置的"反检测节奏"。
+                        const schedWin = (task as any).schedule_window || '09:00-23:00';
                         const intervalMap: Record<string, string> = isZh
-                          ? { '30min': '每30分钟', '1h': '每小时', '3h': '每3小时', '6h': '每6小时', 'daily': '每天 ' + (task.daily_time || '08:00'), 'daily_random': '每日随机时间一次', 'once': '不重复（手动触发）' }
-                          : { '30min': 'Every 30min', '1h': 'Hourly', '3h': 'Every 3h', '6h': 'Every 6h', 'daily': 'Daily ' + (task.daily_time || '08:00'), 'daily_random': 'Once daily (random time)', 'once': 'Once (manual)' };
+                          ? {
+                              '30min': '每30分钟(+1-10 分钟随机延迟)',
+                              '1h': '每小时(+1-10 分钟随机延迟)',
+                              '3h': '每3小时(+1-45 分钟随机延迟)',
+                              '6h': '每6小时(+1-45 分钟随机延迟)',
+                              'daily': '每天 ' + (task.daily_time || '08:00'),
+                              'daily_random': '每日随机时间一次(' + schedWin + ' 间)',
+                              'once': '不重复（手动触发）',
+                            }
+                          : {
+                              '30min': 'Every 30min (+1-10min jitter)',
+                              '1h': 'Hourly (+1-10min jitter)',
+                              '3h': 'Every 3h (+1-45min jitter)',
+                              '6h': 'Every 6h (+1-45min jitter)',
+                              'daily': 'Daily ' + (task.daily_time || '08:00'),
+                              'daily_random': 'Once daily (random within ' + schedWin + ')',
+                              'once': 'Once (manual)',
+                            };
                         const intervalLabel = intervalMap[(task as any).run_interval || 'daily'] || (isZh ? '每天 ' : 'Daily ') + (task.daily_time || '08:00');
                         // v2.4.60: 频次显示真实用户配置(min/max),不再写死 daily_count
                         const sid = task.scenario_id;

@@ -47,6 +47,10 @@ type TrackPreset = {
 // 长尾词 > 大词（例："减脂餐" > "减肥"、"小个子穿搭" > "穿搭"）
 // 场景+人群修饰词（"0基础"、"通勤"、"租房党" 等）转化率最高
 const TRACK_PRESETS: TrackPreset[] = [
+  // "其他":空关键词,给用户完全自定义的入口。放最前面方便看见。
+  { id: 'other', icon: '✨', name_zh: '其他', name_en: 'Other', keywords: [],
+    persona_hint: '', persona_hint_en: '',
+    reply_persona_hint: '', reply_persona_hint_en: '' },
   { id: 'career_side_hustle', icon: '💼', name_zh: '副业 · 打工人赚钱', keywords: ['副业', '下班变现', '兼职', '月入过万', '副业推荐', '在家赚钱', 'AI副业', '小红书副业', '蒲公英接单', '副业项目', '0基础副业', '打工人副业', '副业变现', '周末副业', '宝妈副业'], persona_hint: '一个想在下班后搞点副业的普通打工人，真诚不装',
     reply_persona_hint: `身份：28 岁，杭州互联网公司运营，月薪 1.2 万，跟人合租。下班 7 点到家，用 2 小时折腾副业 1 年了。
 现在做的：小红书图文 + AI 写作接单，目前每月稳定 2000-3500 元，最高的一个月 5000，做下来才发现真不像吹的那么轻松。
@@ -542,7 +546,17 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Track — filter by scenario platform. XHS scenarios see lifestyle tracks;
   // Twitter (x) and Binance Square scenarios see only web3 / crypto tracks.
   // Legacy presets with no explicit `platform` field default to 'xhs'.
-  const platformForTracks: 'xhs' | 'x' = (scenario.platform === 'x' || scenario.platform === 'binance' ? 'x' : 'xhs');
+  //
+  // v6.x exception: binance_from_xhs_viral 是"用 XHS 关键词搜 XHS 笔记搬运到币安",
+  // 搜的是源平台(小红书),所以赛道应该是 XHS 生活方式赛道(穿搭/美食/旅行/...),
+  // 不是币安的 crypto 赛道。其他 binance_from_* source-viral 同理(douyin/tiktok)。
+  const platformForTracks: 'xhs' | 'x' = (() => {
+    if (scenario.id === 'binance_from_xhs_viral'
+        || scenario.id === 'binance_from_douyin_viral'
+        || scenario.id === 'binance_from_tiktok_viral') return 'xhs';
+    if (scenario.platform === 'x' || scenario.platform === 'binance') return 'x';
+    return 'xhs';
+  })();
   const VISIBLE_TRACKS = TRACK_PRESETS.filter(t => {
     const presetPlatform = t.platform || 'xhs';
     return presetPlatform === platformForTracks;
@@ -906,7 +920,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     setTrackId(newTrackId);
     // v2.4.60+ Binance scenarios 不用 track preset 的关键词(那些是开发词,
     // 不能当 cashtag 触发流量),始终用真实 token symbol 池。
-    if (isBinancePlatform) {
+    // v6.x exception: source-viral 搬运(binance_from_xhs/douyin/tiktok)用赛道
+    // 关键词搜源平台,不能用 cashtag — 跟 XHS 场景一致用 preset.keywords。
+    if (isBinancePlatform && !isBinanceSourceViral) {
       setCustomKeywordsText(BINANCE_TOKEN_DEFAULTS.join(' '));
     } else {
       setCustomKeywordsText(preset.keywords.join(' '));
