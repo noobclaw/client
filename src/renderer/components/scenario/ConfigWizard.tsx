@@ -1131,27 +1131,6 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   read keywords — orchestrator picks targets from the discover
                   feed; showing the field would mislead users into thinking
                   their token list filters AI replies. Hide there too. */}
-              {/* v6.x: source-viral 搬运专用顶部 — Token 标签(可选,作为币安发帖前缀池) */}
-              {isBinanceSourceViral && (
-                <div>
-                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isZh ? 'Token 标签' : 'Token tags'}
-                    <span className="text-xs text-gray-400 font-normal ml-1">
-                      {isZh
-                        ? '（可选 · 币安发帖前缀池,留空走内置 BTC/ETH/SOL 等 30+ 主流币）'
-                        : '(optional · cashtag prefix pool for Binance posts; leave empty for built-in 30+ majors)'}
-                    </span>
-                  </label>
-                  <textarea
-                    value={tokenTagsText}
-                    onChange={e => setTokenTagsText(e.target.value)}
-                    placeholder={isZh ? '例：BTC ETH SOL BNB DOGE（空格分隔,留空走内置池）' : 'e.g. BTC ETH SOL BNB DOGE (space-separated, blank = built-in)'}
-                    rows={2}
-                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
-                  />
-                </div>
-              )}
-
               {(!isXPlatform || isBinancePlatform) && !isBinanceAutoEngage && !isLinkRewriteScenario && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
@@ -1195,6 +1174,29 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   />
                   {/* v4.28.x: 之前这里有「关键词越多，每次搜索内容越不重复，降低风控风险」
                       hint —— 用户反馈冗余,文案占视觉空间但实际信息量低,直接移除。 */}
+                </div>
+              )}
+
+              {/* v6.x: source-viral 搬运专用 Token 标签(可选,作为币安发帖前缀池)。
+                  位置在赛道/关键词之后 — 用户反馈"赛道和关键词放一起,中间个token干嘛",
+                  把 Token 移到最后,把语义相关的 Track + Keywords 凑近。 */}
+              {isBinanceSourceViral && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? 'Token 标签' : 'Token tags'}
+                    <span className="text-xs text-gray-400 font-normal ml-1">
+                      {isZh
+                        ? '（可选 · 币安发帖前缀池,留空走内置 BTC/ETH/SOL 等 30+ 主流币）'
+                        : '(optional · cashtag prefix pool for Binance posts; leave empty for built-in 30+ majors)'}
+                    </span>
+                  </label>
+                  <textarea
+                    value={tokenTagsText}
+                    onChange={e => setTokenTagsText(e.target.value)}
+                    placeholder={isZh ? '例：BTC ETH SOL BNB DOGE（空格分隔,留空走内置池）' : 'e.g. BTC ETH SOL BNB DOGE (space-separated, blank = built-in)'}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                  />
                 </div>
               )}
 
