@@ -949,13 +949,40 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           post_creator uses topic_context, link_rewrite is
                           URL-driven). Hide on X to avoid showing a misleading
                           empty/default keyword list.
-                          v5.x+: 图文创作(抖音 + 小红书)也跳过 — 只看参考文案,没关键词。 */}
-                      {!isXTask && !isImageTextTask && (
-                        <div>
-                          {(/^binance/.test(task.scenario_id) ? (isZh ? 'Token tag' : 'Token tag') : (isZh ? '关键词' : 'Keywords'))}
-                          : {task.keywords.join(' · ')}
-                        </div>
-                      )}
+                          v5.x+: 图文创作(抖音 + 小红书)也跳过 — 只看参考文案,没关键词。
+                          v6.x: 3 个 binance source-viral 搬运 — task.keywords 是搜源
+                          关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
+                      {!isXTask && !isImageTextTask && (() => {
+                        const sid = task.scenario_id;
+                        const isSourceViral = sid === 'binance_from_xhs_viral'
+                                            || sid === 'binance_from_douyin_viral'
+                                            || sid === 'binance_from_tiktok_viral';
+                        // Label 决定:source-viral → "搜索关键词" / 其他 binance → "Token tag" / 默认 → "关键词"
+                        const kwLabel = isSourceViral
+                          ? (isZh ? '搜索关键词' : 'Search keywords')
+                          : /^binance/.test(sid)
+                            ? (isZh ? 'Token tag' : 'Token tag')
+                            : (isZh ? '关键词' : 'Keywords');
+                        // source-viral 额外展示 task.cashtags(币安发帖前缀池,可选)
+                        const cashtags = isSourceViral
+                          ? ((task as any).cashtags as string[] | undefined)
+                          : undefined;
+                        return (
+                          <>
+                            <div>
+                              {kwLabel}: {task.keywords.join(' · ')}
+                            </div>
+                            {isSourceViral && (
+                              <div>
+                                {isZh ? 'Token 标签' : 'Token tags'}:{' '}
+                                {cashtags && cashtags.length > 0
+                                  ? cashtags.map(c => '$' + c).join(' · ')
+                                  : (isZh ? '(走内置 BTC/ETH/SOL 等 30+ 主流币)' : '(built-in 30+ majors)')}
+                              </div>
+                            )}
+                          </>
+                        );
+                      })()}
                       {/* v4.31.27: binance_from_x_repost 显示媒体类型 */}
                       {task.scenario_id === 'binance_from_x_repost' && (() => {
                         const mf = (task as any).media_filter;
