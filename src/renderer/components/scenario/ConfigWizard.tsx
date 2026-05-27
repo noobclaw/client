@@ -494,6 +494,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     || scenario.id === 'binance_from_douyin_viral'
     || scenario.id === 'binance_from_tiktok_viral';
   const isBinanceTiktokViral = scenario.id === 'binance_from_tiktok_viral';
+  // v6.x: 3 个"从源平台批量搬运到币安"场景 — 跟 binance_from_x_repost 区别开:
+  //   x_repost 在 X feed 滚浏览挑推(不需要搜索关键词),cashtag 池硬编码;
+  //   xhs/douyin/tiktok 必须按 task.keywords 搜源平台,所以 wizard 要露 赛道+关键词;
+  //   token 标签作为币安发帖前缀(可选,新字段 task.cashtags)单独 UI。
+  const isBinanceSourceViral =
+    scenario.id === 'binance_from_xhs_viral'
+    || scenario.id === 'binance_from_douyin_viral'
+    || scenario.id === 'binance_from_tiktok_viral';
   // v6.x: 4 源批量搬运共用 wizard,但标题/描述/确认按钮要按源显示对应平台名,
   // 否则用户从小红书搬运,UI 全是"推特"字样,体验断裂(user-reported bug)。
   const repostSource: { zh: string; en: string; emoji: string; sourceTab: string } = (() => {
@@ -521,7 +529,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // useCombinedPersona: 推特(auto_engage / post_creator) + 币安(发帖 / 互动 / 搬运)
   // 都沿用同一「选择人设」合一布局(下拉 + textarea),代替原来的「选择赛道 + 单独
   // persona 区块」。x_link_rewrite / binance_from_x_link 排除(链接仿写不需要 persona)。
-  const useCombinedPersona = isXOrBinance && !isLinkRewriteScenario;
+  // v6.x: 3 个 source-viral 搬运排除合一布局 — 它们要 赛道+关键词+独立 Token 标签
+  //   (跟 xhs_viral_production_career 同款),不能跟 X repost / binance post creator
+  //   走 "Token 标签 = 关键词" 的 combinedPersona 套路。
+  const useCombinedPersona = isXOrBinance && !isLinkRewriteScenario && !isBinanceSourceViral;
   // ⚠️ Don't read manifest.risk_caps.comment_replies_per_article anymore.
   // Auto-reply policy is hard-coded to "1 article comment + 0 or 1 user reply"
   // (Top1 + 50% coin flip) and the wizard copy reflects that literally.
@@ -558,8 +569,21 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // Keywords
   const [customKeywordsText, setCustomKeywordsText] = useState<string>(() => {
     if (initialTask?.keywords && initialTask.keywords.length > 0) return initialTask.keywords.join(' ');
+    // v6.x: source-viral 搬运用于"搜源平台",必须用赛道关键词(穿搭/美食/...),
+    //   不能用 BINANCE_TOKEN_DEFAULTS(BTC ETH 那种 — 会被搜成"crypto 内容")
+    if (isBinanceSourceViral) return selectedTrack.keywords.join(' ');
     if (isBinancePlatform) return BINANCE_TOKEN_DEFAULTS.join(' ');
     return selectedTrack.keywords.join(' ');
+  });
+
+  // v6.x: source-viral 搬运专用 — 币安发帖前缀 cashtag 池(选填,空就走
+  //   orchestrator 内置 CASHTAG_POOL)。这跟 customKeywordsText (搜源)是
+  //   不同字段,提交时分别走 task.cashtags / task.keywords。
+  const [tokenTagsText, setTokenTagsText] = useState<string>(() => {
+    if (initialTask?.cashtags && Array.isArray(initialTask.cashtags) && initialTask.cashtags.length > 0) {
+      return initialTask.cashtags.join(' ');
+    }
+    return '';  // 空 → orchestrator 用内置池
   });
 
   // Persona — picks the most-detailed available hint per track:
@@ -942,6 +966,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         } : {}),
         // v4.31.27: 仅 binance_from_x_repost(批量搬运 feed)用,其他场景忽略
         ...(isBinanceFromXRepost ? { media_filter: mediaFilter } : {}),
+        // v6.x: 3 个 source-viral 搬运的 token 前缀池(空 → orchestrator 用内置 CASHTAG_POOL)
+        ...(isBinanceSourceViral
+            ? { cashtags: parseKeywords(tokenTagsText).map(s => s.replace(/^\$+/, '').toUpperCase()) }
+            : {}),
         ...(isLinkRewriteScenario ? { urls: parsedUrls } : {}),
         // v2.4.59: Binance auto_engage 也用同一组 follow_min/max + reply_min/max
         // v2.4.83: + daily_like_min/max
@@ -1087,21 +1115,47 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   read keywords — orchestrator picks targets from the discover
                   feed; showing the field would mislead users into thinking
                   their token list filters AI replies. Hide there too. */}
+              {/* v6.x: source-viral 搬运专用顶部 — Token 标签(可选,作为币安发帖前缀池) */}
+              {isBinanceSourceViral && (
+                <div>
+                  <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+                    {isZh ? 'Token 标签' : 'Token tags'}
+                    <span className="text-xs text-gray-400 font-normal ml-1">
+                      {isZh
+                        ? '（可选 · 币安发帖前缀池,留空走内置 BTC/ETH/SOL 等 30+ 主流币）'
+                        : '(optional · cashtag prefix pool for Binance posts; leave empty for built-in 30+ majors)'}
+                    </span>
+                  </label>
+                  <textarea
+                    value={tokenTagsText}
+                    onChange={e => setTokenTagsText(e.target.value)}
+                    placeholder={isZh ? '例：BTC ETH SOL BNB DOGE（空格分隔,留空走内置池）' : 'e.g. BTC ETH SOL BNB DOGE (space-separated, blank = built-in)'}
+                    rows={2}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
+                  />
+                </div>
+              )}
+
               {(!isXPlatform || isBinancePlatform) && !isBinanceAutoEngage && !isLinkRewriteScenario && (
                 <div>
                   <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-                    {isBinancePlatform
-                      ? (isZh ? 'Token 标签' : 'Token tags')
-                      : (isZh ? '关键词' : 'Keywords')} <span className="text-xs text-gray-400 font-normal">
-                      {isBinancePlatform
-                        ? (isZh ? '（每次运行随机挑 1 个作为帖子主题,自动带 cashtag）' : '(1 random token per run as post topic, auto $ cashtag)')
-                        : isAutoReply
-                          ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
-                          : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
+                    {/* v6.x: source-viral 搬运 — 此字段是"搜源平台关键词",别误标 Token */}
+                    {isBinanceSourceViral
+                      ? (isZh ? '搜索关键词' : 'Search keywords')
+                      : isBinancePlatform
+                        ? (isZh ? 'Token 标签' : 'Token tags')
+                        : (isZh ? '关键词' : 'Keywords')} <span className="text-xs text-gray-400 font-normal">
+                      {isBinanceSourceViral
+                        ? (isZh ? `（每次运行随机 1 个去${repostSource.zh}搜源帖,建议 15-25 个降低风控）` : `(1 random keyword per run, searches ${repostSource.en} for source posts; 15-25 recommended)`)
+                        : isBinancePlatform
+                          ? (isZh ? '（每次运行随机挑 1 个作为帖子主题,自动带 cashtag）' : '(1 random token per run as post topic, auto $ cashtag)')
+                          : isAutoReply
+                            ? (isZh ? '（每次运行随机选 1 个搜索匹配文章去回复）' : '(1 random keyword per run picks which articles to reply to)')
+                            : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
                     </span>
                   </label>
-                  {/* Pre-fill hint — XHS only(币安场景已删,推特场景没这个 textarea) */}
-                  {!isBinancePlatform && (
+                  {/* Pre-fill hint — XHS scenarios + source-viral 搬运 共享(币安原生场景没这个 hint) */}
+                  {(!isBinancePlatform || isBinanceSourceViral) && (
                     <div className="mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400">
                       {isAutoReply
                         ? (isZh
@@ -1115,10 +1169,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   <textarea
                     value={customKeywordsText}
                     onChange={e => setCustomKeywordsText(e.target.value)}
-                    placeholder={isBinancePlatform
-                      ? (isZh ? '例：BTC ETH SOL BNB DOGE' : 'e.g. BTC ETH SOL BNB DOGE')
-                      : (isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated')}
-                    rows={isBinancePlatform ? 3 : 6}
+                    placeholder={isBinanceSourceViral
+                      ? (isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated')
+                      : isBinancePlatform
+                        ? (isZh ? '例：BTC ETH SOL BNB DOGE' : 'e.g. BTC ETH SOL BNB DOGE')
+                        : (isZh ? '用空格或逗号分隔，越多越好' : 'Space or comma separated')}
+                    rows={isBinancePlatform && !isBinanceSourceViral ? 3 : 6}
                     className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-green-500/50"
                   />
                   {/* v4.28.x: 之前这里有「关键词越多，每次搜索内容越不重复，降低风控风险」

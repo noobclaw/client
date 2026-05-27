@@ -154,6 +154,12 @@ export interface ScenarioTaskIPC {
    *  main process; rendered as an absolute time in TaskDetailPage so
    *  daily_random tasks show e.g. "明天 11:23" instead of "in ~24-27h". */
   next_planned_run_at?: number;
+  /** v6.x: binance_from_{xhs,douyin,tiktok}_viral cashtag prefix pool override.
+   *  Empty/missing → orchestrator uses built-in CASHTAG_POOL (BTC/ETH/SOL/...). */
+  cashtags?: string[];
+  /** v6.x: binance_from_x_repost + 3 viral 搬运 media type filter.
+   *  'all' | 'image_only' | 'video_only' (TikTok forced video_only). */
+  media_filter?: string;
   created_at: number;
   updated_at: number;
 }
