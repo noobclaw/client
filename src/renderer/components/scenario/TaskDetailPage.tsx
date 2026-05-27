@@ -1120,7 +1120,13 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                         //   旧任务 daily_post_min/max 缺失时回落 daily_count(常为 1),
                         //   显示"每30分钟 · 1 条/次",和 wizard 实时摘要不一致引发用户困惑。
                         //   现按场景给出和 wizard step3 同款描述,且 min===max 时只显示单值。
-                        if (sid === 'binance_square_post_creator' || sid === 'x_post_creator' || sid === 'binance_from_x_repost') {
+                        // v6.x: 3 个 source-viral 搬运(xhs/douyin/tiktok)同 binance_from_x_repost 也走
+                        //   daily_post_min/max。之前漏在这条分支里,fall through 默认 task.daily_count || 1,
+                        //   wizard 存的是 daily_post_min/max → daily_count 永远 undefined → 永远显示"每次 1 条"。
+                        const isSrcViral = sid === 'binance_from_xhs_viral'
+                                       || sid === 'binance_from_douyin_viral'
+                                       || sid === 'binance_from_tiktok_viral';
+                        if (sid === 'binance_square_post_creator' || sid === 'x_post_creator' || sid === 'binance_from_x_repost' || isSrcViral) {
                           const hasRange = typeof pMin === 'number' && typeof pMax === 'number';
                           const pStr = hasRange
                             ? (pMin === pMax ? String(pMin) : `${pMin}-${pMax}`)
@@ -1134,6 +1140,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             return isZh
                               ? `${intervalLabel} · 每次 ${pStr} 条 · 推特爆款搬运到币安广场（原图/视频 + AI 改写）`
                               : `${intervalLabel} · ${pStr} repost(s)/run · X → Binance Square (original media + AI rewrite)`;
+                          }
+                          if (isSrcViral) {
+                            const srcLabel = sid === 'binance_from_xhs_viral' ? '小红书'
+                                          : sid === 'binance_from_douyin_viral' ? '抖音'
+                                          : 'TikTok';
+                            const srcLabelEn = sid === 'binance_from_xhs_viral' ? 'Xiaohongshu'
+                                            : sid === 'binance_from_douyin_viral' ? 'Douyin'
+                                            : 'TikTok';
+                            return isZh
+                              ? `${intervalLabel} · 每次 ${pStr} 条 · ${srcLabel}爆款搬运到币安广场（原图/视频 + AI 改写）`
+                              : `${intervalLabel} · ${pStr} repost(s)/run · ${srcLabelEn} → Binance Square (original media + AI rewrite)`;
                           }
                           // binance_square_post_creator
                           return isZh
