@@ -1458,12 +1458,18 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                       : '✨ Recommended — daily at a randomized time, more human-like'}
                   </p>
                 )}
-                {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h) */}
+                {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h).
+                    v6.x: 短间隔(30min/1h)保留 1-10 分钟 jitter;长间隔(3h/6h)放宽到
+                    1-45 分钟,更不容易被规律识别。文案随 interval 切换。 */}
                 {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && (
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
-                    {isZh
-                      ? '⚠️ 到点后再加 1-10 分钟随机延迟,避免精准卡点'
-                      : '⚠️ +1-10min jitter after threshold (anti-detection).'}
+                    {(() => {
+                      const isLong = runInterval === '3h' || runInterval === '6h';
+                      const range = isLong ? '1-45' : '1-10';
+                      return isZh
+                        ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点`
+                        : `⚠️ +${range}min jitter after threshold (anti-detection).`;
+                    })()}
                   </p>
                 )}
               </div>

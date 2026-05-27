@@ -1268,9 +1268,12 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
  *   - false: regular post-run reschedule → fromTs + base + jitter
  *
  * Jitter rules per interval:
- *   30min/1h/3h/6h:
+ *   30min/1h:
  *     isFirstRun=true   → fromTs + rand(0..base)             (first bucket)
  *     isFirstRun=false  → fromTs + base + rand(0..10 min)    (steady-state)
+ *   3h/6h:
+ *     isFirstRun=true   → fromTs + rand(0..base)             (first bucket)
+ *     isFirstRun=false  → fromTs + base + rand(0..45 min)    (wider jitter — v6.x)
  *   daily (HH:MM fixed):
  *     today HH:MM if not yet passed, else tomorrow ± 15 min  (no special case)
  *   daily_random:
@@ -1332,7 +1335,11 @@ export function computeNextPlannedRun(
     // seconds from now, could be near the end of the bucket.
     return fromTs + Math.floor(Math.random() * base);
   }
-  return fromTs + base + Math.floor(Math.random() * 10 * 60 * 1000);
+  // v6.x: per-user request,长间隔(3h/6h)用更宽 1-45 分钟 jitter,
+  //   短间隔(30min/1h)留 1-10 分钟(过宽会破坏间隔密度)。
+  const isLongInterval = interval === '3h' || interval === '6h';
+  const jitterMaxMs = (isLongInterval ? 45 : 10) * 60 * 1000;
+  return fromTs + base + Math.floor(Math.random() * jitterMaxMs);
 }
 
 /** Persist the next planned run for a task, computed off the given
