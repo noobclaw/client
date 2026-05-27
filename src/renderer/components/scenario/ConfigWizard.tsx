@@ -1454,8 +1454,8 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {!isAutoReply && runInterval === 'daily_random' && (
                   <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
                     {isZh
-                      ? '✨ 推荐 — 每天随机时间触发(≥24h),比固定钟点更像真人'
-                      : '✨ Recommended — daily at a randomized time (≥24h apart), more human-like'}
+                      ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人'
+                      : '✨ Recommended — daily at a randomized time, more human-like'}
                   </p>
                 )}
                 {/* Jitter explanation for the periodic intervals (30min/1h/3h/6h) */}
