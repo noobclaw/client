@@ -1804,6 +1804,92 @@ function buildContext(
       }
     },
 
+    // v6.x: 用 yt-dlp 下载带 audio 的 muxed mp4 — 抖音 / TikTok / B站 等用 DASH
+    //   分轨的平台 web 端 JS 暴露的 URL 都是 video-only / DASH segment,直接 download
+    //   下来的 mp4 是无声的(用户实测:抖音搬运下载视频无声)。yt-dlp 内置 a_bogus 签名
+    //   + mobile UA + 各平台 extractor,直接给一个 detail page URL,输出 muxed mp4。
+    //
+    // 第一版策略:优先 process.resourcesPath/bin/yt-dlp(打包后随客户端 ship,user 零
+    //   配置);fallback 走 system PATH 'yt-dlp'(user 自己装的)。两个都没 → return
+    //   client_yt_dlp_missing 让 orchestrator skip / 降级。
+    //
+    // 用法:await ctx.downloadWithYtDlp('https://www.douyin.com/video/<id>',
+    //         { outPath: '/path/out.mp4', timeout: 300000 })
+    //   → { ok: true, filePath, sizeBytes }
+    //   → { ok: false, reason: 'yt_dlp_failed:<stderr-snippet>' }
+    downloadWithYtDlp: async (
+      sourceUrl: string,
+      opts?: { outPath?: string; timeout?: number; format?: string }
+    ): Promise<any> => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const os = require('os');
+        const { execSync } = require('child_process');
+
+        // 1. 找 yt-dlp binary:优先 bundled(打包后 ship 在 resources/bin),
+        //    fallback system PATH。开发模式下 process.resourcesPath 可能是 dev 路径,
+        //    没 bin/yt-dlp 也 OK,直接走 system PATH。
+        let ytdlpCmd: string | null = null;
+        const platform = process.platform;
+        const binName = platform === 'win32' ? 'yt-dlp.exe'
+                      : platform === 'darwin' ? 'yt-dlp_macos'
+                      : 'yt-dlp_linux';
+        try {
+          const bundled = path.join((process as any).resourcesPath || '', 'bin', binName);
+          if (bundled && fs.existsSync(bundled)) {
+            ytdlpCmd = bundled;
+          }
+        } catch (_) {}
+        if (!ytdlpCmd) {
+          // 尝试 system PATH — 用 --version 探测
+          try {
+            execSync('yt-dlp --version', { timeout: 5000, stdio: 'ignore' });
+            ytdlpCmd = 'yt-dlp';
+          } catch (_) {
+            return {
+              ok: false,
+              reason: 'client_yt_dlp_missing — install yt-dlp or wait for bundled client release',
+            };
+          }
+        }
+
+        // 2. 生成输出路径(如果没指定,丢临时目录)
+        const outPath = opts?.outPath
+          || path.join(os.tmpdir(), 'noobclaw_ytdlp_' + Date.now() + '.mp4');
+
+        // 3. 默认 -f best (yt-dlp 自动选最佳 muxed format),抖音 / TikTok / B站
+        //    内部 extractor 自动 mux audio+video 给我们带 audio 的 mp4。
+        const format = opts?.format || 'best';
+        const timeout = opts?.timeout || 5 * 60 * 1000;
+
+        // 4. 调用 yt-dlp。stderr 留着抓错误日志,stdout 不重要。
+        //    --no-warnings 关掉 yt-dlp 自己的 warning 噪音。
+        //    --no-playlist 防止 detail URL 被识别成 playlist 拉 N 个。
+        try {
+          execSync(
+            `"${ytdlpCmd}" --no-warnings --no-playlist -f ${format} -o "${outPath}" "${sourceUrl}"`,
+            { timeout, stdio: ['ignore', 'ignore', 'pipe'] }
+          );
+        } catch (err: any) {
+          const stderr = (err.stderr && err.stderr.toString()) || String(err.message || err);
+          return { ok: false, reason: 'yt_dlp_failed:' + stderr.slice(0, 200) };
+        }
+
+        if (!fs.existsSync(outPath)) {
+          return { ok: false, reason: 'yt_dlp_no_output_file' };
+        }
+        const stat = fs.statSync(outPath);
+        if (stat.size < 1024) {
+          return { ok: false, reason: 'yt_dlp_output_too_small:' + stat.size };
+        }
+        return { ok: true, filePath: outPath, sizeBytes: stat.size };
+      } catch (err: any) {
+        coworkLog('WARN', 'phaseRunner', 'downloadWithYtDlp failed', { err: String(err) });
+        return { ok: false, reason: 'unexpected:' + String(err?.message || err).slice(0, 100) };
+      }
+    },
+
     // v4.25.6 Phase 2: 完整发视频帖到币安广场 — 整合 modal 流程。
     // 跟图片帖完全不同:点视频图标 → 弹 quote-mode modal → 在 modal 内
     // upload + 写正文 → 发文。
