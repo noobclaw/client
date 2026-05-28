@@ -73,8 +73,28 @@ jobs:
         # /api/version endpoint reports the bumped version too.
         run: node scripts/sync-version.js
 
+      # Cache the prebuilt node20 binary that @yao-pkg/pkg downloads on demand.
+      # On a cold runner pkg pulls a ~30MB node binary from the pkg-fetch GH
+      # release and stitches it together with our sidecar bundle — normally
+      # ~10-30s but occasionally minutes-to-hours when the release CDN is
+      # slow (we hit this when 6.20.0 dropped on 2026-05-27 and sidecar went
+      # from 9s to 55 min). Cache hit makes the step nearly instant.
+      #
+      # Key is partitioned by runner OS + matrix target + pinned pkg
+      # version so a future pkg bump invalidates cleanly.
+      - name: Cache pkg node binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.pkg-cache
+          key: pkg-cache-v6.19.0-${{ runner.os }}-${{ matrix.target }}
+
+      # Pin @yao-pkg/pkg version: leaving it unpinned bit us hard. On
+      # 2026-05-27 12:42 UTC the maintainer published 6.20.0 — the very
+      # next build picked it up via npm latest and `Build sidecar` step
+      # went from 9-30s to 27-55 minutes per arch (3x ~30min, ~90min wall
+      # clock). 6.19.0 (one month prior) was stable. Lock it.
       - name: Install @yao-pkg/pkg
-        run: npm install -g @yao-pkg/pkg
+        run: npm install -g @yao-pkg/pkg@6.19.0
 
       - name: Build macOS native desktop addon
         # Compiles native/macos-desktop/src/noobclaw_desktop.mm into a
@@ -179,20 +199,6 @@ jobs:
           # Smoke test (Linux/macOS can self-exec; Windows runner can too via mingw)
           "src-tauri/resources/bin/$OUT" --version || echo "WARN: --version probe failed (may be cross-arch; continuing)"
 
-      # macOS Resources/ binaries must be ad-hoc signed with hardened runtime
-      # + timestamp or notarization rejects the whole .app with
-      # "The signature does not include a secure timestamp." Same pattern as
-      # the Pre-sign native addon step above.
-      - name: Pre-sign media helper (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          YT="src-tauri/resources/bin/noobclaw-media-helper_macos"
-          if [ -f "$YT" ]; then
-            codesign --force --timestamp --options runtime \
-              --sign "$APPLE_SIGNING_IDENTITY" "$YT"
-            codesign -dvv "$YT" || true
-          fi
-
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
@@ -239,6 +245,25 @@ jobs:
           else
             echo "ERROR: $ADDON not found — prepare-tauri-resources.js should have copied it"
             ls -la src-tauri/resources/native/ || true
+            exit 1
+          fi
+
+      # Same rationale as Pre-sign native addon — noobclaw-media-helper_macos
+      # lands in Contents/Resources/resources/bin/ which Tauri's bundler does
+      # NOT reach when codesigning. Without --timestamp --options runtime the
+      # notary service rejects the whole .app. Must run AFTER the keychain
+      # import step above (which sets APPLE_SIGNING_IDENTITY in GITHUB_ENV).
+      - name: Pre-sign media helper (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          YT="src-tauri/resources/bin/noobclaw-media-helper_macos"
+          if [ -f "$YT" ]; then
+            codesign --force --timestamp --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" "$YT"
+            codesign -dvv "$YT" || true
+          else
+            echo "ERROR: $YT not found — Bundle media helper step should have downloaded it"
+            ls -la src-tauri/resources/bin/ || true
             exit 1
           fi
 
