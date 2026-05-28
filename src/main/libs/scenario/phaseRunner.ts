@@ -1913,18 +1913,18 @@ function buildContext(
         //    s_v_web_id),否则抖音返回 challenge 页,yt-dlp 报
         //    "Fresh cookies (not necessarily logged in) are needed"。
         //
-        //    现成接口:background.js cdp_cookies_get(line 3351) 已经通过
-        //    chrome.debugger CDP 调 Network.getCookies — CDP 协议层级
-        //    返回所有 cookies 含 HttpOnly。传 urls 数组 → CDP 返回所有
-        //    "可发送给该 URL" 的 cookies,parent domain (.douyin.com 等)
-        //    自动包含。不动 extension 一个字。
+        //    走 extension 1.5.3 新增的 cookies_get(background.js 用
+        //    chrome.cookies.getAll API)。比 cdp_cookies_get 更稳:不
+        //    依赖 chrome.debugger attach 状态,直接拿 Chrome cookie
+        //    store。传 urls → 返回所有 "可发送给该 URL" 的 cookies,
+        //    parent domain (.douyin.com 等) 自动包含,HttpOnly 包含。
         //
         //    --cookies-from-browser chrome 不用了:那条路 macOS 要弹
         //    Keychain,Windows DPAPI 解密对 Profile 路径敏感,且都比
         //    不上我们直接从浏览器抓干净。
         let cookiesFile: string | null = null;
         try {
-          const cookiesRes: any = await browser('cdp_cookies_get', {
+          const cookiesRes: any = await browser('cookies_get', {
             urls: [sourceUrl],
           }, 10000);
           const cookies: any[] = (cookiesRes && cookiesRes.cookies) || [];
