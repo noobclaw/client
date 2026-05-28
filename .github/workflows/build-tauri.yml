@@ -131,6 +131,61 @@ jobs:
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
 
+      # Bundle yt-dlp into the Tauri resources directory so the sidecar can
+      # download DASH split-track 抖音 / TikTok / B站 videos with audio
+      # (web JS only exposes video-only URLs — direct downloads are silent).
+      # phaseRunner.ts ctx.downloadWithYtDlp resolves
+      #   <resources>/bin/yt-dlp[.exe|_macos|_linux] via getResourcesPath().
+      #
+      # MUST run AFTER `Prepare Tauri resources` because that script wipes
+      # src-tauri/resources/ before copying SKILLs/tray/native addons in.
+      # Tauri's bundler picks up resources/**/* from tauri.conf.json.
+      #
+      # macOS x86_64 + arm64 both use the universal yt-dlp_macos binary
+      # (PyInstaller fat Mach-O — works on both archs).
+      - name: Bundle yt-dlp binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p src-tauri/resources/bin
+          case "${{ matrix.target }}" in
+            *windows*)
+              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+              OUT="yt-dlp.exe"
+              ;;
+            *apple-darwin*)
+              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+              OUT="yt-dlp_macos"
+              ;;
+            *linux*)
+              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
+              OUT="yt-dlp_linux"
+              ;;
+            *)
+              echo "Unknown target: ${{ matrix.target }}"; exit 1 ;;
+          esac
+          echo "Downloading $URL → src-tauri/resources/bin/$OUT"
+          curl -L --fail --retry 3 --retry-delay 5 \
+            -o "src-tauri/resources/bin/$OUT" "$URL"
+          chmod +x "src-tauri/resources/bin/$OUT" || true
+          ls -la src-tauri/resources/bin/
+          # Smoke test (Linux/macOS can self-exec; Windows runner can too via mingw)
+          "src-tauri/resources/bin/$OUT" --version || echo "WARN: --version probe failed (may be cross-arch; continuing)"
+
+      # macOS Resources/ binaries must be ad-hoc signed with hardened runtime
+      # + timestamp or notarization rejects the whole .app with
+      # "The signature does not include a secure timestamp." Same pattern as
+      # the Pre-sign native addon step above.
+      - name: Pre-sign yt-dlp (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          YT="src-tauri/resources/bin/yt-dlp_macos"
+          if [ -f "$YT" ]; then
+            codesign --force --timestamp --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" "$YT"
+            codesign -dvv "$YT" || true
+          fi
+
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 

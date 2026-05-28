@@ -22,6 +22,7 @@ import { getNoobClawAuthToken } from '../claudeSettings';
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeTaskArtifacts, getTaskOutputDir } from './artifactWriter';
+import { getResourcesPath } from '../platformAdapter';
 import type {
   Draft,
   ScenarioPack,
@@ -1827,20 +1828,32 @@ function buildContext(
         const os = require('os');
         const { execSync } = require('child_process');
 
-        // 1. 找 yt-dlp binary:优先 bundled(打包后 ship 在 resources/bin),
-        //    fallback system PATH。开发模式下 process.resourcesPath 可能是 dev 路径,
-        //    没 bin/yt-dlp 也 OK,直接走 system PATH。
+        // 1. 找 yt-dlp binary:优先 bundled(打包后 ship 在 <resources>/bin),
+        //    Tauri sidecar 下 process.resourcesPath 是 undefined,必须用
+        //    getResourcesPath()(platformAdapter 走 sidecar 旁的 resources/
+        //    + macOS .app/Contents/Resources fallback)。dev 模式再追加项目内
+        //    src-tauri/resources/bin/ 候选。都没命中 → system PATH yt-dlp。
         let ytdlpCmd: string | null = null;
         const platform = process.platform;
         const binName = platform === 'win32' ? 'yt-dlp.exe'
                       : platform === 'darwin' ? 'yt-dlp_macos'
                       : 'yt-dlp_linux';
+        const bundledCandidates: string[] = [];
         try {
-          const bundled = path.join((process as any).resourcesPath || '', 'bin', binName);
-          if (bundled && fs.existsSync(bundled)) {
-            ytdlpCmd = bundled;
-          }
+          const rp = getResourcesPath();
+          if (rp) bundledCandidates.push(path.join(rp, 'bin', binName));
         } catch (_) {}
+        try {
+          bundledCandidates.push(path.join(process.cwd(), 'src-tauri', 'resources', 'bin', binName));
+        } catch (_) {}
+        for (const cand of bundledCandidates) {
+          try {
+            if (cand && fs.existsSync(cand)) {
+              ytdlpCmd = cand;
+              break;
+            }
+          } catch (_) {}
+        }
         if (!ytdlpCmd) {
           // 尝试 system PATH — 用 --version 探测
           try {
@@ -1849,10 +1862,11 @@ function buildContext(
           } catch (_) {
             return {
               ok: false,
-              reason: 'client_yt_dlp_missing — install yt-dlp or wait for bundled client release',
+              reason: 'client_yt_dlp_missing — bundled paths tried: ' + bundledCandidates.join(' | '),
             };
           }
         }
+        coworkLog('INFO', 'phaseRunner', 'downloadWithYtDlp using binary', { ytdlpCmd });
 
         // 2. 生成输出路径(如果没指定,丢临时目录)
         const outPath = opts?.outPath
