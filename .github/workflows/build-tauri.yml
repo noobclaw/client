@@ -253,14 +253,26 @@ jobs:
       # NOT reach when codesigning. Without --timestamp --options runtime the
       # notary service rejects the whole .app. Must run AFTER the keychain
       # import step above (which sets APPLE_SIGNING_IDENTITY in GITHUB_ENV).
+      #
+      # CRITICAL: --entitlements is required because yt-dlp is a PyInstaller
+      # binary. At launch it unpacks an embedded Python.framework to
+      # /var/folders/.../_MEI*/ and dlopens it. Hardened Runtime
+      # (--options runtime) by default rejects dlopen of libraries not
+      # signed with the same Team ID → "Failed to load Python shared
+      # library" (PYI-63390) and yt-dlp exits before doing anything.
+      # Same entitlements.plist already shipped for the pkg sidecar
+      # (allow-jit + allow-unsigned-executable-memory +
+      # disable-library-validation) — reuse it here.
       - name: Pre-sign media helper (macOS)
         if: runner.os == 'macOS'
         run: |
           YT="src-tauri/resources/bin/noobclaw-media-helper_macos"
           if [ -f "$YT" ]; then
             codesign --force --timestamp --options runtime \
+              --entitlements src-tauri/entitlements.plist \
               --sign "$APPLE_SIGNING_IDENTITY" "$YT"
             codesign -dvv "$YT" || true
+            codesign --display --entitlements - "$YT" || true
           else
             echo "ERROR: $YT not found — Bundle media helper step should have downloaded it"
             ls -la src-tauri/resources/bin/ || true
