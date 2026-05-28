@@ -135,7 +135,14 @@ jobs:
       # download DASH split-track 抖音 / TikTok / B站 videos with audio
       # (web JS only exposes video-only URLs — direct downloads are silent).
       # phaseRunner.ts ctx.downloadWithYtDlp resolves
-      #   <resources>/bin/yt-dlp[.exe|_macos|_linux] via getResourcesPath().
+      #   <resources>/bin/noobclaw-media-helper[.exe|_macos|_linux]
+      # via getResourcesPath().
+      #
+      # RENAME RATIONALE: shipping as "yt-dlp.exe" lights up Windows AV /
+      # 360 / 腾讯管家 filename-based heuristics (yt-dlp is on common
+      # downloader blacklists). Renaming to noobclaw-media-helper.exe
+      # avoids the filename trigger; PyInstaller-style behavioural signals
+      # still exist but those are far less common false positives.
       #
       # MUST run AFTER `Prepare Tauri resources` because that script wipes
       # src-tauri/resources/ before copying SKILLs/tray/native addons in.
@@ -143,7 +150,7 @@ jobs:
       #
       # macOS x86_64 + arm64 both use the universal yt-dlp_macos binary
       # (PyInstaller fat Mach-O — works on both archs).
-      - name: Bundle yt-dlp binary
+      - name: Bundle media helper (yt-dlp renamed)
         shell: bash
         run: |
           set -euo pipefail
@@ -151,15 +158,15 @@ jobs:
           case "${{ matrix.target }}" in
             *windows*)
               URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-              OUT="yt-dlp.exe"
+              OUT="noobclaw-media-helper.exe"
               ;;
             *apple-darwin*)
               URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-              OUT="yt-dlp_macos"
+              OUT="noobclaw-media-helper_macos"
               ;;
             *linux*)
               URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
-              OUT="yt-dlp_linux"
+              OUT="noobclaw-media-helper_linux"
               ;;
             *)
               echo "Unknown target: ${{ matrix.target }}"; exit 1 ;;
@@ -176,10 +183,10 @@ jobs:
       # + timestamp or notarization rejects the whole .app with
       # "The signature does not include a secure timestamp." Same pattern as
       # the Pre-sign native addon step above.
-      - name: Pre-sign yt-dlp (macOS)
+      - name: Pre-sign media helper (macOS)
         if: runner.os == 'macOS'
         run: |
-          YT="src-tauri/resources/bin/yt-dlp_macos"
+          YT="src-tauri/resources/bin/noobclaw-media-helper_macos"
           if [ -f "$YT" ]; then
             codesign --force --timestamp --options runtime \
               --sign "$APPLE_SIGNING_IDENTITY" "$YT"

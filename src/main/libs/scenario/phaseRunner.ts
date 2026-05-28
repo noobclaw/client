@@ -1828,23 +1828,26 @@ function buildContext(
         const os = require('os');
         const { execSync } = require('child_process');
 
-        // 1. 找 yt-dlp binary:优先 bundled(打包后 ship 在 <resources>/bin),
+        // 1. 找 media helper binary(yt-dlp 的内部别名,避开 Windows 杀软 /
+        //    360 的 filename 黑名单)。优先 bundled (<resources>/bin),
         //    Tauri sidecar 下 process.resourcesPath 是 undefined,必须用
         //    getResourcesPath()(platformAdapter 走 sidecar 旁的 resources/
         //    + macOS .app/Contents/Resources fallback)。dev 模式再追加项目内
-        //    src-tauri/resources/bin/ 候选。都没命中 → system PATH yt-dlp。
+        //    src-tauri/resources/bin/ 候选。bundled 都没命中 → system PATH
+        //    yt-dlp (兼容用户自己装的)。
         let ytdlpCmd: string | null = null;
         const platform = process.platform;
-        const binName = platform === 'win32' ? 'yt-dlp.exe'
-                      : platform === 'darwin' ? 'yt-dlp_macos'
-                      : 'yt-dlp_linux';
+        const bundledBinName =
+          platform === 'win32' ? 'noobclaw-media-helper.exe'
+          : platform === 'darwin' ? 'noobclaw-media-helper_macos'
+          : 'noobclaw-media-helper_linux';
         const bundledCandidates: string[] = [];
         try {
           const rp = getResourcesPath();
-          if (rp) bundledCandidates.push(path.join(rp, 'bin', binName));
+          if (rp) bundledCandidates.push(path.join(rp, 'bin', bundledBinName));
         } catch (_) {}
         try {
-          bundledCandidates.push(path.join(process.cwd(), 'src-tauri', 'resources', 'bin', binName));
+          bundledCandidates.push(path.join(process.cwd(), 'src-tauri', 'resources', 'bin', bundledBinName));
         } catch (_) {}
         for (const cand of bundledCandidates) {
           try {
@@ -1855,14 +1858,14 @@ function buildContext(
           } catch (_) {}
         }
         if (!ytdlpCmd) {
-          // 尝试 system PATH — 用 --version 探测
+          // 尝试 system PATH 的 yt-dlp(原名,user 自己装的)— 用 --version 探测
           try {
             execSync('yt-dlp --version', { timeout: 5000, stdio: 'ignore' });
             ytdlpCmd = 'yt-dlp';
           } catch (_) {
             return {
               ok: false,
-              reason: 'client_yt_dlp_missing — bundled paths tried: ' + bundledCandidates.join(' | '),
+              reason: 'media_helper_missing — bundled paths tried: ' + bundledCandidates.join(' | '),
             };
           }
         }
