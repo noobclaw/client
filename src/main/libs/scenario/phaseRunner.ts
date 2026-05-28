@@ -1911,9 +1911,20 @@ function buildContext(
         // 4. 调用 yt-dlp。stderr 留着抓错误日志,stdout 不重要。
         //    --no-warnings 关掉 yt-dlp 自己的 warning 噪音。
         //    --no-playlist 防止 detail URL 被识别成 playlist 拉 N 个。
+        //    --cookies-from-browser chrome:抖音 detail API 必须带浏览器
+        //      cookies (msToken / ttwid / __ac_nonce / s_v_web_id, 都是
+        //      HttpOnly,document.cookie 拿不到),否则抖音返回 challenge
+        //      页,yt-dlp 报 "Fresh cookies (not necessarily logged in)
+        //      are needed"。用户的 Chrome 已经访问 / 登录过抖音,本地
+        //      就有这套 cookies — yt-dlp 自带从 Chrome cookie store 解密
+        //      读取的能力(macOS 通过 Keychain 拿 master key,首次会弹一
+        //      次授权然后 always allow)。Windows / Linux 路径 yt-dlp
+        //      自己处理,无弹窗。
+        //    多 Chrome profile 时默认读 Default profile;TODO 后续从
+        //      系统设置读 active profile(目前 noobclaw 用 Default,OK)。
         try {
           execSync(
-            `"${ytdlpCmd}" --no-warnings --no-playlist -f ${format} -o "${outPath}" "${sourceUrl}"`,
+            `"${ytdlpCmd}" --no-warnings --no-playlist --cookies-from-browser chrome -f ${format} -o "${outPath}" "${sourceUrl}"`,
             { timeout, stdio: ['ignore', 'ignore', 'pipe'] }
           );
         } catch (err: any) {
