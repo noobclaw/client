@@ -885,7 +885,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
         : { ok: false, reason: isZh ? '至少粘贴 1 条推文链接' : 'Paste at least 1 tweet URL' };
     } else if (keywordList.length === 0) {
       s1 = { ok: false, reason: isZh ? '至少填 1 个关键词' : 'At least 1 keyword required' };
-    } else if (!persona.trim()) {
+    } else if (!persona.trim() && !isBinanceSourceViral) {
+      // v6.x: 3 个 source-viral 搬运(xhs/douyin/tiktok)用 orchestrator 里固定的
+      // 默认人设("中文 web3 KOL,搬运海外/国内 alpha 并加上自己的锐评"),wizard 不
+      // 显示 persona 输入也不强制 — 跟详情页隐藏 persona 行的逻辑对齐。
       s1 = { ok: false, reason: isZh ? '请填一段人设描述' : 'Persona description is required' };
     } else {
       s1 = { ok: true };
@@ -1063,30 +1066,29 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                     {isZh ? '🎞 媒体类型' : '🎞 Media type'}
                     {isBinanceTiktokViral && (
                       <span className="ml-2 text-xs font-normal text-gray-500 dark:text-gray-400">
-                        {isZh ? '(TikTok 无图文 feed,锁仅视频)' : '(TikTok video-only, no image-text feed)'}
+                        {isZh ? '(TikTok 无图文 feed,只能搬视频)' : '(TikTok video-only, no image-text feed)'}
                       </span>
                     )}
                   </label>
                   <div className="flex gap-2">
-                    {([
-                      { v: 'all' as const,        label: isZh ? '全部'   : 'All' },
-                      { v: 'image_only' as const, label: isZh ? '仅图文' : 'Images only' },
-                      { v: 'video_only' as const, label: isZh ? '仅视频' : 'Videos only' },
-                    ]).map(opt => {
-                      // v6.x: TikTok 锁死 video_only — 其他两项禁用
-                      const lockedForTiktok = isBinanceTiktokViral && opt.v !== 'video_only';
+                    {/* v6.x: TikTok 不渲染"全部 / 仅图文"灰色按钮,直接只显示"仅视频" */}
+                    {(isBinanceTiktokViral
+                      ? [{ v: 'video_only' as const, label: isZh ? '🎥 仅视频' : '🎥 Videos only' }]
+                      : [
+                          { v: 'all' as const,        label: isZh ? '全部'   : 'All' },
+                          { v: 'image_only' as const, label: isZh ? '仅图文' : 'Images only' },
+                          { v: 'video_only' as const, label: isZh ? '仅视频' : 'Videos only' },
+                        ]
+                    ).map(opt => {
                       return (
                         <button
                           key={opt.v}
                           type="button"
-                          disabled={lockedForTiktok}
-                          onClick={() => { if (!lockedForTiktok) setMediaFilter(opt.v); }}
+                          onClick={() => setMediaFilter(opt.v)}
                           className={`px-4 py-2 rounded-lg text-sm border transition-colors ${
-                            lockedForTiktok
-                              ? 'border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed bg-gray-50 dark:bg-gray-900/40'
-                              : mediaFilter === opt.v
-                                ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
-                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
+                            mediaFilter === opt.v
+                              ? 'border-sky-500 bg-sky-500/10 text-sky-500 font-medium'
+                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-sky-500/50'
                           }`}
                         >
                           {opt.label}
@@ -1155,8 +1157,10 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                             : (isZh ? '（每次运行随机选 1 个搜索，建议 15-25 个降低风控）' : '(1 random keyword per run, 15-25 recommended)')}
                     </span>
                   </label>
-                  {/* Pre-fill hint — XHS scenarios + source-viral 搬运 共享(币安原生场景没这个 hint) */}
-                  {(!isBinancePlatform || isBinanceSourceViral) && (
+                  {/* Pre-fill hint — XHS scenarios + xhs source-viral 搬运 共享(币安原生场景没这个 hint)。
+                      v6.x: 抖音/TikTok 搬运也用 XHS 赛道关键词,但提示文案是"小红书流量报告"的来源,
+                      对抖音/TikTok 来源不准确,直接隐掉提示框。XHS 搬运保留(数据源对得上)。 */}
+                  {(!isBinancePlatform || (isBinanceSourceViral && scenario.id === 'binance_from_xhs_viral')) && (
                     <div className="mb-2 rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-green-500/30 bg-green-500/5 text-green-700 dark:text-green-400">
                       {isAutoReply
                         ? (isZh
