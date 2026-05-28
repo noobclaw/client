@@ -63,10 +63,14 @@ function releaseKeepAwake(): void {
   }
 }
 
-// AI rescue (v5.6.2+): only attempt for failures that smell like a
-// DOM/selector breakage. Network, abort, balance, and AI-quota failures
-// are exempt — they have nothing to do with website redesigns.
-function shouldAttemptRescue(reason?: string): boolean {
+// DOM-failure incident report (v6.x+): only fire for failures that smell
+// like a DOM/selector breakage so engineers see actionable signal in
+// Lark. Network, abort, balance, AI-quota, and browser-disconnect
+// failures are exempt — they have nothing to do with website DOM
+// changes. v5.x used the same gate to decide whether to burn LLM tokens
+// auto-fixing the orchestrator; v6.x uses it to decide whether to send
+// an incident report (cheap, but still avoid noise).
+function shouldReportIncident(reason?: string): boolean {
   if (!reason) return false;
   if (/user_stopped|aborted|scenario_pack_not_found|no_local_images|insufficient_balance|quota|rate_limit|ECONN|fetch_failed|AI_PARSE_FAIL|AI_EMPTY|BROWSER_NOT_CONNECTED/i.test(reason)) {
     return false;
@@ -1115,14 +1119,21 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
       appLocale: readAppLocale(),
     });
 
-    // ── AI rescue: try ONCE with a candidate orchestrator if the failure
-    //    looks like a selector / DOM-shape problem (v5.6.2+).
-    if (result.status === 'failed' && shouldAttemptRescue(result.reason)) {
+    // ── DOM-failure incident report (v6.x+) ────────────────────────────
+    // If the failure looks like a DOM/selector breakage, fire off a
+    // single fire-and-forget POST to /rescue/report with the current DOM
+    // snapshot. NO retry, NO script override, NO token charge — the
+    // engineer fixes selectors manually after a Lark threshold alert
+    // (3 events / 3 days for same scenario + selector).
+    //
+    // v5.x used to ship a LLM-generated candidate orchestrator and
+    // retry once. That was removed because:
+    //   (a) it burned user tokens on fixes that often didn't work,
+    //   (b) auto-retrying with a bad candidate masked the original
+    //       error and confused users.
+    if (result.status === 'failed' && shouldReportIncident(result.reason)) {
       try {
         const tabPattern = pack.manifest?.tab_url_pattern;
-        // Dump the current DOM via the chrome-extension. Read-page already
-        // strips invisible nodes and gives us role/aria/text/selector — the
-        // backend serializer just trims further and indexes for the LLM.
         const dom = await sendBrowserCommand(
           'read_page',
           { filter: 'interactive' },
@@ -1136,39 +1147,40 @@ async function _runTaskInner(task: ScenarioTask, manual?: boolean, prefetchedPac
           tabPattern ? { tabPattern } : {},
         ).catch(() => null);
 
+        // Serialize DOM elements to a single JSON string for the
+        // dom_snapshot TEXT column. Backend caps at 100 KB anyway, but
+        // pre-truncate so we don't waste bandwidth.
+        let domSnapshot: string | undefined;
         if (dom && Array.isArray((dom as any).elements)) {
-          coworkLog('INFO', 'scenarioManager', `[rescue] triggering for ${task.scenario_id} (reason: ${result.reason})`);
-          const trig = await viralPoolClient.triggerRescue({
-            scenarioId: task.scenario_id,
-            domElements: (dom as any).elements,
-            failedStep: result.reason,
-            url: urlInfo ? (urlInfo as any).url : undefined,
-          });
-
-          if (trig && trig.ok) {
-            coworkLog('INFO', 'scenarioManager', `[rescue] candidate ${trig.source} (md5=${trig.candidate_md5.slice(0, 8)}), running once`);
-            const rescueResult = await runOrchestrator(pack, task, seen, callbacks, {
-              scriptOverride: trig.candidate_orchestrator,
-              appLocale: readAppLocale(),
-            });
-            // Fire-and-forget event report — don't block the main flow.
-            void viralPoolClient.reportRescueEvent({
-              scenarioId: task.scenario_id,
-              candidateMd5: trig.candidate_md5,
-              outcome: rescueResult.status === 'ok' ? 'success' : 'failure',
-              taskId: task.id,
-              failedStep: rescueResult.reason,
-              errorMsg: rescueResult.status === 'ok' ? undefined : rescueResult.reason,
-            });
-            result = rescueResult;
-          } else if (trig) {
-            coworkLog('INFO', 'scenarioManager', `[rescue] skipped: ${trig.reason}`);
+          try {
+            domSnapshot = JSON.stringify((dom as any).elements).slice(0, 100 * 1024);
+          } catch {
+            // pathological circular structure — skip snapshot, still
+            // log the incident
           }
         }
+
+        coworkLog('INFO', 'scenarioManager',
+          `[rescue] reporting DOM incident for ${task.scenario_id} (reason: ${result.reason})`);
+        // Fire-and-forget — don't await, don't retry, never let failure
+        // bubble up. console.warn on failure already happens inside
+        // reportIncident().
+        void viralPoolClient.reportIncident({
+          scenarioId: task.scenario_id,
+          taskId: task.id,
+          failedStep: result.reason,
+          // Same value as failedStep until orchestrators learn to surface
+          // a separate concrete selector. Server uses normalizeSelector()
+          // to strip dynamic substrings before bucketing for thresholds.
+          failedSelector: result.reason,
+          domSnapshot,
+          url: urlInfo ? (urlInfo as any).url : undefined,
+          errorMsg: result.reason,
+        });
       } catch (err) {
-        // Rescue is best-effort — never let its failures escalate. Old
-        // result stands as the final outcome.
-        coworkLog('WARN', 'scenarioManager', '[rescue] threw, ignoring', { err: String(err) });
+        // Incident report is best-effort telemetry; never let it
+        // escalate. Original result stands as final outcome.
+        coworkLog('WARN', 'scenarioManager', '[rescue] report threw, ignoring', { err: String(err) });
       }
     }
 
