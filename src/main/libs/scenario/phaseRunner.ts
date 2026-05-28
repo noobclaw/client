@@ -1923,11 +1923,13 @@ function buildContext(
         //    Keychain,Windows DPAPI 解密对 Profile 路径敏感,且都比
         //    不上我们直接从浏览器抓干净。
         let cookiesFile: string | null = null;
+        let cookieDiag = 'cookies:?';   // surfaced in failure reason so the UI shows root cause
         try {
           const cookiesRes: any = await browser('cookies_get', {
             urls: [sourceUrl],
           }, 10000);
           const cookies: any[] = (cookiesRes && cookiesRes.cookies) || [];
+          cookieDiag = 'cookies:' + cookies.length + (cookiesRes && cookiesRes.ok === false ? ('/rpc_err=' + (cookiesRes.error || '?').slice(0, 60)) : '');
           if (cookies.length > 0) {
             // Netscape cookie file format:
             //   # Netscape HTTP Cookie File
@@ -1955,7 +1957,8 @@ function buildContext(
             coworkLog('WARN', 'phaseRunner', 'downloadWithYtDlp got 0 cookies — yt-dlp likely to fail', { sourceUrl });
           }
         } catch (cookieErr: any) {
-          coworkLog('WARN', 'phaseRunner', 'downloadWithYtDlp cdp_cookies_get failed', { err: String(cookieErr) });
+          cookieDiag = 'cookies_err:' + String(cookieErr?.message || cookieErr).slice(0, 80);
+          coworkLog('WARN', 'phaseRunner', 'downloadWithYtDlp cookies_get failed', { err: String(cookieErr) });
           // Continue without cookies — yt-dlp will report the real upstream error
         }
 
@@ -1971,7 +1974,8 @@ function buildContext(
           );
         } catch (err: any) {
           const stderr = (err.stderr && err.stderr.toString()) || String(err.message || err);
-          return { ok: false, reason: 'yt_dlp_failed:' + stderr.slice(0, 200) };
+          // 把 cookieDiag 塞进 reason 头部,UI 上一眼能看出是 cookies 0 / RPC 报错 / 还是 cookies 有但抖音拒
+          return { ok: false, reason: '[' + cookieDiag + '] yt_dlp_failed:' + stderr.slice(0, 200) };
         } finally {
           // 删 cookie tmpfile — 含登录态,不留盘
           if (cookiesFile) {
