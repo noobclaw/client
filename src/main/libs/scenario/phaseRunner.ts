@@ -1829,7 +1829,15 @@ function buildContext(
         const { execSync } = require('child_process');
 
         // 1. 找 media helper binary(yt-dlp 的内部别名,避开 Windows 杀软 /
-        //    360 的 filename 黑名单)。优先 bundled (<resources>/bin),
+        //    360 的 filename 黑名单)。
+        //
+        //    关键路径布局 — Tauri v2 的 `bundle.resources: ["resources/**/*"]`
+        //    glob 把 `src-tauri/resources/bin/<bin>` 复制成
+        //    `Contents/Resources/resources/bin/<bin>` (保留 resources/ 层),
+        //    并不是 `Contents/Resources/bin/<bin>`。其它 native addon
+        //    (nativeDesktopMac.ts / nativeDesktopWin.ts) 也是两条 candidate
+        //    都试 — 这里照搬。
+        //
         //    Tauri sidecar 下 process.resourcesPath 是 undefined,必须用
         //    getResourcesPath()(platformAdapter 走 sidecar 旁的 resources/
         //    + macOS .app/Contents/Resources fallback)。dev 模式再追加项目内
@@ -1844,9 +1852,29 @@ function buildContext(
         const bundledCandidates: string[] = [];
         try {
           const rp = getResourcesPath();
-          if (rp) bundledCandidates.push(path.join(rp, 'bin', bundledBinName));
+          if (rp) {
+            // Tauri prod: actual layout has the resources/ folder kept
+            bundledCandidates.push(path.join(rp, 'resources', 'bin', bundledBinName));
+            // Flat layout (electron-style or future Tauri config change)
+            bundledCandidates.push(path.join(rp, 'bin', bundledBinName));
+          }
         } catch (_) {}
         try {
+          // macOS .app explicit sibling walk — belt-and-braces if
+          // getResourcesPath ever returns a different parent
+          const exeDir = path.dirname(process.execPath);
+          if (platform === 'darwin') {
+            bundledCandidates.push(path.join(exeDir, '..', 'Resources', 'resources', 'bin', bundledBinName));
+            bundledCandidates.push(path.join(exeDir, '..', 'Resources', 'bin', bundledBinName));
+          }
+          // Windows: next to the sidecar binary
+          if (platform === 'win32') {
+            bundledCandidates.push(path.join(exeDir, 'resources', 'bin', bundledBinName));
+            bundledCandidates.push(path.join(exeDir, 'bin', bundledBinName));
+          }
+        } catch (_) {}
+        try {
+          // tauri dev — repo checkout
           bundledCandidates.push(path.join(process.cwd(), 'src-tauri', 'resources', 'bin', bundledBinName));
         } catch (_) {}
         for (const cand of bundledCandidates) {
