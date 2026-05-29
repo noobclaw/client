@@ -1504,11 +1504,17 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           page (linked above via the "📊 查看历史运行记录" button). */}
       {(() => {
         const autoUploadMode = (task as any).auto_upload !== false;
+        // v6.x: 视频无水印下载任务(xhs/douyin/tiktok)只下载到本地,没有"上传草稿箱
+        // / 发布到平台"的概念。之前 auto_upload 没设 → autoUploadMode=true → 误显
+        // "📤 自动上传到草稿箱"。这里单独出一个"⬇️ 下载到本地"徽章。
+        const isVideoDownloadTask = scenario?.id === 'xhs_video_download'
+          || scenario?.id === 'douyin_video_download'
+          || scenario?.id === 'tiktok_video_download';
         // 发布模式 badge:三个 creator 场景都有 auto_upload 切换(见 ConfigWizard)。
         // 只有 auto_reply 场景没有这个概念(回复永远直接发)。
         // ⚠️ 文案按平台区分 —— "草稿箱"只适用 XHS(XHS 独有的"上传到小红书草稿箱"模型);
         // 推特/币安是"直接发到平台"模型,label 要写"发布到 推特/币安广场"。
-        const showUploadBadge = !isAutoReplyTask;
+        const showUploadBadge = !isAutoReplyTask && !isVideoDownloadTask;
         const isXhsViral = scenario?.platform === 'xhs';
         const autoUploadLabel = isXhsViral
           ? (isZh ? '📤 自动上传到草稿箱' : '📤 Auto-upload to drafts')
@@ -1517,7 +1523,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           <>
             <div className="flex items-center justify-between mb-4 gap-3">
               <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
-              {showUploadBadge ? (
+              {isVideoDownloadTask ? (
+                <span className="text-xs px-2.5 py-1 rounded-full border bg-blue-500/10 text-blue-500 border-blue-500/30">
+                  {isZh ? '⬇️ 自动下载到本地' : '⬇️ Auto-download to local'}
+                </span>
+              ) : showUploadBadge ? (
                 <span className={`text-xs px-2.5 py-1 rounded-full border ${autoUploadMode ? 'bg-green-500/10 text-green-500 border-green-500/30' : 'bg-blue-500/10 text-blue-500 border-blue-500/30'}`}>
                   {autoUploadMode
                     ? autoUploadLabel
