@@ -2202,7 +2202,16 @@ function buildContext(
       // v6 path: client computes opaque windowKey + groupTitle, ext routes
       // by Map<windowKey, ...>. Window persists across tasks targeting the
       // same sub_platform + account.
-      if (opts.sub_platform) {
+      //
+      // Capability gate (PR10): only take the v6 path when the connected
+      // ext advertises 'window_registry_v6' (v1.6.0+ ships this capability
+      // in its hello). Pre-v1.6 ext would silently treat windowKey as an
+      // unknown field and fall through to its legacy adopt-first logic,
+      // which works but defeats the persistent-window benefit AND skips
+      // the title-revert step at task end. Better to detect + downgrade
+      // explicitly so we (a) still send `platform` to drive the legacy
+      // schema and (b) don't track for cleanup we can't honor.
+      if (opts.sub_platform && connectionHasCapability(undefined, 'window_registry_v6')) {
         const account = opts.account_id || 'default';
         const windowKey = `${opts.sub_platform}::${account}`;
         const activeTitle = buildGroupTitle(opts.sub_platform, account, task.id);
@@ -2235,14 +2244,25 @@ function buildContext(
       }
 
       // Legacy v1.5.3 path: per-task window per (taskId, role).
-      if (!opts.platform) {
+      // Reached either because the scenario passed only `platform`, OR
+      // because it passed `sub_platform` but the connected ext is too
+      // old to honor it. In the latter case derive a `platform` short-
+      // code from sub_platform (split on '_', take prefix) so the legacy
+      // ext schema still gets a sensible value.
+      let legacyPlatform = opts.platform;
+      if (!legacyPlatform && opts.sub_platform) {
+        legacyPlatform = opts.sub_platform.split('_')[0];
+        coworkLog('INFO', 'phaseRunner',
+          `[openTab] ext lacks window_registry_v6, falling back to legacy schema (sub_platform=${opts.sub_platform} → platform=${legacyPlatform})`);
+      }
+      if (!legacyPlatform) {
         throw new Error('openTab requires either sub_platform or platform');
       }
       const res: any = await sendBrowserCommand(
         'task_open_tab',
         {
           taskId: task.id,
-          platform: opts.platform,
+          platform: legacyPlatform,
           role: opts.role,
           url: opts.url,
           windowed: opts.windowed || 'owned',
@@ -2254,7 +2274,7 @@ function buildContext(
         throw new Error('openTab failed: ' + ((res && res.error) || 'unknown'));
       }
       const scopedTab = createScopedTab(
-        res.tabId, res.windowId, task.id, opts.platform, opts.role,
+        res.tabId, res.windowId, task.id, legacyPlatform, opts.role,
         { sendBrowserCommand, progress, getBridgeOpts, randInt },
       );
       _scopedTabsByRole.set(opts.role, scopedTab);
@@ -2280,7 +2300,14 @@ function buildContext(
         role: opts.role,
         urlPattern: opts.urlPattern,
       };
-      if (opts.childSubPlatform) {
+      // v6 cross-window child routing gated on the matching ext capability
+      // (PR8 / ext v1.6.1+ ships 'cross_window_child_routing'). Old ext
+      // would silently drop the extra fields and take the legacy
+      // "detach into new ad-hoc window" path — functional but defeats
+      // the "explore tab lives in xhs_main's window" routing the
+      // scenario asked for. Detect + downgrade so the next bullet (track
+      // for cleanup) doesn't track a windowKey the ext won't own.
+      if (opts.childSubPlatform && connectionHasCapability(undefined, 'cross_window_child_routing')) {
         const account = opts.childAccountId || 'default';
         const childWindowKey = `${opts.childSubPlatform}::${account}`;
         payload.childWindowKey = childWindowKey;
