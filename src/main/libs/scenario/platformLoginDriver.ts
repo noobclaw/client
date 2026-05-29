@@ -242,13 +242,23 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
           bounds,
           // taskId omitted — pre-run check is not a task.
         },
-        3000,
+        12000, // v6 create-window does chrome.windows.create + bounds +
+               // group + title — a chain that easily exceeds 3s on a busy
+               // machine. Old 3s timeout fired falsely, the catch fell to
+               // legacy tab_create, and ext added a SECOND tab to the
+               // window v6 had already opened. 12s removes the false timeout.
       );
       return { ok: true };
     } catch (err) {
+      // v6 is windowKey-idempotent. Do NOT fall through to legacy
+      // tab_create — that opens a duplicate tab whenever v6 actually
+      // succeeded server-side but the response was slow. Return ok:false;
+      // the caller (handleOpenXhs/Secondary) re-probes checkPlatformLogin
+      // and only window.open's if the tab genuinely isn't there, so a
+      // slow-but-successful v6 open never double-tabs.
       coworkLog('WARN', 'platformLoginDriver',
-        `v6 task_open_tab failed for ${platform}, falling back to legacy tab_create`, { err: String(err) });
-      // fall through to legacy path
+        `v6 task_open_tab failed for ${platform} (no legacy fallback — avoids dup tab)`, { err: String(err) });
+      return { ok: false, reason: 'v6_open_failed' };
     }
   }
 
@@ -363,13 +373,15 @@ export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: 
           url,
           bounds,
         },
-        3000,
+        12000, // see openPlatformLogin: 3s falsely timed out → legacy
+               // fallback double-tabbed. 12s + no legacy fallback below.
       );
       return { ok: true };
     } catch (err) {
+      // No legacy fallback — v6 idempotent, slow≠failed. Avoids dup tab.
       coworkLog('WARN', 'platformLoginDriver',
-        `v6 creator task_open_tab failed for ${platform}, falling back to legacy tab_create`, { err: String(err) });
-      // fall through to legacy
+        `v6 creator task_open_tab failed for ${platform} (no legacy fallback — avoids dup tab)`, { err: String(err) });
+      return { ok: false, reason: 'v6_open_failed' };
     }
   }
 
