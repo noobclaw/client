@@ -649,30 +649,60 @@ const MAX_CONCURRENT_TASKS = 6;
  *  诊断用,不再用作 reap 阈值。 */
 const runningByResource = new Map<string, { taskId: string; markedAt: number }>();
 
-// v4.25+ cross-tab scenarios (binance_from_x_repost) touch multiple tabs
-// in one run, so they claim ALL the tab resources they'll use. If any of
-// them is already busy, the run is rejected up front — avoids the nasty
-// case where e.g. a Twitter post_creator task starts mid-run through a
-// binance_from_x_repost run and they stomp on each other's tab focus.
+// Sub-platform mutex (v6.x+ — Phase 1 of window-routing rework):
 //
-// Single-tab scenarios (the common case) get a single-entry array and
-// behave identically to the pre-4.25 single-string key flow.
+//   `manifest.platforms: string[]` enumerates the (platform, domain_tier)
+//   units a scenario touches at any point during its run. e.g.
+//     xhs_reply_fans_comment → ['xhs_creator', 'xhs_main']
+//     binance_from_xhs_viral → ['binance_square', 'xhs_main']
+//     xhs_auto_reply_universal → ['xhs_main']
+//   Each entry maps to one mutex key `platform:${subp}`. A scenario must
+//   acquire ALL of its keys before it can start; releases all on end.
+//   Same-sub_platform tasks therefore serialize correctly, while scenarios
+//   touching disjoint sub_platform sets run concurrently up to
+//   MAX_CONCURRENT_TASKS.
+//
+//   This replaces the v5.x `tab:<pattern>` keying which used the raw URL
+//   regex string as the mutex key. The old keying was tab-shape-aware but
+//   couldn't distinguish creator.xiaohongshu.com from www.xiaohongshu.com
+//   reliably (they often shared a single broad pattern) and merged unlike
+//   resources because of regex equality. Sub_platform ids are stable,
+//   reviewable, and naturally encode the creator-vs-main split that XHS
+//   and Douyin enforce at the login layer.
+//
+// Legacy fallback: pre-v6 manifests without `platforms` still fall through
+// to the old `tab:*` keying so an in-flight ext/client mismatch doesn't
+// break those scenarios. Mixed keys (`platform:xhs_creator` from new
+// scenarios + `tab:^https?://xhs...` from legacy ones) coexist in the same
+// runningByResource Map without interfering — they're just distinct keys.
 function resourceKeysForPack(
   pack: {
     manifest?: {
+      platforms?: string[];
       tab_url_pattern?: string;
       additional_tab_patterns?: string[];
       secondary_tab_url_pattern?: string;
     };
   } | null | undefined
 ): string[] {
+  // v6.x preferred path: explicit sub_platform array.
+  const platforms = pack?.manifest?.platforms;
+  if (Array.isArray(platforms) && platforms.length > 0) {
+    const keys: string[] = [];
+    for (const p of platforms) {
+      if (typeof p === 'string' && p) {
+        const k = `platform:${p}`;
+        if (keys.indexOf(k) < 0) keys.push(k);
+      }
+    }
+    if (keys.length > 0) return keys;
+    // Empty / all-bogus platforms array — fall through to legacy below.
+  }
+
+  // Legacy path (pre-v6 manifests).
   const keys: string[] = [];
   const primary = pack?.manifest?.tab_url_pattern;
   keys.push(primary ? `tab:${primary}` : 'tab:default');
-  // v4.25+ cross-tab scenarios can declare extra tabs they'll touch via
-  // either `additional_tab_patterns` (array, the canonical field) or
-  // `secondary_tab_url_pattern` (single string, used by binance_from_x_repost).
-  // We read both — manifests historically have one or the other.
   const additional = pack?.manifest?.additional_tab_patterns;
   if (Array.isArray(additional)) {
     for (const p of additional) {
@@ -698,6 +728,22 @@ function findBusyResource(keys: string[]): string | null {
 // v5.x+: 补上 youtube / tiktok / douyin —— 之前漏了,导致这三个平台被资源
 // 锁/并发上限拦下时 toast 显示原始 regex 字符串,用户以为没提示。
 function humanizePlatformFromKey(key: string): string {
+  // v6.x sub_platform keys ("platform:xhs_creator", etc).
+  if (key.startsWith('platform:')) {
+    const subp = key.slice('platform:'.length);
+    const labels: Record<string, string> = {
+      xhs_creator: '小红书创作者中心',
+      xhs_main: '小红书',
+      douyin_creator: '抖音创作者中心',
+      douyin_main: '抖音',
+      tiktok_main: 'TikTok',
+      x_main: '推特',
+      binance_square: '币安广场',
+      youtube_main: 'YouTube',
+    };
+    return labels[subp] || subp;
+  }
+  // Legacy tab:* regex-string keys (pre-v6 fallback path).
   const lc = key.toLowerCase();
   if (lc.indexOf('binance') >= 0) return '币安广场';
   if (lc.indexOf('twitter') >= 0 || lc.indexOf('x.com') >= 0 || lc.indexOf('x\\.com') >= 0) return '推特';
