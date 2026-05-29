@@ -408,7 +408,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'douyin_auto_engage')           return { icon: '🎵', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'douyin_image_text')            return { icon: '📝', zh: '抖音 · 图文创作', en: 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_image_text')               return { icon: '📝', zh: '小红书 · 图文创作', en: 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
-                if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', zh: '小红书 · 回复粉丝评论', en: 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+                if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', zh: '小红书 · 自动回复粉丝', en: 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
                 // otherwise Binance / YouTube / TikTok / Douyin scenarios with
