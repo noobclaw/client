@@ -159,17 +159,30 @@ function renderLogMessage(message: string) {
     const before = message.slice(0, message.indexOf(pathMatch[0]));
     const arrow = pathMatch[1];
     const filePath = pathMatch[2];
+    // 去掉文件名 = 所在目录(保留原始分隔符:Windows \ / macOS·Linux /)
+    const sep = filePath.includes('\\') ? '\\' : '/';
+    const dirPath = filePath.slice(0, filePath.lastIndexOf(sep)) || filePath;
+    const openDirLabel = i18nService.currentLanguage === 'zh' ? '打开目录' : 'Open folder';
     return (
       <>
         {before}{arrow}
+        {/* 点文件路径 → openPath(文件) = 用默认应用打开/播放视频 */}
         <button
           type="button"
-          className="text-blue-500 hover:underline cursor-pointer"
-          onClick={() => {
-            try { window.electron?.shell?.openPath?.(filePath); } catch {}
-          }}
+          className="text-blue-500 hover:underline cursor-pointer break-all"
+          title={filePath}
+          onClick={() => { try { window.electron?.shell?.openPath?.(filePath); } catch {} }}
         >
           📂 {filePath.split(/[/\\]/).slice(-3).join('/')}
+        </button>
+        {/* 点"打开目录" → openPath(去掉文件名的目录) = 用 Finder/Explorer 打开文件夹 */}
+        <button
+          type="button"
+          className="ml-2 text-blue-500 hover:underline cursor-pointer shrink-0"
+          title={dirPath}
+          onClick={() => { try { window.electron?.shell?.openPath?.(dirPath); } catch {} }}
+        >
+          📁 {openDirLabel}
         </button>
       </>
     );
