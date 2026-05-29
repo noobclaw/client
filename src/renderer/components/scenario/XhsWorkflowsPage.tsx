@@ -222,7 +222,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     workflow_type: 'xhs_video_download' as any,
     name_zh: '小红书 · 视频无水印下载',
     name_en: 'Xiaohongshu · Watermark-free Video Download',
-    description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出无水印原视频并下载到本地。一次性任务，只需登录小红书主站。',
+    description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出无水印原视频并下载到本地。',
     description_en: 'Paste 1-20 Xiaohongshu video links; opens each locally, resolves the watermark-free source video and downloads it. One-time task, only needs main-site login.',
     icon: '⬇️',
     required_login_url: 'https://www.xiaohongshu.com',
@@ -559,7 +559,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出无水印原视频，依次下载到本地。一次性任务，只需登录小红书主站；非视频笔记、非小红书链接自动跳过。'
+                ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出无水印原视频，依次下载到本地。非视频笔记、非小红书链接自动跳过。'
                 : 'Paste 1-20 Xiaohongshu video links; opens each in your local browser, resolves the watermark-free source video and downloads it. One-time task — only needs main-site login. Non-video notes and non-XHS links are skipped.'}
             </p>
             <button
