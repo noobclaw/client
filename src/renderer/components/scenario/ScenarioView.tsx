@@ -857,11 +857,22 @@ const LinkModeEditModal: React.FC<{
   const platformLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
     : isBinance ? (isZh ? '币安广场' : 'Binance Square')
     : (isZh ? '小红书' : 'XHS');
-  // v6.x: 小红书视频无水印下载任务也带 urls[] → openWizardEdit 把它路由到这个
-  //   link 编辑 modal,但它不是"指定链接 AI 仿写":文案/去向都不同(纯下载,无 AI、
-  //   无上传)。这里只处理小红书这一个,单独分支。
-  const isVideoDownload = scenario?.id === 'xhs_video_download';
-  const vdLabel = isZh ? '小红书' : 'XHS';
+  // v6.x: XHS/抖音/TikTok 视频无水印下载任务都带 urls[] → openWizardEdit 把它们路
+  //   由到这个 link 编辑 modal,但它们不是"指定链接 AI 仿写":文案/去向都不同(纯下
+  //   载,无 AI、无上传)。三个平台共用同一个分支,只在 label + 域名校验上分流。
+  const isVideoDownload = scenario?.id === 'xhs_video_download'
+    || scenario?.id === 'douyin_video_download'
+    || scenario?.id === 'tiktok_video_download';
+  const vdPlatform: 'xhs' | 'douyin' | 'tiktok' = scenario?.id === 'douyin_video_download'
+    ? 'douyin'
+    : scenario?.id === 'tiktok_video_download'
+    ? 'tiktok'
+    : 'xhs';
+  const vdLabel = vdPlatform === 'douyin'
+    ? (isZh ? '抖音' : 'Douyin')
+    : vdPlatform === 'tiktok'
+    ? 'TikTok'
+    : (isZh ? '小红书' : 'XHS');
   // v4.28.x: sourceLabel 之前用在描述文案里("粘贴 1-3 个 ${sourceLabel} 原文链接"),
   // 现在描述按 acceptsTwitterUrl 直接走两个固定文案,不再需要 sourceLabel 占位 ——
   // TS strict 模式抛 unused 编译错(打包失败),直接移除。
@@ -875,8 +886,20 @@ const LinkModeEditModal: React.FC<{
     if (lines.length > 20) return { ok: [], err: isZh ? '最多 20 个链接' : 'Max 20 URLs' };
     for (const l of lines) {
       if (isVideoDownload) {
-        if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
-          return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+        // 按视频下载场景分平台校验:抖音(含短链 v.douyin.com / iesdouyin)、
+        // TikTok(含 vt/vm.tiktok.com 短链)、小红书(含 xhslink 短链)。
+        if (vdPlatform === 'douyin') {
+          if (!/^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i.test(l)) {
+            return { ok: [], err: (isZh ? '不是抖音链接：' : 'Not a Douyin link: ') + l.slice(0, 80) };
+          }
+        } else if (vdPlatform === 'tiktok') {
+          if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(l)) {
+            return { ok: [], err: (isZh ? '不是 TikTok 链接：' : 'Not a TikTok link: ') + l.slice(0, 80) };
+          }
+        } else {
+          if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {
+            return { ok: [], err: (isZh ? '不是小红书链接：' : 'Not an XHS link: ') + l.slice(0, 80) };
+          }
         }
       } else if (acceptsTwitterUrl) {
         if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
