@@ -14,6 +14,7 @@ import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
 import { PLATFORM_TAB_GROUPS, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
+import { groupTitle as buildGroupTitle } from './subPlatformRegistry';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -532,6 +533,14 @@ function buildContext(
   // free-form so future scenarios can introduce new action types without
   // touching this file.
   const actionCounts: Record<string, number> = {};
+  // v6.x cleanup state — populated by openTab / registerChildExpectation
+  // when scenarios pass sub_platform; drained by ctx._releaseAllWindows()
+  // in runOrchestrator's finally block. See ctx._releaseAllWindows for
+  // semantics. Defined here so they live for the whole buildContext
+  // closure (same scope as actionCounts).
+  const _claimedWindows = new Map<string, { idleGroupTitle: string }>();
+  const _scopedTabsByRole = new Map<string, ReturnType<typeof createScopedTab>>();
+  const _childRoleSubPlatform = new Map<string, { sub_platform: string; account: string }>();
 
   const ctx: Record<string, any> = {
     // ── Data ──
@@ -2140,6 +2149,18 @@ function buildContext(
     // final RunResult so they get persisted on the run record.
     _getActionCounts: () => ({ ...actionCounts }),
 
+    // ── v6.x task-end cleanup state (PR9 — Phase 2-C) ──────────────────
+    // Populated by openTab / registerChildExpectation when they take the
+    // v6 sub_platform path. runOrchestrator's finally calls
+    // ctx._releaseAllWindows() which iterates these and tells the ext to
+    // (a) close any tabs whose role is in manifest.transient_roles, and
+    // (b) revert each claimed windowKey's tab group title to idle form.
+    // _claimedWindows: windowKey → { idleGroupTitle }
+    // _scopedTabsByRole: role → ScopedTab (most recent open for that role)
+    // _childRoleSubPlatform: role → { sub_platform, account } captured at
+    //   registerChildExpectation time so waitChildTab can stamp the
+    //   resulting ScopedTab with the right windowKey.
+
     // ── v5.27+ task-tab API (Phase D — explicit per-task tabId routing) ──
     //
     // 老架构问题:一个平台一个 NoobClaw managed group,同平台多 tab(XHS
@@ -2158,39 +2179,124 @@ function buildContext(
     // 没有就用老 setActiveTab/tabPattern 路径(fallback)。
     taskId: task.id,
     openTab: async (opts: {
-      platform: string;
+      // v6.x (preferred, requires ext v1.6.0+):
+      //   sub_platform encodes (platform, domain_tier) — see subPlatformRegistry
+      //   account_id defaults to 'default' until multi-account work lands
+      sub_platform?: string;
+      account_id?: string;
+      // v1.5.3 legacy:
+      //   platform — short code (xhs/binance/x/youtube/tiktok/douyin)
+      //   windowed — 'owned' (default) opens new physical window;
+      //              'reuse' opens tab in active focused window
+      platform?: string;
+      windowed?: 'owned' | 'reuse';
+      // Common:
       role: string;
       url: string;
-      windowed?: 'owned' | 'reuse';
     }) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
-      if (!opts || !opts.platform || !opts.role || !opts.url) {
-        throw new Error('openTab requires { platform, role, url }');
+      if (!opts || !opts.role || !opts.url) {
+        throw new Error('openTab requires { role, url }');
+      }
+
+      // v6 path: client computes opaque windowKey + groupTitle, ext routes
+      // by Map<windowKey, ...>. Window persists across tasks targeting the
+      // same sub_platform + account.
+      if (opts.sub_platform) {
+        const account = opts.account_id || 'default';
+        const windowKey = `${opts.sub_platform}::${account}`;
+        const activeTitle = buildGroupTitle(opts.sub_platform, account, task.id);
+        const idleTitle = buildGroupTitle(opts.sub_platform, account, null);
+        const res: any = await sendBrowserCommand(
+          'task_open_tab',
+          {
+            windowKey,
+            groupTitle: activeTitle,
+            role: opts.role,
+            url: opts.url,
+            taskId: task.id,
+          },
+          15000,
+          getBridgeOpts(),
+        );
+        if (!res || res.ok === false) {
+          throw new Error('openTab failed: ' + ((res && res.error) || 'unknown'));
+        }
+        // Track for task-end cleanup. Idle title used to revert group label
+        // after this task releases the window. scopedTabsByRole used to
+        // close transient_roles tabs declared in the manifest.
+        _claimedWindows.set(windowKey, { idleGroupTitle: idleTitle });
+        const scopedTab = createScopedTab(
+          res.tabId, res.windowId, task.id, opts.sub_platform, opts.role,
+          { sendBrowserCommand, progress, getBridgeOpts, randInt }, windowKey,
+        );
+        _scopedTabsByRole.set(opts.role, scopedTab);
+        return scopedTab;
+      }
+
+      // Legacy v1.5.3 path: per-task window per (taskId, role).
+      if (!opts.platform) {
+        throw new Error('openTab requires either sub_platform or platform');
       }
       const res: any = await sendBrowserCommand(
         'task_open_tab',
-        { taskId: task.id, platform: opts.platform, role: opts.role, url: opts.url, windowed: opts.windowed || 'owned' },
+        {
+          taskId: task.id,
+          platform: opts.platform,
+          role: opts.role,
+          url: opts.url,
+          windowed: opts.windowed || 'owned',
+        },
         15000,
         getBridgeOpts(),
       );
       if (!res || res.ok === false) {
         throw new Error('openTab failed: ' + ((res && res.error) || 'unknown'));
       }
-      return createScopedTab(res.tabId, res.windowId, task.id, opts.platform, opts.role,
-        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+      const scopedTab = createScopedTab(
+        res.tabId, res.windowId, task.id, opts.platform, opts.role,
+        { sendBrowserCommand, progress, getBridgeOpts, randInt },
+      );
+      _scopedTabsByRole.set(opts.role, scopedTab);
+      return scopedTab;
     },
     registerChildExpectation: async (opts: {
       parentTab: { id: number };
       role: string;
       urlPattern: string;
+      // v6.x (requires ext v1.6.1+): route spawned tab into the
+      // windowRegistry window for {childSubPlatform, childAccountId}.
+      // When omitted, ext takes the v1.5.3 detach-to-new-window path.
+      childSubPlatform?: string;
+      childAccountId?: string;
     }) => {
       if (progress.isAbortRequested()) throw new Error('user_stopped');
       if (!opts || !opts.parentTab || !opts.parentTab.id || !opts.role || !opts.urlPattern) {
         throw new Error('registerChildExpectation requires { parentTab:{id}, role, urlPattern }');
       }
+      const payload: any = {
+        taskId: task.id,
+        parentTabId: opts.parentTab.id,
+        role: opts.role,
+        urlPattern: opts.urlPattern,
+      };
+      if (opts.childSubPlatform) {
+        const account = opts.childAccountId || 'default';
+        const childWindowKey = `${opts.childSubPlatform}::${account}`;
+        payload.childWindowKey = childWindowKey;
+        payload.childGroupTitle = buildGroupTitle(opts.childSubPlatform, account, task.id);
+        // Track for cleanup — child's windowKey may be a brand-new one
+        // (e.g. first time scenario opens explore tab on xhs_main).
+        _claimedWindows.set(childWindowKey, {
+          idleGroupTitle: buildGroupTitle(opts.childSubPlatform, account, null),
+        });
+        // Remember sub_platform per-role so waitChildTab can stamp the
+        // resulting ScopedTab with the right windowKey.
+        _childRoleSubPlatform.set(opts.role, { sub_platform: opts.childSubPlatform, account });
+      }
       const res: any = await sendBrowserCommand(
         'task_register_child_expect',
-        { taskId: task.id, parentTabId: opts.parentTab.id, role: opts.role, urlPattern: opts.urlPattern },
+        payload,
         5000,
         getBridgeOpts(),
       );
@@ -2211,8 +2317,19 @@ function buildContext(
       if (!res || res.ok === false) {
         return null; // timeout — orchestrator 自决重试 / 跳过 / 报错
       }
-      return createScopedTab(res.tabId, res.windowId, task.id, opts.platform || '', opts.role,
-        { sendBrowserCommand, progress, getBridgeOpts, randInt });
+      // If registerChildExpectation was called with childSubPlatform, the
+      // resulting ScopedTab carries the same windowKey for downstream
+      // cleanup logic.
+      const childMeta = _childRoleSubPlatform.get(opts.role);
+      const windowKey = childMeta
+        ? `${childMeta.sub_platform}::${childMeta.account}`
+        : undefined;
+      const scopedTab = createScopedTab(
+        res.tabId, res.windowId, task.id, opts.platform || '', opts.role,
+        { sendBrowserCommand, progress, getBridgeOpts, randInt }, windowKey,
+      );
+      _scopedTabsByRole.set(opts.role, scopedTab);
+      return scopedTab;
     },
     /** 已知 tabId 时直接构造一个 ScopedTab handle(不调扩展)。 */
     scopedTab: (tabId: number, windowId?: number, platform?: string, role?: string) => {
@@ -2229,6 +2346,55 @@ function buildContext(
     /** opt-in 收尾:关掉本 task 所有 tab。orchestrator 通常不调,留 tab 给用户查看 */
     closeAllTaskTabs: async () => {
       try { await sendBrowserCommand('task_close_all', { taskId: task.id }, 5000, getBridgeOpts()); } catch (_) {}
+    },
+    /**
+     * Internal task-end cleanup (called by runOrchestrator's finally, NOT
+     * by orchestrator code). Does two things:
+     *
+     *   1. Close every tab whose role is listed in manifest.transient_roles.
+     *      These are "throwaway" tabs the scenario opens for a sub-task
+     *      (e.g. xhs_reply_fans_comment's explore tab) — they get destroyed
+     *      so the user doesn't have to clean up after each task end.
+     *      Long-lived roles (creator, home, etc) survive for reuse.
+     *
+     *   2. Send task_window_release to ext for every windowKey we claimed.
+     *      This reverts the Chrome tab group title from active form
+     *      (with task short-id) back to idle form — the window itself
+     *      persists for the next task targeting the same sub_platform.
+     *
+     * Idempotent and best-effort: orchestrator may have already closed
+     * tabs manually; ext may have lost a windowKey if user closed window.
+     * Both paths swallow errors.
+     */
+    _releaseAllWindows: async () => {
+      const transientRoles: string[] = Array.isArray((pack.manifest as any)?.transient_roles)
+        ? ((pack.manifest as any).transient_roles as string[])
+        : [];
+      for (const role of transientRoles) {
+        const st = _scopedTabsByRole.get(role);
+        if (!st) continue;
+        try { await st.close(); }
+        catch (e) {
+          coworkLog('WARN', 'phaseRunner',
+            `transient close for role=${role} failed: ${String((e as any)?.message || e).slice(0, 80)}`);
+        }
+      }
+      for (const [windowKey, info] of _claimedWindows) {
+        try {
+          await sendBrowserCommand(
+            'task_window_release',
+            { windowKey, idleGroupTitle: info.idleGroupTitle },
+            3000,
+            getBridgeOpts(),
+          );
+        } catch (e) {
+          coworkLog('WARN', 'phaseRunner',
+            `task_window_release for ${windowKey} failed: ${String((e as any)?.message || e).slice(0, 80)}`);
+        }
+      }
+      _claimedWindows.clear();
+      _scopedTabsByRole.clear();
+      _childRoleSubPlatform.clear();
     },
   };
 
@@ -2254,6 +2420,11 @@ function createScopedTab(
   platform: string,
   role: string,
   deps: ScopedTabDeps,
+  // v6.x: opaque key the ext routes by (e.g. "xhs_creator::default").
+  // Stamped on the ScopedTab so downstream cleanup logic can correlate
+  // tab → windowKey without re-deriving from platform/account. Undefined
+  // for tabs created via the legacy v1.5.3 schema (no v6 routing).
+  windowKey?: string,
 ) {
   const browser = async (command: string, params: any = {}, timeout?: number): Promise<any> => {
     if (deps.progress.isAbortRequested()) throw new Error('user_stopped');
@@ -2331,6 +2502,7 @@ function createScopedTab(
     taskId,
     platform,
     role,
+    windowKey,
     browser,
     navigate: (url: string) => browser('navigate', { url }, 30000),
     scroll: (amount?: number) =>
@@ -2391,6 +2563,21 @@ export async function runOrchestrator(
   // 不可能跟 ext 自己 race)。这里之前的 closeDuplicatePlatformTabs +
   // ensurePlatformsInSeparateWindows 调用都删了,任务启动直接进 orchestrator。
 
+  // v6.x: best-effort task-end cleanup. Closes manifest.transient_roles
+  // tabs and sends task_window_release for every windowKey the run claimed
+  // so Chrome tab group titles revert from active form ("🤖 abc1 XHS·创作")
+  // to idle form ("🤖 XHS·创作"). Runs whether orchestrator succeeded or
+  // threw. Errors swallowed inside _releaseAllWindows — never let cleanup
+  // mask a real orchestrator failure.
+  const _doCleanup = async () => {
+    try {
+      const release = (ctx as any)._releaseAllWindows;
+      if (typeof release === 'function') await release();
+    } catch (e) {
+      coworkLog('WARN', 'phaseRunner', 'cleanup threw', { err: String(e).slice(0, 120) });
+    }
+  };
+
   try {
     const fn = new AsyncFunction('ctx', orchestratorCode);
     const result = await fn(ctx);
@@ -2437,5 +2624,8 @@ export async function runOrchestrator(
       failResult.action_counts = actionCounts;
     }
     return failResult;
+  } finally {
+    // v6.x window cleanup runs on EVERY return / throw path.
+    await _doCleanup();
   }
 }
