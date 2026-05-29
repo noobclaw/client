@@ -121,8 +121,8 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
             💌 {editing
-              ? (isZh ? '编辑回复粉丝评论任务' : 'Edit Fan-Comment Reply Task')
-              : (isZh ? '配置回复粉丝评论' : 'Configure Fan-Comment Reply')}
+              ? (isZh ? '编辑自动回复粉丝任务' : 'Edit Fan-Comment Reply Task')
+              : (isZh ? '配置自动回复粉丝' : 'Configure Fan-Comment Reply')}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs px-2.5 py-1 rounded-full border border-fuchsia-500/40 text-fuchsia-500 bg-fuchsia-500/5">
