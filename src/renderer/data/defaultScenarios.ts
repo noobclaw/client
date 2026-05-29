@@ -21,6 +21,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_from_douyin_viral",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square",
+      "douyin_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场 · 抖音搬运",
@@ -85,6 +89,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_from_tiktok_viral",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square",
+      "tiktok_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场 · TikTok 搬运",
@@ -148,6 +156,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_from_x_link",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square",
+      "x_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场 · 推特链接仿写",
@@ -209,6 +221,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_from_x_repost",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square",
+      "x_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场 · 推特搬运",
@@ -274,6 +290,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_from_xhs_viral",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square",
+      "xhs_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场 · 小红书搬运",
@@ -338,6 +358,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_square_auto_engage",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "币安广场互动涨粉",
@@ -401,6 +424,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "binance_square_post_creator",
     "version": "1.0.0",
     "platform": "binance",
+    "platforms": [
+      "binance_square"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "币安广场自动发帖",
@@ -461,6 +487,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "douyin_auto_engage",
     "version": "1.0.0",
     "platform": "douyin",
+    "platforms": [
+      "douyin_main"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "抖音 互动涨粉",
@@ -1001,6 +1030,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "douyin_image_text",
     "version": "1.1.0",
     "platform": "douyin",
+    "platforms": [
+      "douyin_creator",
+      "douyin_main"
+    ],
     "workflow_type": "douyin_image_text_creation",
     "category": "knowledge",
     "name_zh": "抖音 · 图文创作",
@@ -1052,9 +1085,61 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     }
   },
   {
+    "id": "douyin_video_download",
+    "version": "1.0.0",
+    "platform": "douyin",
+    "platforms": [
+      "douyin_main"
+    ],
+    "workflow_type": "douyin_video_download",
+    "category": "tool",
+    "name_zh": "抖音 · 视频无水印下载",
+    "name_en": "Douyin · Watermark-free Video Download",
+    "description_zh": "粘贴 1-20 个抖音视频链接，依次在本地浏览器打开，借助抖音页面自身签名解析出无水印原视频地址并下载到本地。一次性任务，只需登录抖音主站。图文/合集等非视频、非抖音链接自动跳过。",
+    "description_en": "Paste 1-20 Douyin video links; opens each in the local browser, uses the Douyin page's own signing to resolve the watermark-free source video URL and downloads it locally. One-time task, only requires logging in to the Douyin main site. Image posts and non-Douyin links are skipped automatically.",
+    "icon": "⬇️",
+    "default_config": {
+      "keywords": [],
+      "persona": "",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "00:00-23:59"
+    },
+    "risk_caps": {
+      "max_daily_runs": 50,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 1800000,
+      "min_interval_hours": 0,
+      "weekly_rest_days": 0,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 50
+    },
+    "required_login_url": "https://www.douyin.com",
+    "tab_url_pattern": "^https?://(www\\.)?douyin\\.com/",
+    "anchor_url": "https://www.douyin.com",
+    "entry_urls": {
+      "home": "https://www.douyin.com"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {},
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "tiktok_auto_engage",
     "version": "1.0.0",
     "platform": "tiktok",
+    "platforms": [
+      "tiktok_main"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "TikTok 互动涨粉",
@@ -1811,9 +1896,61 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     ]
   },
   {
+    "id": "tiktok_video_download",
+    "version": "1.0.0",
+    "platform": "tiktok",
+    "platforms": [
+      "tiktok_main"
+    ],
+    "workflow_type": "tiktok_video_download",
+    "category": "tool",
+    "name_zh": "TikTok · 视频无水印下载",
+    "name_en": "TikTok · Watermark-free Video Download",
+    "description_zh": "粘贴 1-20 个 TikTok 视频链接，依次在本地浏览器打开，借浏览器自身网络栈解析并下载无水印原视频到本地。一次性任务，只需登录 TikTok 主站（大陆用户需开启 VPN）。图集等非视频、非 TikTok 链接自动跳过。",
+    "description_en": "Paste 1-20 TikTok video links; opens each in the local browser, resolves and downloads the watermark-free source video using the browser's own network stack. One-time task, only requires logging in to the TikTok main site (mainland users need a VPN). Photo posts and non-TikTok links are skipped automatically.",
+    "icon": "⬇️",
+    "default_config": {
+      "keywords": [],
+      "persona": "",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "00:00-23:59"
+    },
+    "risk_caps": {
+      "max_daily_runs": 50,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 1800000,
+      "min_interval_hours": 0,
+      "weekly_rest_days": 0,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 50
+    },
+    "required_login_url": "https://www.tiktok.com/explore",
+    "tab_url_pattern": "^https?://([\\w-]+\\.)?tiktok\\.com/",
+    "anchor_url": "https://www.tiktok.com/explore",
+    "entry_urls": {
+      "explore": "https://www.tiktok.com/explore"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {},
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "x_auto_engage",
     "version": "1.0.1",
     "platform": "x",
+    "platforms": [
+      "x_main"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "推特互动涨粉",
@@ -1874,6 +2011,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "x_link_rewrite",
     "version": "1.0.0",
     "platform": "x",
+    "platforms": [
+      "x_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "推特爆款仿写",
@@ -1926,6 +2066,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "x_post_creator",
     "version": "1.0.0",
     "platform": "x",
+    "platforms": [
+      "x_main"
+    ],
     "workflow_type": "viral_production",
     "category": "creation",
     "name_zh": "推特自动发推",
@@ -1990,6 +2133,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "xhs_auto_reply_universal",
     "version": "1.0.0",
     "platform": "xhs",
+    "platforms": [
+      "xhs_main"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "小红书互动涨粉",
@@ -2062,6 +2208,10 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "xhs_image_text",
     "version": "1.0.0",
     "platform": "xhs",
+    "platforms": [
+      "xhs_creator",
+      "xhs_main"
+    ],
     "workflow_type": "xhs_image_text_creation",
     "category": "knowledge",
     "name_zh": "小红书 · 图文创作",
@@ -2116,9 +2266,16 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "xhs_reply_fans_comment",
     "version": "1.0.0",
     "platform": "xhs",
+    "platforms": [
+      "xhs_creator",
+      "xhs_main"
+    ],
+    "transient_roles": [
+      "explore"
+    ],
     "workflow_type": "xhs_reply_fans_comment",
     "category": "engagement",
-    "name_zh": "小红书 · 回复粉丝评论",
+    "name_zh": "小红书 · 自动回复粉丝",
     "name_en": "Xiaohongshu Reply Fan Comments",
     "description_zh": "自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应，可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。打开创作者中心 → 逐篇笔记 → 读粉丝评论 → AI 生成回复 → 模拟真人节奏发送，全程不碰主笔记输入框。",
     "description_en": "Auto-reply to fan comments under your published Xiaohongshu notes. AI tailors each reply to the comment, with optional probability-based funnel phrase weaving. Skips comments you've already replied to or your own. Iterates note-by-note from Creator Center with human-paced timing.",
@@ -2179,9 +2336,62 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     }
   },
   {
+    "id": "xhs_video_download",
+    "version": "1.0.0",
+    "platform": "xhs",
+    "platforms": [
+      "xhs_main"
+    ],
+    "workflow_type": "xhs_video_download",
+    "category": "tool",
+    "name_zh": "小红书 · 视频无水印下载",
+    "name_en": "Xiaohongshu · Watermark-free Video Download",
+    "description_zh": "粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出无水印原视频地址并下载到本地。一次性任务，只需登录小红书主站。非视频笔记、非小红书链接自动跳过。",
+    "description_en": "Paste 1-20 Xiaohongshu video links; opens each in the local browser, resolves the watermark-free source video URL and downloads it locally. One-time task, only requires logging in to the Xiaohongshu main site. Non-video notes and non-XHS links are skipped automatically.",
+    "icon": "⬇️",
+    "default_config": {
+      "keywords": [],
+      "persona": "",
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "00:00-23:59"
+    },
+    "risk_caps": {
+      "max_daily_runs": 50,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 1800000,
+      "min_interval_hours": 0,
+      "weekly_rest_days": 0,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 50
+    },
+    "required_login_url": "https://www.xiaohongshu.com",
+    "tab_url_pattern": "^https?://([\\w-]+\\.)?xiaohongshu\\.com/",
+    "anchor_url": "https://www.xiaohongshu.com",
+    "entry_urls": {
+      "home": "https://www.xiaohongshu.com"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {},
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "xhs_viral_production_career",
     "version": "2.0.0",
     "platform": "xhs",
+    "platforms": [
+      "xhs_creator",
+      "xhs_main"
+    ],
     "workflow_type": "viral_production",
     "category": "knowledge",
     "name_zh": "副业干货",
@@ -2250,6 +2460,9 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "id": "youtube_auto_engage",
     "version": "1.0.0",
     "platform": "youtube",
+    "platforms": [
+      "youtube_main"
+    ],
     "workflow_type": "auto_reply",
     "category": "engagement",
     "name_zh": "YouTube 互动涨粉",

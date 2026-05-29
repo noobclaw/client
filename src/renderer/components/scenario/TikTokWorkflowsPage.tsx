@@ -33,9 +33,9 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
   tasks,
   draftsByTask: _draftsByTask,
   loading,
-  onOpenTask: _onOpenTask,
+  onOpenTask,
   onConfigure,
-  onChanged: _onChanged,
+  onChanged,
   onGoToMyTasks,
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
@@ -102,6 +102,94 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
 
   const autoEngage = findById('tiktok_auto_engage') || FALLBACK_AUTO_ENGAGE;
 
+  // ── 视频无水印下载 fallback —— 一次性工具任务,粘 1-20 个 TikTok 视频链接逐个下到本地。
+  const FALLBACK_VIDEO_DL: Scenario = {
+    id: 'tiktok_video_download',
+    version: '1.0.0',
+    platform: 'tiktok' as any,
+    workflow_type: 'tiktok_video_download' as any,
+    category: 'tool',
+    name_zh: 'TikTok · 视频无水印下载',
+    name_en: 'TikTok · Watermark-free Video Download',
+    description_zh: '粘贴 1-20 个 TikTok 视频链接，依次在本地浏览器打开，借浏览器自身网络栈解析并下载无水印原视频到本地。一次性任务，只需登录 TikTok 主站（大陆用户需开 VPN）。',
+    description_en: 'Paste 1-20 TikTok video links; opens each locally and downloads the watermark-free source video via the browser network stack. One-time task, only needs main-site login.',
+    icon: '⬇️',
+    default_config: {
+      keywords: [], persona: '', daily_count: 1, variants_per_post: 1, schedule_window: '00:00-23:59',
+    } as any,
+    risk_caps: {
+      max_daily_runs: 50, max_scroll_per_run: 0, min_scroll_delay_ms: 0, max_scroll_delay_ms: 0,
+      read_dwell_min_ms: 0, read_dwell_max_ms: 0, max_run_duration_ms: 1800000, min_interval_hours: 0,
+      weekly_rest_days: 0, cooldown_captcha_hours: 24, cooldown_rate_limit_hours: 48, cooldown_account_flag_hours: 72,
+    } as any,
+    required_login_url: 'https://www.tiktok.com/explore',
+    entry_urls: {},
+    skills: {},
+  } as any;
+
+  const videoDownload = findById('tiktok_video_download') || FALLBACK_VIDEO_DL;
+
+  // 视频无水印下载 modal state
+  const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
+  const [videoDlLinksText, setVideoDlLinksText] = useState('');
+  const [videoDlSubmitting, setVideoDlSubmitting] = useState(false);
+
+  // TikTok 链接校验:tiktok.com(含 vm./vt./www.),1-20 个。
+  const validateTiktokLinks = (text: string): { ok: string[]; err: string | null } => {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length < 1) return { ok: [], err: isZh ? '至少粘贴 1 个链接' : 'Paste at least 1 URL' };
+    if (lines.length > 20) return { ok: [], err: isZh ? '最多 20 个链接' : 'Max 20 URLs' };
+    for (const l of lines) {
+      if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(l)) {
+        return { ok: [], err: (isZh ? '不是 TikTok 链接：' : 'Not a TikTok link: ') + l.slice(0, 80) };
+      }
+    }
+    return { ok: lines, err: null };
+  };
+
+  const handleVideoDownloadClick = () => {
+    if (tasks.length >= MAX_TASKS) { setMaxTasksModalOpen(true); return; }
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    setLoginModalReason('tiktok_video_download');
+  };
+
+  const handleVideoDownloadSubmit = async () => {
+    if (videoDlSubmitting) return;
+    const { ok, err } = validateTiktokLinks(videoDlLinksText);
+    if (err) { alert(err); return; }
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    setVideoDlSubmitting(true);
+    try {
+      const now = new Date();
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const task = await scenarioService.createTask({
+        scenario_id: videoDownload.id,
+        track: 'video_download',
+        keywords: [],
+        urls: ok,
+        persona: '',
+        daily_count: ok.length,
+        variants_per_post: 1,
+        daily_time: `${hh}:${mm}`,
+        run_interval: 'once',
+        enabled: true,
+        active: true,
+      } as any);
+      setVideoDlModalOpen(false);
+      setVideoDlLinksText('');
+      if (onChanged) { await onChanged(); }
+      onOpenTask(task.id, 'tasks');
+      scenarioService.runTaskNow(task.id).catch((e) => {
+        console.error('[TiktokVideoDownload] runTaskNow failed:', e);
+      });
+    } catch (e) {
+      alert((isZh ? '创建失败：' : 'Create failed: ') + String(e).slice(0, 120));
+    } finally {
+      setVideoDlSubmitting(false);
+    }
+  };
+
   const handleConfigure = useCallback(async (scenario: Scenario | null) => {
     if (!scenario) {
       alert(isZh ? '场景元数据还在加载中，请稍后再试' : 'Scenario metadata still loading');
@@ -124,19 +212,25 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
     setLoginModalReason(null);
     if (reason === 'tiktok_auto_engage') {
       onConfigure(autoEngage);
+    } else if (reason === 'tiktok_video_download') {
+      setVideoDlModalOpen(true);
     }
   };
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Single scenario card. 用 max-w-3xl 让单卡片不被拉到全宽 — 跟
-          YoutubeWorkflowsPage 视觉一致。未来加 card 时把 max-w-3xl 拿掉
-          换成跟 XhsWorkflowsPage 一样的 grid-cols-2 即可。 */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4 max-w-md md:max-w-md mx-auto">
+      {/* 两张卡片:互动涨粉 + 视频无水印下载。 */}
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <TikTokScenarioCard
           loading={loading}
           scenario={autoEngage}
           onConfigure={() => handleConfigure(autoEngage)}
+          isZh={isZh}
+        />
+        <TikTokVideoDownloadCard
+          loading={loading}
+          scenario={videoDownload}
+          onConfigure={handleVideoDownloadClick}
           isZh={isZh}
         />
       </section>
@@ -159,6 +253,53 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
           ))}
         </div>
       </section>
+
+      {/* 视频无水印下载 modal —— 粘 1-20 个 TikTok 视频链接。背景点击不关闭。 */}
+      {videoDlModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+            <h3 className="text-lg font-bold dark:text-white mb-2">
+              ⬇️ {isZh ? 'TikTok · 视频无水印下载' : 'TikTok Watermark-free Video Download'}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {isZh
+                ? '每行一个 TikTok 视频链接（最多 20 个，支持 vm./vt.tiktok.com 短链）。点击开始后在本地浏览器逐个打开解析并下载，图集等非视频自动跳过。大陆用户需开 VPN。'
+                : 'One TikTok video link per line (max 20, vm./vt.tiktok.com short links OK). Each opens locally, resolves and downloads; photo posts are skipped.'}
+            </p>
+            <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+              {isZh ? 'TikTok 视频链接' : 'TikTok video links'}
+            </label>
+            <textarea
+              value={videoDlLinksText}
+              onChange={e => setVideoDlLinksText(e.target.value)}
+              placeholder={'https://www.tiktok.com/@user/video/...\nhttps://vt.tiktok.com/...'}
+              rows={8}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-cyan-500/50 resize-y min-h-[200px] break-all"
+              disabled={videoDlSubmitting}
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => !videoDlSubmitting && setVideoDlModalOpen(false)}
+                disabled={videoDlSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                {isZh ? '取消' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleVideoDownloadSubmit}
+                disabled={videoDlSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-cyan-500 text-white hover:bg-cyan-600 disabled:opacity-50"
+              >
+                {videoDlSubmitting
+                  ? (isZh ? '创建中...' : 'Creating...')
+                  : '⬇️ ' + (isZh ? '开始下载' : 'Start Download')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Login modal */}
       {loginModalReason && (
@@ -226,7 +367,7 @@ type CardProps = {
 
 const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
   return (
-    <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
+    <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
       <div className="relative flex flex-col flex-1">
         <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
@@ -248,6 +389,37 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
         >
           🎵 {isZh ? '开始互动' : 'Start'} →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── TikTok 视频无水印下载 card —— 一次性工具,蓝色区分于互动卡。
+const TikTokVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+  return (
+    <div className="relative rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
+      <div className="relative flex flex-col flex-1">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-500 mb-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          {isZh ? '无水印下载' : 'Watermark-free'}
+        </div>
+        <h3 className="text-base font-bold dark:text-white mb-1.5">
+          ⬇️ {isZh ? 'TikTok · 视频无水印下载' : 'TikTok Watermark-free Download'}
+        </h3>
+        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
+          {isZh
+            ? '粘贴 1-20 个 TikTok 视频链接（支持 vm./vt.tiktok.com 短链），本地浏览器逐个打开，借浏览器自身网络栈解析并下载无水印原视频到本地。一次性任务，只需登录 TikTok 主站（大陆用户需开 VPN）；图集等非视频、非 TikTok 链接自动跳过。'
+            : 'Paste 1-20 TikTok video links (vm./vt.tiktok.com short links OK); opens each locally and downloads the watermark-free source video via the browser network stack. One-time task — only needs main-site login. Photo posts and non-TikTok links are skipped.'}
+        </p>
+        <button
+          type="button"
+          onClick={onConfigure}
+          disabled={loading}
+          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-500/25 transition-all active:scale-95"
+        >
+          ⬇️ {isZh ? '开始下载' : 'Start Download'} →
         </button>
       </div>
     </div>

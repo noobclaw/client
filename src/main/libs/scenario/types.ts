@@ -12,7 +12,10 @@ export type WorkflowType =
   | 'auto_reply'
   | 'mass_comment'
   | 'dm_reply'
-  | 'data_monitor';
+  | 'data_monitor'
+  | 'xhs_video_download'
+  | 'douyin_video_download'
+  | 'tiktok_video_download';
 
 export interface ScenarioManifest {
   id: string;                // e.g. "xhs_viral_production_career"

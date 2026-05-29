@@ -197,7 +197,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_reply_fans_comment',
     workflow_type: 'xhs_reply_fans_comment' as any,
-    name_zh: '小红书 · 回复粉丝评论',
+    name_zh: '小红书 · 自动回复粉丝',
     name_en: 'XHS Reply Fan Comments',
     description_zh: '自动给你已发布笔记下的粉丝评论一一回复。AI 按评论内容写回应,可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。',
     description_en: 'Auto-reply to fan comments under your published Xiaohongshu notes. AI tailors each reply, with optional probability-based funnel weaving. Skips comments you\'ve already replied to or your own.',
@@ -212,6 +212,29 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     } as any,
   };
   const replyFansScenario = scenarios.find(s => s.id === 'xhs_reply_fans_comment') || REPLY_FANS_FALLBACK;
+
+  // 视频无水印下载 fallback —— 一次性工具任务,粘贴 1-20 个小红书视频链接逐个
+  // 下载到本地。fallback id 必须 match backend scenario folder,scenarios 列表
+  // 还没拉到时也能点开。
+  const VIDEO_DL_FALLBACK: Scenario = {
+    ...FALLBACK_SCENARIO,
+    id: 'xhs_video_download',
+    workflow_type: 'xhs_video_download' as any,
+    name_zh: '小红书 · 视频无水印下载',
+    name_en: 'Xiaohongshu · Watermark-free Video Download',
+    description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出无水印原视频并下载到本地。一次性任务，只需登录小红书主站。',
+    description_en: 'Paste 1-20 Xiaohongshu video links; opens each locally, resolves the watermark-free source video and downloads it. One-time task, only needs main-site login.',
+    icon: '⬇️',
+    required_login_url: 'https://www.xiaohongshu.com',
+    default_config: {
+      keywords: [],
+      persona: '',
+      daily_count: 1,
+      variants_per_post: 1,
+      schedule_window: '00:00-23:59',
+    } as any,
+  };
+  const videoDownloadScenario = scenarios.find(s => s.id === 'xhs_video_download') || VIDEO_DL_FALLBACK;
   // (autoReplyTask lookup removed v2.4.27 — card always opens wizard for
   //  a NEW task instead of resuming an existing one. Kept the scenario
   //  lookup above since the wizard still needs the scenario reference.)
@@ -232,6 +255,11 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const [linksText, setLinksText] = useState('');
   const [linkSubmitting, setLinkSubmitting] = useState(false);
   const [linkAutoUpload, setLinkAutoUpload] = useState(true);
+
+  // 视频无水印下载 state(复用 link-mode 的链接校验,但走独立 scenario + 独立 modal)
+  const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
+  const [videoDlLinksText, setVideoDlLinksText] = useState('');
+  const [videoDlSubmitting, setVideoDlSubmitting] = useState(false);
 
   const validateLinks = (text: string): { ok: string[]; err: string | null } => {
     const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
@@ -347,6 +375,59 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     setLoginModalReason('reply_fans');
   };
 
+  const handleVideoDownloadClick = () => {
+    if (tasks.length >= MAX_TASKS) {
+      setMaxTasksModalOpen(true);
+      return;
+    }
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.requireLoginUI();
+      return;
+    }
+    // 只校验主站登录(requireCreatorCenter=false,见 LoginRequiredModal 渲染处)
+    setLoginModalReason('video_download');
+  };
+
+  const handleVideoDownloadSubmit = async () => {
+    if (videoDlSubmitting) return;
+    const { ok, err } = validateLinks(videoDlLinksText); // 复用 XHS 链接校验(1-20 + 域名)
+    if (err) { alert(err); return; }
+    if (!noobClawAuth.getState().isAuthenticated) {
+      noobClawAuth.requireLoginUI();
+      return;
+    }
+    setVideoDlSubmitting(true);
+    try {
+      const now = new Date();
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const hh = String(now.getHours()).padStart(2, '0');
+      const task = await scenarioService.createTask({
+        scenario_id: videoDownloadScenario.id,
+        track: 'video_download',
+        keywords: [],
+        urls: ok,
+        persona: '',
+        daily_count: ok.length,
+        variants_per_post: 1,
+        daily_time: `${hh}:${mm}`,
+        run_interval: 'once',
+        enabled: true,
+        active: true,
+      } as any);
+      setVideoDlModalOpen(false);
+      setVideoDlLinksText('');
+      if (onChanged) { await onChanged(); }
+      onOpenTask(task.id, 'tasks');
+      scenarioService.runTaskNow(task.id).catch((e) => {
+        console.error('[VideoDownload] runTaskNow failed:', e);
+      });
+    } catch (e) {
+      alert((i18nService.currentLanguage === 'zh' ? '创建失败：' : 'Create failed: ') + String(e).slice(0, 120));
+    } finally {
+      setVideoDlSubmitting(false);
+    }
+  };
+
   const handleQuickStart = () => {
     // Gate: max 5 tasks
     if (tasks.length >= MAX_TASKS) {
@@ -368,6 +449,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     // After checks pass, open whichever form the user was heading to.
     if (reason === 'linkmode') {
       setLinkModalOpen(true);
+    } else if (reason === 'video_download') {
+      setVideoDlModalOpen(true);
     } else if (reason === 'autoreply') {
       onConfigure(autoReplyScenario);
     } else if (reason === 'image_text') {
@@ -445,7 +528,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               {i18nService.currentLanguage === 'zh' ? '粉丝维护' : 'Fan Engagement'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              💌 {i18nService.currentLanguage === 'zh' ? '小红书 · 回复粉丝评论' : 'XHS Reply Fan Comments'}
+              💌 {i18nService.currentLanguage === 'zh' ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
@@ -458,6 +541,33 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
               className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-fuchsia-500 text-white hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
             >
               💌 {i18nService.currentLanguage === 'zh' ? '开始回复' : 'Start Replying'} →
+            </button>
+          </div>
+        </div>
+
+        {/* 视频无水印下载 —— 放在「图文创作」前面。一次性工具:粘 1-20 个小红书
+            视频链接,本地浏览器逐个解析无水印原视频并下载到本地。 */}
+        <div className="relative rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
+          <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col h-full">
+            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-500 mb-2">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+              {i18nService.currentLanguage === 'zh' ? '无水印下载' : 'Watermark-free'}
+            </div>
+            <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
+              {i18nService.currentLanguage === 'zh'
+                ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出无水印原视频，依次下载到本地。一次性任务，只需登录小红书主站；非视频笔记、非小红书链接自动跳过。'
+                : 'Paste 1-20 Xiaohongshu video links; opens each in your local browser, resolves the watermark-free source video and downloads it. One-time task — only needs main-site login. Non-video notes and non-XHS links are skipped.'}
+            </p>
+            <button
+              type="button"
+              onClick={handleVideoDownloadClick}
+              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/25 transition-all active:scale-95"
+            >
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '开始下载' : 'Start Download'} →
             </button>
           </div>
         </div>
@@ -635,6 +745,53 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         </div>
       )}
 
+      {/* 视频无水印下载 modal —— 粘 1-20 个小红书视频链接。背景点击不关闭(链接长易误触)。 */}
+      {videoDlModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+            <h3 className="text-lg font-bold dark:text-white mb-2">
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
+            </h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+              {i18nService.currentLanguage === 'zh'
+                ? '每行一个小红书视频链接（最多 20 个）。点击开始后会在本地浏览器逐个打开解析并下载到本地，非视频笔记自动跳过。'
+                : 'One Xiaohongshu video link per line (max 20). Each opens locally, resolves and downloads; non-video notes are skipped.'}
+            </p>
+            <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
+              {i18nService.currentLanguage === 'zh' ? '小红书视频链接' : 'Xiaohongshu video links'}
+            </label>
+            <textarea
+              value={videoDlLinksText}
+              onChange={e => setVideoDlLinksText(e.target.value)}
+              placeholder={'https://www.xiaohongshu.com/explore/...\nhttps://xhslink.com/...'}
+              rows={8}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/50 resize-y min-h-[200px] break-all"
+              disabled={videoDlSubmitting}
+            />
+            <div className="flex gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => !videoDlSubmitting && setVideoDlModalOpen(false)}
+                disabled={videoDlSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+              >
+                {i18nService.currentLanguage === 'zh' ? '取消' : 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={handleVideoDownloadSubmit}
+                disabled={videoDlSubmitting}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50"
+              >
+                {videoDlSubmitting
+                  ? (i18nService.currentLanguage === 'zh' ? '创建中...' : 'Creating...')
+                  : '⬇️ ' + (i18nService.currentLanguage === 'zh' ? '开始下载' : 'Start Download')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loginModalReason && (
         <LoginRequiredModal
           mode="create"
@@ -645,7 +802,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
              页发回复,两个都要登录 → requireCreatorCenter=true。
              loginModalReason 在调用点 setLoginModalReason 时传的关键字 —
              见 line 283/301/313/328。 */
-          requireCreatorCenter={loginModalReason !== 'autoreply'}
+          requireCreatorCenter={loginModalReason !== 'autoreply' && loginModalReason !== 'video_download'}
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />

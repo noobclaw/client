@@ -14,7 +14,10 @@ export type ScenarioWorkflowType =
   | 'auto_reply'
   | 'mass_comment'
   | 'dm_reply'
-  | 'data_monitor';
+  | 'data_monitor'
+  | 'xhs_video_download'
+  | 'douyin_video_download'
+  | 'tiktok_video_download';
 
 export interface ScenarioRiskCapsIPC {
   max_daily_runs: number;
