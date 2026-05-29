@@ -1741,7 +1741,15 @@ function formatActionBreakdown(
       || sid === 'xhs_auto_reply_universal'
       || sid === 'xhs_reply_fans_comment'
     );
-    if (isPostScenario) {
+    // v6.x: 视频无水印下载(xhs/douyin/tiktok)— 完成数按"下载条数"算,空时显示 ⬇️ 0 下载。
+    const isDownloadScenario = (
+      sid === 'xhs_video_download'
+      || sid === 'douyin_video_download'
+      || sid === 'tiktok_video_download'
+    );
+    if (isDownloadScenario) {
+      counts = { download: 0 };
+    } else if (isPostScenario) {
       counts = { post: 0 };
     } else if (isEngageScenario) {
       // xhs_reply_fans_comment 只产生 'comment' 计数,不发 like/follow;
@@ -1761,8 +1769,9 @@ function formatActionBreakdown(
     reply: '💬',
     subscribe: '📌',
     post: '📤',
+    download: '⬇️',
   };
-  const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+  const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
   // v5.x+: keep 0-count keys when they're explicitly present in the map.
   // Pre-rollout records have no action_counts → empty map → the early
   // return on line above handles those. Newer runs that DID call
@@ -1783,8 +1792,8 @@ function formatActionBreakdown(
     });
   if (keys.length === 0) return '-';
   const labels = isZh
-    ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
-    : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+    ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
+    : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
   return keys.map(k => {
     const icon = ICONS[k] || '·';
     const label = (labels as any)[k] || k;
