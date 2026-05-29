@@ -151,54 +151,6 @@ jobs:
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
 
-      # Bundle yt-dlp into the Tauri resources directory so the sidecar can
-      # download DASH split-track 抖音 / TikTok / B站 videos with audio
-      # (web JS only exposes video-only URLs — direct downloads are silent).
-      # phaseRunner.ts ctx.downloadWithYtDlp resolves
-      #   <resources>/bin/noobclaw-media-helper[.exe|_macos|_linux]
-      # via getResourcesPath().
-      #
-      # RENAME RATIONALE: shipping as "yt-dlp.exe" lights up Windows AV /
-      # 360 / 腾讯管家 filename-based heuristics (yt-dlp is on common
-      # downloader blacklists). Renaming to noobclaw-media-helper.exe
-      # avoids the filename trigger; PyInstaller-style behavioural signals
-      # still exist but those are far less common false positives.
-      #
-      # MUST run AFTER `Prepare Tauri resources` because that script wipes
-      # src-tauri/resources/ before copying SKILLs/tray/native addons in.
-      # Tauri's bundler picks up resources/**/* from tauri.conf.json.
-      #
-      # macOS x86_64 + arm64 both use the universal yt-dlp_macos binary
-      # (PyInstaller fat Mach-O — works on both archs).
-      - name: Bundle media helper (yt-dlp renamed)
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p src-tauri/resources/bin
-          case "${{ matrix.target }}" in
-            *windows*)
-              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
-              OUT="noobclaw-media-helper.exe"
-              ;;
-            *apple-darwin*)
-              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
-              OUT="noobclaw-media-helper_macos"
-              ;;
-            *linux*)
-              URL="https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux"
-              OUT="noobclaw-media-helper_linux"
-              ;;
-            *)
-              echo "Unknown target: ${{ matrix.target }}"; exit 1 ;;
-          esac
-          echo "Downloading $URL → src-tauri/resources/bin/$OUT"
-          curl -L --fail --retry 3 --retry-delay 5 \
-            -o "src-tauri/resources/bin/$OUT" "$URL"
-          chmod +x "src-tauri/resources/bin/$OUT" || true
-          ls -la src-tauri/resources/bin/
-          # Smoke test (Linux/macOS can self-exec; Windows runner can too via mingw)
-          "src-tauri/resources/bin/$OUT" --version || echo "WARN: --version probe failed (may be cross-arch; continuing)"
-
       - name: Install Tauri CLI
         run: npm install -g @tauri-apps/cli
 
@@ -245,37 +197,6 @@ jobs:
           else
             echo "ERROR: $ADDON not found — prepare-tauri-resources.js should have copied it"
             ls -la src-tauri/resources/native/ || true
-            exit 1
-          fi
-
-      # Same rationale as Pre-sign native addon — noobclaw-media-helper_macos
-      # lands in Contents/Resources/resources/bin/ which Tauri's bundler does
-      # NOT reach when codesigning. Without --timestamp --options runtime the
-      # notary service rejects the whole .app. Must run AFTER the keychain
-      # import step above (which sets APPLE_SIGNING_IDENTITY in GITHUB_ENV).
-      #
-      # CRITICAL: --entitlements is required because yt-dlp is a PyInstaller
-      # binary. At launch it unpacks an embedded Python.framework to
-      # /var/folders/.../_MEI*/ and dlopens it. Hardened Runtime
-      # (--options runtime) by default rejects dlopen of libraries not
-      # signed with the same Team ID → "Failed to load Python shared
-      # library" (PYI-63390) and yt-dlp exits before doing anything.
-      # Same entitlements.plist already shipped for the pkg sidecar
-      # (allow-jit + allow-unsigned-executable-memory +
-      # disable-library-validation) — reuse it here.
-      - name: Pre-sign media helper (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          YT="src-tauri/resources/bin/noobclaw-media-helper_macos"
-          if [ -f "$YT" ]; then
-            codesign --force --timestamp --options runtime \
-              --entitlements src-tauri/entitlements.plist \
-              --sign "$APPLE_SIGNING_IDENTITY" "$YT"
-            codesign -dvv "$YT" || true
-            codesign --display --entitlements - "$YT" || true
-          else
-            echo "ERROR: $YT not found — Bundle media helper step should have downloaded it"
-            ls -la src-tauri/resources/bin/ || true
             exit 1
           fi
 
