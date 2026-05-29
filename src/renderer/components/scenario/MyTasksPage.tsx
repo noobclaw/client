@@ -367,11 +367,15 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               const isLinkRewriteTwitter = sid === 'x_link_rewrite';
               const isXhsLinkMode = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0 && platformId === 'xhs');
               const isBinanceLinkRewrite = sid === 'binance_from_x_link';
+              // 视频无水印下载(xhs/douyin/tiktok)也是"粘 URL 列表"任务 —— 跟 link 仿写
+              // 一样隐藏 track/persona、改显 URL 列表,但它有自己的徽章/副标题/图标,
+              // 必须跟「指定链接爆款仿写」区分开(两者都带 urls[],别混了)。
+              const isVideoDownload = sid === 'xhs_video_download' || sid === 'douyin_video_download' || sid === 'tiktok_video_download';
               // v4.28.x: 任何"用户粘 URL 列表仿写"任务统一处理 —— 之前 binance_from_x_link
               // 没被算进去,导致它在列表里还显示 track 名 + persona 摘要(其实用户没填,
               // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
               // 引入 isAnyLinkRewrite 后:隐藏 track 行 / 隐藏 persona snippet / 改显 URL 列表。
-              const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite;
+              const isAnyLinkRewrite = isLinkRewriteTwitter || isXhsLinkMode || isBinanceLinkRewrite || isVideoDownload;
               // v5.x+: 抖音图文创作场景没有 track / persona / keywords 概念,
               // 只看 source_segments[3]。MyTasksPage 跟 TaskDetailPage 对齐,
               // 隐藏 persona snippet 和 track 行(老任务 task.persona 字段还在
@@ -436,12 +440,13 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // Track / display name
               const track = TRACK_ICONS[task.track];
               const subTitle = (() => {
+                if (isVideoDownload) return isZh ? '视频链接' : 'Video links';
                 if (isLinkRewriteTwitter) return isZh ? '指定推文链接' : 'Manual tweet URLs';
                 if (isXhsLinkMode) return isZh ? '指定链接' : 'Manual XHS links';
                 if (track) return track.name_zh;
                 return scenario?.name_zh || task.scenario_id;
               })();
-              const subIcon = track?.icon || (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥');
+              const subIcon = track?.icon || (isVideoDownload ? '⬇️' : (isXhsLinkMode || isLinkRewriteTwitter ? '🔗' : scenario?.icon || '🔥'));
               const personaSnippet = (task.persona || '').trim().split('\n')[0].slice(0, 80);
               const interval = (task as any).run_interval || 'daily_random';
 
