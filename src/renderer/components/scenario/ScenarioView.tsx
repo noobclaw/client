@@ -857,6 +857,17 @@ const LinkModeEditModal: React.FC<{
   const platformLabel = isX ? (isZh ? '推特' : 'X (Twitter)')
     : isBinance ? (isZh ? '币安广场' : 'Binance Square')
     : (isZh ? '小红书' : 'XHS');
+  // v6.x: 视频无水印下载任务(xhs/douyin/tiktok)也带 urls[] → openWizardEdit
+  //   把它路由到这个 link 编辑 modal,但它不是"指定链接 AI 仿写":文案/域名校验
+  //   /去向都不同(纯下载,无 AI、无上传)。单独分支处理,且按平台校验域名 ——
+  //   否则 douyin/tiktok 下载任务会被当成 xhs、URL 校验直接 reject 存不了。
+  const isVideoDownload = scenario?.id === 'xhs_video_download'
+    || scenario?.id === 'douyin_video_download'
+    || scenario?.id === 'tiktok_video_download';
+  const vdPlat = scenario?.platform as string | undefined;
+  const vdLabel = vdPlat === 'douyin' ? (isZh ? '抖音' : 'Douyin')
+    : vdPlat === 'tiktok' ? 'TikTok'
+    : (isZh ? '小红书' : 'XHS');
   // v4.28.x: sourceLabel 之前用在描述文案里("粘贴 1-3 个 ${sourceLabel} 原文链接"),
   // 现在描述按 acceptsTwitterUrl 直接走两个固定文案,不再需要 sourceLabel 占位 ——
   // TS strict 模式抛 unused 编译错(打包失败),直接移除。
@@ -869,7 +880,16 @@ const LinkModeEditModal: React.FC<{
     // v6.x: 上限从 5 提到 20。用户反馈"一次想批 10-20 条爆款链路",5 个太紧。
     if (lines.length > 20) return { ok: [], err: isZh ? '最多 20 个链接' : 'Max 20 URLs' };
     for (const l of lines) {
-      if (acceptsTwitterUrl) {
+      if (isVideoDownload) {
+        const okDomain = vdPlat === 'douyin'
+          ? /^https?:\/\/([\w-]+\.)?(douyin|iesdouyin)\.com\//i.test(l)
+          : vdPlat === 'tiktok'
+            ? /^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(l)
+            : (/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) || /^https?:\/\/xhslink\.com\//i.test(l));
+        if (!okDomain) {
+          return { ok: [], err: (isZh ? `不是${vdLabel}链接：` : `Not a ${vdLabel} link: `) + l.slice(0, 80) };
+        }
+      } else if (acceptsTwitterUrl) {
         if (!/^https?:\/\/(www\.)?(twitter|x)\.com\/.+\/status\/\d+/i.test(l)) {
           return { ok: [], err: (isZh ? '不是有效的推特推文链接：' : 'Not a valid X/Twitter status URL: ') + l.slice(0, 80) };
         }
@@ -913,10 +933,16 @@ const LinkModeEditModal: React.FC<{
         className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6"
       >
         <h3 className="text-lg font-bold dark:text-white mb-2">
-          🔗 {isZh ? '编辑指定链接任务' : 'Edit link-mode task'}
+          {isVideoDownload
+            ? '⬇️ ' + (isZh ? `${vdLabel}视频链接` : `${vdLabel} video links`)
+            : '🔗 ' + (isZh ? '编辑指定链接任务' : 'Edit link-mode task')}
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
-          {isZh
+          {isVideoDownload
+            ? (isZh
+                ? `粘贴 1~20 个${vdLabel}视频链接，每行一个，逐个解析并无水印下载到本地。`
+                : `Paste 1-20 ${vdLabel} video links, one per line. Each is resolved and downloaded watermark-free.`)
+            : isZh
             ? (acceptsTwitterUrl
                 ? '粘贴 1~20 个推特原文链接，图文视频均可，每行一个，AI 进行深度改写后发布。'
                 : '粘贴 1~20 个小红书原文链接，每行一个，AI 进行深度改写后发布。')
@@ -925,7 +951,7 @@ const LinkModeEditModal: React.FC<{
                 : 'Paste 1-20 XHS URLs, one per line. AI will deep-rewrite and publish.')}
         </p>
         <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
-          {isZh ? '原文链接' : 'Source URLs'}
+          {isVideoDownload ? (isZh ? '视频链接' : 'Video links') : (isZh ? '原文链接' : 'Source URLs')}
         </label>
         <textarea
           value={linksText}
@@ -976,6 +1002,7 @@ const LinkModeEditModal: React.FC<{
           </div>
         )}
 
+        {!isVideoDownload && (<>
         <label className="text-sm font-medium dark:text-gray-200 mt-4 mb-2 block">
           {isZh ? '生成后的处理' : 'After generation'}
         </label>
@@ -1003,6 +1030,7 @@ const LinkModeEditModal: React.FC<{
             </div>
           </label>
         </div>
+        </>)}
 
         <div className="flex gap-2 mt-4">
           <button
