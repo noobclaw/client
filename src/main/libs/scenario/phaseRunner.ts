@@ -2215,6 +2215,38 @@ function buildContext(
         throw new Error('openTab requires { role, url }');
       }
 
+      // v1.6.x (PR14): if the scenario passed only `platform` (legacy
+      // schema — 17 of the 18 scenarios still do this as of 2026-05),
+      // derive `sub_platform` from (platform, role) so they get v6
+      // windowKey reuse "for free" without per-scenario edits.
+      //
+      //   - Single-domain platforms (binance / youtube / tiktok / x):
+      //     map to *_main (or binance_square for binance). Role
+      //     ignored.
+      //   - Split platforms (xhs / douyin) have creator + main:
+      //     role === 'creator' → *_creator; everything else → *_main.
+      //
+      // This is best-effort inference, not a contract — scenarios that
+      // really need explicit control should keep passing sub_platform
+      // (e.g. xhs_reply_fans_comment opens with role='creator' AND
+      //  sub_platform='xhs_creator', which wins via the early-exit
+      // check below).
+      if (!opts.sub_platform && opts.platform) {
+        const p = opts.platform;
+        const r = opts.role;
+        const inferred =
+          p === 'binance' ? 'binance_square' :
+          p === 'youtube' ? 'youtube_main'   :
+          p === 'tiktok'  ? 'tiktok_main'    :
+          p === 'x' || p === 'twitter' ? 'x_main' :
+          p === 'xhs'     ? (r === 'creator' ? 'xhs_creator'    : 'xhs_main')   :
+          p === 'douyin'  ? (r === 'creator' ? 'douyin_creator' : 'douyin_main') :
+          null;
+        if (inferred) {
+          opts = { ...opts, sub_platform: inferred };
+        }
+      }
+
       // v6 path: client computes opaque windowKey + groupTitle, ext routes
       // by Map<windowKey, ...>. Window persists across tasks targeting the
       // same sub_platform + account.
