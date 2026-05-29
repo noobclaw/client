@@ -17,7 +17,7 @@
 
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
-import { groupTitle as buildGroupTitle } from './subPlatformRegistry';
+import { groupTitle as buildGroupTitle, getStandardBounds } from './subPlatformRegistry';
 
 // platform → sub_platform mapping for v6 windowRegistry routing.
 //   Main domain is what openPlatformLogin uses; creator domain (when
@@ -40,44 +40,12 @@ const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = 
   douyin: 'douyin_creator',
 };
 
-// v6.x pre-run-check window bounds (PR13). Deterministic per-sub_platform
-// slot so:
-//   - Two clicks on the same checker open the same windowKey (idempotent),
-//     no extra positioning churn.
-//   - Different sub_platforms cascade across the screen in a predictable
-//     order: creator first, main next, etc. Same slot ordering as
-//     SUB_PLATFORM_REGISTRY entries.
-//   - Width/height fixed at 1100×750 — comfortable login + creator-center
-//     navigation, fits 1366 laptop with a small right-edge clip user can
-//     drag away if it matters.
-//   - account_id offset reserved for multi-account future (PR-far) so
-//     two accounts on the same sub_platform don't stack exactly on top.
-//
-// Lives in this file (rather than subPlatformRegistry) because only the
-// pre-run-check flow uses it today; task openTab keeps relying on ext-
-// side cascadeBounds via the no-bounds-passed fallback so existing
-// scenarios don't bind to a positioning policy they didn't sign up for.
-const SUB_PLATFORM_SLOT: Record<string, number> = {
-  xhs_creator: 0,
-  xhs_main: 1,
-  douyin_creator: 2,
-  douyin_main: 3,
-  tiktok_main: 4,
-  x_main: 5,
-  binance_square: 6,
-  youtube_main: 7,
-};
-
-function preRunBoundsFor(sub_platform: string, account_id = 'default') {
-  const slot = SUB_PLATFORM_SLOT[sub_platform] ?? 0;
-  const accountOffset = account_id === 'default' ? 0 : 30;
-  return {
-    left:   20 + slot * 60 + accountOffset,
-    top:    20 + slot * 50 + accountOffset,
-    width:  1100,
-    height: 750,
-  };
-}
+// v6.x window bounds moved to subPlatformRegistry.getStandardBounds so
+// BOTH pre-run check (here) and task openTab (phaseRunner) use the same
+// deterministic per-sub_platform size + cascade offset. Local preRunBoundsFor
+// was a dup that only pre-run used — task-fresh windows fell back to ext
+// cascadeBounds and came out a different size. Now unified.
+const preRunBoundsFor = getStandardBounds;
 
 export interface PlatformLoginStatus {
   loggedIn: boolean;

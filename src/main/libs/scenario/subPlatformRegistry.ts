@@ -172,3 +172,38 @@ export function groupTitle(
   const base = head + subPlatformLabel(sub_platform);
   return account_id === 'default' ? base : `${base} · @${account_id}`;
 }
+
+/**
+ * Deterministic window bounds for a (sub_platform, account_id). The SINGLE
+ * source of truth for window positioning — both the pre-run-check helpers
+ * (platformLoginDriver) and the task openTab path (phaseRunner) call this
+ * so every NoobClaw window is the SAME size (1100×750) at a per-sub_platform
+ * cascade offset. Previously pre-run used a local copy and task openTab
+ * passed no bounds at all, so task-created windows fell back to ext-side
+ * cascadeBounds() and came out a different size — that's the "some windows
+ * big, some small" the user saw.
+ *
+ * Slot index = position in SUB_PLATFORM_REGISTRY insertion order, so each
+ * sub_platform always lands at the same screen offset (idempotent). Unknown
+ * ids get slot 0. account_id !== 'default' adds a 30px offset so multi-
+ * account windows for the same sub_platform don't stack exactly.
+ *
+ * 1100×750 fits a 1080p screen with 8 cascade slots; clips ~slightly on a
+ * 1366 laptop (user can drag). Pure client math — no chrome.system.display
+ * dependency, so it stays out of the ext.
+ */
+const _SUB_PLATFORM_ORDER: string[] = Object.keys(SUB_PLATFORM_REGISTRY);
+
+export function getStandardBounds(
+  sub_platform: string,
+  account_id: string = 'default',
+): { left: number; top: number; width: number; height: number } {
+  const slot = Math.max(0, _SUB_PLATFORM_ORDER.indexOf(sub_platform));
+  const accountOffset = account_id === 'default' ? 0 : 30;
+  return {
+    left: 20 + slot * 60 + accountOffset,
+    top: 20 + slot * 50 + accountOffset,
+    width: 1100,
+    height: 750,
+  };
+}

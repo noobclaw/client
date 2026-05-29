@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
 import { PLATFORM_TAB_GROUPS, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
-import { groupTitle as buildGroupTitle, urlToSubPlatform } from './subPlatformRegistry';
+import { groupTitle as buildGroupTitle, urlToSubPlatform, getStandardBounds } from './subPlatformRegistry';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -2255,6 +2255,14 @@ function buildContext(
         const windowKey = `${opts.sub_platform}::${account}`;
         const activeTitle = buildGroupTitle(opts.sub_platform, account, task.id);
         const idleTitle = buildGroupTitle(opts.sub_platform, account, null);
+        // Pass the same deterministic bounds the pre-run check uses, so a
+        // task-created window is identical in size/position to a pre-run
+        // window for the same sub_platform. Without this, task-fresh
+        // windows fell back to ext cascadeBounds() and came out a
+        // different size ("some big, some small"). Ext only applies bounds
+        // when it actually creates a new window — reuse leaves the
+        // existing window's size untouched.
+        const bounds = getStandardBounds(opts.sub_platform, account);
         const res: any = await sendBrowserCommand(
           'task_open_tab',
           {
@@ -2263,6 +2271,7 @@ function buildContext(
             role: opts.role,
             url: opts.url,
             taskId: task.id,
+            bounds,
           },
           15000,
           getBridgeOpts(),
