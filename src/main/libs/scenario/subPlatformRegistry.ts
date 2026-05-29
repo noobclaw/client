@@ -9,20 +9,23 @@
  * This registry is consumed by:
  *   - scenarioManager.resourceKeysForPack (Phase 1, today)
  *   - scenarioManager.humanizePlatformFromKey (Phase 1, today)
- *   - future ScopedTab routing (PR9)
- *   - chrome-extension/background.js (mirror, PR7)
+ *   - future ScopedTab routing (PR9) — passes pre-computed windowKey +
+ *     groupTitle into ext via task_open_tab so ext stays sub_platform-
+ *     agnostic and never needs version bumps when new platforms ship
  *
- * Because client (Node) and ext (Service Worker) run in different JS
- * realms we can't share this file by import — the ext-side copy lives at
- * the top of background.js with identical structure. Any change here
- * MUST be ported to background.js in the same PR. A future CI lint will
- * hash-compare both and fail if they drift.
+ * **Ext stays decoupled**: chrome-extension/background.js intentionally
+ * does NOT mirror this file. The ext receives `windowKey` and
+ * `groupTitle` as opaque strings from the client and stores them in
+ * Map<windowKey, ...> without ever needing to know the enum. Adding a
+ * new sub_platform is therefore a client + scenario-manifest change
+ * only — no extension release required.
  *
  * Adding a new sub_platform:
- *   1. Add the entry below + corresponding entry in background.js
+ *   1. Add the entry below (this file only — do NOT touch background.js)
  *   2. Make sure label + emoji + domain are accurate
  *   3. Update scenario manifests that touch this domain to declare it
  *      in their `platforms` array
+ *   4. Ship client + backend (no ext release needed)
  */
 
 export interface SubPlatformMeta {
@@ -45,15 +48,20 @@ export interface SubPlatformMeta {
  * declaring an unknown id in `manifest.platforms` get a runtime warning
  * (see isKnownSubPlatform).
  */
+// Labels are intentionally short (English abbreviation + optional CN
+// domain-tier suffix). They land in Chrome tab group titles where space
+// is at a premium and reading is glance-mode. Pattern:
+//   {PLATFORM_ABBREV}            for single-domain platforms
+//   {PLATFORM_ABBREV}·{TIER_CN}  for split creator/main platforms
 export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
-  xhs_creator:    { label: '小红书创作者中心', emoji: '📝', domain: 'creator.xiaohongshu.com' },
-  xhs_main:       { label: '小红书',           emoji: '📕', domain: 'www.xiaohongshu.com' },
-  douyin_creator: { label: '抖音创作者中心',   emoji: '🎬', domain: 'creator.douyin.com' },
-  douyin_main:    { label: '抖音',             emoji: '📹', domain: 'www.douyin.com' },
-  tiktok_main:    { label: 'TikTok',           emoji: '🎵', domain: 'www.tiktok.com' },
-  x_main:         { label: '推特',             emoji: '🐦', domain: 'x.com' },
-  binance_square: { label: '币安广场',         emoji: '🟡', domain: 'www.binance.com/square' },
-  youtube_main:   { label: 'YouTube',          emoji: '🔴', domain: 'www.youtube.com' },
+  xhs_creator:    { label: 'XHS·创作', emoji: '📝', domain: 'creator.xiaohongshu.com' },
+  xhs_main:       { label: 'XHS',      emoji: '📕', domain: 'www.xiaohongshu.com' },
+  douyin_creator: { label: 'DY·创作',  emoji: '🎬', domain: 'creator.douyin.com' },
+  douyin_main:    { label: 'DY',       emoji: '📹', domain: 'www.douyin.com' },
+  tiktok_main:    { label: 'TK',       emoji: '🎵', domain: 'www.tiktok.com' },
+  x_main:         { label: 'X',        emoji: '🐦', domain: 'x.com' },
+  binance_square: { label: 'BN·广场',  emoji: '🟡', domain: 'www.binance.com/square' },
+  youtube_main:   { label: 'YT',       emoji: '🔴', domain: 'www.youtube.com' },
 };
 
 /** Lookup set for fast enum validation. Derived from the registry. */
