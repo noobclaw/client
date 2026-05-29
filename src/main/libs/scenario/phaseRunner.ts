@@ -542,6 +542,22 @@ function buildContext(
   const _scopedTabsByRole = new Map<string, ReturnType<typeof createScopedTab>>();
   const _childRoleSubPlatform = new Map<string, { sub_platform: string; account: string }>();
 
+  // v6.x (PR12 audit fix): single sink for tab-handle bookkeeping. Warns
+  // when a role's tab is being replaced — usually means the orchestrator
+  // re-opened the same role tab without closing the previous one
+  // (retry loops, bad control flow). We DON'T auto-close the old one
+  // here because the orchestrator may still hold a reference to it
+  // mid-operation; logging is the safe default until we have a real
+  // failure case to drive different policy.
+  const _rememberScopedTab = (role: string, t: ReturnType<typeof createScopedTab>): void => {
+    const prev = _scopedTabsByRole.get(role);
+    if (prev && prev.id !== t.id) {
+      coworkLog('WARN', 'phaseRunner',
+        `[scopedTabs] role="${role}" reopened (old tab #${prev.id} → new tab #${t.id}); old handle may orphan if orchestrator doesn't close it`);
+    }
+    _scopedTabsByRole.set(role, t);
+  };
+
   const ctx: Record<string, any> = {
     // ── Data ──
     task,
@@ -2239,7 +2255,7 @@ function buildContext(
           res.tabId, res.windowId, task.id, opts.sub_platform, opts.role,
           { sendBrowserCommand, progress, getBridgeOpts, randInt }, windowKey,
         );
-        _scopedTabsByRole.set(opts.role, scopedTab);
+        _rememberScopedTab(opts.role, scopedTab);
         return scopedTab;
       }
 
@@ -2277,7 +2293,7 @@ function buildContext(
         res.tabId, res.windowId, task.id, legacyPlatform, opts.role,
         { sendBrowserCommand, progress, getBridgeOpts, randInt },
       );
-      _scopedTabsByRole.set(opts.role, scopedTab);
+      _rememberScopedTab(opts.role, scopedTab);
       return scopedTab;
     },
     registerChildExpectation: async (opts: {
@@ -2355,7 +2371,7 @@ function buildContext(
         res.tabId, res.windowId, task.id, opts.platform || '', opts.role,
         { sendBrowserCommand, progress, getBridgeOpts, randInt }, windowKey,
       );
-      _scopedTabsByRole.set(opts.role, scopedTab);
+      _rememberScopedTab(opts.role, scopedTab);
       return scopedTab;
     },
     /** 已知 tabId 时直接构造一个 ScopedTab handle(不调扩展)。 */
@@ -2394,9 +2410,7 @@ function buildContext(
      * Both paths swallow errors.
      */
     _releaseAllWindows: async () => {
-      const transientRoles: string[] = Array.isArray((pack.manifest as any)?.transient_roles)
-        ? ((pack.manifest as any).transient_roles as string[])
-        : [];
+      const transientRoles = pack.manifest?.transient_roles ?? [];
       for (const role of transientRoles) {
         const st = _scopedTabsByRole.get(role);
         if (!st) continue;

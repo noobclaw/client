@@ -85,6 +85,29 @@ export interface ScenarioManifest {
    * binance_from_x_repost). Kept here so types match runtime shape.
    */
   secondary_tab_url_pattern?: string;
+
+  /**
+   * v6.x window-routing rework (PR6): sub_platform ids the scenario
+   * touches at any point during its run, e.g. ['xhs_creator', 'xhs_main'].
+   * Used by scenarioManager.resourceKeysForPack as mutex keys (scenario
+   * acquires `platform:${each}` lock per entry, blocks any other scenario
+   * holding the same lock). Validated against SUB_PLATFORM_REGISTRY in
+   * client/src/main/libs/scenario/subPlatformRegistry.ts — unknown ids
+   * get a WARN log and still produce a standalone lock.
+   */
+  platforms?: string[];
+
+  /**
+   * v6.x (PR9): role names whose tabs should be closed at task end by
+   * phaseRunner's _releaseAllWindows cleanup hook. Long-lived roles (e.g.
+   * 'creator', 'main', 'home') are NOT listed here — they survive in the
+   * windowRegistry so the next task hitting the same sub_platform reuses
+   * them. Throwaway roles (e.g. 'explore' in xhs_reply_fans_comment) ARE
+   * listed so the user's screen doesn't pile up dead tabs.
+   * Only matched against ctx.openTab / ctx.waitChildTab calls that took
+   * the v6 sub_platform path; v1.5.3-style tabs aren't tracked for cleanup.
+   */
+  transient_roles?: string[];
 }
 
 export interface ScenarioDefaultConfig {
