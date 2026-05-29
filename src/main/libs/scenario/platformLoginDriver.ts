@@ -17,6 +17,28 @@
 
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
+import { groupTitle as buildGroupTitle } from './subPlatformRegistry';
+
+// platform → sub_platform mapping for v6 windowRegistry routing.
+//   Main domain is what openPlatformLogin uses; creator domain (when
+//   present) is what openCreatorCenter uses. Adding a new platform here
+//   means: also add an entry to SUB_PLATFORM_REGISTRY + flag it from any
+//   scenario manifest's platforms array. Pre-run check then automatically
+//   stamps its checker window with the right windowKey so a task starting
+//   later finds it via windowRegistry.get() instead of cascading a new one.
+const PLATFORM_TO_MAIN_SUBPLATFORM: Record<LoginPlatform, string> = {
+  xhs:     'xhs_main',
+  douyin:  'douyin_main',
+  tiktok:  'tiktok_main',
+  x:       'x_main',
+  binance: 'binance_square',
+  youtube: 'youtube_main',
+};
+
+const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = {
+  xhs:    'xhs_creator',
+  douyin: 'douyin_creator',
+};
 
 export interface PlatformLoginStatus {
   loggedIn: boolean;
@@ -148,10 +170,47 @@ export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promi
 
 export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
   const url = PLATFORM_LOGIN_URL[platform] || PLATFORM_LOGIN_URL.xhs;
+
+  // v1.6.2+ (PR11 / Phase 2-D follow-up): route the pre-run-check window
+  // through the v6 windowRegistry so a task starting later can reuse it.
+  //   - windowKey: ${PLATFORM_TO_MAIN_SUBPLATFORM[platform]}::default
+  //   - groupTitle: idle form (no taskId — no task is running yet)
+  //   - taskId: empty (windowRegistry stamps currentTaskId null; ext does
+  //     NOT also write to legacy taskTabRegistry, so this window stays
+  //     unowned by any task until ctx.openTab adopts it)
+  // When the user later runs xhs_reply_fans_comment, phaseRunner's
+  // ctx.openTab({ sub_platform: 'xhs_creator', ... }) sees the existing
+  // entry, focuses + reuses + restamps title with task short-id. Two
+  // sub_platforms (creator + main) → two windowKeys → two physical
+  // windows, exactly satisfying "如果检查框要检查两个,那要求是两个窗口
+  // 而不是一个窗口两个 tab".
+  const subPlatform = PLATFORM_TO_MAIN_SUBPLATFORM[platform];
+  if (subPlatform && connectionHasCapability(undefined, 'window_registry_v6')) {
+    const windowKey = `${subPlatform}::default`;
+    const idleTitle = buildGroupTitle(subPlatform, 'default', null);
+    try {
+      await sendBrowserCommand(
+        'task_open_tab',
+        {
+          windowKey,
+          groupTitle: idleTitle,
+          role: 'main',
+          url,
+          // taskId omitted — pre-run check is not a task.
+        },
+        3000,
+      );
+      return { ok: true };
+    } catch (err) {
+      coworkLog('WARN', 'platformLoginDriver',
+        `v6 task_open_tab failed for ${platform}, falling back to legacy tab_create`, { err: String(err) });
+      // fall through to legacy path
+    }
+  }
+
+  // Legacy (pre-PR7 ext): platform-level NoobClaw group via tab_create envelope.
   // v2.8+: 极简 — 只发 tab_create 带路由 envelope,extension 1.4.22+ 自治
   // (mutex 内 enforce + reuse-or-open),不需要 client 主动 tab_list 兜底。
-  // 用户多点这个按钮:ext 端 mutex 串行,只会 reuse 已有 NoobClaw managed
-  // tab 或开 1 个新窗口,绝不累积。
   const tabPattern = TAB_PATTERNS[platform]?.source;
   const tabGroup = PLATFORM_TAB_GROUPS[platform];
   const routeOpts: any = {};
@@ -162,9 +221,6 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   }
   if (url) routeOpts.anchor_url = url;
   try {
-    // v6.x: 8000ms → 3000ms。本地 IPC ACK 一般 50-200ms 就回,3 秒留 15x buffer
-    //   足够。扩展真挂死时,8s 等待对用户体感太长(只看到按钮转 "..."),3s
-    //   配合 renderer 端 probe-before-fallback 修了双开 race。
     await sendBrowserCommand('tab_create', { url }, 3000, routeOpts);
     return { ok: true };
   } catch (err) {
@@ -234,6 +290,44 @@ export async function checkCreatorCenter(platform: LoginPlatform): Promise<Platf
 export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: boolean; reason?: string }> {
   const url = CREATOR_URLS[platform];
   if (!url) return { ok: false, reason: 'no_creator_center' };
+
+  // v1.6.2+ (PR11): route through v6 windowRegistry so the creator window
+  // ends up in its own windowKey-keyed slot, distinct from main domain's
+  // slot. Tasks running later (e.g. xhs_reply_fans_comment) call
+  // ctx.openTab({ sub_platform: 'xhs_creator' }) which finds + reuses
+  // THIS exact window — same machinery as openPlatformLogin above.
+  //
+  // The earlier renderer workaround (LoginRequiredModal.handleOpenCreator
+  // calling window.open directly to dodge the legacy "ext scoops user's
+  // creator tab into MCP group" problem) is no longer necessary on v6:
+  // task_open_tab v6 path only touches the windowRegistry entry for
+  // exactly this windowKey, never adopts pre-existing user tabs into a
+  // platform-level group. handleOpenCreator can switch back to calling
+  // this function.
+  const subPlatform = PLATFORM_TO_CREATOR_SUBPLATFORM[platform];
+  if (subPlatform && connectionHasCapability(undefined, 'window_registry_v6')) {
+    const windowKey = `${subPlatform}::default`;
+    const idleTitle = buildGroupTitle(subPlatform, 'default', null);
+    try {
+      await sendBrowserCommand(
+        'task_open_tab',
+        {
+          windowKey,
+          groupTitle: idleTitle,
+          role: 'creator',
+          url,
+        },
+        3000,
+      );
+      return { ok: true };
+    } catch (err) {
+      coworkLog('WARN', 'platformLoginDriver',
+        `v6 creator task_open_tab failed for ${platform}, falling back to legacy tab_create`, { err: String(err) });
+      // fall through to legacy
+    }
+  }
+
+  // Legacy fallback (pre-PR7 ext)
   const tabPattern = CREATOR_TAB_PATTERNS[platform]?.source;
   const tabGroup = PLATFORM_TAB_GROUPS[platform];
   const routeOpts: any = {};
@@ -244,9 +338,6 @@ export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: 
   }
   if (url) routeOpts.anchor_url = url;
   try {
-    // v6.x: 8000ms → 3000ms,跟 openPlatformLogin 对齐。注:LoginRequiredModal
-    //   的 handleOpenCreator 已经改成直接 window.open,这函数当前不被 UI
-    //   调用 — 保留 + 缩短 timeout 是为了将来如果再启用时不出双开 race。
     await sendBrowserCommand('tab_create', { url }, 3000, routeOpts);
     return { ok: true };
   } catch (err) {

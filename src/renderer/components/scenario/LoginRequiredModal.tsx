@@ -384,30 +384,34 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
 
   // 一键打开 creator center tab(xhs / douyin 图文创作必需)
   //
-  // v6.x: 改成直接 window.open,不走扩展 (scenarioService.openCreatorCenter)。
-  //   原因:扩展开 creator tab 时会把 tab 移进 MCP group(noobclaw managed),
-  //   会跟用户原本已经开着的 creator tab 串台 / 登录态被打散。
-  //   现在 window.open 直接开普通新 tab,verify 这一步仍然是扩展的 tab_list
-  //   probe(tab_list 看的是所有 tab 不限 MCP group),所以 check 还是会 pass。
-  //   实际跑任务时,orchestrator 的 ctx.navigate 会在它管理的 tab 上自己跳到
-  //   creator URL,不需要"这里开的 tab" 必须在 MCP group 内。
+  // 历史:
+  //   v6.0  改成直接 window.open,不走扩展 — 原因是当时扩展只有 platform-level
+  //         group,creator + main 共用同一个 "🤖 XHS · NoobClaw" group,会把
+  //         用户已经开的 creator tab 拉进 MCP group 打散原工作流。
+  //   v6.x  (本次 PR11) 切回 openCreatorCenter,因为扩展 v1.6.2+ 走 v6 路径
+  //         按 windowKey (xhs_creator::default / douyin_creator::default) 路由,
+  //         creator 和 main 是两个独立 windowKey → 两个独立窗口,不会再串台。
+  //         更重要的是:走扩展开的 creator 窗口会登记到 windowRegistry,后续
+  //         真正起跑 xhs_reply_fans_comment / xhs_image_text / xhs_viral_*
+  //         任务时,ctx.openTab({ sub_platform: 'xhs_creator' }) 直接复用这
+  //         个窗口,不需要再开新窗。
+  //   Capability fallback:老扩展不 advertise window_registry_v6 时,
+  //         openCreatorCenter 内部自动 fall back 到老 tab_create 路径(同时
+  //         附带的 popup_window.open hint 让 chrome 把它视为独立窗)。
   const handleOpenCreator = async () => {
     if (!requireCreatorCenter) return;
     const p = platform as 'xhs' | 'douyin';
-    const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
     setOpening(true);
     try {
-      // v6.x: 在**独立窗口**里开 creator,而不是落到当前 noobclaw managed 窗口
-      //   的 tab strip 末尾(用户反馈"新 tab 紧挨着 XHS · NoobClaw 组,跟我
-      //   原本的 publishing 工作流又串到一起")。
-      //   `popup,width=...,height=...` features 让 Chrome / Edge / Firefox 把
-      //   新 tab 提升为独立窗口,跟原窗口完全分离 — verify probe (tab_list)
-      //   仍然看得到这个 tab(不限窗口),所以 check 一样能 pass。
-      try {
-        window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
-      } catch {
-        // popup blocker / 异常 features → fallback 普通 _blank,verify probe 仍跑
-        try { window.open(creatorUrl, '_blank'); } catch {}
+      const res = await scenarioService.openCreatorCenter(p);
+      if (!res.ok) {
+        // ext 整个挂掉时兜底:popup window.open 保证用户至少能开 tab 完成登录
+        const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
+        try {
+          window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
+        } catch {
+          try { window.open(creatorUrl, '_blank'); } catch {}
+        }
       }
       setTimeout(() => void runCheck(), 2000);
     } finally {
