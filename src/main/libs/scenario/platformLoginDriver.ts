@@ -40,6 +40,45 @@ const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = 
   douyin: 'douyin_creator',
 };
 
+// v6.x pre-run-check window bounds (PR13). Deterministic per-sub_platform
+// slot so:
+//   - Two clicks on the same checker open the same windowKey (idempotent),
+//     no extra positioning churn.
+//   - Different sub_platforms cascade across the screen in a predictable
+//     order: creator first, main next, etc. Same slot ordering as
+//     SUB_PLATFORM_REGISTRY entries.
+//   - Width/height fixed at 1100×750 — comfortable login + creator-center
+//     navigation, fits 1366 laptop with a small right-edge clip user can
+//     drag away if it matters.
+//   - account_id offset reserved for multi-account future (PR-far) so
+//     two accounts on the same sub_platform don't stack exactly on top.
+//
+// Lives in this file (rather than subPlatformRegistry) because only the
+// pre-run-check flow uses it today; task openTab keeps relying on ext-
+// side cascadeBounds via the no-bounds-passed fallback so existing
+// scenarios don't bind to a positioning policy they didn't sign up for.
+const SUB_PLATFORM_SLOT: Record<string, number> = {
+  xhs_creator: 0,
+  xhs_main: 1,
+  douyin_creator: 2,
+  douyin_main: 3,
+  tiktok_main: 4,
+  x_main: 5,
+  binance_square: 6,
+  youtube_main: 7,
+};
+
+function preRunBoundsFor(sub_platform: string, account_id = 'default') {
+  const slot = SUB_PLATFORM_SLOT[sub_platform] ?? 0;
+  const accountOffset = account_id === 'default' ? 0 : 30;
+  return {
+    left:   20 + slot * 60 + accountOffset,
+    top:    20 + slot * 50 + accountOffset,
+    width:  1100,
+    height: 750,
+  };
+}
+
 export interface PlatformLoginStatus {
   loggedIn: boolean;
   reason?: string;
@@ -188,6 +227,10 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
   if (subPlatform && connectionHasCapability(undefined, 'window_registry_v6')) {
     const windowKey = `${subPlatform}::default`;
     const idleTitle = buildGroupTitle(subPlatform, 'default', null);
+    // v1.6.5+ (PR13): client owns positioning. Ext accepts bounds param;
+    // pre-v1.6.5 ext silently ignores extra fields and falls back to its
+    // cascadeBounds default — same visual result, just no client control.
+    const bounds = preRunBoundsFor(subPlatform, 'default');
     try {
       await sendBrowserCommand(
         'task_open_tab',
@@ -196,6 +239,7 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
           groupTitle: idleTitle,
           role: 'main',
           url,
+          bounds,
           // taskId omitted — pre-run check is not a task.
         },
         3000,
@@ -308,6 +352,7 @@ export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: 
   if (subPlatform && connectionHasCapability(undefined, 'window_registry_v6')) {
     const windowKey = `${subPlatform}::default`;
     const idleTitle = buildGroupTitle(subPlatform, 'default', null);
+    const bounds = preRunBoundsFor(subPlatform, 'default');
     try {
       await sendBrowserCommand(
         'task_open_tab',
@@ -316,6 +361,7 @@ export async function openCreatorCenter(platform: LoginPlatform): Promise<{ ok: 
           groupTitle: idleTitle,
           role: 'creator',
           url,
+          bounds,
         },
         3000,
       );
