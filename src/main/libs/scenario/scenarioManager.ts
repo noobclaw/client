@@ -16,6 +16,10 @@ import * as taskStore from './taskStore';
 import * as viralPoolClient from './viralPoolClient';
 import { runOrchestrator } from './phaseRunner';
 import { sendBrowserCommand } from '../browserBridge';
+import {
+  isKnownSubPlatform,
+  subPlatformLabel,
+} from './subPlatformRegistry';
 import type {
   Draft,
   ScenarioManifest,
@@ -662,7 +666,7 @@ const runningByResource = new Map<string, { taskId: string; markedAt: number }>(
 //   touching disjoint sub_platform sets run concurrently up to
 //   MAX_CONCURRENT_TASKS.
 //
-//   This replaces the v5.x `tab:<pattern>` keying which used the raw URL
+//   Replaces the v5.x `tab:<pattern>` keying which used the raw URL
 //   regex string as the mutex key. The old keying was tab-shape-aware but
 //   couldn't distinguish creator.xiaohongshu.com from www.xiaohongshu.com
 //   reliably (they often shared a single broad pattern) and merged unlike
@@ -670,14 +674,32 @@ const runningByResource = new Map<string, { taskId: string; markedAt: number }>(
 //   reviewable, and naturally encode the creator-vs-main split that XHS
 //   and Douyin enforce at the login layer.
 //
-// Legacy fallback: pre-v6 manifests without `platforms` still fall through
-// to the old `tab:*` keying so an in-flight ext/client mismatch doesn't
-// break those scenarios. Mixed keys (`platform:xhs_creator` from new
-// scenarios + `tab:^https?://xhs...` from legacy ones) coexist in the same
-// runningByResource Map without interfering — they're just distinct keys.
+// Two safety rails added in PR6.5 audit pass:
+//
+//   1. UNION instead of PREFER: when a manifest carries both `platforms`
+//      AND legacy `tab_url_pattern` / `additional_tab_patterns` /
+//      `secondary_tab_url_pattern`, we claim mutex keys from BOTH paths.
+//      The earlier prefer-platforms-only design silently dropped any
+//      legacy fields the developer forgot to migrate — if those fields
+//      covered a sub_platform missing from the new `platforms` array,
+//      mutex would silently fail. Union over-claims at worst (legacy
+//      tab:* keys held by today's scenarios don't interlock with any
+//      other modern scenario, so they're effectively dead locks), but
+//      never under-claims.
+//
+//   2. ENUM VALIDATION: unknown sub_platform ids in `platforms` produce
+//      a coworkLog warning + still get a (now-unique) lock so the
+//      scenario can run, but the lock is anchored to the raw id rather
+//      than a known sub_platform. Catches typos at runtime ("xhs_creater"
+//      → warn, lock = "platform:xhs_creater" that no real scenario shares).
+//
+// Mixed keys (`platform:xhs_creator` from new scenarios + `tab:^https?://...`
+// from legacy ones) coexist in the same runningByResource Map without
+// interfering — distinct prefixes, distinct keys.
 function resourceKeysForPack(
   pack: {
     manifest?: {
+      id?: string;
       platforms?: string[];
       tab_url_pattern?: string;
       additional_tab_patterns?: string[];
@@ -685,35 +707,45 @@ function resourceKeysForPack(
     };
   } | null | undefined
 ): string[] {
-  // v6.x preferred path: explicit sub_platform array.
+  const keys: string[] = [];
+  const pushKey = (k: string): void => {
+    if (k && keys.indexOf(k) < 0) keys.push(k);
+  };
+
+  // v6.x sub_platform claims.
   const platforms = pack?.manifest?.platforms;
   if (Array.isArray(platforms) && platforms.length > 0) {
-    const keys: string[] = [];
     for (const p of platforms) {
-      if (typeof p === 'string' && p) {
-        const k = `platform:${p}`;
-        if (keys.indexOf(k) < 0) keys.push(k);
+      if (typeof p !== 'string' || !p) continue;
+      if (!isKnownSubPlatform(p)) {
+        coworkLog('WARN', 'scenarioManager',
+          `[mutex] unknown sub_platform "${p}" in manifest.platforms (scenario=${pack?.manifest?.id || '?'}) — locking standalone, no interlock with other scenarios`);
       }
+      pushKey(`platform:${p}`);
     }
-    if (keys.length > 0) return keys;
-    // Empty / all-bogus platforms array — fall through to legacy below.
   }
 
-  // Legacy path (pre-v6 manifests).
-  const keys: string[] = [];
+  // Legacy tab:* claims (UNION, not fallback). If the manifest declares
+  // both arrays, we claim both — never silently drop legacy fields.
   const primary = pack?.manifest?.tab_url_pattern;
-  keys.push(primary ? `tab:${primary}` : 'tab:default');
+  if (primary) {
+    pushKey(`tab:${primary}`);
+  } else if (keys.length === 0) {
+    // Only when NOTHING was claimed do we anchor to 'tab:default'.
+    // A scenario with valid `platforms` doesn't need this filler.
+    pushKey('tab:default');
+  }
   const additional = pack?.manifest?.additional_tab_patterns;
   if (Array.isArray(additional)) {
     for (const p of additional) {
-      if (typeof p === 'string' && p) keys.push(`tab:${p}`);
+      if (typeof p === 'string' && p) pushKey(`tab:${p}`);
     }
   }
   const secondary = pack?.manifest?.secondary_tab_url_pattern;
   if (typeof secondary === 'string' && secondary) {
-    const sk = `tab:${secondary}`;
-    if (keys.indexOf(sk) < 0) keys.push(sk);
+    pushKey(`tab:${secondary}`);
   }
+
   return keys;
 }
 
@@ -729,21 +761,13 @@ function findBusyResource(keys: string[]): string | null {
 // 锁/并发上限拦下时 toast 显示原始 regex 字符串,用户以为没提示。
 function humanizePlatformFromKey(key: string): string {
   // v6.x sub_platform keys ("platform:xhs_creator", etc).
+  // PR6.5: delegate to subPlatformRegistry so labels stay in sync with
+  // group title generation + future ScopedTab routing.
   if (key.startsWith('platform:')) {
-    const subp = key.slice('platform:'.length);
-    const labels: Record<string, string> = {
-      xhs_creator: '小红书创作者中心',
-      xhs_main: '小红书',
-      douyin_creator: '抖音创作者中心',
-      douyin_main: '抖音',
-      tiktok_main: 'TikTok',
-      x_main: '推特',
-      binance_square: '币安广场',
-      youtube_main: 'YouTube',
-    };
-    return labels[subp] || subp;
+    return subPlatformLabel(key.slice('platform:'.length));
   }
-  // Legacy tab:* regex-string keys (pre-v6 fallback path).
+  // Legacy tab:* regex-string keys (pre-v6 manifests + the legacy union
+  // claims still issued for new manifests that haven't been cleaned up).
   const lc = key.toLowerCase();
   if (lc.indexOf('binance') >= 0) return '币安广场';
   if (lc.indexOf('twitter') >= 0 || lc.indexOf('x.com') >= 0 || lc.indexOf('x\\.com') >= 0) return '推特';
