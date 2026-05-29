@@ -34,6 +34,13 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
+  // v6.x: 这个 wizard 同时服务小红书 / 抖音两个"回复粉丝评论"场景,
+  // 平台相关文案靠 scenario.platform 切换(抖音=作品/抖音创作者中心,
+  // 小红书=笔记/小红书创作者中心)。字段(引流语+概率+间隔)完全平台无关。
+  const isDouyin = scenario.platform === 'douyin';
+  const ccNameZh = isDouyin ? '抖音创作者中心' : '小红书创作者中心';
+  const ccNameEn = isDouyin ? 'Douyin Creator Center' : 'Xiaohongshu Creator Center';
+  const itemZh = isDouyin ? '作品' : '笔记';
 
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -139,8 +146,12 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
             <>
               <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-fuchsia-500/30 bg-fuchsia-500/5 text-fuchsia-700 dark:text-fuchsia-300">
                 💌 {isZh
-                  ? <>本任务会自动打开你的<strong>创作者中心</strong>,逐篇笔记进详情页,读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,从不评论笔记本身。</>
-                  : <>This task opens your <strong>Creator Center</strong>, walks each note's detail page, reads fan comments → AI writes replies → posts on human-paced jitter. <strong>Auto-skips comments you've already replied to or your own.</strong></>}
+                  ? (isDouyin
+                      ? <>本任务在你的<strong>抖音创作者中心评论管理</strong>里逐条读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,只回复粉丝、从不评论作品本身。</>
+                      : <>本任务会自动打开你的<strong>创作者中心</strong>,逐篇笔记进详情页,读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,从不评论笔记本身。</>)
+                  : (isDouyin
+                      ? <>This task reads fan comments in your <strong>Douyin Creator Center Comment Management</strong> → AI writes replies → posts on human-paced jitter. <strong>Auto-skips already-replied / your own comments</strong>; only replies to fans, never comments on the video itself.</>
+                      : <>This task opens your <strong>Creator Center</strong>, walks each note's detail page, reads fan comments → AI writes replies → posts on human-paced jitter. <strong>Auto-skips comments you've already replied to or your own.</strong></>)}
               </div>
 
               {/* 引流语 textarea */}
@@ -155,7 +166,9 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                   value={funnelPhrase}
                   onChange={e => setFunnelPhrase(e.target.value.slice(0, FUNNEL_PHRASE_MAX))}
                   placeholder={isZh
-                    ? '比如：详细攻略发在我主页置顶笔记里，需要的可以去看一下\n或：私我领西湖路书pdf'
+                    ? (isDouyin
+                        ? '比如：完整教程在我主页置顶视频，需要的可以去看\n或：私信我领西湖路线攻略'
+                        : '比如：详细攻略发在我主页置顶笔记里，需要的可以去看一下\n或：私我领西湖路书pdf')
                     : 'e.g. Full guide in my pinned post — feel free to check.\nor: DM me for the West Lake route PDF.'}
                   rows={3}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/40 resize-y min-h-[80px]"
@@ -230,7 +243,7 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
                 <SummaryRow
                   label={isZh ? '安全节奏' : 'Pacing'}
-                  value={isZh ? '评论间 30~90s · 笔记间 2~5min' : 'Reply 30-90s · Note 2-5min'} />
+                  value={isZh ? ('评论间 30~90s · ' + itemZh + '间 2~5min') : 'Reply 30-90s · Item 2-5min'} />
               </div>
 
               <div className="space-y-2">
@@ -239,8 +252,8 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                 </div>
                 {[
                   isZh
-                    ? '我理解 NoobClaw 会在我本地浏览器代我打开小红书创作者中心,所有行为使用我自己的 IP 和账号'
-                    : 'I understand NoobClaw drives the Xiaohongshu Creator Center inside my own browser using my IP and my account.',
+                    ? ('我理解 NoobClaw 会在我本地浏览器代我打开' + ccNameZh + ',所有行为使用我自己的 IP 和账号')
+                    : ('I understand NoobClaw drives the ' + ccNameEn + ' inside my own browser using my IP and my account.'),
                   isZh
                     ? '我理解平台账号风险由我自己承担'
                     : 'I accept platform account risk.',

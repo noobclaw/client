@@ -443,10 +443,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     );
   }
 
-  // 小红书自动回复粉丝评论 — 独立 wizard,字段全新:引流语 textarea + 概率
-  // slider + 每次目标 min/max + 单篇上限。跟 auto_reply 完全不同(那个是
-  // 给别人的爆文留评论涨粉,这个是回自己笔记下的粉丝评论)。
-  if (scenario.id === 'xhs_reply_fans_comment') {
+  // 小红书 / 抖音 自动回复粉丝评论 — 共用同一个 wizard(字段全平台无关:
+  // 引流语 textarea + 概率 slider)。wizard 内文案靠 scenario.platform 切
+  // 换(笔记/作品、小红书/抖音创作者中心)。跟 auto_reply 完全不同(那个是
+  // 给别人的爆文留评论涨粉,这个是回自己作品下的粉丝评论)。
+  if (scenario.id === 'xhs_reply_fans_comment' || scenario.id === 'douyin_reply_fans_comment') {
     return (
       <XhsReplyFansCommentWizard
         scenario={scenario}

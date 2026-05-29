@@ -82,6 +82,7 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (sid === 'tiktok_auto_engage')          return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'douyin_auto_engage')          return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
   if (sid === 'douyin_image_text')           return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+  if (sid === 'douyin_reply_fans_comment')   return { icon: '💬', label: isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (sid === 'xhs_reply_fans_comment')      return { icon: '💌', label: isZh ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
   if (sid === 'xhs_video_download')          return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
   if (sid === 'douyin_video_download')       return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };

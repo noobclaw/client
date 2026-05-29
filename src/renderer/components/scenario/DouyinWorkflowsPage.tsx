@@ -185,6 +185,30 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
 
   const videoDownload = findById('douyin_video_download') || FALLBACK_VIDEO_DL;
 
+  const FALLBACK_REPLY_FANS: Scenario = {
+    id: 'douyin_reply_fans_comment',
+    version: '1.0.0',
+    platform: 'douyin' as any,
+    workflow_type: 'douyin_reply_fans_comment' as any,
+    category: 'engagement',
+    name_zh: '抖音 · 自动回复粉丝',
+    name_en: 'Douyin Reply Fan Comments',
+    description_zh: '在抖音创作者中心「评论管理」逐条回复粉丝评论。AI 按评论内容写回应，可选引流尾巴。已回复过的、自己留的评论自动跳过，只回粉丝、绝不评论作品本身。',
+    description_en: 'Auto-reply to fan comments in Douyin Creator Center comment management. AI-tailored, optional funnel tail. Skips already-replied / your own.',
+    icon: '💬',
+    default_config: {
+      funnel_phrase: '',
+      funnel_probability: 50,
+      schedule_window: '10:00-22:00',
+    } as any,
+    risk_caps: {} as any,
+    required_login_url: 'https://creator.douyin.com/',
+    entry_urls: {},
+    skills: {},
+  } as any;
+
+  const replyFans = findById('douyin_reply_fans_comment') || FALLBACK_REPLY_FANS;
+
   // 视频无水印下载 modal state
   const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
   const [videoDlLinksText, setVideoDlLinksText] = useState('');
@@ -270,6 +294,8 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
       onConfigure(autoEngage);
     } else if (reason === 'douyin_image_text') {
       onConfigure(imageText);
+    } else if (reason === 'douyin_reply_fans_comment') {
+      onConfigure(replyFans);
     } else if (reason === 'douyin_video_download') {
       setVideoDlModalOpen(true);
     }
@@ -295,6 +321,12 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={imageText}
           onConfigure={() => handleConfigure(imageText)}
+          isZh={isZh}
+        />
+        <DouyinReplyFansCard
+          loading={loading}
+          scenario={replyFans}
+          onConfigure={() => handleConfigure(replyFans)}
           isZh={isZh}
         />
       </section>
@@ -373,10 +405,10 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
         <LoginRequiredModal
           mode="create"
           platform="douyin"
-          /* v6.x: 只有图文创作要发到 creator.douyin.com 子域,需要 creator 中心
-             登录;auto_engage 只跟 www.douyin.com 主站打交道,不需要。
-             loginModalReason = scenario.id;'douyin_image_text' 命中 → true。 */
-          requireCreatorCenter={loginModalReason === 'douyin_image_text'}
+          /* v6.x: 图文创作(发到 creator.douyin.com 子域)+ 自动回复粉丝(评论管理
+             在 creator.douyin.com/creator-micro/interactive/comment)都需要 creator
+             中心登录;auto_engage / video_download 只跟 www.douyin.com 主站打交道,不需要。 */
+          requireCreatorCenter={loginModalReason === 'douyin_image_text' || loginModalReason === 'douyin_reply_fans_comment'}
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />
@@ -460,6 +492,38 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
           className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95"
         >
           🎶 {isZh ? '开始互动' : 'Start'} →
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── 抖音自动回复粉丝 card —— cyan 主色区分于互动涨粉(violet)/图文(fuchsia)。
+//    强调"评论管理集中回复 + 只回粉丝不评论作品本身"。
+const DouyinReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+  return (
+    <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
+      <div className="relative flex flex-col flex-1">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-cyan-500 mb-2">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
+          {isZh ? '粉丝维护' : 'Fan Engagement'}
+        </div>
+        <h3 className="text-base font-bold dark:text-white mb-1.5">
+          💬 {isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fans'}
+        </h3>
+        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
+          {isZh
+            ? '在抖音创作者中心「评论管理」逐条回复粉丝评论,AI 按评论内容写回应,可选按概率加引流尾巴。已回复过的、自己留的自动跳过,只回粉丝、绝不评论作品本身,真人节奏间隔。'
+            : 'Replies to fan comments in Douyin Creator Center comment management. AI-tailored replies with optional funnel tail. Skips already-replied / your own; only replies to fans, never the video itself.'}
+        </p>
+        <button
+          type="button"
+          onClick={onConfigure}
+          disabled={loading}
+          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
+        >
+          💬 {isZh ? '开始回复' : 'Start'} →
         </button>
       </div>
     </div>

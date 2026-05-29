@@ -2336,6 +2336,64 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     }
   },
   {
+    "id": "douyin_reply_fans_comment",
+    "version": "1.0.0",
+    "platform": "douyin",
+    "workflow_type": "douyin_reply_fans_comment",
+    "category": "engagement",
+    "name_zh": "抖音 · 自动回复粉丝",
+    "name_en": "Douyin Reply Fan Comments",
+    "description_zh": "自动在抖音创作者中心「评论管理」里逐条回复粉丝评论。AI 按评论内容写回应，可选在结尾按概率自然衔接你的引流文案。已回复过的、自己留的评论自动跳过。全程在创作者中心评论管理页集中操作，不跳主站、只回复粉丝评论、绝不给作品本身发新评论。",
+    "description_en": "Auto-reply to fan comments inside Douyin Creator Center's Comment Management. AI tailors each reply, with optional probability-based funnel phrase weaving. Skips already-replied and your own comments. Works entirely inside the comment-management page — never leaves for the main site, only replies to fan comments, never posts a top-level comment on your own video.",
+    "icon": "💬",
+    "default_config": {
+      "funnel_phrase": "",
+      "funnel_probability": 50,
+      "schedule_window": "10:00-22:00"
+    },
+    "risk_caps": {
+      "max_daily_runs": 2,
+      "max_scroll_per_run": 30,
+      "min_scroll_delay_ms": 1500,
+      "max_scroll_delay_ms": 3500,
+      "read_dwell_min_ms": 4000,
+      "read_dwell_max_ms": 12000,
+      "max_run_duration_ms": 3600000,
+      "min_interval_hours": 4,
+      "weekly_rest_days": 1,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "min_reply_interval_ms": 30000,
+      "max_reply_interval_ms": 90000,
+      "min_work_interval_ms": 45000,
+      "max_work_interval_ms": 150000,
+      "max_replies_per_work": 9999,
+      "max_works_per_run": 30,
+      "daily_count_cap": 9999,
+      "funnel_probability_min": 1,
+      "funnel_probability_max": 100,
+      "comment_list_load_scrolls": 8,
+      "comment_load_retry_max": 3,
+      "comment_load_retry_pause_ms": 2000
+    },
+    "required_login_url": "https://creator.douyin.com/",
+    "tab_url_pattern": "^https?://creator\\.douyin\\.com/",
+    "anchor_url": "https://creator.douyin.com/creator-micro/interactive/comment",
+    "entry_urls": {
+      "comment_manage": "https://creator.douyin.com/creator-micro/interactive/comment",
+      "creator_home": "https://creator.douyin.com/creator-micro/home"
+    },
+    "skills": {
+      "prompts": {
+        "fan_reply_body": "prompts/fan_reply_body.txt",
+        "funnel_polish": "prompts/funnel_polish.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "xhs_video_download",
     "version": "1.0.0",
     "platform": "xhs",

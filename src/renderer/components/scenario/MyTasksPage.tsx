@@ -411,6 +411,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'tiktok_auto_engage')           return { icon: '🎵', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'douyin_auto_engage')           return { icon: '🎵', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
                 if (sid === 'douyin_image_text')            return { icon: '📝', zh: '抖音 · 图文创作', en: 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+                if (sid === 'douyin_reply_fans_comment')    return { icon: '💬', zh: '抖音 · 自动回复粉丝', en: 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'xhs_image_text')               return { icon: '📝', zh: '小红书 · 图文创作', en: 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', zh: '小红书 · 自动回复粉丝', en: 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', zh: '小红书 · 视频无水印下载', en: 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };

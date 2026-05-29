@@ -216,6 +216,16 @@ const STEP_NAMES_XHS_REPLY_FANS_EN = [
   'Open notes and auto-reply fan comments',
   'Save run report',
 ];
+const STEP_NAMES_DOUYIN_REPLY_FANS_ZH = [
+  '进入抖音创作者中心评论管理，选择作品',
+  '逐条回复粉丝评论（只回粉丝，绝不评论作品本身）',
+  '保存本次报告',
+];
+const STEP_NAMES_DOUYIN_REPLY_FANS_EN = [
+  'Enter Douyin Comment Management, pick a work',
+  'Reply fan comments (fans only, never the video itself)',
+  'Save run report',
+];
 const STEP_NAMES_X_AUTO_ENGAGE_ZH = [
   '准备本次动作清单',
   '逐个执行关注 / 回复 / 点赞',
@@ -467,6 +477,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
     if (sid === 'douyin_image_text') return isZh ? STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH : STEP_NAMES_DOUYIN_IMAGE_TEXT_EN;
     if (sid === 'xhs_reply_fans_comment') return isZh ? STEP_NAMES_XHS_REPLY_FANS_ZH : STEP_NAMES_XHS_REPLY_FANS_EN;
+    if (sid === 'douyin_reply_fans_comment') return isZh ? STEP_NAMES_DOUYIN_REPLY_FANS_ZH : STEP_NAMES_DOUYIN_REPLY_FANS_EN;
     if (sid === 'xhs_video_download') return isZh ? STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH : STEP_NAMES_XHS_VIDEO_DOWNLOAD_EN;
     if (sid === 'douyin_video_download') return isZh ? STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH : STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_EN;
     if (sid === 'tiktok_video_download') return isZh ? STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH : STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_EN;
@@ -831,6 +842,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'tiktok_auto_engage')             return { icon: '🎵', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'douyin_auto_engage')             return { icon: '🎵', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-violet-500 bg-violet-500/10 border-violet-500/30' };
     if (sid === 'douyin_image_text')              return { icon: '📝', label: isZh ? '抖音 · 图文创作' : 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'douyin_reply_fans_comment')      return { icon: '💬', label: isZh ? '抖音 · 自动回复粉丝' : 'Douyin Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'xhs_image_text')                 return { icon: '📝', label: isZh ? '小红书 · 图文创作' : 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
     if (sid === 'xhs_reply_fans_comment')         return { icon: '💌', label: isZh ? '小红书 · 自动回复粉丝' : 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'xhs_video_download')             return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
