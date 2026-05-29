@@ -2207,11 +2207,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   var next = (isLinkRewriteScenario && step === 1) ? 3 : step + 1;
                   setStep(next as 1 | 2 | 3);
                 }}
-                disabled={step === 1 && (
-                  isLinkRewriteScenario
-                    ? parsedUrls.length === 0  // link rewrite: 至少 1 个 URL
-                    : (keywordList.length === 0 || !persona.trim())  // 其他: keywords + persona
-                )}
+                // v6.x: 直接用 canAdvance — 之前硬编码 (keywordList.length===0 || !persona.trim())
+                // 跟下面 canAdvance step1 的逻辑两套,导致 binance source-viral 搬运(wizard
+                // 不显示 persona 输入)被 disabled 卡住。canAdvance 已经正确排除了 isBinanceSourceViral
+                // (line 888),统一用它一处算就好。
+                disabled={step === 1 && !canAdvance[1].ok}
                 className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                 {isZh ? '下一步' : 'Next'} →
               </button>
