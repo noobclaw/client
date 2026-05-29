@@ -78,6 +78,48 @@ export function isKnownSubPlatform(id: string): boolean {
 }
 
 /**
+ * Derive sub_platform from a concrete URL by matching its hostname.
+ * Window uniqueness in v6.x routing is simply (sub_platform, account_id)
+ * — and sub_platform IS the domain-tier identity of the URL being
+ * opened. So given the URL the scenario wants to navigate to, we don't
+ * need ANY other hint (no role inference, no manifest lookup). The URL
+ * is the source of truth.
+ *
+ * Ordering matters: more specific subdomains (creator.*) come before
+ * the catch-all main-domain pattern so creator URLs don't accidentally
+ * map to *_main.
+ *
+ * Returns null for URLs that don't match any known platform (about:blank,
+ * data: URLs, third-party domains). Caller's responsibility to handle
+ * the null — typically by falling back to the legacy openTab schema.
+ */
+const HOST_TO_SUB_PLATFORM: Array<[RegExp, string]> = [
+  [/^creator\.xiaohongshu\.com$/i, 'xhs_creator'],
+  [/(\.|^)xiaohongshu\.com$/i,     'xhs_main'],
+  [/^creator\.douyin\.com$/i,      'douyin_creator'],
+  [/(\.|^)douyin\.com$/i,          'douyin_main'],
+  [/(\.|^)tiktok\.com$/i,          'tiktok_main'],
+  [/^(www\.)?(x|twitter)\.com$/i,  'x_main'],
+  [/(\.|^)binance\.com$/i,         'binance_square'],
+  [/(\.|^)youtube\.com$/i,         'youtube_main'],
+  [/^youtu\.be$/i,                 'youtube_main'],
+];
+
+export function urlToSubPlatform(url: string | undefined | null): string | null {
+  if (!url) return null;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.toLowerCase();
+    for (const [re, subp] of HOST_TO_SUB_PLATFORM) {
+      if (re.test(host)) return subp;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Human label for a sub_platform id, used in:
  *   - toast strings ("正在运行: 小红书创作者中心")
  *   - tab group titles (via groupTitle below)

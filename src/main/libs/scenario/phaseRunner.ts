@@ -14,7 +14,7 @@ import crypto from 'crypto';
 import { coworkLog } from '../coworkLogger';
 import { sendBrowserCommand, connectionHasCapability } from '../browserBridge';
 import { PLATFORM_TAB_GROUPS, inferPlatformFromPattern, type LoginPlatform } from './platformLoginDriver';
-import { groupTitle as buildGroupTitle } from './subPlatformRegistry';
+import { groupTitle as buildGroupTitle, urlToSubPlatform } from './subPlatformRegistry';
 import * as riskGuard from './riskGuard';
 import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
@@ -2215,33 +2215,24 @@ function buildContext(
         throw new Error('openTab requires { role, url }');
       }
 
-      // v1.6.x (PR14): if the scenario passed only `platform` (legacy
-      // schema — 17 of the 18 scenarios still do this as of 2026-05),
-      // derive `sub_platform` from (platform, role) so they get v6
-      // windowKey reuse "for free" without per-scenario edits.
+      // v1.6.x (PR15): if scenario didn't pass sub_platform explicitly,
+      // derive it from the URL's hostname. Window uniqueness in v6.x is
+      // (sub_platform, account_id) where sub_platform IS the domain-tier
+      // identity — so the URL the scenario wants to open already
+      // determines which window owns it. No role-based guessing.
       //
-      //   - Single-domain platforms (binance / youtube / tiktok / x):
-      //     map to *_main (or binance_square for binance). Role
-      //     ignored.
-      //   - Split platforms (xhs / douyin) have creator + main:
-      //     role === 'creator' → *_creator; everything else → *_main.
+      //   url=https://www.xiaohongshu.com/...     → xhs_main
+      //   url=https://creator.xiaohongshu.com/... → xhs_creator
+      //   url=https://creator.douyin.com/...      → douyin_creator
+      //   url=https://www.douyin.com/...          → douyin_main
+      //   url=https://www.binance.com/square      → binance_square
+      //   etc.
       //
-      // This is best-effort inference, not a contract — scenarios that
-      // really need explicit control should keep passing sub_platform
-      // (e.g. xhs_reply_fans_comment opens with role='creator' AND
-      //  sub_platform='xhs_creator', which wins via the early-exit
-      // check below).
-      if (!opts.sub_platform && opts.platform) {
-        const p = opts.platform;
-        const r = opts.role;
-        const inferred =
-          p === 'binance' ? 'binance_square' :
-          p === 'youtube' ? 'youtube_main'   :
-          p === 'tiktok'  ? 'tiktok_main'    :
-          p === 'x' || p === 'twitter' ? 'x_main' :
-          p === 'xhs'     ? (r === 'creator' ? 'xhs_creator'    : 'xhs_main')   :
-          p === 'douyin'  ? (r === 'creator' ? 'douyin_creator' : 'douyin_main') :
-          null;
+      // Scenarios that pre-compute sub_platform (e.g. PR9's
+      // xhs_reply_fans_comment) short-circuit this — the explicit value
+      // always wins.
+      if (!opts.sub_platform) {
+        const inferred = urlToSubPlatform(opts.url);
         if (inferred) {
           opts = { ...opts, sub_platform: inferred };
         }
