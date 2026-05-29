@@ -94,15 +94,39 @@ export function subPlatformLabel(id: string): string {
  * Chrome tab-group title for an owned-window in v6.x+ routing.
  *
  * Format:
- *   single-account (account_id === 'default' or omitted):
- *     `🤖 {label}`         e.g. `🤖 小红书创作者中心`
- *   multi-account (future, account_id !== 'default'):
- *     `🤖 {label} · @{account_id}`  e.g. `🤖 小红书创作者中心 · @主号`
+ *   idle  (no taskId):
+ *     `🤖 {label}`                      e.g. `🤖 XHS·创作`
+ *   active (taskId given):
+ *     `🤖 {task4} {label}`              e.g. `🤖 abc1 XHS·创作`
+ *   multi-account suffix appended for either (future):
+ *     `... · @{account_id}`             e.g. `🤖 abc1 XHS·创作 · @主号`
  *
  * The `🤖` prefix is the visual marker "this is a NoobClaw-managed window";
  * the ext only adopts / repurposes groups whose title starts with this glyph.
+ *
+ * The task short-id (first 4 chars) lets the user glance at the Chrome
+ * tab strip and see which task is currently running on which window.
+ * It's COSMETIC ONLY — window lookup inside the ext goes through
+ * Map<windowKey, windowId>, never through title parsing. Changing the
+ * title (on task start / task end) is a `chrome.tabGroups.update` call
+ * driven by the client; it does NOT affect routing, mutex, or anything
+ * downstream of the windowKey.
+ *
+ * On task end the client is expected to call this again with taskId=null
+ * so the title reverts to the idle form. If the client forgets, the
+ * title stays stale showing the last task's short-id — acceptable
+ * trade-off (still informative as "this window was used by abc1 most
+ * recently").
  */
-export function groupTitle(sub_platform: string, account_id: string = 'default'): string {
-  const base = `🤖 ${subPlatformLabel(sub_platform)}`;
+export function groupTitle(
+  sub_platform: string,
+  account_id: string = 'default',
+  taskId?: string | null,
+): string {
+  const taskShort = (typeof taskId === 'string' && taskId.length >= 4)
+    ? taskId.slice(0, 4)
+    : null;
+  const head = taskShort ? `🤖 ${taskShort} ` : `🤖 `;
+  const base = head + subPlatformLabel(sub_platform);
   return account_id === 'default' ? base : `${base} · @${account_id}`;
 }
