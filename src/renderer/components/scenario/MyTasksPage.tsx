@@ -409,6 +409,9 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'douyin_image_text')            return { icon: '📝', zh: '抖音 · 图文创作', en: 'Douyin Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'xhs_image_text')               return { icon: '📝', zh: '小红书 · 图文创作', en: 'XHS Image-Text', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
                 if (sid === 'xhs_reply_fans_comment')       return { icon: '💌', zh: '小红书 · 自动回复粉丝', en: 'XHS Reply Fan Comments', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+                if (sid === 'xhs_video_download')           return { icon: '⬇️', zh: '小红书 · 视频无水印下载', en: 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'douyin_video_download')        return { icon: '⬇️', zh: '抖音 · 视频无水印下载', en: 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
+                if (sid === 'tiktok_video_download')        return { icon: '⬇️', zh: 'TikTok · 视频无水印下载', en: 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
                 // otherwise Binance / YouTube / TikTok / Douyin scenarios with
