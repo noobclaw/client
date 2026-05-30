@@ -2113,9 +2113,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                           : `⏰ ${intervalLabel} · ${tStr} tweets/run (30% rewrite / 30% original / 40% quote, randomized)`;
                       }
                       if (isBinanceFromXRepost) {
+                        // 该分支 4 源共用(推特/小红书/抖音/TikTok),平台名必须走 repostSource,
+                        // 否则抖音/小红书/TikTok 搬运也显示"推特"(user-reported)。TikTok 只视频。
+                        const cntStr = postCountMin === postCountMax ? String(postCountMin) : `${postCountMin}-${postCountMax}`;
                         return isZh
-                          ? `⏰ ${intervalLabel} · 每次 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条 · 推特爆款搬运到币安广场 (原图/视频 + AI 改写)`
-                          : `⏰ ${intervalLabel} · ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} repost(s)/run · X → Binance Square (original images/video + AI-rewritten text)`;
+                          ? `⏰ ${intervalLabel} · 每次 ${cntStr} 条 · ${repostSource.zh}爆款搬运到币安广场 (${isBinanceTiktokViral ? '视频' : '原图/视频'} + AI 改写)`
+                          : `⏰ ${intervalLabel} · ${cntStr} repost(s)/run · ${repostSource.en} → Binance Square (${isBinanceTiktokViral ? 'video' : 'original images/video'} + AI-rewritten text)`;
                       }
                       if (isBinancePostCreator) {
                         return isZh
