@@ -868,6 +868,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
       // keywords (orchestrator picks targets from discover feed) — persona
       // alone is enough, same as Twitter.
       if (isBinancePlatform && !isBinanceAutoEngage) {
+        // v6.x fix: source-viral 搬运(xhs/douyin/tiktok)的 wizard 不显示 persona
+        // 输入(用 orchestrator 内置默认人设),只需关键词搜源平台。之前这里仍要求
+        // persona → persona 恒空 → canFinish 恒 false → 最后一步保存报"请补全必填项"
+        // (选"其他"track 自定义关键词时尤其明显)。step1 的 canAdvance 已排除 persona,
+        // 这里对齐。其他 binance 发帖场景(post_creator)仍需 persona + token。
+        if (isBinanceSourceViral) return keywordList.length > 0;
         return persona.trim().length > 0 && keywordList.length > 0;
       }
       return persona.trim().length > 0;
@@ -2009,7 +2015,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {!isLinkRewriteScenario && (
                   <div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {isXOrBinance ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
+                      {/* source-viral 搬运有真实赛道(健身/穿搭…),显示"赛道:";
+                          x/binance 原生场景的 track 实为 web3 人设,显示"人设:" */}
+                      {(isXOrBinance && !isBinanceSourceViral) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
                     </span>
                     <div className="dark:text-white">{selectedTrack.icon} {selectedTrack.name_zh}</div>
                   </div>
@@ -2017,12 +2025,26 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                 {(!isXPlatform || isBinancePlatform) && (
                   <div>
                     <span className="text-xs text-gray-500 dark:text-gray-400">
-                      {isBinancePlatform ? (isZh ? 'Token:' : 'Tokens:') : (isZh ? '关键词:' : 'Keywords:')}
+                      {/* source-viral:keywordList 是【搜源平台关键词】,显示"关键词:";
+                          repost/post_creator:keywords 本身即 cashtag token,显示"Token:" */}
+                      {(isBinancePlatform && !isBinanceSourceViral) ? (isZh ? 'Token:' : 'Tokens:') : (isZh ? '关键词:' : 'Keywords:')}
                     </span>
                     <div className="dark:text-white">
-                      {isBinancePlatform
+                      {(isBinancePlatform && !isBinanceSourceViral)
                         ? keywordList.map(k => '$' + k.replace(/^\$/, '')).join(' · ')
                         : keywordList.join(' · ')}
+                    </div>
+                  </div>
+                )}
+                {/* source-viral 搬运:Token 是【独立的币安发帖 cashtag 池】(选填),
+                    跟搜源关键词分开,单独一行展示。之前这行缺失 + 关键词被误标成 Token。 */}
+                {isBinanceSourceViral && (
+                  <div>
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? 'Token 标签:' : 'Token tags:'}</span>
+                    <div className="dark:text-white">
+                      {tokenTagsText.trim()
+                        ? parseKeywords(tokenTagsText).map(k => '$' + k.replace(/^\$/, '').toUpperCase()).join(' · ')
+                        : (isZh ? '(默认内置池 BTC/ETH/SOL…)' : '(built-in pool BTC/ETH/SOL…)')}
                     </div>
                   </div>
                 )}
