@@ -75,6 +75,11 @@ function inferPlatformFromTask(task: ScenarioTask): string {
   if (sid.startsWith('binance_')) return 'binance';
   if (sid.startsWith('tiktok_')) return 'tiktok';
   if (sid.startsWith('youtube_')) return 'youtube';
+  // ⚠️ 之前漏了 douyin_ 分支 — 所有抖音任务 fall through 到默认 'xhs',输出
+  //   目录全跑去了 ~/Documents/NoobClaw/小红书/<douyin_task>/... 而不是 抖音/。
+  //   用户反馈"抖音视频无水印下载的输出目录不对"才发现。PLATFORM_NAMES.douyin
+  //   一直都有"抖音"映射,只是 inferPlatformFromTask 没把抖音 sid 喂进来。
+  if (sid.startsWith('douyin_')) return 'douyin';
   return 'xhs';
 }
 
