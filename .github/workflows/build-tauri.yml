@@ -36,10 +36,15 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # Pinned to the last known-good Build Tauri run (26647566429, 2026-05-29).
+          # macos-latest's auto node drifted 24.15.0 -> 24.16.0 between that build
+          # and the broken 26668392912 — pin to remove it as a variable.
+          node-version: '24.15.0'
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        # Pinned to 1.96.0 (what 26647566429 used). @stable would otherwise
+        # float to a newer rustc on a fresh rebuild, adding a NEW variable.
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           targets: ${{ matrix.target }}
 
@@ -152,7 +157,9 @@ jobs:
         run: node scripts/prepare-tauri-resources.js
 
       - name: Install Tauri CLI
-        run: npm install -g @tauri-apps/cli
+        # Pinned to the package-lock'd version (npx tauri build uses the local
+        # 2.10.1 anyway, but pin the global too so the two never diverge).
+        run: npm install -g @tauri-apps/cli@2.10.1
 
       - name: Import code signing certificate (macOS)
         if: runner.os == 'macOS'
