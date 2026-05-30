@@ -578,10 +578,23 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     if (scenario.platform === 'x' || scenario.platform === 'binance') return 'x';
     return 'xhs';
   })();
-  const VISIBLE_TRACKS = TRACK_PRESETS.filter(t => {
-    const presetPlatform = t.platform || 'xhs';
-    return presetPlatform === platformForTracks;
-  });
+  const VISIBLE_TRACKS = (() => {
+    const filtered = TRACK_PRESETS.filter(t => {
+      const presetPlatform = t.platform || 'xhs';
+      return presetPlatform === platformForTracks;
+    });
+    // "其他" 排序规则:
+    //   - 币安搬运 (binance_from_xhs/douyin/tiktok_viral):赛道只是"搜源平台用的
+    //     关键词分组",用户大概率要自定义,放第一最方便。
+    //   - 其他场景 (小红书 / 抖音 / TikTok / YouTube 内容创作和互动):用户多数会选
+    //     一个具体赛道,默认选第一项的 persona/keywords 才有意义;"其他" 放末尾,
+    //     避免"默认选其他 → keywords/persona 都空 → 必填校验卡住"的体验。
+    const isOther = (t: TrackPreset) => t.id === 'other';
+    if (isBinanceSourceViral) {
+      return [...filtered.filter(isOther), ...filtered.filter(t => !isOther(t))];
+    }
+    return [...filtered.filter(t => !isOther(t)), ...filtered.filter(isOther)];
+  })();
   const initialTrackId = initialTask?.track
     || (VISIBLE_TRACKS[0] ? VISIBLE_TRACKS[0].id : TRACK_PRESETS[0].id);
   const [trackId, setTrackId] = useState<string>(initialTrackId);
