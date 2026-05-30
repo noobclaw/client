@@ -1689,7 +1689,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               || task.scenario_id === 'xhs_image_text'
               || task.scenario_id === 'xhs_viral_production_career'
               || task.scenario_id === 'xhs_reply_fans_comment'
+              || task.scenario_id === 'douyin_reply_fans_comment'
             }
+            /* douyin_reply_fans_comment 全程在创作者中心评论管理页操作,不碰
+               www.douyin.com 主站 → 只校验创作者中心,跳过主站 tab 检查。 */
+            creatorOnly={task.scenario_id === 'douyin_reply_fans_comment'}
             onCancel={() => setLoginModalOpen(false)}
             onConfirmed={handleLoginConfirmed}
           />

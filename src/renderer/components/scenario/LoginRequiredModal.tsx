@@ -37,13 +37,18 @@ interface Props {
    *  都加"逻辑(向后兼容,旧调用点不传也不会回归)。
    *  最佳实践:新调用点显式传 true/false。 */
   requireCreatorCenter?: boolean;
+  /** v6.x: 只校验创作者中心,跳过主站 tab 检查 — 用于 douyin_reply_fans_comment
+   *  这类全程在 creator.*.com 子域操作、根本不碰主站的场景。设 true 时:
+   *  ① 强制 requireCreatorCenter; ② allReady 不再要求主站 tab; ③ 隐藏主站 row。
+   *  (主站登录态靠抖音 SSO 跨子域共享,登 creator 即可,无需另开主站。) */
+  creatorOnly?: boolean;
   onCancel: () => void;
   onConfirmed: () => void;
 }
 
 type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 
-export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, requireCreatorCenter: requireCreatorCenterProp, onCancel, onConfirmed }) => {
+export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, requireCreatorCenter: requireCreatorCenterProp, creatorOnly = false, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
 
   type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
@@ -98,16 +103,21 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   //   的场景也卡住,弹"请登录创作者中心"。新版让调用点显式声明
   //   requireCreatorCenter — 不传 → 回落到老逻辑(向后兼容),显式传
   //   true/false → 直接生效。auto_engage 调用点传 false 即可放行。
-  const requireCreatorCenter = (typeof requireCreatorCenterProp === 'boolean')
-    ? requireCreatorCenterProp
-    : (platform === 'xhs' || platform === 'douyin');
+  // creatorOnly 场景(douyin_reply_fans_comment 等)全程只在 creator 子域,
+  // 强制开启创作者中心检查,并在 allReady / 渲染处跳过主站 tab。
+  const requireCreatorCenter = creatorOnly
+    ? true
+    : (typeof requireCreatorCenterProp === 'boolean')
+      ? requireCreatorCenterProp
+      : (platform === 'xhs' || platform === 'douyin');
   function creatorLabelOf(p: LoginPlatform): string {
     if (p === 'douyin') return isZh ? '抖音创作者中心 (creator.douyin.com)' : 'Douyin Creator Center (creator.douyin.com)';
     if (p === 'xhs') return isZh ? '小红书创作者中心 (creator.xiaohongshu.com)' : 'Xiaohongshu Creator Center (creator.xiaohongshu.com)';
     return platformLabelOf(p);
   }
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
-  const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>('checking');
+  // creatorOnly 时主站 tab 不参与放行 → 初始即 'pass',避免任何残留引用卡住。
+  const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>(creatorOnly ? 'pass' : 'checking');
   const [secondaryTabStatus, setSecondaryTabStatus] = useState<StepStatus>(secondaryPlatform ? 'checking' : 'pass');
   // creator center 默认 pass — 只有 xhs/douyin 会真正动它,其他平台保持 pass
   // 不参与 allReady 判断。
@@ -355,7 +365,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     }
   };
 
-  const allReady = extensionStatus === 'pass' && xhsTabStatus === 'pass'
+  const allReady = extensionStatus === 'pass'
+    && (creatorOnly || xhsTabStatus === 'pass')
     && (!secondaryPlatform || secondaryTabStatus === 'pass')
     && (!requireCreatorCenter || creatorTabStatus === 'pass');
   // v2.8+: 不再 client 主动 prepareTabsForRun(dedup + split)。chrome-extension
@@ -526,8 +537,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
               件之前先把页面开起来。
               历史:v4.25.4 解锁这一步的按钮(之前两步互锁、用户被
               绕晕);后续把插件移到 step ①,这一步顺位变 ② —
-              依赖根节点排前面,首次用户从上往下读更顺。 */}
-          {(() => {
+              依赖根节点排前面,首次用户从上往下读更顺。
+              creatorOnly 场景(douyin_reply_fans_comment)全程在 creator
+              子域,不碰主站,隐藏这一行,只留下面的创作者中心检查。 */}
+          {!creatorOnly && (() => {
             // 只有在插件已连接 + tab 检测真过了的时候才算 pass。其他都让用户能动作。
             const realPass = extensionStatus === 'pass' && xhsTabStatus === 'pass';
             const realFail = extensionStatus === 'pass' && xhsTabStatus === 'fail';

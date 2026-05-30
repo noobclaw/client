@@ -409,6 +409,9 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
              在 creator.douyin.com/creator-micro/interactive/comment)都需要 creator
              中心登录;auto_engage / video_download 只跟 www.douyin.com 主站打交道,不需要。 */
           requireCreatorCenter={loginModalReason === 'douyin_image_text' || loginModalReason === 'douyin_reply_fans_comment'}
+          /* 自动回复粉丝全程在创作者中心评论管理页操作,不碰 www.douyin.com 主站,
+             所以只校验创作者中心登录,不要求主站 tab。 */
+          creatorOnly={loginModalReason === 'douyin_reply_fans_comment'}
           onCancel={() => setLoginModalReason(null)}
           onConfirmed={handleLoginConfirmed}
         />
