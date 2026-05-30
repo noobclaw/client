@@ -239,7 +239,7 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
                     : (isZh ? '（未填,纯 AI 回复）' : '(empty, pure AI reply)')} />
                 <SummaryRow
                   label={isZh ? '回复范围' : 'Scope'}
-                  value={isZh ? '逐条回复全部粉丝评论' : 'Reply to every fan comment'} />
+                  value={isZh ? '逐条回复全部粉丝评论（最近 30 篇文章）' : 'Reply to every fan comment (latest 30 notes)'} />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
                 <SummaryRow
                   label={isZh ? '安全节奏' : 'Pacing'}
