@@ -106,7 +106,10 @@ export async function uploadXhsDraft(input: DraftUploadInput): Promise<
     for (let i = 0; i < paragraphs.length; i++) {
       const p = paragraphs[i];
       if (p) await sendBrowserCommand('type', { text: p }, 10000);
-      if (i < paragraphs.length - 1) await sendBrowserCommand('keypress', { key: 'Enter' }, 3000);
+      // keypress 跟 phaseRunner 的 scroll/click 同款理由:扩展 background 偶发走
+      // content-script 慢路径(MV3 SW 冷启动 + 注入),3s 预算偏紧导致 multi-paragraph
+      // 笔记中间 Enter 撞穿、后续段落漏掉。提到 10s 留余量;sleep 200-600 节奏不变。
+      if (i < paragraphs.length - 1) await sendBrowserCommand('keypress', { key: 'Enter' }, 10000);
       await sleep(randInt(200, 600));
     }
 
@@ -115,7 +118,10 @@ export async function uploadXhsDraft(input: DraftUploadInput): Promise<
       if (!tag) continue;
       await sendBrowserCommand('type', { text: '#' + tag }, 5000);
       await sendBrowserCommand('wait_for', { selector: '.topic-suggest-item, .hashtag-suggestion', timeout: 3000 }, 5000).catch(() => {});
-      await sendBrowserCommand('click', { selector: '.topic-suggest-item, .hashtag-suggestion' }, 3000).catch(() => {});
+      // hashtag dropdown 第 1 项 click:同 phaseRunner 顶层 ctx.click 理由,SW 冷启动
+      // 3s 偶发撞穿导致 hashtag 漏插。.catch 已兜底 silent fail,提到 10s 不会拖响应,
+      // 反而把"用户改完肉眼看不到 hashtag"的偶发降到 0。
+      await sendBrowserCommand('click', { selector: '.topic-suggest-item, .hashtag-suggestion' }, 10000).catch(() => {});
       await sleep(randInt(600, 1200));
     }
 

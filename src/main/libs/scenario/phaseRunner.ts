@@ -674,7 +674,12 @@ function buildContext(
     },
 
     scroll: async (amount?: number) => {
-      await abortableCmd('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 3000);
+      // scroll 走 content-script 转发慢路径(扩展 background 无专门 handler →
+      // injectContentScript + sendToContentScript + 可能 2 次重试 + MV3 SW 冷启动)。
+      // 旧插件用户反馈"scroll timed out after 3000ms"就是这条路径 3s 预算太紧撞穿;
+      // 提到 10s 给 SW 唤醒 + 注入开销留 ~2x 安全余量。abortableCmd 包住,用户停任务时
+      // 仍会立刻中断,不会因为放宽 timeout 拖慢响应。
+      await abortableCmd('scroll', { direction: 'down', amount: amount || randInt(2, 4) }, 10000);
     },
 
     // ── chargeAction ───────────────────────────────────────────────
@@ -777,7 +782,11 @@ function buildContext(
     // v4.31.39: 加 abortableCmd —— click 是发推/发帖按钮的最后一击,task 停
     //   了不 abort 浏览器还会真的点出去,造成用户报告"任务停了还在自动发文"。
     click: async (x: number, y: number) => {
-      await abortableCmd('click', { coordinate: [x, y] }, 3000);
+      // click(coordinate) 同 scroll —— 扩展 background 无专门 handler,走 content-script
+      // 转发慢路径(inject + sendMessage + 可能重试 + SW 冷启动)。3s 预算偏紧,旧插件
+      // 用户偶发"click timed out after 3000ms";提到 10s 给 SW 唤醒留余量。abortableCmd
+      // 包住,user_stopped 时立刻中断,不影响发推/发帖最后一击的可控性。
+      await abortableCmd('click', { coordinate: [x, y] }, 10000);
     },
 
     // Debug log (visible in sidecar console, not in UI)
@@ -2578,8 +2587,12 @@ function createScopedTab(
     windowKey,
     browser,
     navigate: (url: string) => browser('navigate', { url }, 30000),
+    // scopedTab.scroll — 对齐顶层 ctx.scroll(line 676 同款理由):scroll 走 content-script
+    // 慢路径,3s 在 SW 冷启动 / 注入重试时撞穿。提到 10s。所有 _activeTab.scroll() 都吃
+    // 这个默认值,小红书点赞 / xhs_viral_production_career / xhs_reply_fans_comment 等
+    // 全部 scenario 受益。
     scroll: (amount?: number) =>
-      browser('scroll', { direction: 'down', amount: amount || deps.randInt(2, 4) }, 3000),
+      browser('scroll', { direction: 'down', amount: amount || deps.randInt(2, 4) }, 10000),
     cdpClick: (x: number, y: number) => browser('cdp_click', { x, y }),
     cdpKey: (key: string, params?: any) => browser('cdp_key', { key, ...(params || {}) }),
     cdpEval: (expression: string, awaitPromise?: boolean) =>

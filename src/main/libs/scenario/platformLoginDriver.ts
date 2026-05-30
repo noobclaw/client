@@ -153,8 +153,11 @@ export async function checkPlatformLogin(platform: LoginPlatform = 'xhs'): Promi
   // Always do a live check — don't trust cached connection status
   let tabs: any[] = [];
   try {
-    // Short timeout: if browser is closed, this will fail fast
-    const res = await sendBrowserCommand('tab_list', {}, 3000);
+    // Short timeout: if browser is closed, this will fail fast.
+    // 6s 不是 10s(phaseRunner 同款慢路径理由)的原因:这里"fail fast"是 by design,
+    // 浏览器没开时让用户尽快看到"未连接"提示。但 3s 在 SW 冷启动 + 偶发卡顿下会误判,
+    // 提到 6s 给 SW 唤醒留余量同时仍比 phaseRunner 的 10s 短,保留 fail-fast 动机。
+    const res = await sendBrowserCommand('tab_list', {}, 6000);
     tabs = Array.isArray(res?.tabs) ? res.tabs : [];
     if (!res || (!res.tabs && !Array.isArray(res))) {
       return { loggedIn: false, reason: 'browser_not_connected' };
@@ -287,7 +290,8 @@ export async function checkCreatorCenter(platform: LoginPlatform): Promise<Platf
 
   let tabs: any[] = [];
   try {
-    const res = await sendBrowserCommand('tab_list', {}, 3000);
+    // 同 line 157 理由:fail-fast 保留但 3s → 6s,SW 冷启动留余量。
+    const res = await sendBrowserCommand('tab_list', {}, 6000);
     tabs = Array.isArray(res?.tabs) ? res.tabs : [];
     if (!res || (!res.tabs && !Array.isArray(res))) {
       return { loggedIn: false, reason: 'browser_not_connected' };
