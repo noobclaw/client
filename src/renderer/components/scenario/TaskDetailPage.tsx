@@ -1216,6 +1216,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                             ? `${intervalLabel} · 每次 ${pStr} 条币安广场短评（100-300 字 + cashtag）`
                             : `${intervalLabel} · ${pStr} Binance Square notes/run (100-300 chars + cashtag)`;
                         }
+                        // 回复粉丝评论:每次处理"最近 N 篇笔记/作品"的全部未回复评论
+                        //   (N = max_notes/works_per_run,默认 30),不是"N 条/次"。
+                        if (sid === 'xhs_reply_fans_comment') {
+                          return isZh ? `${intervalLabel} · 最近 30 篇笔记/次` : `${intervalLabel} · latest 30 notes/run`;
+                        }
+                        if (sid === 'douyin_reply_fans_comment') {
+                          return isZh ? `${intervalLabel} · 最近 30 个作品/次` : `${intervalLabel} · latest 30 videos/run`;
+                        }
                         if (typeof cMin === 'number' && typeof cMax === 'number') {
                           return `${intervalLabel} · ${cMin}-${cMax} ${isZh ? '篇/次' : 'articles/run'}`;
                         }

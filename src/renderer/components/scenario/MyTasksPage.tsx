@@ -579,6 +579,14 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                               ? `⏰ ${scheduleLabel(task, isZh)} · 每次 ${pStr} 条`
                               : `⏰ ${scheduleLabel(task, isZh)} · ${pStr}/run`;
                           }
+                          // 回复粉丝评论:每次处理"最近 N 篇笔记/作品"的全部未回复评论(N =
+                          //   max_notes/works_per_run,默认 30),不是"N 条/次"。
+                          if (sid === 'xhs_reply_fans_comment') {
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
+                          }
+                          if (sid === 'douyin_reply_fans_comment') {
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
+                          }
                           // XHS auto_reply:用 daily_count_min/max
                           if ((task as any).scenario_id?.includes('auto_reply') ||
                               (typeof cMin === 'number' && typeof cMax === 'number')) {
