@@ -453,7 +453,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   // a draft / local-save mode.
   const isAutoReplyTask =
     (scenario?.workflow_type as any) === 'auto_reply' ||
-    scenario?.id === 'xhs_reply_fans_comment';
+    scenario?.id === 'xhs_reply_fans_comment' ||
+    scenario?.id === 'douyin_reply_fans_comment';
   // Platform detection — used for badge / step copy on the task detail page.
   // For Twitter scenarios (x_auto_engage / x_post_creator / x_link_rewrite)
   // we can't reuse XHS-specific copy like "直接发布到小红书".
