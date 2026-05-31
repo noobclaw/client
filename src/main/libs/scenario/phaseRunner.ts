@@ -20,6 +20,7 @@ import * as taskStore from './taskStore';
 import * as localExtractor from './localExtractor';
 import { parseJsonSafe } from './localExtractor';
 import { getNoobClawAuthToken } from '../claudeSettings';
+import * as newsUsageStore from './newsUsageStore';
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeTaskArtifacts, getTaskOutputDir } from './artifactWriter';
@@ -1207,6 +1208,28 @@ function buildContext(
         clearInterval(abortPoll);
         if (heartbeat) clearInterval(heartbeat);
       }
+    },
+
+    // v2.x: news_usage local dedup for writing scenarios (binance / x).
+    //   ctx.newsUsage.isUsed(title)  → bool  — has this wallet posted on this
+    //                                          source article (by title) for
+    //                                          this scenario before?
+    //   ctx.newsUsage.markUsed(title) → void — call after a successful publish
+    //
+    // Wallet is auto-derived from current JWT inside the helper. Scenario id
+    // is auto-bound from the manifest so orchestrator doesn't need to pass it.
+    // Title hash logic (md5 of normalized title) is encapsulated in the helper.
+    newsUsage: {
+      isUsed: (title: string): boolean => {
+        const scenarioId = String((manifest as any)?.id || '');
+        if (!scenarioId) return false;
+        return newsUsageStore.isNewsUsed(scenarioId, title);
+      },
+      markUsed: (title: string): void => {
+        const scenarioId = String((manifest as any)?.id || '');
+        if (!scenarioId) return;
+        newsUsageStore.markNewsUsed(scenarioId, title);
+      },
     },
 
     // Generic file-write into the task's output dir. Used by scenarios

@@ -220,6 +220,27 @@ export class SqliteStore {
       ON user_memory_sources(memory_id, is_active);
     `);
 
+    // v2.x: per-wallet news usage log for scenario writing flows
+    // (binance_square_post_creator, x_post_creator originator path, etc.).
+    // Local-only — backend stays stateless w.r.t. who used what. Orchestrator
+    // loops "pickFreshNews → isNewsUsed → use or retry". title_hash is md5
+    // of the source article title (avoids storing the full text + handles
+    // upstream id churn — if web3_news re-ingests the same headline under a
+    // different id, we still dedupe by content).
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS news_usage (
+        wallet_address TEXT NOT NULL,
+        scenario_id    TEXT NOT NULL,
+        title_hash     TEXT NOT NULL,
+        used_at        INTEGER NOT NULL,
+        PRIMARY KEY (wallet_address, scenario_id, title_hash)
+      );
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_news_usage_wallet_scenario
+      ON news_usage(wallet_address, scenario_id, used_at DESC);
+    `);
+
     // Create scheduled tasks tables
     this.db.run(`
       CREATE TABLE IF NOT EXISTS scheduled_tasks (
@@ -487,6 +508,36 @@ export class SqliteStore {
     this.db.run('DELETE FROM kv WHERE key = ?', [key]);
     this.save();
     this.emitter.emit('change', { key, newValue: undefined, oldValue } as ChangePayload);
+  }
+
+  // ── news_usage (scenario writing flow dedup) ────────────────────────
+  //
+  // Returns true if THIS wallet has already used a news article with this
+  // title-hash for THIS scenario. Used by orchestrators (binance/x writing
+  // flow) to avoid posting on the same source article twice. Hash is md5(title)
+  // computed by the caller (orchestrator-side) so we keep the helper schema
+  // agnostic — what counts as "same article" is a policy decision the caller
+  // owns, not the storage layer.
+  isNewsUsed(walletAddress: string, scenarioId: string, titleHash: string): boolean {
+    if (!walletAddress || !scenarioId || !titleHash) return false;
+    const result = this.db.exec(
+      'SELECT 1 FROM news_usage WHERE wallet_address = ? AND scenario_id = ? AND title_hash = ? LIMIT 1',
+      [walletAddress, scenarioId, titleHash],
+    );
+    return !!result[0]?.values?.length;
+  }
+
+  // Idempotent insert. Same (wallet, scenario, titleHash) on PRIMARY KEY
+  // collision is a no-op (INSERT OR IGNORE) — orchestrator retries don't
+  // need to be careful about double-marking.
+  markNewsUsed(walletAddress: string, scenarioId: string, titleHash: string): void {
+    if (!walletAddress || !scenarioId || !titleHash) return;
+    this.db.run(
+      `INSERT OR IGNORE INTO news_usage (wallet_address, scenario_id, title_hash, used_at)
+       VALUES (?, ?, ?, ?)`,
+      [walletAddress, scenarioId, titleHash, Date.now()],
+    );
+    this.save();
   }
 
   // Expose database for cowork operations

@@ -61,8 +61,8 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
     category: 'creation',
     name_zh: '币安广场 · 自动发帖',
     name_en: 'Binance Square Auto Post',
-    description_zh: '每天从你关注的 token 里抽一个,AI 按你的人设原创写一条深度市场快评,自动挂 $BTC/$ETH 等 cashtag 蹭币种页流量。',
-    description_en: 'Picks a token from your watchlist daily, AI drafts an opinionated market take in your persona, auto-tags with $BTC/$ETH cashtags to surface in token-page traffic.',
+    description_zh: '每日智能锁定近三周热门行业资讯,AI 深度创作引擎(DeepSeek Pro)写一条踩点市场快评 + 智能配图,自动挂 cashtag 蹭到币种页主动流量。',
+    description_en: 'Daily locks onto hot crypto news from the past 3 weeks — AI deep-creation engine (DeepSeek Pro) crafts a sharp market take + smart imagery, auto-tagged with cashtags to surface in token-page traffic.',
     icon: '🔶',
     default_config: {
       keywords: ['BTC', 'ETH', 'SOL'],
@@ -419,9 +419,9 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           badgeEn="Daily post"
           titleZh="币安广场 · 自动发帖"
           titleEn="Binance Square Auto Post"
-          descZh="每天从你关注的 token 里抽一个，AI 按你的人设原创写一条深度市场快评，自动挂 $BTC/$ETH 等 cashtag，蹭到币种页流量被币安老用户主动看到。"
-          descEn="Picks a token from your watchlist daily, AI drafts an opinionated market take in your persona, auto-tags with $BTC/$ETH cashtags to surface in the token page traffic where Binance veterans actually scroll."
-          tagsLine={isZh ? 'AI 原创 · 人设输出 · $TICKER 导流' : 'AI original · Persona-driven · $TICKER traffic'}
+          descZh="每日智能锁定近三周热门行业资讯，AI 深度创作引擎（DeepSeek Pro）写一条踩点市场快评 + 智能配图（源图直用或 AI 生图），自动挂 cashtag 蹭到币种页主动流量。"
+          descEn="Daily locks onto hot crypto news from the past 3 weeks — AI deep-creation engine (DeepSeek Pro) crafts a sharp market take with smart imagery (source thumbnail or AI-generated), auto-tagged with cashtags to surface in token-page traffic."
+          tagsLine={isZh ? '🧠 Pro 深度引擎 · 资讯踩点 · 智能配图 · cashtag 导流' : '🧠 Pro deep engine · News-driven · Smart imagery · Cashtag traffic'}
           ctaZh="立即开始"
           ctaEn="Get Started"
           enabled={true}

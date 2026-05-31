@@ -9,6 +9,7 @@ import { CoworkRunner } from './libs/coworkRunner';
 import { SkillManager } from './skillManager';
 import type { PermissionResult } from './libs/toolSystem';
 import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setNoobClawAuthToken } from './libs/claudeSettings';
+import { setStoreGetter as setNewsUsageStoreGetter } from './libs/scenario/newsUsageStore';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
 import { classifyIntent } from './libs/intentClassifier';
@@ -3195,6 +3196,9 @@ if (!gotTheLock) {
     }
     // Inject store getter into claudeSettings
     setStoreGetter(() => store);
+    // v2.x: same getter for news_usage dedup (used by binance / x writing
+    // scenarios to avoid posting on the same web3_news article twice).
+    setNewsUsageStoreGetter(() => store);
     console.log('[Main] initApp: setStoreGetter done');
     const manager = getSkillManager();
     console.log('[Main] initApp: getSkillManager done');
