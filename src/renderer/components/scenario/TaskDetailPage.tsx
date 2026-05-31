@@ -1366,6 +1366,30 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
                       : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
                     const ap = progress.action_progress || {};
+                    // v6.x: 回复粉丝评论(xhs/douyin)= 「已回复评论数」+「文章进度 当前/总」,
+                    //   不是「N/target 评论」。评论纯累计(无 target),文章扫描后才知道总数
+                    //   (扫描前 target=0 → 显示 "-")。精确 id 门控,不碰其他场景。
+                    if (scenario?.id === 'xhs_reply_fans_comment' || scenario?.id === 'douyin_reply_fans_comment') {
+                      const commentDone = (ap as any).comment?.done ?? 0;
+                      const noteDone = (ap as any).note?.done ?? 0;
+                      const noteTarget = (ap as any).note?.target ?? 0;
+                      const articleWord = scenario?.id === 'xhs_reply_fans_comment'
+                        ? (isZh ? '笔记' : 'notes')
+                        : (isZh ? '作品' : 'videos');
+                      const articleStr = noteTarget > 0 ? `${noteDone}/${noteTarget}` : '-';
+                      return (
+                        <>
+                          <span className="font-mono text-gray-700 dark:text-gray-200">
+                            💬 <strong className="text-green-600 dark:text-green-400">{commentDone > 0 ? commentDone : '-'}</strong>{' '}
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{isZh ? '评论' : 'comments'}</span>
+                          </span>
+                          <span className="font-mono text-gray-700 dark:text-gray-200">
+                            📄 <strong className="text-green-600 dark:text-green-400">{articleStr}</strong>{' '}
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{articleWord}</span>
+                          </span>
+                        </>
+                      );
+                    }
                     const keys = Object.keys(ap).filter(k => (ap[k]?.target || 0) > 0 || (ap[k]?.done || 0) > 0).sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);

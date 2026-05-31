@@ -663,6 +663,43 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       mode: 'cumulative' as const,
                       data: fallbackData,
                     };
+                    // v6.x: 回复粉丝评论(xhs/douyin)的进度是两段 ——「已回复评论数」+
+                    //   「文章进度 当前/总」,不是「N/target 评论」。评论没法预知总数(每篇
+                    //   点开才知道有几条未回复)所以是纯累计;文章扫描后才知道总数,扫描前显
+                    //   示 "-"。专属渲染,精确 id 门控,不碰其他场景的通用逻辑。
+                    if (sid === 'xhs_reply_fans_comment' || sid === 'douyin_reply_fans_comment') {
+                      const d = effectiveInfo.data as any;
+                      const running = effectiveInfo.mode === 'running';
+                      const commentDone = running ? (d.comment?.done ?? 0) : (d.comment ?? 0);
+                      const articleWord = sid === 'xhs_reply_fans_comment'
+                        ? (isZh ? '笔记' : 'notes')
+                        : (isZh ? '作品' : 'videos');
+                      const rfLabel = running
+                        ? (isZh ? '本次运行进度' : 'Current Run Progress')
+                        : (isZh ? '累计完成' : 'Total done');
+                      return (
+                        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
+                          <span className={`text-[10px] ${running ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
+                            {rfLabel}:
+                          </span>
+                          <span className="font-mono">
+                            💬 <strong className={running ? 'text-green-600 dark:text-green-400' : ''}>{commentDone > 0 ? commentDone : '-'}</strong>{' '}
+                            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{isZh ? '评论' : 'comments'}</span>
+                          </span>
+                          {running && (() => {
+                            const noteDone = d.note?.done ?? 0;
+                            const noteTarget = d.note?.target ?? 0;
+                            const articleStr = noteTarget > 0 ? `${noteDone}/${noteTarget}` : '-';
+                            return (
+                              <span className="font-mono">
+                                📄 <strong className="text-green-600 dark:text-green-400">{articleStr}</strong>{' '}
+                                <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{articleWord}</span>
+                              </span>
+                            );
+                          })()}
+                        </div>
+                      );
+                    }
                     const keys = Object.keys(effectiveInfo.data).filter(k => {
                       if (effectiveInfo.mode === 'running') {
                         const v = (effectiveInfo.data as any)[k];
