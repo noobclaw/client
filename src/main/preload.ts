@@ -92,6 +92,25 @@ contextBridge.exposeInMainWorld('electron', {
     checkCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
     openCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
   },
+  // ── Multi-platform Video Creation (phase 1: local synthesis) ──
+  video: {
+    /** Start one local render job. Resolves with the final result. */
+    generate: (input: unknown) => ipcRenderer.invoke('video:generate', input),
+    /** Open the system file picker to choose reference images (returns abs paths). */
+    pickImages: (max: number) => ipcRenderer.invoke('video:pickImages', max),
+    /** Open the system file picker to choose one background-music file (returns abs path or ''). */
+    pickAudio: () => ipcRenderer.invoke('video:pickAudio'),
+    /** Open a produced file with the OS default player. */
+    openFile: (filePath: string) => ipcRenderer.invoke('video:openFile', filePath),
+    /** Reveal a produced file in the OS file manager. */
+    revealInFolder: (filePath: string) => ipcRenderer.invoke('video:revealInFolder', filePath),
+    /** Subscribe to per-job progress events. Returns an unsubscribe fn. */
+    onProgress: (callback: (progress: unknown) => void) => {
+      const handler = (_event: unknown, progress: unknown) => callback(progress);
+      ipcRenderer.on('video:progress', handler);
+      return () => ipcRenderer.removeListener('video:progress', handler);
+    },
+  },
   api: {
     // Regular API request (non-streaming)
     fetch: (options: {

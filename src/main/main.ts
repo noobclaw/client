@@ -2853,6 +2853,58 @@ if (!gotTheLock) {
     });
   }
 
+  // ── Multi-platform Video Creation (phase 1: local synthesis) ──
+  // 本地出片工具,不走 scenario 任务体系。配音/素材/合成全在主进程,
+  // 进度通过 mainWindow webContents 推回渲染端。
+  {
+    ipcMain.handle('video:pickImages', async (_e, max: number) => {
+      const limit = Math.max(1, Math.min(Number(max) || 3, 9));
+      const result = await dialog.showOpenDialog({
+        title: '选择参考图',
+        properties: ['openFile', 'multiSelections'],
+        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
+      });
+      if (result.canceled || !Array.isArray(result.filePaths)) return [];
+      return result.filePaths.slice(0, limit);
+    });
+
+    ipcMain.handle('video:pickAudio', async () => {
+      const result = await dialog.showOpenDialog({
+        title: '选择背景音乐',
+        properties: ['openFile'],
+        filters: [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }],
+      });
+      if (result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) return '';
+      return result.filePaths[0];
+    });
+
+    ipcMain.handle('video:openFile', async (_e, filePath: string) => {
+      try { await shell.openPath(filePath); } catch {}
+      return true;
+    });
+
+    ipcMain.handle('video:revealInFolder', (_e, filePath: string) => {
+      try { shell.showItemInFolder(filePath); } catch {}
+      return true;
+    });
+
+    ipcMain.handle('video:generate', async (_e, input: unknown) => {
+      const { generateVideo } = require('./libs/video/pipeline');
+      const emit = (progress: unknown) => {
+        try {
+          if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('video:progress', progress);
+          }
+        } catch {}
+      };
+      try {
+        return await generateVideo(input, emit);
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    });
+  }
+
   // Set Content Security Policy
   const setContentSecurityPolicy = () => {
     session.defaultSession.webRequest.onHeadersReceived((details, callback) => {

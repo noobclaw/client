@@ -30,11 +30,12 @@ import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
 import { YoutubeWorkflowsPage } from './YoutubeWorkflowsPage';
 import { TikTokWorkflowsPage } from './TikTokWorkflowsPage';
 import { DouyinWorkflowsPage } from './DouyinWorkflowsPage';
+import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
 
-type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
+type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube' | 'video';
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -64,6 +65,7 @@ interface ScenarioViewProps {
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
+  { id: 'video', labelKey: 'scenarioPlatformVideo', icon: '🎬', enabled: true },
   { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
@@ -237,7 +239,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const setPlatform = (platform: PlatformId) => {
-    setView({ kind: 'main', section: currentSection, platform });
+    // 视频创作是本地工具,没有"我的任务/运行记录"两个 section —— 切到该 tab
+    // 时强制回到 create,免得带出空的 section tab 栏。
+    const section: SectionId = platform === 'video' ? 'create' : currentSection;
+    setView({ kind: 'main', section, platform });
   };
 
   const openTask = (task_id: string, fromOverride?: SectionId) => {
@@ -465,6 +470,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
+    // 多平台视频创作 —— 本地合成工具,不走 scenario 任务体系,直接渲染自己的
+    // 工作流页(两张卡片),无视 create/tasks/history 分段。
+    if (currentPlatform === 'video') {
+      return <VideoWorkflowsPage />;
+    }
+
     // Section + platform branching. Each L1 section has a per-platform
     // view; the user picked the platform via the L2 sub-tabs above.
     // Platform display label — locale-aware so the My Tasks / History
@@ -681,7 +692,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             This makes Create feel like a pushed sub-page rather than
             another tab equal to the others — matches user expectation
             of "task vs view" actions. */}
-      {view.kind === 'main' && currentSection !== 'create' && (
+      {view.kind === 'main' && currentSection !== 'create' && currentPlatform !== 'video' && (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <div className="flex items-center gap-2 overflow-x-auto">
             {SECTION_TABS.map(tab => {
@@ -726,7 +737,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           to the My Tasks list. We deliberately do NOT keep the L1 tabs
           here so the page reads as a pushed sub-page, not a sibling
           of My Tasks / Run History. */}
-      {view.kind === 'main' && currentSection === 'create' && (
+      {view.kind === 'main' && currentSection === 'create' && currentPlatform !== 'video' && (
         <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <button
             type="button"
