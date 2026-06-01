@@ -280,11 +280,11 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
             or 📤 N 发帖). Pre-rollout runs lack action_counts → '-'. */}
         {(() => {
           const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
-          const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
-          const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+          const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+          const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
           const labels = isZh
-            ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
-            : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+            ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
+            : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
           let display: React.ReactNode = '-';
           if (ac && Object.keys(ac).length > 0) {
             const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {

@@ -613,11 +613,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                                        before it has run once). */}
                   {(() => {
                     const info = taskActionInfo[task.id];
-                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
-                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = isZh
-                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
-                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
+                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
                     // For idle tasks that have never produced action counts
                     // (brand-new tasks, or post-creator scenarios where the
                     // backend hasn't backfilled `cumulative_action_counts`
@@ -652,11 +652,17 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       sid.endsWith('_auto_engage')
                       || sid === 'xhs_auto_reply_universal'
                     );
+                    // 无水印下载场景(tiktok/douyin/xhs_video_download)主动作是
+                    //   download — 新任务没历史时 fallback 用 ['download'],否则会先闪
+                    //   一下默认的 ['like']「赞」再被真数据覆盖成 download。
+                    const isDownloadScenario = sid.endsWith('_video_download');
                     const fallbackKeys: string[] = isPostScenario
                       ? ['post']
                       : isEngageScenario
                         ? ['like', 'comment', 'follow']
-                        : ['like'];
+                        : isDownloadScenario
+                          ? ['download']
+                          : ['like'];
                     const fallbackData: Record<string, number> = {};
                     for (const k of fallbackKeys) fallbackData[k] = 0;
                     const effectiveInfo = info ?? {

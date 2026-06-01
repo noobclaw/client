@@ -355,11 +355,11 @@ export const RunHistoryPage: React.FC<Props> = ({
                     const ac = (rec.result as any)?.action_counts as Record<string, number> | undefined;
                     const at = (rec.result as any)?.action_targets as Record<string, number> | undefined;
                     if (!ac && !at) return null;
-                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤' };
-                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post'];
+                    const ICONS: Record<string, string> = { like: '👍', follow: '➕', subscribe: '📌', comment: '💬', reply: '💬', post: '📤', download: '⬇️' };
+                    const ORDER = ['like', 'follow', 'subscribe', 'comment', 'reply', 'post', 'download'];
                     const labels = isZh
-                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖' }
-                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts' };
+                      ? { like: '赞', follow: '关注', comment: '评论', reply: '回复', subscribe: '订阅', post: '发帖', download: '下载' }
+                      : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
                     // Union of keys present in either map — running rows
                     // may briefly have only targets (orchestrator set
                     // them, no addActionCount yet); completed rows have
