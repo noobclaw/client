@@ -287,7 +287,9 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
             : { like: 'likes', follow: 'follows', comment: 'comments', reply: 'replies', subscribe: 'subs', post: 'posts', download: 'downloads' };
           let display: React.ReactNode = '-';
           if (ac && Object.keys(ac).length > 0) {
-            const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0).sort((a, b) => {
+            // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;
+            //   累计/历史里只看评论数,过滤掉,避免中文下出现未翻译的原始 "note"。
+            const keys = Object.keys(ac).filter(k => (ac[k] || 0) > 0 && k !== 'note').sort((a, b) => {
               const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
               if (ia === -1 && ib === -1) return a.localeCompare(b);
               if (ia === -1) return 1;

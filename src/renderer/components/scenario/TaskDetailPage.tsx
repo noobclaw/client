@@ -1818,7 +1818,9 @@ function formatActionBreakdown(
   // ORDER first, then unknown keys alphabetically — keeps engage line
   // in 👍 ➕ 💬 order regardless of insertion order.
   const keys = Object.keys(counts)
-    .filter(k => typeof counts[k] === 'number')
+    // 'note'(回复粉丝场景的文章进度内部计数)只在「本次运行进度」实时卡里展示;
+    //   累计/上次完成里只看评论数,过滤掉,避免中文下出现未翻译的原始 "note"。
+    .filter(k => typeof counts[k] === 'number' && k !== 'note')
     .sort((a, b) => {
       const ia = ORDER.indexOf(a);
       const ib = ORDER.indexOf(b);

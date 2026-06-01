@@ -368,7 +368,10 @@ export const RunHistoryPage: React.FC<Props> = ({
                       ...Object.keys(ac || {}),
                       ...Object.keys(at || {}),
                     ]);
-                    const keys = Array.from(allKeys).sort((a, b) => {
+                    // 'note' 是回复粉丝场景的「文章进度」内部计数(当前第几篇/总),只在
+                    //   「本次运行进度」实时卡里有意义;累计/历史里只展示评论数,过滤掉它,
+                    //   否则中文下会出现未翻译的原始 "note" 键名。
+                    const keys = Array.from(allKeys).filter(k => k !== 'note').sort((a, b) => {
                       const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
                       if (ia === -1 && ib === -1) return a.localeCompare(b);
                       if (ia === -1) return 1;
