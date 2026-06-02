@@ -21,6 +21,8 @@ import {
   type VideoCreationInput,
   type VideoCreationProgressStep,
   type VideoPublishTarget,
+  type VideoAspect,
+  type SubtitlePosition,
 } from '../../../services/videoCreation';
 import {
   videoTaskStore,
@@ -1176,6 +1178,53 @@ type Platform = 'douyin' | 'xhs' | 'binance';
 const SCRIPT_MAX = 800;
 const DURATION_OPTIONS = [30, 45, 60, 90];
 
+// ── MPT 风格出片参数选项 ──
+const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[] = [
+  { id: '9:16', zh: '竖屏 9:16', en: 'Portrait 9:16', icon: '📱' },
+  { id: '16:9', zh: '横屏 16:9', en: 'Landscape 16:9', icon: '🖥️' },
+  { id: '1:1', zh: '方形 1:1', en: 'Square 1:1', icon: '🔲' },
+];
+
+// edge-tts 常用中文音色(name 直传 sidecar)。
+const VOICE_OPTIONS: { id: string; zh: string; en: string }[] = [
+  { id: 'zh-CN-XiaoxiaoNeural', zh: '晓晓 · 女声(温柔)', en: 'Xiaoxiao · female (gentle)' },
+  { id: 'zh-CN-XiaoyiNeural', zh: '晓伊 · 女声(活泼)', en: 'Xiaoyi · female (lively)' },
+  { id: 'zh-CN-YunxiNeural', zh: '云希 · 男声(阳光)', en: 'Yunxi · male (sunny)' },
+  { id: 'zh-CN-YunjianNeural', zh: '云健 · 男声(浑厚)', en: 'Yunjian · male (deep)' },
+  { id: 'zh-CN-YunyangNeural', zh: '云扬 · 男声(播音)', en: 'Yunyang · male (anchor)' },
+  { id: 'zh-CN-liaoning-XiaobeiNeural', zh: '晓北 · 东北女声', en: 'Xiaobei · NE female' },
+  { id: 'zh-HK-HiuGaaiNeural', zh: '晓佳 · 粤语女声', en: 'HiuGaai · Cantonese' },
+  { id: 'en-US-JennyNeural', zh: 'Jenny · 英文女声', en: 'Jenny · EN female' },
+  { id: 'en-US-GuyNeural', zh: 'Guy · 英文男声', en: 'Guy · EN male' },
+];
+
+const RATE_OPTIONS: { v: number; zh: string; en: string }[] = [
+  { v: -25, zh: '慢', en: 'Slow' },
+  { v: -10, zh: '稍慢', en: 'Slower' },
+  { v: 0, zh: '正常', en: 'Normal' },
+  { v: 15, zh: '稍快', en: 'Faster' },
+  { v: 30, zh: '快', en: 'Fast' },
+];
+
+const SUB_POSITION_OPTIONS: { id: SubtitlePosition; zh: string; en: string }[] = [
+  { id: 'top', zh: '顶部', en: 'Top' },
+  { id: 'center', zh: '居中', en: 'Center' },
+  { id: 'bottom', zh: '底部', en: 'Bottom' },
+];
+
+const SUB_FONTSIZE_OPTIONS: { v: number; zh: string; en: string }[] = [
+  { v: 42, zh: '小', en: 'S' },
+  { v: 52, zh: '中', en: 'M' },
+  { v: 64, zh: '大', en: 'L' },
+];
+
+// 换镜节奏:每段素材最长秒数,越小切得越快。
+const PACE_OPTIONS: { v: number; zh: string; en: string }[] = [
+  { v: 2.5, zh: '快切', en: 'Fast cuts' },
+  { v: 4, zh: '适中', en: 'Medium' },
+  { v: 6, zh: '舒缓', en: 'Slow' },
+];
+
 const VideoConfigModal: React.FC<{
   isZh: boolean;
   onClose: () => void;
@@ -1205,6 +1254,15 @@ const VideoConfigModal: React.FC<{
   const [refImages, setRefImages] = useState<string[]>(editTask?.input.referenceImages || []);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
+
+  // 步骤 2:MPT 风格出片参数(画幅 / 换镜 / 音色语速 / 字幕)
+  const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
+  const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
+  const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.subtitleEnabled !== false);
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
+  const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
 
   // 步骤 2:出片去向
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
@@ -1269,10 +1327,16 @@ const VideoConfigModal: React.FC<{
     keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
     referenceImages: refImages,
-    aspect: '9:16',
+    aspect,
     publishTarget: 'local' as VideoPublishTarget,
     targetSeconds,
     useStockVideo: mode === 'stock',
+    voice,
+    voiceRate,
+    subtitleEnabled,
+    subtitleFontSize,
+    subtitlePosition,
+    maxClipSeconds,
   });
 
   const handleSubmit = () => {
@@ -1451,6 +1515,125 @@ const VideoConfigModal: React.FC<{
                     soon={isZh ? '即将推出' : 'Soon'}
                   />
                 </div>
+              </Field>
+
+              {/* 画幅比例 */}
+              <Field label={isZh ? '视频比例' : 'Aspect ratio'} hint={isZh ? '决定成片尺寸与素材搜索方向' : 'sets output size & stock orientation'}>
+                <div className="flex gap-2">
+                  {ASPECT_OPTIONS.map((a) => (
+                    <button
+                      key={a.id}
+                      type="button"
+                      onClick={() => setAspect(a.id)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                        aspect === a.id
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      <span className="mr-1">{a.icon}</span>{isZh ? a.zh : a.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {/* 换镜节奏 */}
+              <Field label={isZh ? '换镜节奏' : 'Clip pacing'} hint={isZh ? '每段素材最长时长，越快画面越动感' : 'shorter = more dynamic cuts'}>
+                <div className="flex gap-2">
+                  {PACE_OPTIONS.map((p) => (
+                    <button
+                      key={p.v}
+                      type="button"
+                      onClick={() => setMaxClipSeconds(p.v)}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                        maxClipSeconds === p.v
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      {isZh ? p.zh : p.en}<span className="ml-1 text-[10px] opacity-60">{p.v}s</span>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {/* 配音音色 + 语速 */}
+              <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
+                <select
+                  value={voice}
+                  onChange={(e) => setVoice(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                >
+                  {VOICE_OPTIONS.map((v) => (
+                    <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
+                  ))}
+                </select>
+                <div className="flex gap-2 mt-2">
+                  {RATE_OPTIONS.map((r) => (
+                    <button
+                      key={r.v}
+                      type="button"
+                      onClick={() => setVoiceRate(r.v)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                        voiceRate === r.v
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      {isZh ? r.zh : r.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
+              {/* 字幕样式 + 开关 */}
+              <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 Whisper 对齐时间轴，更跟手' : 'Whisper-aligned timing when on'}>
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-600 dark:text-gray-300">{isZh ? '烧录字幕' : 'Burn subtitles'}</span>
+                  <button
+                    type="button"
+                    onClick={() => setSubtitleEnabled((v) => !v)}
+                    className={`relative w-11 h-6 rounded-full transition-colors ${subtitleEnabled ? 'bg-rose-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${subtitleEnabled ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+                {subtitleEnabled && (
+                  <div className="flex gap-2">
+                    <div className="flex gap-1">
+                      {SUB_FONTSIZE_OPTIONS.map((f) => (
+                        <button
+                          key={f.v}
+                          type="button"
+                          onClick={() => setSubtitleFontSize(f.v)}
+                          className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                            subtitleFontSize === f.v
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                          }`}
+                        >
+                          {isZh ? f.zh : f.en}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="flex gap-1">
+                      {SUB_POSITION_OPTIONS.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          onClick={() => setSubtitlePosition(s.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                            subtitlePosition === s.id
+                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                          }`}
+                        >
+                          {isZh ? s.zh : s.en}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </Field>
 
               <Field label={isZh ? '出片后' : 'After generation'}>

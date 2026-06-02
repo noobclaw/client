@@ -17,12 +17,34 @@ import path from 'path';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
-import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm } from './stockProvider';
-import { composeVideo, type SceneSpec } from './compose';
+import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
+import { composeVideo, type SceneSpec, type SubtitleStyle } from './compose';
+import { transcribeToCues } from './subtitles';
 import { generateScript, generateSearchTerms } from './scriptWriter';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
+export type SubtitlePosition = 'top' | 'center' | 'bottom';
+
+/** aspect → 成片宽高(短边 1080)。 */
+function aspectToSize(aspect: VideoAspect): { width: number; height: number } {
+  switch (aspect) {
+    case '16:9': return { width: 1920, height: 1080 };
+    case '1:1': return { width: 1080, height: 1080 };
+    case '9:16':
+    default: return { width: 1080, height: 1920 };
+  }
+}
+
+/** aspect → 素材库搜索方向。 */
+function aspectToOrientation(aspect: VideoAspect): StockOrientation {
+  switch (aspect) {
+    case '16:9': return 'landscape';
+    case '1:1': return 'square';
+    case '9:16':
+    default: return 'portrait';
+  }
+}
 
 export interface VideoCreationInput {
   persona: string;
@@ -42,6 +64,18 @@ export interface VideoCreationInput {
    * Ken Burns(抄 MoneyPrinterTurbo)。下载失败/无匹配时自动降级到图片/文字卡。
    */
   useStockVideo?: boolean;
+  /** edge-tts 音色,空 = 用配置默认(zh-CN-XiaoxiaoNeural)。 */
+  voice?: string;
+  /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
+  voiceRate?: number;
+  /** 是否烧字幕。默认 true。 */
+  subtitleEnabled?: boolean;
+  /** 字幕字号(成片原始分辨率下像素)。默认 52。 */
+  subtitleFontSize?: number;
+  /** 字幕位置。默认 bottom。 */
+  subtitlePosition?: SubtitlePosition;
+  /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
+  maxClipSeconds?: number;
 }
 
 export interface ProgressStep {
@@ -264,7 +298,7 @@ export async function generateVideo(
     let synthCount = 0;
     for (let i = 0; i < sentences.length; i++) {
       const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
-      const r = await synthesize(sentences[i], outMp3);
+      const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
       audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
       if (r.synthesized) synthCount++;
       tracker.progress(`配音 ${i + 1}/${sentences.length}`);
@@ -302,15 +336,18 @@ export async function generateVideo(
 
     const refImages = (input.referenceImages || []).filter((p) => p && fs.existsSync(p));
     const wantVideo = input.useStockVideo !== false;
+    const orientation = aspectToOrientation(input.aspect);
 
     // 3b. 逐词拉视频,保留「词 → 素材」归属(进度逐词回报,不再"没动静")
+    // 换镜节奏开了之后单镜要多段素材,多拉点冗余(perTermCount=6)。
     let videoByTerm: StockVideoByTerm[] = [];
     if (wantVideo && searchTerms.length > 0) {
       tracker.progress(`搜索在线视频素材(共 ${searchTerms.length} 组关键词)…`);
       videoByTerm = await fetchStockVideosByTerms({
         terms: searchTerms,
-        perTermCount: 4,
+        perTermCount: 6,
         destDir: assetDir,
+        orientation,
         onProgress: ({ done, total, term, totalGot }) =>
           tracker.progress(`搜索在线视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
       });
@@ -321,8 +358,10 @@ export async function generateVideo(
     for (const g of videoByTerm) poolByTerm.set(g.term.toLowerCase(), [...g.assets]);
     const allVideos: StockVideoAsset[] = videoByTerm.flatMap((g) => g.assets);
     const usedVideo = new Set<string>();
-    const pickVideoForScene = (i: number): string | undefined => {
-      // 1. 优先吃本镜搜索词命中的、还没被别的镜用过的视频
+    const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
+
+    // 取一段【还没被任何镜用过】的素材:先本镜搜索词命中,再借全局。都没有返 undefined。
+    const takeFreshClip = (i: number): string | undefined => {
       for (const term of perSceneTerms[i] || []) {
         const q = poolByTerm.get(term);
         if (q) {
@@ -330,14 +369,28 @@ export async function generateVideo(
           if (v) { usedVideo.add(v.path); return v.path; }
         }
       }
-      // 2. 本镜词都没命中/用尽 → 从全局未用视频借一段(总比退回图片强)
       const any = allVideos.find((a) => !usedVideo.has(a.path));
       if (any) { usedVideo.add(any.path); return any.path; }
       return undefined;
     };
 
-    const sceneVideos: (string | undefined)[] = sentences.map((_, i) => pickVideoForScene(i));
-    const scenesWithoutVideo = sceneVideos.filter((v) => !v).length;
+    // 该镜要几段素材 = ceil(时长 / maxClip),换镜节奏越快段数越多(封顶 8)。
+    // 先尽量取新鲜素材;不够就回收本镜已用过的素材循环填(总比退图片强)。
+    const pickClipsForScene = (i: number): string[] => {
+      const dur = Math.max(1.2, audios[i].durationSec);
+      const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+      const clips: string[] = [];
+      for (let k = 0; k < want; k++) {
+        const fresh = takeFreshClip(i);
+        if (fresh) clips.push(fresh);
+        else break;
+      }
+      return clips; // 可能为空(无视频素材)→ 上层退图片/文字卡
+    };
+
+    const sceneClips: string[][] = sentences.map((_, i) => pickClipsForScene(i));
+    const scenesWithoutVideo = sceneClips.filter((c) => c.length === 0).length;
+    const totalClipsUsed = sceneClips.reduce((n, c) => n + c.length, 0);
 
     // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
     const needImages = Math.max(0, Math.min(20, scenesWithoutVideo - refImages.length));
@@ -348,23 +401,25 @@ export async function generateVideo(
         keywords: searchTerms.slice(0, 8),
         count: needImages,
         destDir: assetDir,
+        orientation,
       });
     }
     const imagePool = [...refImages, ...stockImages];
 
     tracker.done('visuals',
-      (allVideos.length > 0 || imagePool.length > 0)
-        ? `画面就绪(视频 ${allVideos.length} 段 → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
+      (totalClipsUsed > 0 || imagePool.length > 0)
+        ? `画面就绪(视频 ${totalClipsUsed} 段 → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
         : '无可用素材,使用文字卡');
 
-    // 4. 组装分镜 + 合成。每镜先用分配到的视频,没有则轮转图片,再退文字卡
+    // 4. 组装分镜 + 合成。每镜先用分配到的【多段】视频,没有则轮转图片,再退文字卡
     tracker.start('compose');
     let imgCursor = 0;
     const scenes: SceneSpec[] = sentences.map((sentence, i) => {
-      const video = sceneVideos[i];
-      const image = !video && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
+      const clips = sceneClips[i];
+      const hasVideo = clips.length > 0;
+      const image = !hasVideo && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
       return {
-        videoPath: video,
+        clips: hasVideo ? clips : undefined,
         imagePath: image,
         audioPath: audios[i].audioPath,
         durationSec: audios[i].durationSec,
@@ -372,12 +427,28 @@ export async function generateVideo(
       };
     });
 
+    const { width, height } = aspectToSize(input.aspect);
+    const subtitleEnabled = input.subtitleEnabled !== false;
+    const subtitle: SubtitleStyle = {
+      enabled: subtitleEnabled,
+      fontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 52,
+      position: input.subtitlePosition || 'bottom',
+    };
+
     const outPath = path.join(destDir, outputFileName());
     const bgmPath = input.bgmPath && fs.existsSync(input.bgmPath) ? input.bgmPath : undefined;
     await composeVideo({
       scenes,
       outputPath: outPath,
+      width,
+      height,
+      maxClipSeconds: maxClip,
+      subtitle,
       bgmPath,
+      // 开了字幕才跑 Whisper(推理有成本);失败 compose 内部自动退回估算 cue。
+      transcribe: subtitleEnabled
+        ? (audioPath) => { tracker.progress('Whisper 识别字幕时间轴…'); return transcribeToCues(audioPath); }
+        : undefined,
       onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),
     });
 

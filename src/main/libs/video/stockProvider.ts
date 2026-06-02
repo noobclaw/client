@@ -61,15 +61,18 @@ async function downloadTo(url: string, destPath: string): Promise<boolean> {
   }
 }
 
+/** 画幅方向(决定素材库搜竖屏/横屏/方形)。 */
+export type StockOrientation = 'portrait' | 'landscape' | 'square';
+
 /** 调服务端代理搜图,返回公开 CDN 图片 URL 列表(服务端持有 key)。 */
-async function searchViaServer(keywords: string[], count: number): Promise<string[]> {
+async function searchViaServer(keywords: string[], count: number, orientation: StockOrientation): Promise<string[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
     const qs = new URLSearchParams({
       keywords: keywords.join(','),
       count: String(count),
-      orientation: 'portrait',
+      orientation,
     });
     // 服务端 /stock/search 现在挂了 authMiddleware,必须带 NoobClaw JWT。
     // 没登录 → 没 token → 服务端 401 → 这里 catch 返空 → 上层降级文字卡。
@@ -94,6 +97,8 @@ export interface FetchStockOptions {
   count: number;
   /** 下载目录(需已存在)。 */
   destDir: string;
+  /** 画幅方向,默认 portrait。 */
+  orientation?: StockOrientation;
 }
 
 /**
@@ -105,7 +110,7 @@ export async function fetchStockImages(opts: FetchStockOptions): Promise<string[
   if (count <= 0) return [];
 
   // 服务端会多返一些候选(下载可能失败/是错误页),这里多要点冗余
-  const urls = await searchViaServer(keywords, count);
+  const urls = await searchViaServer(keywords, count, opts.orientation ?? 'portrait');
   if (urls.length === 0) return [];
 
   const results: string[] = [];
@@ -132,14 +137,14 @@ interface StockVideoMeta {
 }
 
 /** 调服务端代理搜视频(type=video),返回公开 CDN 视频 URL + 元数据。 */
-async function searchVideosViaServer(keywords: string[], count: number): Promise<StockVideoMeta[]> {
+async function searchVideosViaServer(keywords: string[], count: number, orientation: StockOrientation): Promise<StockVideoMeta[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
     const qs = new URLSearchParams({
       keywords: keywords.join(','),
       count: String(count),
-      orientation: 'portrait',
+      orientation,
       type: 'video',
     });
     const res = await fetch(`${apiBase()}/api/video/stock/search?${qs.toString()}`, {
@@ -205,6 +210,8 @@ export interface FetchVideosByTermsOptions {
   perTermCount?: number;
   /** 下载目录(需已存在)。 */
   destDir: string;
+  /** 画幅方向,默认 portrait;决定搜竖/横/方素材 + 比例过滤方向。 */
+  orientation?: StockOrientation;
   /**
    * 进度回调,每搜完一个词触发一次。done/total 是词进度,term 是当前词,
    * got 是该词下到几段,totalGot 是到目前累计下到几段。
@@ -225,6 +232,7 @@ export interface FetchVideosByTermsOptions {
 export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): Promise<StockVideoByTerm[]> {
   const { terms, destDir } = opts;
   const perTermCount = Math.max(1, opts.perTermCount ?? 4);
+  const orientation = opts.orientation ?? 'portrait';
   const out: StockVideoByTerm[] = [];
   if (!Array.isArray(terms) || terms.length === 0) return out;
 
@@ -236,14 +244,17 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
     const term = (terms[t] || '').trim();
     const assets: StockVideoAsset[] = [];
     if (term) {
-      const metas = await searchVideosViaServer([term], perTermCount);
+      const metas = await searchVideosViaServer([term], perTermCount, orientation);
       for (const meta of metas) {
         if (assets.length >= perTermCount) break;
         if (seenUrls.has(meta.url)) continue;
         // 时长太短(<2s)拼起来太碎,跳过(0 = 未知,放行)。
         if (meta.durationSec > 0 && meta.durationSec < MIN_VIDEO_SEC) continue;
-        // 竖屏比例过滤:已知尺寸且高<宽(横屏素材)拒收,竖屏裁切会丢主体。
-        if (meta.width > 0 && meta.height > 0 && meta.height < meta.width) continue;
+        // 比例过滤(已知尺寸时):竖屏拒横屏素材,横屏拒竖屏素材,方形不过滤。
+        if (meta.width > 0 && meta.height > 0) {
+          if (orientation === 'portrait' && meta.height < meta.width) continue;
+          if (orientation === 'landscape' && meta.width < meta.height) continue;
+        }
         seenUrls.add(meta.url);
         const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
         const dest = path.join(destDir, `stockvid_${String(idx).padStart(3, '0')}.${ext}`);

@@ -14,6 +14,8 @@ export type VideoAspect = '9:16' | '16:9' | '1:1';
 
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
 
+export type SubtitlePosition = 'top' | 'center' | 'bottom';
+
 export interface VideoCreationInput {
   /** 人设 —— 影响 AI 文案口吻(一期文案靠粘贴,这里先收着备用)。 */
   persona: string;
@@ -35,6 +37,18 @@ export interface VideoCreationInput {
   targetSeconds?: number;
   /** 是否优先用在线素材【视频】(否则只用图片)。默认 true。 */
   useStockVideo?: boolean;
+  /** edge-tts 音色,空 = 用默认(zh-CN-XiaoxiaoNeural)。 */
+  voice?: string;
+  /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
+  voiceRate?: number;
+  /** 是否烧字幕。默认 true。 */
+  subtitleEnabled?: boolean;
+  /** 字幕字号(成片原始分辨率下像素)。默认 52。 */
+  subtitleFontSize?: number;
+  /** 字幕位置。默认 bottom。 */
+  subtitlePosition?: SubtitlePosition;
+  /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
+  maxClipSeconds?: number;
 }
 
 export interface VideoCreationProgressStep {

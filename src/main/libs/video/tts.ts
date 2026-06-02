@@ -145,8 +145,11 @@ function ensureUnixEdgeTts(): string | null {
 // venv / runtime 解析结果缓存(进程内只跑一次重活)。
 let _resolvedPython: string | null | undefined = undefined;
 
-/** 解析出一个【已装好 edge-tts】的 python 可执行;失败返回 null。 */
-async function resolveTtsPython(): Promise<string | null> {
+/**
+ * 解析出一个【已装好 edge-tts】的 python 可执行;失败返回 null。
+ * 导出供 subtitles.ts 复用同一个 python 跑 faster-whisper(免得再找一遍解释器)。
+ */
+export async function resolveTtsPython(): Promise<string | null> {
   if (_resolvedPython !== undefined) return _resolvedPython;
 
   if (process.platform === 'win32') {
@@ -190,10 +193,20 @@ async function makeSilence(outPath: string, durationSec: number): Promise<boolea
   return r.ok && fs.existsSync(outPath);
 }
 
-function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string): Promise<boolean> {
+/** 把语速档(-50~+50,单位%)归一成 edge-tts 的 `--rate=+N%` 串;0/非法 → 不传。 */
+function normalizeRate(rate?: number): string | null {
+  const n = Math.round(Number(rate) || 0);
+  if (!Number.isFinite(n) || n === 0) return null;
+  const clamped = Math.max(-50, Math.min(50, n));
+  return clamped >= 0 ? `+${clamped}%` : `${clamped}%`;
+}
+
+function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number): Promise<boolean> {
   return new Promise((resolve) => {
     const env = pythonEnv();
     const args = ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outPath];
+    const rateArg = normalizeRate(rate);
+    if (rateArg) args.push('--rate', rateArg);
     const child = spawn(pyExe, args, { env, windowsHide: true });
     let settled = false;
     const timer = setTimeout(() => {
@@ -212,7 +225,7 @@ function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string)
 /**
  * 给一句文案配音,输出 mp3 到 outPath。失败自动退化为静音 mp3。
  */
-export async function synthesize(text: string, outPath: string, voice?: string): Promise<TtsResult> {
+export async function synthesize(text: string, outPath: string, voice?: string, rate?: number): Promise<TtsResult> {
   const clean = (text || '').trim();
   const estDur = estimateDuration(clean || '。');
   const useVoice = voice || getTtsVoice();
@@ -221,7 +234,7 @@ export async function synthesize(text: string, outPath: string, voice?: string):
     try {
       const pyExe = await resolveTtsPython();
       if (pyExe) {
-        const ok = await runEdgeTts(pyExe, clean, useVoice, outPath);
+        const ok = await runEdgeTts(pyExe, clean, useVoice, outPath, rate);
         if (ok) {
           const dur = await probeDuration(outPath);
           return {
