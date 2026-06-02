@@ -140,6 +140,51 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
 
 const fmtNum = (n: number) => (n || 0).toLocaleString();
 
+/** 紧凑数字:123→'123',9939→'9.94K',1.23M。对齐 scenario 详情页的 token 展示。 */
+function compactNumber(n: number): string {
+  const abs = Math.abs(n || 0);
+  if (abs < 1000) return String(n || 0);
+  if (abs < 1_000_000) return (n / 1_000).toFixed(abs < 10_000 ? 2 : 1) + 'K';
+  if (abs < 1_000_000_000) return (n / 1_000_000).toFixed(abs < 10_000_000 ? 2 : 1) + 'M';
+  return (n / 1_000_000_000).toFixed(2) + 'B';
+}
+
+/** 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前,对齐 scenario「上次运行」。 */
+function fmtRelative(ts: number | null | undefined, isZh: boolean): string {
+  if (!ts) return isZh ? '尚未运行' : 'Not run yet';
+  const mins = Math.round(Math.abs(Date.now() - ts) / 60_000);
+  if (mins < 1) return isZh ? '刚刚' : 'Just now';
+  if (mins < 60) return isZh ? `${mins} 分钟前` : `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return isZh ? `${hrs} 小时前` : `${hrs} hr ago`;
+  return isZh ? `${Math.round(hrs / 24)} 天前` : `${Math.round(hrs / 24)} d ago`;
+}
+
+/** 统计卡(对齐 scenario 详情页 StatCard:小标题 + 大值,可选点击跳转)。 */
+const VStatCard: React.FC<{
+  label: string;
+  value: string | number;
+  onClick?: () => void;
+  actionLabel?: string;
+}> = ({ label, value, onClick, actionLabel }) => {
+  const Tag: any = onClick ? 'button' : 'div';
+  return (
+    <Tag
+      type={onClick ? 'button' : undefined}
+      onClick={onClick}
+      className={`text-left w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-4 py-3 ${
+        onClick ? 'hover:border-rose-500/50 transition-colors cursor-pointer' : ''
+      }`}
+    >
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</div>
+      <div className="font-bold dark:text-white text-sm">{value}</div>
+      {onClick && actionLabel && (
+        <div className="text-[10px] text-rose-500 dark:text-rose-400 mt-1 truncate">{actionLabel}</div>
+      )}
+    </Tag>
+  );
+};
+
 function statusOf(task: VideoTask): VideoRunStatus | 'idle' {
   return task.lastStatus || (task.runCount > 0 ? 'done' : 'idle');
 }
@@ -685,15 +730,35 @@ const VideoTaskDetail: React.FC<{
       {/* 输出目录(顶部) */}
       <OutputDirBar isZh={isZh} dir={outDir} />
 
+      {/* 统计卡网格(对齐 scenario 详情页:累计/上次消耗 + 运行次数 + 上次运行)。
+          视频是本地工具,消耗只有 DeepSeek token(无 USD/动作数),故用 🎟️ tokens。 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        <VStatCard
+          label={isZh ? '运行次数' : 'Total Runs'}
+          value={isZh ? `${task.runCount} 次` : `${task.runCount}`}
+        />
+        <VStatCard
+          label={isZh ? '累计消耗' : 'Total Cost'}
+          value={task.cumulativeTokens > 0 ? `🎟️ ${compactNumber(task.cumulativeTokens)}` : '-'}
+        />
+        <VStatCard
+          label={isZh ? '上次消耗' : 'Last Cost'}
+          value={latestRun && latestRun.tokensUsed > 0 ? `🎟️ ${compactNumber(latestRun.tokensUsed)}` : '-'}
+        />
+        <VStatCard
+          label={isZh ? '上次运行' : 'Last Run'}
+          value={fmtRelative(task.lastRunAt, isZh)}
+          onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
+          actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
+        />
+      </div>
+
       {/* 配置 + 状态卡(运行中绿框发亮) */}
       <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
         isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700'
       }`}>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400">
-            <span>{isZh ? `运行 ${task.runCount} 次` : `${task.runCount} runs`}</span>
-            {task.cumulativeTokens > 0 && <span>🎟️ {isZh ? '累计消耗' : 'Total'} {fmtNum(task.cumulativeTokens)} tokens</span>}
-          </div>
+          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{isZh ? '任务配置' : 'Config'}</span>
           <StatusPill isZh={isZh} status={status} />
         </div>
         <ConfigCard isZh={isZh} input={task.input} />
