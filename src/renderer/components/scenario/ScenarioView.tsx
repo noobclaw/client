@@ -242,8 +242,23 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // 视频创作是本地工具,没有"运行记录" section —— 切到该 tab 时落到 'tasks'
     // (= 视频落地页:看当前任务/占位框),跟其他 tab 一样默认进任务视图而不是
     // 直接弹创建表单。点占位框 / 右上「新建视频创作任务」才进 create。
-    const section: SectionId = platform === 'video' ? 'tasks' : currentSection;
+    if (platform === 'video') {
+      setView({ kind: 'main', section: 'tasks', platform });
+      return;
+    }
+    // 从【视频创建态】切到别的平台时,不要把 'create' 带过去(否则会直接进那个
+    // 平台的创建页),强制落到目标平台的任务页;其余平台间互切沿用 section 跟随。
+    const leavingVideoCreate = currentPlatform === 'video' && currentSection === 'create';
+    const section: SectionId = leavingVideoCreate ? 'tasks' : currentSection;
     setView({ kind: 'main', section, platform });
+  };
+
+  // 进入视频创建流。跟其他平台「新建」一致先过积分门槛(余额 < 10000 弹"积分
+  // 不足"提示框,点充值跳钱包页),通过才真正切到 create。两个入口(落地页占位框 /
+  // 右上 CTA)都走这里,保证门槛一致。
+  const goVideoCreate = () => {
+    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+    setView({ kind: 'main', section: 'create', platform: 'video' });
   };
 
   const openTask = (task_id: string, fromOverride?: SectionId) => {
@@ -478,7 +493,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       return (
         <VideoWorkflowsPage
           mode={currentSection === 'create' ? 'create' : 'landing'}
-          onGoCreate={() => setView({ kind: 'main', section: 'create', platform: 'video' })}
+          onGoCreate={goVideoCreate}
           onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
         />
       );
@@ -776,7 +791,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </h2>
           <button
             type="button"
-            onClick={() => setView({ kind: 'main', section: 'create', platform: 'video' })}
+            onClick={goVideoCreate}
             className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-rose-500/30 active:scale-95 bg-rose-500 hover:bg-rose-600 text-white border border-rose-500"
           >
             <span>✨</span>
