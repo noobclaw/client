@@ -150,6 +150,40 @@ function main() {
     }
   }
 
+  // 6. Bundled ffmpeg/ffprobe (downloaded by scripts/fetch-ffmpeg.js into
+  //    client/resources/ffmpeg-<platform>/). Copy into src-tauri/resources/
+  //    so Tauri bundles them; ffmpegRuntime.ts resolves them at runtime via
+  //    getResourcesPath()/ffmpeg-<platform>/bin/. copyFileSync preserves the
+  //    source mode, but chmod +x defensively on POSIX so the bundled binary
+  //    stays executable.
+  {
+    const platformDir = process.platform === 'win32'
+      ? 'ffmpeg-win'
+      : process.platform === 'darwin'
+        ? 'ffmpeg-mac'
+        : 'ffmpeg-linux';
+    const ffmpegSrc = path.join(ROOT, 'resources', platformDir);
+    const ffmpegDest = path.join(RESOURCES_DIR, platformDir);
+    if (fs.existsSync(ffmpegSrc)) {
+      const count = copyDirRecursive(ffmpegSrc, ffmpegDest);
+      if (process.platform !== 'win32') {
+        for (const exe of ['ffmpeg', 'ffprobe']) {
+          const p = path.join(ffmpegDest, 'bin', exe);
+          if (fs.existsSync(p)) {
+            try { fs.chmodSync(p, 0o755); } catch {}
+          }
+        }
+      }
+      console.log(`  ${platformDir}: ${count} files`);
+    } else {
+      console.warn(
+        `  ${platformDir}: NOT FOUND (run "node scripts/fetch-ffmpeg.js" first) — ` +
+        'video creation will fall back to system PATH ffmpeg, or surface a friendly ' +
+        '"ffmpeg unavailable" error if none is installed.',
+      );
+    }
+  }
+
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
 }
 

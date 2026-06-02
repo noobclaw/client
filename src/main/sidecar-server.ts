@@ -990,6 +990,57 @@ const server = http.createServer(async (req, res) => {
             return writeJSON(res, 200, { status: 'ok' });
           }
 
+          // ── Multi-platform Video Creation (local synthesis) ──
+          // 文件选择弹窗在渲染端走 Tauri 原生 dialog,不到这里。这里只处理:
+          //   读图 dataURL(渲染端 CSP 加载不了 file://)、跑出片流水线、
+          //   打开成片、在文件管理器里定位。出片进度通过 SSE 'video:progress' 推回。
+          case 'video:readImageDataUrl': {
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const buf = fs.readFileSync(args[0]);
+              // 缩略图不需要超大文件,挡掉异常大的图。
+              if (buf.length > 12 * 1024 * 1024) return writeJSON(res, 200, '');
+              const ext = path.extname(args[0]).toLowerCase().replace('.', '');
+              const mime =
+                ext === 'png' ? 'image/png'
+                : ext === 'webp' ? 'image/webp'
+                : ext === 'bmp' ? 'image/bmp'
+                : ext === 'gif' ? 'image/gif'
+                : 'image/jpeg';
+              return writeJSON(res, 200, `data:${mime};base64,${buf.toString('base64')}`);
+            } catch {
+              return writeJSON(res, 200, '');
+            }
+          }
+          case 'video:generate': {
+            try {
+              const { generateVideo } = await import('./libs/video/pipeline');
+              const result = await generateVideo(args[0], (progress: unknown) => {
+                broadcastSSE('video:progress', progress);
+              });
+              return writeJSON(res, 200, result);
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'video:openFile': {
+            try {
+              const { openExternal: oe } = await import('./libs/platformAdapter');
+              await oe(args[0]);
+            } catch {}
+            return writeJSON(res, 200, true);
+          }
+          case 'video:revealInFolder': {
+            try {
+              const path = await import('path');
+              const { openExternal: oe } = await import('./libs/platformAdapter');
+              // openExternal 无"选中文件"语义,退而打开成片所在目录。
+              await oe(path.dirname(args[0]));
+            } catch {}
+            return writeJSON(res, 200, true);
+          }
+
           // ── User slash commands ──
           // Composer autocomplete reads this list when the user types
           // "/" at the start of the input; body is NOT returned (too

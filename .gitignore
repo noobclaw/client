@@ -26,6 +26,16 @@ resources/PortableGit-*.7z.exe
 resources/python-win/
 resources/python-*.zip
 
+# Bundled ffmpeg/ffprobe for video creation (downloaded via scripts/fetch-ffmpeg.js)
+resources/ffmpeg-win/
+resources/ffmpeg-mac/
+resources/ffmpeg-linux/
+# ...and the copies prepare-tauri-resources.js stages into src-tauri/resources/
+# (regenerated every build; ~194MB of binaries that must never be committed)
+src-tauri/resources/ffmpeg-win/
+src-tauri/resources/ffmpeg-mac/
+src-tauri/resources/ffmpeg-linux/
+
 # SKILLs runtime files
 SKILLs/**/.connection
 SKILLs/**/.server.log

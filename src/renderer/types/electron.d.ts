@@ -520,6 +520,15 @@ interface IElectronAPI {
     get: () => Promise<{ enabled: boolean }>;
     set: (enabled: boolean) => Promise<{ success: boolean; error?: string }>;
   };
+  video: {
+    generate: (input: unknown) => Promise<{ ok: boolean; outputPath?: string; error?: string }>;
+    pickImages: (max: number) => Promise<string[]>;
+    readImageDataUrl: (filePath: string) => Promise<string>;
+    pickAudio: () => Promise<string>;
+    openFile: (filePath: string) => Promise<unknown>;
+    revealInFolder: (filePath: string) => Promise<unknown>;
+    onProgress: (handler: (p: unknown) => void) => () => void;
+  };
   appInfo: {
     getVersion: () => Promise<string>;
     getSystemLocale: () => Promise<string>;

@@ -153,6 +153,19 @@ jobs:
           SIDECAR_TARGET: ${{ matrix.target }}
         run: node scripts/build-sidecar.js
 
+      - name: Fetch ffmpeg (bundle into resources)
+        # Downloads static ffmpeg/ffprobe into client/resources/ffmpeg-<platform>/
+        # so the next step copies them into src-tauri/resources/ for bundling.
+        #   - Windows: gyan.dev essentials static build.
+        #   - macOS arm64 + x64: Martin-Riedl.de static builds (per matrix.target).
+        # Linux has no target in this matrix; on any other platform the script
+        # no-ops and the app falls back to system ffmpeg at runtime.
+        # SIDECAR_TARGET picks the right platform/arch.
+        shell: bash
+        env:
+          SIDECAR_TARGET: ${{ matrix.target }}
+        run: node scripts/fetch-ffmpeg.js
+
       - name: Prepare Tauri resources
         run: node scripts/prepare-tauri-resources.js
 
@@ -205,6 +218,31 @@ jobs:
             echo "ERROR: $ADDON not found — prepare-tauri-resources.js should have copied it"
             ls -la src-tauri/resources/native/ || true
             exit 1
+          fi
+
+      - name: Pre-sign bundled ffmpeg (macOS)
+        # Same reasoning as the native addon above: ffmpeg/ffprobe are Mach-O
+        # binaries nested under Contents/Resources/resources/ffmpeg-mac/bin/,
+        # which Tauri's deep sign reaches but the notary still rejects unless
+        # each carries a secure timestamp under OUR Developer ID. Martin-Riedl
+        # ships them notarized under HIS identity; re-signing with --force
+        # replaces that with ours (--timestamp --options runtime). Skipped
+        # silently if ffmpeg wasn't bundled for this target.
+        if: runner.os == 'macOS'
+        run: |
+          FF_DIR=src-tauri/resources/ffmpeg-mac/bin
+          if [ -d "$FF_DIR" ]; then
+            for BIN in ffmpeg ffprobe; do
+              if [ -f "$FF_DIR/$BIN" ]; then
+                codesign --force --timestamp --options runtime \
+                  --sign "$APPLE_SIGNING_IDENTITY" "$FF_DIR/$BIN"
+                codesign -dvv "$FF_DIR/$BIN" || true
+              else
+                echo "WARN: $FF_DIR/$BIN not found — skipping"
+              fi
+            done
+          else
+            echo "No bundled ffmpeg-mac for ${{ matrix.target }} — skipping pre-sign."
           fi
 
       - name: Build Tauri app

@@ -419,6 +419,31 @@ export function createTauriElectronShim(): typeof window.electron {
       readFileAsDataUrl: (filePath: string) => ipcInvoke('dialog:readFileAsDataUrl', filePath).then(r => r ?? { success: false }),
     },
 
+    // ── Multi-platform Video Creation (local synthesis) ──
+    // 文件选择必须走 Tauri 原生弹窗 —— sidecar 是无 GUI 的 node 进程,弹不了框。
+    // 其余重活(读图 dataURL / 合成出片 / 打开成片 / 定位文件)走 sidecar HTTP IPC,
+    // 出片进度通过 SSE 'video:progress' 推回(对应 sidecar 里的 broadcastSSE)。
+    video: {
+      pickImages: async (max: number) => {
+        const filters = [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] }];
+        const selected = await tauriDialogOpen({ directory: false, multiple: true, filters, title: '选择视频参考图' });
+        if (!selected) return [];
+        const paths = Array.isArray(selected) ? selected : [selected];
+        return paths.slice(0, Math.max(1, Math.min(Number(max) || 3, 9)));
+      },
+      pickAudio: async () => {
+        const filters = [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }];
+        const selected = await tauriDialogOpen({ directory: false, multiple: false, filters, title: '选择背景音乐' });
+        if (!selected) return '';
+        return typeof selected === 'string' ? selected : (selected[0] || '');
+      },
+      readImageDataUrl: (filePath: string) => ipcInvoke('video:readImageDataUrl', filePath).then((r: any) => r ?? ''),
+      generate: (input: unknown) => ipcInvoke('video:generate', input).then((r: any) => r ?? { ok: false, error: 'ipc_error' }),
+      openFile: (filePath: string) => ipcInvoke('video:openFile', filePath),
+      revealInFolder: (filePath: string) => ipcInvoke('video:revealInFolder', filePath),
+      onProgress: (handler: (p: unknown) => void) => onSSE('video:progress', handler),
+    },
+
     // ── Shell ──
     shell: {
       openPath: (p: string) => ipcInvoke('shell:openPath', p),
