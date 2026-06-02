@@ -129,20 +129,40 @@ class VideoCreationService {
     if (!this.api?.generate) {
       return { ok: false, error: '视频生成模块尚未就绪(主进程未挂载 video IPC)' };
     }
-    let unsub: (() => void) | undefined;
-    try {
-      if (onProgress && this.api.onProgress) {
-        unsub = this.api.onProgress((p: VideoCreationProgress) => onProgress(p));
+
+    // 主进程的 video:generate 现在是 fire-and-forget(立即返回 {status:'started'}),
+    // 因为整条流水线跑几分钟,await 会撞上 HTTP requestTimeout(5min)→ ipc_error。
+    // 所以这里不靠 IPC 返回值拿最终结果,而是订阅 video:progress SSE,在收到
+    // status==='done'/'error' 的终态事件时 resolve。
+    return new Promise<VideoCreationResult>((resolve) => {
+      let settled = false;
+      let unsub: (() => void) | undefined;
+      const finish = (r: VideoCreationResult) => {
+        if (settled) return;
+        settled = true;
+        if (unsub) { try { unsub(); } catch {} }
+        resolve(r);
+      };
+
+      if (this.api.onProgress) {
+        unsub = this.api.onProgress((p: VideoCreationProgress) => {
+          onProgress?.(p);
+          if (p.status === 'done') finish({ ok: true, outputPath: p.outputPath });
+          else if (p.status === 'error') finish({ ok: false, error: p.error || '生成失败' });
+        });
       }
-      const res: VideoCreationResult = await this.api.generate(input);
-      return res;
-    } catch (e) {
-      return { ok: false, error: String(e).slice(0, 200) };
-    } finally {
-      if (unsub) {
-        try { unsub(); } catch {}
-      }
-    }
+
+      // 启动。新协议返回 {ok:true,status:'started'} = 已开跑,等 SSE 终态;
+      // 若立即返回失败(模块没起来 / ipc_error)则直接 resolve 失败。
+      Promise.resolve(this.api.generate(input))
+        .then((res: any) => {
+          if (res && res.status === 'started') return;          // 等 SSE
+          if (res && res.ok === false) finish({ ok: false, error: res.error || 'ipc_error' });
+          else if (res && res.ok && res.outputPath) finish({ ok: true, outputPath: res.outputPath });
+          // 其余情况(无终态字段)继续等 SSE
+        })
+        .catch((e: any) => finish({ ok: false, error: String(e).slice(0, 200) }));
+    });
   }
 }
 

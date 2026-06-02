@@ -1014,12 +1014,36 @@ const server = http.createServer(async (req, res) => {
             }
           }
           case 'video:generate': {
+            // Fire-and-forget (same pattern as scenario:runTaskNow above).
+            // The pipeline runs for minutes (TTS + stock downloads + ffmpeg).
+            // Awaiting here would exceed Node's default 5-min requestTimeout,
+            // the socket gets destroyed, and the renderer's fetch rejects →
+            // ipc_error. Instead we start it, stream progress over the
+            // video:progress SSE (the pipeline already emits a terminal
+            // done/error event), and return immediately. The renderer resolves
+            // its generate() promise on that terminal SSE event.
             try {
               const { generateVideo } = await import('./libs/video/pipeline');
-              const result = await generateVideo(args[0], (progress: unknown) => {
+              generateVideo(args[0], (progress: unknown) => {
                 broadcastSSE('video:progress', progress);
+              }).then((result) => {
+                // Belt-and-suspenders terminal event (no `steps` so it can't
+                // wipe the renderer's step list); harmless duplicate of the
+                // pipeline's own done/error emit.
+                broadcastSSE('video:progress', {
+                  jobId: 'final',
+                  status: result.ok ? 'done' : 'error',
+                  outputPath: result.outputPath,
+                  error: result.error,
+                });
+              }).catch((e: any) => {
+                broadcastSSE('video:progress', {
+                  jobId: 'final',
+                  status: 'error',
+                  error: e?.message || String(e),
+                });
               });
-              return writeJSON(res, 200, result);
+              return writeJSON(res, 200, { ok: true, status: 'started' });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
