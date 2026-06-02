@@ -431,6 +431,13 @@ export function createTauriElectronShim(): typeof window.electron {
         const paths = Array.isArray(selected) ? selected : [selected];
         return paths.slice(0, Math.max(1, Math.min(Number(max) || 3, 9)));
       },
+      pickVideos: async (max: number) => {
+        const filters = [{ name: 'Videos', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }];
+        const selected = await tauriDialogOpen({ directory: false, multiple: true, filters, title: '选择本地视频素材' });
+        if (!selected) return [];
+        const paths = Array.isArray(selected) ? selected : [selected];
+        return paths.slice(0, Math.max(1, Math.min(Number(max) || 8, 30)));
+      },
       pickAudio: async () => {
         const filters = [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }];
         const selected = await tauriDialogOpen({ directory: false, multiple: false, filters, title: '选择背景音乐' });

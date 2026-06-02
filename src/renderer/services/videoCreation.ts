@@ -25,14 +25,21 @@ export interface VideoCreationInput {
   keywords: string[];
   /** 口播文案。留空时主进程用 DeepSeek 按 targetSeconds 自动写一段。 */
   script: string;
-  /** 用户上传的参考图本地绝对路径(0-3 张,优先用于画面)。 */
+  /** 用户上传的参考图本地绝对路径(0-3 张,优先用于画面)。已弃用,保留向后兼容。 */
   referenceImages: string[];
+  /**
+   * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传 时用)。
+   * 非空时直接用这些片段拼接成片,不再去在线素材库搜(也省 DeepSeek 搜索词)。
+   */
+  localVideos?: string[];
   /** 画幅,默认竖屏 9:16。 */
   aspect: VideoAspect;
   /** 发布去向。一期只支持 'local';其余为占位。 */
   publishTarget: VideoPublishTarget;
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
+  /** BGM 音量(0~1),默认 0.18。 */
+  bgmVolume?: number;
   /** 目标时长(秒),仅在自动生成文案时用于控制长度。默认 45。 */
   targetSeconds?: number;
   /** 是否优先用在线素材【视频】(否则只用图片)。默认 true。 */
@@ -67,6 +74,8 @@ export interface VideoCreationProgress {
   error?: string;
   /** 本次出片累计消耗的 DeepSeek token(写稿 + 搜索词);TTS/ffmpeg 免费不计。 */
   tokensUsed?: number;
+  /** 本次出片累计 USD 成本(服务端权威 _noobclaw.costUsd 之和);老后端时为 0。 */
+  costUsd?: number;
   /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
   outputDir?: string;
 }
@@ -94,6 +103,17 @@ class VideoCreationService {
     if (!this.api?.pickImages) return [];
     try {
       const paths = await this.api.pickImages(max);
+      return Array.isArray(paths) ? paths.slice(0, max) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /** 弹系统文件选择框选本地视频素材(可多选),返回绝对路径数组(最多 max 个)。 */
+  async pickVideos(max = 8): Promise<string[]> {
+    if (!this.api?.pickVideos) return [];
+    try {
+      const paths = await this.api.pickVideos(max);
       return Array.isArray(paths) ? paths.slice(0, max) : [];
     } catch {
       return [];

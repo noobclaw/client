@@ -2875,6 +2875,21 @@ if (!gotTheLock) {
       return result.filePaths.slice(0, limit);
     });
 
+    ipcMain.handle('video:pickVideos', async (_e, max: number) => {
+      const limit = Math.max(1, Math.min(Number(max) || 8, 30));
+      const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
+      const opts = {
+        title: '选择本地视频素材',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+        filters: [{ name: 'Videos', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }],
+      };
+      const result = parent
+        ? await dialog.showOpenDialog(parent, opts)
+        : await dialog.showOpenDialog(opts);
+      if (result.canceled || !Array.isArray(result.filePaths)) return [];
+      return result.filePaths.slice(0, limit);
+    });
+
     // Read a local image file and return it as a data: URL so the renderer
     // can show a real thumbnail (renderer can't load file:// under CSP).
     ipcMain.handle('video:readImageDataUrl', async (_e, filePath: string) => {

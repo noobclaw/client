@@ -28,6 +28,9 @@ interface ChatResult {
   content: string;
   /** 本次调用消耗的 token 总数(prompt + completion)。服务端按此计费。 */
   tokens: number;
+  /** 服务端权威 USD 成本(_noobclaw.costUsd = billable_tokens × token_price_per_million,
+   *  含 cache-hit 折扣)。老后端不回该字段时为 0。 */
+  costUsd: number;
 }
 
 /**
@@ -80,7 +83,10 @@ async function callDeepSeek(
     if (!content) throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
     // usage.total_tokens 是服务端计费口径;没回 usage 时退化为 0(不影响出片)。
     const tokens = Number(json?.usage?.total_tokens) || 0;
-    return { content, tokens };
+    // _noobclaw.costUsd 是服务端按 token_price_per_million 算好的权威美元成本
+    // (跟 scenario phaseRunner aiCall 同源)。老后端不回该扩展时退化为 0。
+    const costUsd = Number(json?._noobclaw?.costUsd) || 0;
+    return { content, tokens, costUsd };
   } finally {
     clearTimeout(timer);
   }
@@ -109,6 +115,8 @@ export interface GenerateScriptResult {
   script: string;
   /** 本步消耗 token(reasoner 档,服务端按 ~3x 计费)。 */
   tokens: number;
+  /** 本步服务端权威 USD 成本(老后端不回时为 0)。 */
+  costUsd: number;
 }
 
 /**
@@ -138,10 +146,10 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
   ].filter(Boolean).join('\n');
 
   // 旁白创作走 Pro(reasoner),质量明显优于 flash;服务端按 ~3x 计费,故仅此一处用。
-  const { content, tokens } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner');
+  const { content, tokens, costUsd } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner');
   // 去掉可能的包裹引号 / 多余空行
   const script = content.trim().replace(/^["'「『]+|["'」』]+$/g, '').trim();
-  return { script, tokens };
+  return { script, tokens, costUsd };
 }
 
 export interface GenerateSearchTermsResult {
@@ -149,6 +157,8 @@ export interface GenerateSearchTermsResult {
   terms: string[][];
   /** 本步消耗 token(flash 档,1x);兜底时为 0。 */
   tokens: number;
+  /** 本步服务端权威 USD 成本(兜底 / 老后端时为 0)。 */
+  costUsd: number;
 }
 
 /**
@@ -161,7 +171,7 @@ export async function generateSearchTerms(
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
-  if (scenes.length === 0) return { terms: [], tokens: 0 };
+  if (scenes.length === 0) return { terms: [], tokens: 0, costUsd: 0 };
 
   const system = [
     'You map short-video narration lines to stock-footage search terms.',
@@ -178,10 +188,10 @@ export async function generateSearchTerms(
   const user = `Input lines (${scenes.length}):\n${numbered}\n\nReturn the JSON now.`;
 
   try {
-    const { content, tokens } = await callDeepSeek(system, user, true, 60_000);
+    const { content, tokens, costUsd } = await callDeepSeek(system, user, true, 60_000);
     const parsed = JSON.parse(content);
     const terms = parsed?.terms;
-    if (!Array.isArray(terms)) return { terms: fallbackEach, tokens };
+    if (!Array.isArray(terms)) return { terms: fallbackEach, tokens, costUsd };
     const mapped = scenes.map((_, i) => {
       const t = terms[i];
       if (Array.isArray(t)) {
@@ -193,8 +203,8 @@ export async function generateSearchTerms(
       }
       return fallbackEach[i];
     });
-    return { terms: mapped, tokens };
+    return { terms: mapped, tokens, costUsd };
   } catch {
-    return { terms: fallbackEach, tokens: 0 };
+    return { terms: fallbackEach, tokens: 0, costUsd: 0 };
   }
 }

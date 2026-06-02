@@ -29,6 +29,7 @@ import {
   type VideoTask,
   type VideoRunRecord,
   type VideoRunStatus,
+  type VideoTaskLog,
 } from '../../../services/videoTaskStore';
 
 // 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
@@ -140,8 +141,6 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
 
 // ── 小工具 ──────────────────────────────────────────────────────────
 
-const fmtNum = (n: number) => (n || 0).toLocaleString();
-
 /** 紧凑数字:123→'123',9939→'9.94K',1.23M。对齐 scenario 详情页的 token 展示。 */
 function compactNumber(n: number): string {
   const abs = Math.abs(n || 0);
@@ -149,6 +148,18 @@ function compactNumber(n: number): string {
   if (abs < 1_000_000) return (n / 1_000).toFixed(abs < 10_000 ? 2 : 1) + 'K';
   if (abs < 1_000_000_000) return (n / 1_000_000).toFixed(abs < 10_000_000 ? 2 : 1) + 'M';
   return (n / 1_000_000_000).toFixed(2) + 'B';
+}
+
+/**
+ * 消耗 = 积分(credits)+ 美元,对齐币安详情页 `💎 N ≈ $X`。
+ * credits 用消耗的 DeepSeek token 数;costUsd 是服务端按 token_price_per_million
+ * 算好的权威美元成本。老记录 / 老后端拿不到 costUsd 时只显 💎 token(不显 $)。
+ */
+function formatCreditsCost(credits: number, costUsd: number): string {
+  if (!credits || credits <= 0) return '-';
+  const c = Math.round(credits);
+  const usd = Number(costUsd) || 0;
+  return usd > 0 ? `💎 ${compactNumber(c)} ≈ $${usd.toFixed(4)}` : `💎 ${compactNumber(c)}`;
 }
 
 /** 相对时间:刚刚 / N 分钟前 / N 小时前 / N 天前,对齐 scenario「上次运行」。 */
@@ -507,8 +518,8 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
           <span>⏱️ {fmtRecordTime(run.startedAt, isZh)}</span>
           {durationSec && <span>· {durationSec}{isZh ? '秒' : 's'}</span>}
-          <span title={isZh ? '本次消耗的 DeepSeek token(TTS/合成免费)' : 'DeepSeek tokens this run (TTS/compose free)'}>
-            · 🎟️ {run.tokensUsed > 0 ? compactNumber(run.tokensUsed) : '—'} tokens
+          <span title={isZh ? '本次消耗的 AI 积分(≈ 美元;TTS/合成免费)' : 'AI credits this run (≈ USD; TTS/compose free)'}>
+            · {run.tokensUsed > 0 ? formatCreditsCost(run.tokensUsed, run.costUsd || 0) : '—'}
           </span>
         </div>
       </div>
@@ -604,6 +615,93 @@ const StepList: React.FC<{ steps: VideoCreationProgressStep[] }> = ({ steps }) =
   );
 };
 
+/** 一段流式日志行(终端风格,自动滚到底)。供每步内联日志框 / 合并日志框共用。 */
+const LogLines: React.FC<{ logs: VideoTaskLog[]; active?: boolean }> = ({ logs, active }) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [logs.length]);
+  return (
+    <div
+      ref={ref}
+      className="max-h-48 overflow-y-auto p-3 font-mono text-[11px] leading-relaxed text-gray-700 dark:text-gray-200"
+    >
+      {logs.map((l, i) => (
+        <div key={i} className="flex gap-2">
+          <span className="text-gray-400 shrink-0">{l.time}</span>
+          <span className="break-words whitespace-pre-wrap">{l.message}</span>
+        </div>
+      ))}
+      {active && <span className="text-green-500 animate-pulse">▋</span>}
+    </div>
+  );
+};
+
+/**
+ * 「当前运行明细」—— 每个步骤一个标题 + 内联流式日志框(对齐币安 StepLogBox:
+ * 日志就贴在它所属的步骤里,而不是底部一整段)。日志按 log.step 归到对应步骤。
+ * 没有任何 step 标记的旧记录 → 退化成「步骤列表 + 一个合并日志框」。
+ */
+const StepLogList: React.FC<{ isZh: boolean; steps: VideoCreationProgressStep[]; logs: VideoTaskLog[] }> = ({ isZh, steps, logs }) => {
+  const hasStepTag = logs.some((l) => typeof l.step === 'number');
+  if (steps.length === 0) {
+    // 还没拿到步骤(刚开跑)→ 只显已有日志
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <LogLines logs={logs} active />
+      </div>
+    );
+  }
+  if (!hasStepTag) {
+    // 旧记录:日志没打 step 标记 → 步骤列表 + 合并日志框(不丢日志)
+    return (
+      <>
+        <div className="mb-3"><StepList steps={steps} /></div>
+        {logs.length > 0 && (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <LogLines logs={logs} />
+          </div>
+        )}
+      </>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      {steps.map((s, idx) => {
+        const stepLogs = logs.filter((l) => (typeof l.step === 'number' ? l.step : 0) === idx);
+        const active = s.status === 'running';
+        const done = s.status === 'done';
+        const error = s.status === 'error';
+        return (
+          <div key={s.key}>
+            <div className={`text-sm font-medium mb-2 flex items-center gap-1.5 ${
+              active ? 'text-green-500' : done ? 'text-green-600 dark:text-green-400' : error ? 'text-red-500' : 'dark:text-gray-300'
+            }`}>
+              <span>{done ? '✅' : active ? '⏳' : error ? '❌' : '○'}</span>
+              <span>{idx + 1}. {s.label}</span>
+            </div>
+            <div className={`rounded-xl border min-h-[44px] ${
+              active ? 'border-green-500/30 bg-green-500/5'
+                : done ? 'border-green-500/20 bg-green-500/5'
+                : error ? 'border-red-500/20 bg-red-500/5'
+                : 'border-gray-200 dark:border-gray-700'
+            }`}>
+              {stepLogs.length > 0 ? (
+                <LogLines logs={stepLogs} active={active} />
+              ) : (
+                <div className="text-xs text-gray-400 dark:text-gray-500 text-center py-3">
+                  {active ? (isZh ? '运行中…' : 'Running…') : (isZh ? '暂无日志' : 'No logs')}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
 /**
  * 运行体:step 明细 + 流式日志 + 成片操作。
  * showProgressPill=true(运行记录详情)时额外渲染顶部「步骤 N/M + 本次消耗 + 状态」一行;
@@ -652,7 +750,7 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
               )}
               <span className="rounded-lg px-3 py-1.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 inline-flex items-center gap-2">
                 <span className="text-[10px] text-gray-500">{isZh ? '本次消耗' : 'Cost'}</span>
-                <span className="font-mono">🎟️ {fmtNum(run.tokensUsed)} <span className="text-[10px] text-gray-400 font-sans">tokens</span></span>
+                <span className="font-mono">{formatCreditsCost(run.tokensUsed, run.costUsd || 0)}</span>
               </span>
             </div>
             <StatusPill isZh={isZh} status={run.status} />
@@ -752,6 +850,9 @@ const VideoTaskDetail: React.FC<{
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // 输出目录:优先本次运行的目录,否则从成片路径推(配置卡「输出目录」链接用)。
+  const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
+
   const handleRerun = () => {
     setActionError(null);
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
@@ -782,42 +883,64 @@ const VideoTaskDetail: React.FC<{
       </div>
       <h2 className="text-lg font-bold dark:text-white mb-3">🎬 {task.title}</h2>
 
-      {/* 配置 + 操作卡(运行中绿框发亮),放最上(对齐币安:先配置再统计) */}
+      {/* 配置 + 操作卡(运行中绿框发亮)。两栏:左=配置字段 + 创建时间 + 输出目录,
+          右=操作按钮(对齐币安任务详情:配置左 / 操作右)。 */}
       <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
         isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700'
       }`}>
-        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{isZh ? '任务配置' : 'Config'}</span>
-          <StatusPill isZh={isZh} status={status} />
-        </div>
-        <ConfigCard isZh={isZh} input={task.input} />
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          {/* 左:配置字段 */}
+          <div className="flex-1 min-w-[260px]">
+            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{isZh ? '任务配置' : 'Config'}</span>
+              <StatusPill isZh={isZh} status={status} />
+            </div>
+            <ConfigCard isZh={isZh} input={task.input} />
+            {/* 创建时间 + 输出目录(对齐币安详情卡里的「创建时间 / 输出目录」字段) */}
+            <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
+              <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
+              {outDir && (
+                <div className="flex items-center gap-1">
+                  <span>{isZh ? '输出目录' : 'Output'}：</span>
+                  <button
+                    type="button"
+                    onClick={() => videoCreationService.revealInFolder(outDir)}
+                    className="text-blue-500 hover:underline text-[11px]"
+                  >
+                    📂 {isZh ? '打开输出文件夹' : 'Open folder'}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
 
-        {/* 操作:重跑 / 编辑 / 删除 */}
-        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={handleRerun}
-            disabled={isRunning}
-            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
-          >
-            {task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
-          </button>
-          <button
-            type="button"
-            onClick={onEdit}
-            disabled={isRunning}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
-          >
-            ✏️ {isZh ? '编辑' : 'Edit'}
-          </button>
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={isRunning}
-            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5 disabled:opacity-50"
-          >
-            🗑 {isZh ? '删除任务' : 'Delete'}
-          </button>
+          {/* 右:操作按钮(重跑 / 编辑 / 删除) */}
+          <div className="shrink-0 flex flex-col gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={handleRerun}
+              disabled={isRunning}
+              className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
+            >
+              {task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              disabled={isRunning}
+              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+            >
+              ✏️ {isZh ? '编辑' : 'Edit'}
+            </button>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={isRunning}
+              className="px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5 disabled:opacity-50"
+            >
+              🗑 {isZh ? '删除任务' : 'Delete'}
+            </button>
+          </div>
         </div>
         {actionError && <div className="mt-2 text-xs text-red-500">{actionError}</div>}
       </div>
@@ -841,17 +964,16 @@ const VideoTaskDetail: React.FC<{
               <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
               {isZh ? '本次消耗' : 'Current Run Cost'}
             </div>
-            <div className="flex items-baseline gap-2 font-mono text-sm text-gray-700 dark:text-gray-200">
-              <span>🎟️</span>
-              <strong className="text-green-600 dark:text-green-400 text-base">{compactNumber(latestRun.tokensUsed || 0)}</strong>
-              <span className="text-xs text-gray-400 font-sans">tokens</span>
+            <div className="flex items-baseline gap-2 font-mono text-base text-green-600 dark:text-green-400 font-bold">
+              {formatCreditsCost(latestRun.tokensUsed || 0, latestRun.costUsd || 0)}
             </div>
           </div>
         </div>
       )}
 
       {/* 统计网格(对齐币安:累计完成/累计消耗/上次完成/上次消耗/上次运行)。
-          视频是本地工具,消耗只有 DeepSeek token(无 USD/动作数),故用 🎟️ tokens。 */}
+          消耗换算成积分 + 美元(💎 N ≈ $X),跟币安同口径:credits=消耗 token,
+          $ = 服务端按 token_price_per_million 算好的权威成本。 */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <VStatCard
           label={isZh ? '累计完成' : 'Total Done'}
@@ -859,7 +981,7 @@ const VideoTaskDetail: React.FC<{
         />
         <VStatCard
           label={isZh ? '累计消耗' : 'Total Cost'}
-          value={task.cumulativeTokens > 0 ? `🎟️ ${compactNumber(task.cumulativeTokens)}` : '-'}
+          value={formatCreditsCost(task.cumulativeTokens, task.cumulativeCostUsd || 0)}
         />
         <VStatCard
           label={isZh ? '上次完成' : 'Last Done'}
@@ -867,7 +989,7 @@ const VideoTaskDetail: React.FC<{
         />
         <VStatCard
           label={isZh ? '上次消耗' : 'Last Cost'}
-          value={latestRun && latestRun.tokensUsed > 0 ? `🎟️ ${compactNumber(latestRun.tokensUsed)}` : '-'}
+          value={latestRun ? formatCreditsCost(latestRun.tokensUsed, latestRun.costUsd || 0) : '-'}
         />
         <VStatCard
           label={isZh ? '上次运行' : 'Last Run'}
@@ -877,11 +999,11 @@ const VideoTaskDetail: React.FC<{
         />
       </div>
 
-      {/* 当前运行 — 任务页只看「步骤进度」(对齐币安任务详情:任务是任务)。
-          完整运行日志 / 成片预览 / 报错明细都在「运行记录详情」里看(记录是记录),
-          通过下面的「查看本次运行明细 →」或历史运行列表点进去。 */}
+      {/* 当前运行明细 —— 每步一个标题 + 内联流式日志框(对齐币安任务详情的
+          StepLogBox:日志贴在所属步骤里)。完整成片预览 / 报错明细仍在
+          「运行记录详情」看,通过下面的「查看本次运行明细 →」点进去。 */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行' : 'Current Run'}</h2>
+        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
         {latestRun && (
           <button
             type="button"
@@ -893,13 +1015,7 @@ const VideoTaskDetail: React.FC<{
         )}
       </div>
       {latestRun ? (
-        latestRun.steps.length > 0 ? (
-          <StepList steps={latestRun.steps} />
-        ) : (
-          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
-            {isZh ? '本次运行还没有步骤明细。' : 'No step details yet for this run.'}
-          </div>
-        )
+        <StepLogList isZh={isZh} steps={latestRun.steps} logs={latestRun.logs} />
       ) : (
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
           {isZh ? '尚未运行。点上方「开始创作 / 重新跑」启动一次。' : 'Not run yet. Start a run above.'}
@@ -923,7 +1039,7 @@ const VideoTaskDetail: React.FC<{
               >
                 <IdTag kind="record" id={r.id} isZh={isZh} />
                 <StatusPill isZh={isZh} status={r.status} />
-                {r.tokensUsed > 0 && <span className="text-gray-400">🎟️ {fmtNum(r.tokensUsed)}</span>}
+                {r.tokensUsed > 0 && <span className="text-gray-400">{formatCreditsCost(r.tokensUsed, r.costUsd || 0)}</span>}
                 <span className="ml-auto text-gray-400">{new Date(r.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</span>
               </button>
             ))}
@@ -1225,6 +1341,17 @@ const PACE_OPTIONS: { v: number; zh: string; en: string }[] = [
   { v: 6, zh: '舒缓', en: 'Slow' },
 ];
 
+// BGM 音量档(0~1),混在旁白之下,默认中等。
+const BGM_VOLUME_OPTIONS: { v: number; zh: string; en: string }[] = [
+  { v: 0.1, zh: '轻', en: 'Soft' },
+  { v: 0.18, zh: '中', en: 'Medium' },
+  { v: 0.3, zh: '强', en: 'Loud' },
+];
+
+// 画面来源:在线素材库自动搜 vs 用户上传本地视频素材拼接。
+type MaterialSource = 'stock' | 'local';
+const MAX_LOCAL_VIDEOS = 20;
+
 const VideoConfigModal: React.FC<{
   isZh: boolean;
   onClose: () => void;
@@ -1235,7 +1362,7 @@ const VideoConfigModal: React.FC<{
   onSaved?: () => void;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
   const initialTrackId = (() => {
@@ -1245,40 +1372,36 @@ const VideoConfigModal: React.FC<{
     return found ? found.id : (t ? 'custom' : '');
   })();
 
-  // 步骤 1:内容
+  // 步骤 1:文案
   const [trackId, setTrackId] = useState(initialTrackId);
   const [persona, setPersona] = useState(editTask?.input.persona || '');
   const [keywords, setKeywords] = useState((editTask?.input.keywords || []).join(' '));
   const [script, setScript] = useState(editTask?.input.script || '');
   const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 45);
-  const [refImages, setRefImages] = useState<string[]>(editTask?.input.referenceImages || []);
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
-  const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
 
-  // 步骤 2:MPT 风格出片参数(画幅 / 换镜 / 音色语速 / 字幕)
+  // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
+  const [materialSource, setMaterialSource] = useState<MaterialSource>(
+    (editTask?.input.localVideos && editTask.input.localVideos.length > 0) ? 'local' : 'stock',
+  );
+  const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
+  const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
+
+  // 步骤 3:音频(音色 / 语速 / 背景音乐 / BGM 音量)
   const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
+  const [bgmPath, setBgmPath] = useState<string>(editTask?.input.bgmPath || '');
+  const [bgmVolume, setBgmVolume] = useState<number>(editTask?.input.bgmVolume ?? 0.18);
+
+  // 步骤 4:字幕 + 出片
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.subtitleEnabled !== false);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
-
-  // 步骤 2:出片去向
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // 编辑模式:预填的参考图拉缩略图
-  useEffect(() => {
-    if (!editTask) return;
-    for (const p of (editTask.input.referenceImages || [])) {
-      videoCreationService.readImageDataUrl(p).then((url) => {
-        if (url) setThumbs((prev) => ({ ...prev, [p]: url }));
-      });
-    }
-  }, [editTask]);
 
   const onPickTrack = (id: string) => {
     setTrackId(id);
@@ -1289,27 +1412,29 @@ const VideoConfigModal: React.FC<{
     }
   };
 
-  const pickImages = async () => {
-    const remaining = 3 - refImages.length;
+  // 本地视频素材:可多选追加,封顶 MAX_LOCAL_VIDEOS。
+  const pickLocalVideos = async () => {
+    const remaining = MAX_LOCAL_VIDEOS - localVideos.length;
     if (remaining <= 0) return;
-    const paths = await videoCreationService.pickReferenceImages(remaining);
-    if (paths.length) {
-      setRefImages((prev) => [...prev, ...paths].slice(0, 3));
-      for (const p of paths) {
-        videoCreationService.readImageDataUrl(p).then((url) => {
-          if (url) setThumbs((prev) => ({ ...prev, [p]: url }));
-        });
-      }
-    }
+    const paths = await videoCreationService.pickVideos(remaining);
+    if (paths.length) setLocalVideos((prev) => [...prev, ...paths].slice(0, MAX_LOCAL_VIDEOS));
+  };
+  const removeLocalVideo = (idx: number) => setLocalVideos((prev) => prev.filter((_, i) => i !== idx));
+
+  // 背景音乐:选一首本地音频;再点一次「移除」清空。
+  const pickBgm = async () => {
+    const p = await videoCreationService.pickBgm();
+    if (p) setBgmPath(p);
   };
 
-  const removeImage = (idx: number) => setRefImages((prev) => prev.filter((_, i) => i !== idx));
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
   const scriptLen = script.trim().length;
   // 文案【选填】:留空 = AI 按目标时长写;填了则不能超上限
   const scriptValid = scriptLen === 0 || scriptLen <= SCRIPT_MAX;
   const step1Valid = trackId !== '' && scriptValid;
+  // 画面:选了本地上传却没传素材时挡一下
+  const step2Valid = materialSource === 'stock' || localVideos.length > 0;
 
   const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
     || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
@@ -1326,13 +1451,17 @@ const VideoConfigModal: React.FC<{
     track: trackLabel,
     keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
-    referenceImages: refImages,
+    referenceImages: [], // 参考图已弃用,保留字段向后兼容
+    localVideos: materialSource === 'local' ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
     targetSeconds,
-    useStockVideo: mode === 'stock',
+    // 本地上传时不再去搜在线视频;在线来源时由生成模式决定
+    useStockVideo: materialSource === 'local' ? false : (mode === 'stock'),
     voice,
     voiceRate,
+    bgmPath: bgmPath || undefined,
+    bgmVolume,
     subtitleEnabled,
     subtitleFontSize,
     subtitlePosition,
@@ -1380,9 +1509,13 @@ const VideoConfigModal: React.FC<{
               🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
-              <div className={`h-px w-16 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={false} label={isZh ? '出片' : 'Output'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '文案' : 'Script'} />
+              <div className={`h-px w-8 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '画面' : 'Visuals'} />
+              <div className={`h-px w-8 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音频' : 'Audio'} />
+              <div className={`h-px w-8 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={false} label={isZh ? '字幕·出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -1464,58 +1597,76 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
+          {/* ── 步骤 2:画面 ── */}
           {step === 2 && (
             <>
-              <Field label={isZh ? '视频参考图（选填，最多 3 张）' : 'Reference images (optional, max 3)'}>
-                <div className="flex flex-wrap items-center gap-2">
-                  {refImages.map((p, i) => (
-                    <div key={i} className="relative group">
-                      <div className="w-16 h-16 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 flex items-center justify-center overflow-hidden">
-                        {thumbs[p] ? (
-                          <img src={thumbs[p]} alt="" className="w-full h-full object-cover" />
-                        ) : (
-                          <span className="text-[10px] text-gray-500 px-1 text-center break-all">{p.split(/[\\/]/).pop()}</span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => removeImage(i)}
-                        className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-800 text-white text-xs flex items-center justify-center hover:bg-red-500"
-                      >
-                        ×
-                      </button>
-                    </div>
-                  ))}
-                  {refImages.length < 3 && (
-                    <button
-                      type="button"
-                      onClick={pickImages}
-                      className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-2xl text-gray-400 hover:border-rose-400 hover:text-rose-400 transition-colors"
-                    >
-                      +
-                    </button>
-                  )}
+              <Field label={isZh ? '素材来源' : 'Material source'} hint={isZh ? '在线自动搜 或 用自己的视频拼' : 'auto stock or your own clips'}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <ModeOption
+                    active={materialSource === 'stock'}
+                    onClick={() => setMaterialSource('stock')}
+                    title={isZh ? '在线素材库' : 'Online stock'}
+                    desc={isZh ? 'AI 按文案自动搜空镜，省事' : 'auto-searched B-roll by script'}
+                  />
+                  <ModeOption
+                    active={materialSource === 'local'}
+                    onClick={() => setMaterialSource('local')}
+                    title={isZh ? '本地上传素材' : 'Local upload'}
+                    desc={isZh ? '用你自己的视频片段循环拼接' : 'your own clips, looped to fill'}
+                  />
                 </div>
               </Field>
 
-              <Field label={isZh ? '生成模式' : 'Generation mode'}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <ModeOption
-                    active={mode === 'stock'}
-                    onClick={() => setMode('stock')}
-                    title={isZh ? 'AI 分镜 + 在线视频素材' : 'AI scenes + stock video'}
-                    desc={isZh ? '在线视频素材 + 参考图凑画面,便宜快' : 'stock video + your images, cheap & fast'}
-                  />
-                  <ModeOption
-                    active={mode === 'pure_ai'}
-                    disabled
-                    onClick={() => {}}
-                    title={isZh ? '纯 AI 原创' : 'Pure AI original'}
-                    desc={isZh ? '画面全 AI 生成（即将推出）' : 'fully AI-generated (coming soon)'}
-                    soon={isZh ? '即将推出' : 'Soon'}
-                  />
-                </div>
-              </Field>
+              {materialSource === 'local' ? (
+                <Field
+                  label={isZh ? `本地视频素材（最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (max ${MAX_LOCAL_VIDEOS})`}
+                  hint={isZh ? '可多选，按换镜节奏循环切' : 'multi-select, looped by pacing'}
+                >
+                  <div className="space-y-1.5">
+                    {localVideos.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-1.5">
+                        <span className="text-sm">🎞️</span>
+                        <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{p.split(/[\\/]/).pop()}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeLocalVideo(i)}
+                          className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-white text-xs flex items-center justify-center hover:bg-red-500 shrink-0"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {localVideos.length < MAX_LOCAL_VIDEOS && (
+                      <button
+                        type="button"
+                        onClick={pickLocalVideos}
+                        className="w-full py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-rose-400 hover:text-rose-400 transition-colors"
+                      >
+                        ＋ {isZh ? '添加本地视频' : 'Add videos'}
+                      </button>
+                    )}
+                  </div>
+                </Field>
+              ) : (
+                <Field label={isZh ? '生成模式' : 'Generation mode'}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <ModeOption
+                      active={mode === 'stock'}
+                      onClick={() => setMode('stock')}
+                      title={isZh ? 'AI 分镜 + 在线视频' : 'AI scenes + stock video'}
+                      desc={isZh ? '在线视频素材凑画面，便宜快' : 'stock video, cheap & fast'}
+                    />
+                    <ModeOption
+                      active={mode === 'pure_ai'}
+                      disabled
+                      onClick={() => {}}
+                      title={isZh ? '纯 AI 原创' : 'Pure AI original'}
+                      desc={isZh ? '画面全 AI 生成（即将推出）' : 'fully AI-generated (coming soon)'}
+                      soon={isZh ? '即将推出' : 'Soon'}
+                    />
+                  </div>
+                </Field>
+              )}
 
               {/* 画幅比例 */}
               <Field label={isZh ? '视频比例' : 'Aspect ratio'} hint={isZh ? '决定成片尺寸与素材搜索方向' : 'sets output size & stock orientation'}>
@@ -1556,7 +1707,12 @@ const VideoConfigModal: React.FC<{
                   ))}
                 </div>
               </Field>
+            </>
+          )}
 
+          {/* ── 步骤 3:音频 ── */}
+          {step === 3 && (
+            <>
               {/* 配音音色 + 语速 */}
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
                 <select
@@ -1586,8 +1742,52 @@ const VideoConfigModal: React.FC<{
                 </div>
               </Field>
 
+              {/* 背景音乐(选填):无 / 自定义上传 */}
+              <Field label={isZh ? '背景音乐（选填）' : 'Background music (optional)'} hint={isZh ? '混在旁白下方，出片末尾自动淡出' : 'mixed under narration, fades out'}>
+                {bgmPath ? (
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
+                    <span className="text-sm">🎵</span>
+                    <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
+                    <button type="button" onClick={pickBgm} className="text-xs text-rose-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
+                    <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={pickBgm}
+                    className="w-full py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-rose-400 hover:text-rose-400 transition-colors"
+                  >
+                    ＋ {isZh ? '上传背景音乐（mp3 / m4a / wav…）' : 'Upload BGM (mp3 / m4a / wav…)'}
+                  </button>
+                )}
+                {bgmPath && (
+                  <div className="flex gap-2 mt-2">
+                    <span className="text-xs text-gray-500 self-center">{isZh ? 'BGM 音量' : 'BGM volume'}</span>
+                    {BGM_VOLUME_OPTIONS.map((b) => (
+                      <button
+                        key={b.v}
+                        type="button"
+                        onClick={() => setBgmVolume(b.v)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                          bgmVolume === b.v
+                            ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                        }`}
+                      >
+                        {isZh ? b.zh : b.en}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+
+          {/* ── 步骤 4:字幕 + 出片 ── */}
+          {step === 4 && (
+            <>
               {/* 字幕样式 + 开关 */}
-              <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 Whisper 对齐时间轴，更跟手' : 'Whisper-aligned timing when on'}>
+              <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 edge-tts 词边界对齐时间轴' : 'edge-tts word-boundary timing when on'}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm text-gray-600 dark:text-gray-300">{isZh ? '烧录字幕' : 'Burn subtitles'}</span>
                   <button
@@ -1672,7 +1872,9 @@ const VideoConfigModal: React.FC<{
               <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[11px] text-gray-500 dark:text-gray-400 space-y-1">
                 <div>🎯 {isZh ? '赛道' : 'Track'}：{trackLabel || '-'}</div>
                 <div>📝 {isZh ? '文案' : 'Script'}：{scriptLen === 0 ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`) : `${scriptLen} ${isZh ? '字' : 'chars'}`}</div>
-                <div>🖼️ {isZh ? '参考图' : 'Images'}：{refImages.length}</div>
+                <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local' ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`) : (isZh ? '在线素材库' : 'online stock')}</div>
+                <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmPath ? (bgmPath.split(/[\\/]/).pop() || (isZh ? '已选' : 'set')) : (isZh ? '无' : 'none')}</div>
+                <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
               </div>
 
               {submitError && (
@@ -1683,46 +1885,41 @@ const VideoConfigModal: React.FC<{
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-          {step === 1 ? (
-            <>
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                {isZh ? '取消' : 'Cancel'}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
+          <button
+            type="button"
+            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4))}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
+          </button>
+          {step < 4 ? (
+            <button
+              type="button"
+              onClick={() => {
+                if (step === 1) {
                   if (!trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
                   if (!scriptValid) { setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`); return; }
-                  setSubmitError(null);
-                  setStep(2);
-                }}
-                disabled={!step1Valid}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
-              >
-                {isZh ? '下一步' : 'Next'} →
-              </button>
-            </>
+                }
+                if (step === 2 && !step2Valid) {
+                  setSubmitError(isZh ? '选了本地上传,请至少添加一个视频素材' : 'Please add at least one local video');
+                  return;
+                }
+                setSubmitError(null);
+                setStep((s) => (s + 1) as 1 | 2 | 3 | 4);
+              }}
+              disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
+            >
+              {isZh ? '下一步' : 'Next'} →
+            </button>
           ) : (
-            <>
-              <button
-                type="button"
-                onClick={() => setStep(1)}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-              >
-                ← {isZh ? '上一步' : 'Back'}
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600"
-              >
-                {isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600"
+            >
+              {isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
+            </button>
           )}
         </div>
       </div>

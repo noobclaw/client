@@ -52,10 +52,17 @@ export interface VideoCreationInput {
   /** 口播旁白文案。为空时用 DeepSeek 按 targetSeconds 自动生成。 */
   script: string;
   referenceImages: string[];
+  /**
+   * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
+   * 片段循环拼成片,跳过在线素材库搜索(连 DeepSeek 搜索词也省了)。
+   */
+  localVideos?: string[];
   aspect: VideoAspect;
   publishTarget: VideoPublishTarget;
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
+  /** BGM 音量(0~1),默认 0.18。 */
+  bgmVolume?: number;
   /** 目标视频时长(秒),仅在自动生成文案时用于控制长度。默认 45。 */
   targetSeconds?: number;
   /**
@@ -92,6 +99,8 @@ export interface VideoCreationProgress {
   error?: string;
   /** 本次出片累计消耗的 DeepSeek token(写稿 + 搜索词);TTS/ffmpeg 免费不计。 */
   tokensUsed?: number;
+  /** 本次出片累计 USD 成本(服务端权威 _noobclaw.costUsd 之和);老后端时为 0。 */
+  costUsd?: number;
   /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
   outputDir?: string;
 }
@@ -114,8 +123,9 @@ const STEP_DEFS: { key: string; label: string }[] = [
 
 class ProgressTracker {
   private steps: ProgressStep[];
-  // 累计 token + 输出目录随每次 emit 带回,渲染端无需自己算。
+  // 累计 token + USD 成本 + 输出目录随每次 emit 带回,渲染端无需自己算。
   private tokensUsed = 0;
+  private costUsd = 0;
   private outputDir?: string;
   constructor(private jobId: string, private emit?: ProgressEmitter) {
     this.steps = STEP_DEFS.map((s) => ({ ...s, status: 'waiting' as const }));
@@ -127,13 +137,15 @@ class ProgressTracker {
       steps: this.steps.map((s) => ({ ...s })),
       message,
       tokensUsed: this.tokensUsed,
+      costUsd: this.costUsd,
       outputDir: this.outputDir,
       ...extra,
     });
   }
-  /** 累加本步 token,并立即把最新累计值 emit 回去。 */
-  addTokens(n: number) {
+  /** 累加本步 token + USD 成本,并随下次 emit 把最新累计值带回去。 */
+  addTokens(n: number, costUsd = 0) {
     this.tokensUsed += Math.max(0, Number(n) || 0);
+    this.costUsd += Math.max(0, Number(costUsd) || 0);
   }
   /** 出片目录开跑即确定,设一次即可,后续每次 emit 都会带上。 */
   setOutputDir(dir: string) {
@@ -267,7 +279,7 @@ export async function generateVideo(
           targetSeconds: input.targetSeconds ?? 45,
         });
         script = r.script;
-        tracker.addTokens(r.tokens);
+        tracker.addTokens(r.tokens, r.costUsd);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         tracker.fail('script', `AI 写脚本失败:${err.slice(0, 200)}`);
@@ -320,14 +332,42 @@ export async function generateVideo(
         (reason ? `:${reason.slice(0, 120)}` : '') + ')');
     }
 
-    // 3. 画面:每镜 AI 搜索词 → 该镜对应的在线视频 → 素材图 → 参考图 → 文字卡
+    // 3. 画面:本地上传素材优先;否则每镜 AI 搜索词 → 在线视频 → 素材图 → 文字卡
     tracker.start('visuals');
 
+    // 画面来源 = 本地上传:用户自己传的视频素材非空时,直接循环拼接,
+    // 既不搜在线素材库也不花 DeepSeek 搜索词钱。素材少就循环复用。
+    const localVideos = (input.localVideos || []).filter((p) => p && fs.existsSync(p));
+    const useLocalMaterial = localVideos.length > 0;
+    const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
+
+    let sceneClips: string[][] = [];
+    let imagePool: string[] = [];
+
+    if (useLocalMaterial) {
+      tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);
+      let localCursor = 0;
+      sceneClips = sentences.map((_, i) => {
+        const dur = Math.max(1.2, audios[i].durationSec);
+        const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+        const clips: string[] = [];
+        for (let k = 0; k < want; k++) clips.push(localVideos[localCursor++ % localVideos.length]);
+        return clips;
+      });
+      const totalClipsUsed = sceneClips.reduce((n, c) => n + c.length, 0);
+      tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个 → 拼成 ${totalClipsUsed} 段,覆盖 ${sentences.length} 镜)`);
+    } else {
+      sceneClips = await prepareStockVisuals();
+    }
+
+    // 在线素材库分支(无本地上传时):AI 搜索词 → 逐词拉视频 → 图片补位。
+    // 抽成闭包是为了让本地上传时整段跳过(省时间 + 省 DeepSeek token)。
+    async function prepareStockVisuals(): Promise<string[][]> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
     const termsResult = await generateSearchTerms(sentences, input.keywords);
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
-    tracker.addTokens(termsResult.tokens);
+    tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
     // 要去搜的词集:每镜首词优先(保证每个分镜的主画面词一定被搜到),
     // 再补其余词,整体封顶 12 个,避免逐词搜请求过多拖慢。
@@ -366,7 +406,6 @@ export async function generateVideo(
     for (const g of videoByTerm) poolByTerm.set(g.term.toLowerCase(), [...g.assets]);
     const allVideos: StockVideoAsset[] = videoByTerm.flatMap((g) => g.assets);
     const usedVideo = new Set<string>();
-    const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
 
     // 取一段【还没被任何镜用过】的素材:先本镜搜索词命中,再借全局。都没有返 undefined。
     const takeFreshClip = (i: number): string | undefined => {
@@ -396,9 +435,9 @@ export async function generateVideo(
       return clips; // 可能为空(无视频素材)→ 上层退图片/文字卡
     };
 
-    const sceneClips: string[][] = sentences.map((_, i) => pickClipsForScene(i));
-    const scenesWithoutVideo = sceneClips.filter((c) => c.length === 0).length;
-    const totalClipsUsed = sceneClips.reduce((n, c) => n + c.length, 0);
+    const stockSceneClips: string[][] = sentences.map((_, i) => pickClipsForScene(i));
+    const scenesWithoutVideo = stockSceneClips.filter((c) => c.length === 0).length;
+    const totalClipsUsed = stockSceneClips.reduce((n, c) => n + c.length, 0);
 
     // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
     const needImages = Math.max(0, Math.min(20, scenesWithoutVideo - refImages.length));
@@ -412,12 +451,15 @@ export async function generateVideo(
         orientation,
       });
     }
-    const imagePool = [...refImages, ...stockImages];
+    imagePool = [...refImages, ...stockImages];
 
     tracker.done('visuals',
       (totalClipsUsed > 0 || imagePool.length > 0)
         ? `画面就绪(视频 ${totalClipsUsed} 段 → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
         : '无可用素材,使用文字卡');
+
+    return stockSceneClips;
+    } // end prepareStockVisuals
 
     // 4. 组装分镜 + 合成。每镜先用分配到的【多段】视频,没有则轮转图片,再退文字卡
     tracker.start('compose');
@@ -459,6 +501,7 @@ export async function generateVideo(
       maxClipSeconds: maxClip,
       subtitle,
       bgmPath,
+      bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
       // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
       cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
       onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),

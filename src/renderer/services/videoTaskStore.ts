@@ -43,6 +43,9 @@ export interface VideoTaskLog {
   /** "HH:MM:SS" */
   time: string;
   message: string;
+  /** 该条日志归属的步骤序号(对齐 steps 下标);未知 / 旧记录为 undefined。
+   *  用于详情页「当前运行明细」按步骤内联展示日志(对齐币安 StepLogBox)。 */
+  step?: number;
 }
 
 /** 持久化的【任务】= 配置 + 聚合统计。 */
@@ -66,6 +69,8 @@ export interface VideoTask {
   lastOutputPath?: string;
   /** 该任务历次运行累计消耗的 DeepSeek token。 */
   cumulativeTokens: number;
+  /** 该任务历次运行累计 USD 成本(服务端权威 costUsd 之和);老任务为 0。 */
+  cumulativeCostUsd: number;
 }
 
 /** 每次运行产生一条【运行记录】= 进度 + 日志 + 成片 + 消耗。 */
@@ -87,6 +92,8 @@ export interface VideoRunRecord {
   error?: string;
   /** 本次运行消耗的 DeepSeek token(TTS/ffmpeg 免费不计)。 */
   tokensUsed: number;
+  /** 本次运行 USD 成本(服务端权威 _noobclaw.costUsd 之和);老记录为 0。 */
+  costUsd: number;
   startedAt: number;
   finishedAt?: number;
 }
@@ -97,6 +104,21 @@ function nowHms(): string {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+/**
+ * 从一帧进度的 steps 推出「当前步骤下标」用于日志归属:
+ *   - 优先取正在 running 的那一步;
+ *   - 没有 running(步骤间隙 / 全部跑完)时取最后一个 done/error 的步骤;
+ *   - 都没有(开跑前)返回 undefined。
+ */
+function currentStepIndex(steps?: VideoCreationProgressStep[]): number | undefined {
+  if (!Array.isArray(steps) || steps.length === 0) return undefined;
+  const running = steps.findIndex((s) => s.status === 'running');
+  if (running >= 0) return running;
+  let last = -1;
+  steps.forEach((s, i) => { if (s.status === 'done' || s.status === 'error') last = i; });
+  return last >= 0 ? last : undefined;
 }
 
 /** 12 位十六进制 id,展示用 #id.slice(0,8),格式对齐 scenario 短 id。 */
@@ -136,11 +158,13 @@ class VideoTaskStore {
         const parsed = JSON.parse(rawRuns);
         if (Array.isArray(parsed)) {
           this.runs = parsed.map((r: VideoRunRecord) => {
+            // 老记录没有 costUsd 字段 → 兜底 0(详情页据此只显 💎 token、不显 $)。
+            const withCost = typeof r.costUsd === 'number' ? r : { ...r, costUsd: 0 };
             // 重启后上次跑到一半的运行记录已无主进程 job 续命,标记为中断
-            if (r.status === 'running') {
-              return { ...r, status: 'error' as const, error: r.error || '应用重启,该任务已中断', finishedAt: r.finishedAt || Date.now() };
+            if (withCost.status === 'running') {
+              return { ...withCost, status: 'error' as const, error: withCost.error || '应用重启,该任务已中断', finishedAt: withCost.finishedAt || Date.now() };
             }
-            return r;
+            return withCost;
           });
         }
       }
@@ -162,8 +186,9 @@ class VideoTaskStore {
    */
   private migrateTask(t: any): VideoTask | null {
     if (!t || typeof t !== 'object' || !t.id) return null;
-    // 新结构已带 runCount / cumulativeTokens 字段 → 直接用。
+    // 新结构已带 runCount / cumulativeTokens 字段 → 直接用(补 cumulativeCostUsd 兜底)。
     if (typeof t.runCount === 'number' && typeof t.cumulativeTokens === 'number') {
+      if (typeof t.cumulativeCostUsd !== 'number') t.cumulativeCostUsd = 0;
       return t as VideoTask;
     }
     // 老结构:t.status / t.steps / t.logs / t.outputPath / t.error 都在任务上。
@@ -181,6 +206,7 @@ class VideoTaskStore {
       outputPath: t.outputPath,
       error: status === 'error' ? (t.error || '应用重启,该任务已中断') : t.error,
       tokensUsed: 0,
+      costUsd: 0,
       startedAt: t.createdAt || Date.now(),
       finishedAt: t.updatedAt || Date.now(),
     };
@@ -197,6 +223,7 @@ class VideoTaskStore {
       lastRunAt: run.finishedAt,
       lastOutputPath: t.outputPath,
       cumulativeTokens: 0,
+      cumulativeCostUsd: 0,
     };
   }
 
@@ -274,10 +301,10 @@ class VideoTaskStore {
     this.emit();
   }
 
-  private appendLog(r: VideoRunRecord, message: string) {
+  private appendLog(r: VideoRunRecord, message: string, step?: number) {
     const last = r.logs[r.logs.length - 1];
     if (last && last.message === message) return; // 去重连续重复
-    r.logs.push({ time: nowHms(), message });
+    r.logs.push({ time: nowHms(), message, step });
     if (r.logs.length > MAX_LOGS) r.logs = r.logs.slice(-MAX_LOGS);
   }
 
@@ -293,6 +320,7 @@ class VideoTaskStore {
       updatedAt: Date.now(),
       runCount: 0,
       cumulativeTokens: 0,
+      cumulativeCostUsd: 0,
     };
     this.tasks.unshift(task);
     if (this.tasks.length > MAX_TASKS) this.tasks = this.tasks.slice(0, MAX_TASKS);
@@ -353,6 +381,7 @@ class VideoTaskStore {
       steps: [],
       logs: [{ time: nowHms(), message: '任务已创建,开始生成…' }],
       tokensUsed: 0,
+      costUsd: 0,
       startedAt: Date.now(),
     };
     this.runs.push(run);
@@ -373,10 +402,13 @@ class VideoTaskStore {
         if (r.status !== 'running') return;
         if (Array.isArray(p.steps) && p.steps.length) r.steps = p.steps;
         if (typeof p.tokensUsed === 'number') r.tokensUsed = p.tokensUsed;
+        if (typeof p.costUsd === 'number') r.costUsd = p.costUsd;
         if (p.outputDir) r.outputDir = p.outputDir;
         if (p.message) {
           r.message = p.message;
-          this.appendLog(r, p.message);
+          // 把本条日志归属到「当前正在跑的步骤」(没有 running 的就归到最后一个
+          // 已完成/出错的步骤),供详情页按步骤内联展示。
+          this.appendLog(r, p.message, currentStepIndex(p.steps));
         }
       });
     };
@@ -416,6 +448,7 @@ class VideoTaskStore {
           t.lastOutputPath = run2.outputPath || t.lastOutputPath;
           t.lastRunAt = run2.finishedAt || Date.now();
           t.cumulativeTokens += run2.tokensUsed || 0;
+          t.cumulativeCostUsd = (t.cumulativeCostUsd || 0) + (run2.costUsd || 0);
         });
       });
 
