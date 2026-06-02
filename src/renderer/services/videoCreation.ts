@@ -21,7 +21,7 @@ export interface VideoCreationInput {
   track: string;
   /** 关键词 —— 决定在线素材库搜什么空镜。 */
   keywords: string[];
-  /** 参考文案 —— 一期直接当口播稿用(逐句拆分镜)。 */
+  /** 口播文案。留空时主进程用 DeepSeek 按 targetSeconds 自动写一段。 */
   script: string;
   /** 用户上传的参考图本地绝对路径(0-3 张,优先用于画面)。 */
   referenceImages: string[];
@@ -31,6 +31,10 @@ export interface VideoCreationInput {
   publishTarget: VideoPublishTarget;
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
+  /** 目标时长(秒),仅在自动生成文案时用于控制长度。默认 45。 */
+  targetSeconds?: number;
+  /** 是否优先用在线素材【视频】(否则只用图片)。默认 true。 */
+  useStockVideo?: boolean;
 }
 
 export interface VideoCreationProgressStep {

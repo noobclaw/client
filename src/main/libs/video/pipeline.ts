@@ -16,9 +16,10 @@ import os from 'os';
 import path from 'path';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable } from './ffmpegRuntime';
-import { synthesize } from './tts';
-import { fetchStockImages } from './stockProvider';
+import { synthesize, getLastTtsError } from './tts';
+import { fetchStockImages, fetchStockVideos, type StockVideoAsset } from './stockProvider';
 import { composeVideo, type SceneSpec } from './compose';
+import { generateScript, generateSearchTerms } from './scriptWriter';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -27,12 +28,20 @@ export interface VideoCreationInput {
   persona: string;
   track: string;
   keywords: string[];
+  /** 口播旁白文案。为空时用 DeepSeek 按 targetSeconds 自动生成。 */
   script: string;
   referenceImages: string[];
   aspect: VideoAspect;
   publishTarget: VideoPublishTarget;
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
+  /** 目标视频时长(秒),仅在自动生成文案时用于控制长度。默认 45。 */
+  targetSeconds?: number;
+  /**
+   * 是否用在线素材【视频】(优先于图片)。默认 true。视频效果远好过图片
+   * Ken Burns(抄 MoneyPrinterTurbo)。下载失败/无匹配时自动降级到图片/文字卡。
+   */
+  useStockVideo?: boolean;
 }
 
 export interface ProgressStep {
@@ -59,6 +68,7 @@ export interface VideoCreationResult {
 export type ProgressEmitter = (p: VideoCreationProgress) => void;
 
 const STEP_DEFS: { key: string; label: string }[] = [
+  { key: 'script', label: 'AI 撰写旁白脚本' },
   { key: 'split', label: '拆解文案分镜' },
   { key: 'tts', label: '生成 AI 配音' },
   { key: 'visuals', label: '准备画面素材' },
@@ -188,11 +198,35 @@ export async function generateVideo(
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
 
   try {
+    // 0. 文案:用户没给就用 DeepSeek 按目标时长写一段口播旁白
+    tracker.start('script');
+    let script = (input.script || '').trim();
+    if (!script) {
+      const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
+      tracker.progress('AI 正在撰写旁白脚本…');
+      try {
+        script = await generateScript({
+          topic,
+          persona: input.persona,
+          track: input.track,
+          keywords: input.keywords,
+          targetSeconds: input.targetSeconds ?? 45,
+        });
+      } catch (e) {
+        const err = e instanceof Error ? e.message : String(e);
+        tracker.fail('script', `AI 写脚本失败:${err.slice(0, 200)}`);
+        return { ok: false, error: err.slice(0, 300) };
+      }
+      tracker.done('script', `AI 已生成约 ${script.length} 字旁白`);
+    } else {
+      tracker.done('script', '使用用户提供的文案');
+    }
+
     // 1. 拆句
     tracker.start('split');
-    const sentences = splitScript(input.script);
+    const sentences = splitScript(script);
     if (sentences.length === 0) {
-      const err = '参考文案为空或无法拆出有效分镜';
+      const err = '文案为空或无法拆出有效分镜';
       tracker.fail('split', err);
       return { ok: false, error: err };
     }
@@ -209,36 +243,72 @@ export async function generateVideo(
       if (r.synthesized) synthCount++;
       tracker.progress(`配音 ${i + 1}/${sentences.length}`);
     }
-    tracker.done('tts', synthCount === sentences.length
-      ? '配音完成'
-      : `配音完成(${sentences.length - synthCount} 句用静音兜底)`);
+    if (synthCount === sentences.length) {
+      tracker.done('tts', '配音完成');
+    } else {
+      const reason = getLastTtsError();
+      tracker.done('tts',
+        `配音完成(${sentences.length - synthCount} 句用静音兜底` +
+        (reason ? `:${reason.slice(0, 120)}` : '') + ')');
+    }
 
-    // 3. 画面:参考图 + 素材库
+    // 3. 画面:每镜 AI 搜索词 → 在线素材【视频】优先 → 素材图 → 参考图 → 文字卡
     tracker.start('visuals');
+
+    // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走,不再全片复用同一张图)
+    tracker.progress('AI 规划每镜画面关键词…');
+    const perSceneTerms = await generateSearchTerms(sentences, input.keywords);
+    // 全片去重后的搜索词集合(服务端最多吃 8 个),用来一次性拉素材池
+    const allTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)));
+    const searchKeywords = allTerms.length > 0 ? allTerms.slice(0, 8) : input.keywords;
+
     const refImages = (input.referenceImages || []).filter((p) => p && fs.existsSync(p));
-    const needStock = Math.max(0, Math.min(20, sentences.length - refImages.length));
-    let stockImages: string[] = [];
-    if (needStock > 0) {
-      tracker.progress('搜索在线素材库…');
-      stockImages = await fetchStockImages({
-        keywords: input.keywords,
-        count: needStock,
+    const wantVideo = input.useStockVideo !== false;
+
+    // 3b. 在线素材视频(优先)
+    let stockVideos: StockVideoAsset[] = [];
+    if (wantVideo) {
+      tracker.progress('搜索在线视频素材…');
+      stockVideos = await fetchStockVideos({
+        keywords: searchKeywords,
+        count: Math.min(40, sentences.length),
         destDir: assetDir,
       });
     }
-    const visualPool = [...refImages, ...stockImages];
-    tracker.done('visuals', visualPool.length > 0
-      ? `画面就绪(参考图 ${refImages.length} + 素材 ${stockImages.length})`
-      : '无可用图片,使用文字卡');
 
-    // 4. 组装分镜 + 合成
+    // 3c. 视频不够 / 没视频时,用素材图 + 参考图补齐
+    const needImages = Math.max(0, Math.min(20, sentences.length - stockVideos.length - refImages.length));
+    let stockImages: string[] = [];
+    if (needImages > 0) {
+      tracker.progress('补充在线图片素材…');
+      stockImages = await fetchStockImages({
+        keywords: searchKeywords,
+        count: needImages,
+        destDir: assetDir,
+      });
+    }
+    const imagePool = [...refImages, ...stockImages];
+
+    tracker.done('visuals',
+      (stockVideos.length > 0 || imagePool.length > 0)
+        ? `画面就绪(视频 ${stockVideos.length} + 图片 ${imagePool.length})`
+        : '无可用素材,使用文字卡');
+
+    // 4. 组装分镜 + 合成。每镜优先吃一段不重复的视频,用尽后退回图片(循环),再退文字卡
     tracker.start('compose');
-    const scenes: SceneSpec[] = sentences.map((sentence, i) => ({
-      imagePath: visualPool.length > 0 ? visualPool[i % visualPool.length] : undefined,
-      audioPath: audios[i].audioPath,
-      durationSec: audios[i].durationSec,
-      subtitle: sentence,
-    }));
+    const scenes: SceneSpec[] = sentences.map((sentence, i) => {
+      const video = i < stockVideos.length ? stockVideos[i].path : undefined;
+      const image = !video && imagePool.length > 0
+        ? imagePool[(i - stockVideos.length + imagePool.length * 100) % imagePool.length]
+        : undefined;
+      return {
+        videoPath: video,
+        imagePath: image,
+        audioPath: audios[i].audioPath,
+        durationSec: audios[i].durationSec,
+        subtitle: sentence,
+      };
+    });
 
     const outPath = path.join(outputDir(), outputFileName());
     const bgmPath = input.bgmPath && fs.existsSync(input.bgmPath) ? input.bgmPath : undefined;

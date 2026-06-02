@@ -105,7 +105,12 @@ function allocatePhraseCues(phrases: string[], durationSec: number): PhraseCue[]
 }
 
 export interface SceneSpec {
-  /** 画面图片绝对路径;为空 = 纯色文字卡。 */
+  /**
+   * 画面视频素材绝对路径(优先于 imagePath)。会循环/裁剪填满该镜时长。
+   * 抄 MoneyPrinterTurbo:有视频素材就用视频,效果远好过图片 Ken Burns。
+   */
+  videoPath?: string;
+  /** 画面图片绝对路径;videoPath 为空时用;再为空 = 纯色文字卡。 */
   imagePath?: string;
   /** 该镜配音绝对路径(mp3)。 */
   audioPath: string;
@@ -170,7 +175,17 @@ async function renderScene(workDir: string, idx: number, scene: SceneSpec, fontR
   const vChain: string[] = [];
   const args: string[] = ['-y'];
 
-  if (scene.imagePath && fs.existsSync(scene.imagePath)) {
+  if (scene.videoPath && fs.existsSync(scene.videoPath)) {
+    // 视频素材 → 循环到够长(-stream_loop -1)再 scale-cover-crop 填满竖屏。
+    // 不做 Ken Burns(视频本身在动)。-t / -shortest 把它裁到该镜音频时长。
+    args.push('-stream_loop', '-1', '-i', scene.videoPath);
+    vChain.push(
+      `scale=${W}:${H}:force_original_aspect_ratio=increase`,
+      `crop=${W}:${H}`,
+      `fps=${FPS}`,
+      'setsar=1',
+    );
+  } else if (scene.imagePath && fs.existsSync(scene.imagePath)) {
     // 图片 → Ken Burns 缓慢推近
     args.push('-loop', '1', '-i', scene.imagePath);
     vChain.push(

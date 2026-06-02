@@ -1,28 +1,36 @@
 /**
  * VideoWorkflowsPage — 「多平台视频创作」工作流页面.
  *
- * 这是个本地合成工具,不走 backend scenario 任务体系,自己渲染卡片 + 表单。
+ * 本地合成工具,不走 backend scenario 任务体系,但交互对齐 scenario:配置是【弹窗】,
+ * 「开始创作」后变成一个挂在 tab 下的【任务】(发光卡片),有【详情页】带进度 step +
+ * 流式日志。任务状态由模块级 videoTaskStore 单例托管(页面切换不中断、日志不丢)。
  *
- * 交互跟其他平台 tab 保持一致(由 ScenarioView 统一套 L1 头部 + 返回按钮):
- *   - mode='landing' —— 落地页。看「当前视频创作任务」,目前本地工具没有持久
- *       任务列表,所以显示占位框提示去创建 + 两张工作流卡片(点占位框 / 卡片 /
- *       右上「新建视频创作任务」CTA 都进入创建流)。
- *   - mode='create'  —— 创建流(两步向导,内联渲染,不再是 modal):
- *       ① 内容(选赛道→自动带出人设/关键词,可改;参考文案;视频参考图)
- *       ② 出片(存本地 / 上传各平台)。返回由 ScenarioView 顶部返回按钮处理,
- *       向导内部也有「取消 / 上一步」。
+ * 三个视图(由 ScenarioView 的 mode + 本地 detailId 共同决定):
+ *   - detailId != null         —— 任务详情页(进度 step + 流式日志 + 成片操作)
+ *   - mode='create'            —— 创建流:选创作方式 → 弹出配置弹窗
+ *   - mode='landing'(默认)    —— 落地页:任务列表(发光卡片);无任务时显示占位框
  *
  * 一期只做到「存本地不上传」,自动上传到抖音/小红书/币安先占位。
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import {
   videoCreationService,
   type VideoCreationInput,
-  type VideoCreationProgress,
   type VideoPublishTarget,
 } from '../../../services/videoCreation';
+import {
+  videoTaskStore,
+  type VideoTask,
+} from '../../../services/videoTaskStore';
+
+// 订阅 store 的 React hook:任意视图都能拿到最新任务列表并自动重渲染。
+function useVideoTasks(): VideoTask[] {
+  const [tasks, setTasks] = useState<VideoTask[]>(() => videoTaskStore.getTasks());
+  useEffect(() => videoTaskStore.subscribe(() => setTasks(videoTaskStore.getTasks())), []);
+  return tasks;
+}
 
 interface VideoWorkflowsPageProps {
   /** landing = 落地页(看任务/占位框);create = 创建向导。由 ScenarioView 的 section 决定。 */
@@ -35,79 +43,291 @@ interface VideoWorkflowsPageProps {
 
 export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ mode, onGoCreate, onBack }) => {
   const isZh = i18nService.currentLanguage === 'zh';
-  if (mode === 'create') {
-    return <VideoCreateFlow isZh={isZh} onBack={onBack} />;
+  const tasks = useVideoTasks();
+  const [detailId, setDetailId] = useState<string | null>(null);
+
+  // 详情页优先:点了某个任务卡 → 看详情(返回回落地页)
+  if (detailId) {
+    const task = tasks.find((t) => t.id === detailId);
+    if (!task) { setDetailId(null); return null; }
+    return <VideoTaskDetail isZh={isZh} task={task} onBack={() => setDetailId(null)} />;
   }
-  return <VideoLanding isZh={isZh} onGoCreate={onGoCreate} />;
+
+  if (mode === 'create') {
+    return (
+      <VideoCreateFlow
+        isZh={isZh}
+        onCreated={(taskId) => { onBack(); setDetailId(taskId); }}
+        onCancel={onBack}
+      />
+    );
+  }
+
+  return <VideoLanding isZh={isZh} tasks={tasks} onGoCreate={onGoCreate} onOpenTask={setDetailId} />;
 };
 
-// ── 落地页:只放「当前任务」占位框,不掺工作流卡片 ─────────────────────
-// 本地工具暂无持久任务列表 → 显示空状态占位框引导去创建。等接了任务列表,
-// 有任务时这里换成 list,没任务才显示占位。卡片(单次成片/自动成片)挪到
-// 「新建」后的选择页(VideoTypeChooser),不再跟占位框同屏出现。
+// ── 落地页:有任务显示发光卡片列表,无任务显示占位框 ────────────────────
 
-const VideoLanding: React.FC<{ isZh: boolean; onGoCreate: () => void }> = ({ isZh, onGoCreate }) => {
+const VideoLanding: React.FC<{
+  isZh: boolean;
+  tasks: VideoTask[];
+  onGoCreate: () => void;
+  onOpenTask: (id: string) => void;
+}> = ({ isZh, tasks, onGoCreate, onOpenTask }) => {
+  if (tasks.length === 0) {
+    return (
+      <div className="p-6 max-w-3xl mx-auto">
+        <button
+          type="button"
+          onClick={onGoCreate}
+          className="w-full rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center hover:border-rose-400 dark:hover:border-rose-500 transition-colors group"
+        >
+          <div className="text-5xl mb-3">🎬</div>
+          <div className="text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
+            {isZh ? '还没有视频创作任务' : 'No video tasks yet'}
+          </div>
+          <div className="text-sm text-gray-500 dark:text-gray-400 mb-5 max-w-md mx-auto">
+            {isZh
+              ? '把选题变成配好音、带字幕、有视频画面的竖屏短视频,先存本地,满意后再发各平台。'
+              : 'Turn a topic into a narrated, subtitled portrait short — saved locally first, publish later.'}
+          </div>
+          <span className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-rose-500 group-hover:bg-rose-600 text-white text-sm font-bold shadow-lg shadow-rose-500/25 transition-colors">
+            ✨ {isZh ? '新建视频创作任务' : 'Create a video task'} →
+          </span>
+        </button>
+
+        <section className="mt-6">
+          <div className="flex flex-wrap gap-2 justify-center">
+            {[
+              { icon: '💻', zh: '本地合成 · 零服务器成本', en: 'Local synthesis · zero server cost' },
+              { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕', en: 'AI script + voiceover + subtitles' },
+              { icon: '🎞️', zh: '在线视频素材 + 你的参考图', en: 'Stock video + your images' },
+              { icon: '🚀', zh: '一键发抖音/小红书/币安', en: 'One-click to Douyin / XHS / Binance' },
+            ].map((p, i) => (
+              <span
+                key={i}
+                className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-rose-500/20 bg-rose-500/5 text-gray-700 dark:text-gray-300"
+              >
+                {p.icon} {isZh ? p.zh : p.en}
+              </span>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-3xl mx-auto">
-      <button
-        type="button"
-        onClick={onGoCreate}
-        className="w-full rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center hover:border-rose-400 dark:hover:border-rose-500 transition-colors group"
-      >
-        <div className="text-5xl mb-3">🎬</div>
-        <div className="text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
-          {isZh ? '还没有视频创作任务' : 'No video tasks yet'}
-        </div>
-        <div className="text-sm text-gray-500 dark:text-gray-400 mb-5 max-w-md mx-auto">
-          {isZh
-            ? '把文案变成配好音、带字幕、有画面的竖屏短视频,先存本地,满意后再发各平台。'
-            : 'Turn a script into a narrated, subtitled portrait short — saved locally first, publish later.'}
-        </div>
-        <span className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-rose-500 group-hover:bg-rose-600 text-white text-sm font-bold shadow-lg shadow-rose-500/25 transition-colors">
-          ✨ {isZh ? '新建视频创作任务' : 'Create a video task'} →
-        </span>
-      </button>
-
-      {/* Feature pills */}
-      <section className="mt-6">
-        <div className="flex flex-wrap gap-2 justify-center">
-          {[
-            { icon: '💻', zh: '本地合成 · 零服务器成本', en: 'Local synthesis · zero server cost' },
-            { icon: '🎙️', zh: 'AI 配音 + 自动字幕', en: 'AI voiceover + auto subtitles' },
-            { icon: '🖼️', zh: '视频参考图 + 在线素材库', en: 'Your images + stock library' },
-            { icon: '🚀', zh: '一键发抖音/小红书/币安', en: 'One-click to Douyin / XHS / Binance' },
-          ].map((p, i) => (
-            <span
-              key={i}
-              className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-rose-500/20 bg-rose-500/5 text-gray-700 dark:text-gray-300"
-            >
-              {p.icon} {isZh ? p.zh : p.en}
-            </span>
-          ))}
-        </div>
-      </section>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-base font-bold dark:text-white">
+          {isZh ? '视频创作任务' : 'Video tasks'}
+          <span className="ml-2 text-xs font-normal text-gray-400">{tasks.length}</span>
+        </h2>
+        <button
+          type="button"
+          onClick={onGoCreate}
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold shadow-lg shadow-rose-500/25 transition-colors"
+        >
+          ✨ {isZh ? '新建' : 'New'} →
+        </button>
+      </div>
+      <div className="space-y-3">
+        {tasks.map((t) => (
+          <VideoTaskCard key={t.id} isZh={isZh} task={t} onClick={() => onOpenTask(t.id)} />
+        ))}
+      </div>
     </div>
   );
 };
 
-// ── 创建流:先选创作方式(单次成片/自动成片),选完再进对应向导 ──────────
-// 「新建」后落到这里(ScenarioView section='create')。内部用本地 state 管
-// 第二层(选卡片)→ 第三层(向导)的切换;ScenarioView 顶部返回按钮负责退回
-// 落地页,向导内的「取消」退回这层选择页。
+// ── 任务卡片(运行中发光,呼应 scenario 的发光卡片) ─────────────────────
 
-const VideoCreateFlow: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZh }) => {
-  const [picked, setPicked] = useState<'original' | null>(null);
-  if (picked === 'original') {
-    return <VideoCreatePanel isZh={isZh} onBack={() => setPicked(null)} />;
-  }
-  return <VideoTypeChooser isZh={isZh} onPickOriginal={() => setPicked('original')} />;
+const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => void }> = ({ isZh, task, onClick }) => {
+  const isRunning = task.status === 'running';
+  const doneCount = task.steps.filter((s) => s.status === 'done').length;
+  const totalSteps = task.steps.length;
+
+  const border =
+    isRunning
+      ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow'
+      : task.status === 'error'
+        ? 'border-red-400/60'
+        : 'border-gray-200 dark:border-gray-700';
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-2xl border ${border} bg-white dark:bg-gray-900 p-4 transition-colors hover:border-rose-400`}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 mb-1">
+            {isRunning ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-medium text-green-600 dark:text-green-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                {isZh ? '生成中' : 'Running'}
+              </span>
+            ) : task.status === 'done' ? (
+              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">✅ {isZh ? '已完成' : 'Done'}</span>
+            ) : (
+              <span className="text-[11px] font-medium text-red-500">❌ {isZh ? '失败' : 'Failed'}</span>
+            )}
+            <span className="text-[11px] text-gray-400">{new Date(task.createdAt).toLocaleString()}</span>
+          </div>
+          <div className="text-sm font-semibold dark:text-white truncate">🎬 {task.title}</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+            {task.status === 'error'
+              ? task.error
+              : task.message || (totalSteps > 0 ? `${doneCount}/${totalSteps}` : (isZh ? '准备中…' : 'Preparing…'))}
+          </div>
+        </div>
+        <span className="text-gray-300 dark:text-gray-600 text-lg shrink-0">›</span>
+      </div>
+    </button>
+  );
 };
 
-// ── 第二层:创作方式选择页(单次成片 / 自动成片) ──────────────────────
+// ── 任务详情页:进度 step + 流式日志 + 成片操作 ───────────────────────
 
-const VideoTypeChooser: React.FC<{ isZh: boolean; onPickOriginal: () => void }> = ({ isZh, onPickOriginal }) => {
+const VideoTaskDetail: React.FC<{ isZh: boolean; task: VideoTask; onBack: () => void }> = ({ isZh, task, onBack }) => {
+  const logRef = useRef<HTMLDivElement>(null);
+  // 流式日志:新日志进来自动滚到底
+  useEffect(() => {
+    const el = logRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [task.logs.length]);
+
+  const isRunning = task.status === 'running';
+
+  return (
+    <div className="p-6 max-w-2xl mx-auto">
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 text-sm text-gray-500 hover:text-rose-500 inline-flex items-center gap-1"
+      >
+        ← {isZh ? '返回任务列表' : 'Back to tasks'}
+      </button>
+
+      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+        <div className="px-6 pt-5 pb-4 border-b border-gray-100 dark:border-gray-800">
+          <div className="flex items-center gap-2 mb-1">
+            {isRunning ? (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                {isZh ? '生成中' : 'Running'}
+              </span>
+            ) : task.status === 'done' ? (
+              <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">✅ {isZh ? '已完成' : 'Done'}</span>
+            ) : (
+              <span className="text-xs font-medium text-red-500">❌ {isZh ? '失败' : 'Failed'}</span>
+            )}
+          </div>
+          <h3 className="text-lg font-bold dark:text-white">🎬 {task.title}</h3>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {/* 进度 step */}
+          {task.steps.length > 0 && (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
+              {task.steps.map((s) => (
+                <div key={s.key} className="flex items-center gap-2 text-xs">
+                  <span>
+                    {s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}
+                  </span>
+                  <span className={s.status === 'running' ? 'text-rose-500 font-medium' : 'text-gray-600 dark:text-gray-300'}>
+                    {s.label}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 流式日志 */}
+          <div>
+            <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
+              {isZh ? '运行日志' : 'Logs'}
+            </div>
+            <div
+              ref={logRef}
+              className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 p-3 h-56 overflow-y-auto font-mono text-[11px] leading-relaxed"
+            >
+              {task.logs.map((l, i) => (
+                <div key={i} className="flex gap-2">
+                  <span className="text-gray-500 shrink-0">{l.time}</span>
+                  <span className="break-all">{l.message}</span>
+                </div>
+              ))}
+              {isRunning && <div className="text-green-400 animate-pulse">▋</div>}
+            </div>
+          </div>
+
+          {/* 成片操作 / 错误 */}
+          {task.status === 'done' && task.outputPath && (
+            <div className="rounded-lg border border-green-500/40 bg-green-500/5 p-3">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-2">{task.outputPath}</div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => videoCreationService.openFile(task.outputPath!)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600"
+                >
+                  ▶ {isZh ? '预览' : 'Preview'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => videoCreationService.revealInFolder(task.outputPath!)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  📂 {isZh ? '打开文件夹' : 'Open folder'}
+                </button>
+              </div>
+            </div>
+          )}
+          {task.status === 'error' && task.error && (
+            <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500 break-all">
+              {task.error}
+            </div>
+          )}
+        </div>
+
+        {/* 底部:删除(非运行态) */}
+        {!isRunning && (
+          <div className="px-6 py-3 border-t border-gray-100 dark:border-gray-800 flex justify-end">
+            <button
+              type="button"
+              onClick={() => { videoTaskStore.deleteTask(task.id); onBack(); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5"
+            >
+              🗑 {isZh ? '删除任务' : 'Delete'}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── 创建流:先选创作方式,选「单次成片」弹出配置弹窗 ─────────────────────
+
+const VideoCreateFlow: React.FC<{
+  isZh: boolean;
+  onCreated: (taskId: string) => void;
+  onCancel: () => void;
+}> = ({ isZh, onCreated, onCancel }) => {
+  const [showConfig, setShowConfig] = useState(false);
+
   return (
     <div className="p-6 max-w-4xl mx-auto">
+      <button
+        type="button"
+        onClick={onCancel}
+        className="mb-3 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+      >
+        ← {isZh ? '返回' : 'Back'}
+      </button>
       <div className="mb-5 text-center">
         <h2 className="text-lg font-bold dark:text-white">
           {isZh ? '选择创作方式' : 'Choose how to create'}
@@ -117,82 +337,82 @@ const VideoTypeChooser: React.FC<{ isZh: boolean; onPickOriginal: () => void }> 
         </p>
       </div>
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <OriginalShortVideoCard isZh={isZh} onStart={onPickOriginal} />
+        <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} />
         <DailyHotVideoCard isZh={isZh} />
       </section>
+
+      {showConfig && (
+        <VideoConfigModal
+          isZh={isZh}
+          onClose={() => setShowConfig(false)}
+          onCreated={onCreated}
+        />
+      )}
     </div>
   );
 };
 
 // ── 卡片 1:原创短视频 · 单次成片 ───────────────────────────────────
 
-const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> = ({ isZh, onStart }) => {
-  return (
-    <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
-      <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
-      <div className="relative flex flex-col flex-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-          {isZh ? '单次成片' : 'One-shot'}
-        </div>
-        <h3 className="text-base font-bold dark:text-white mb-1.5">
-          🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
-        </h3>
-        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
-          {isZh
-            ? '先选赛道,自动带出人设和关键词(可改),再粘一段参考文案、传几张视频参考图(选填)。AI 自动逐句拆分镜、配音、配字幕,用你的图加在线素材库凑齐画面,本地合成一条竖屏短视频。出片满意后可一键发到抖音 / 小红书 / 币安,也可只存本地。'
-            : 'Pick a track to auto-fill persona & keywords (editable), paste a reference script and optional images. AI splits it into scenes, narrates, subtitles, and fills visuals from your images + a stock library, then composes a portrait short locally. Publish to Douyin / XHS / Binance after, or just keep it local.'}
-        </p>
-        <button
-          type="button"
-          onClick={onStart}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/25 transition-all active:scale-95"
-        >
-          🎬 {isZh ? '开始创作' : 'Start'} →
-        </button>
+const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> = ({ isZh, onStart }) => (
+  <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
+    <div className="relative flex flex-col flex-1">
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+        {isZh ? '单次成片' : 'One-shot'}
       </div>
+      <h3 className="text-base font-bold dark:text-white mb-1.5">
+        🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
+      </h3>
+      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
+        {isZh
+          ? '选赛道自动带出人设和关键词,文案可自己写、也可让 AI 按目标时长写。AI 自动拆分镜、配音、配字幕,用在线视频素材 + 你的参考图凑画面,本地合成竖屏短视频。'
+          : 'Pick a track to auto-fill persona & keywords. Write your own script or let AI write one for a target length. AI splits scenes, narrates, subtitles, and fills visuals from stock video + your images, composing a portrait short locally.'}
+      </p>
+      <button
+        type="button"
+        onClick={onStart}
+        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/25 transition-all active:scale-95"
+      >
+        🎬 {isZh ? '开始创作' : 'Start'} →
+      </button>
     </div>
-  );
-};
+  </div>
+);
 
 // ── 卡片 2:每日热点短视频 · 自动成片(占位,灰掉) ──────────────────
 
-const DailyHotVideoCard: React.FC<{ isZh: boolean }> = ({ isZh }) => {
-  return (
-    <div className="relative rounded-2xl border border-gray-300/60 dark:border-gray-700/60 bg-gradient-to-br from-gray-500/5 to-transparent p-5 overflow-hidden flex flex-col opacity-70">
-      <div className="relative flex flex-col flex-1">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-2">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
-          {isZh ? '自动成片' : 'Auto'}
-          <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
-            {isZh ? '即将推出' : 'Coming Soon'}
-          </span>
-        </div>
-        <h3 className="text-base font-bold text-gray-500 dark:text-gray-400 mb-1.5">
-          🔥 {isZh ? '每日热点短视频 · 自动成片' : 'Daily Hot · Auto'}
-        </h3>
-        <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-3 flex-1">
-          {isZh
-            ? '每天自动抓取你赛道下的当下热点选题,自动写稿、配音、配画面,按计划批量出片并定时分发。无需人工选题,全自动运转。'
-            : 'Auto-fetches trending topics in your niche daily, writes / narrates / fills visuals, batch-produces and schedules distribution — fully hands-off.'}
-        </p>
-        <button
-          type="button"
-          disabled
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed"
-        >
-          {isZh ? '敬请期待' : 'Coming Soon'}
-        </button>
+const DailyHotVideoCard: React.FC<{ isZh: boolean }> = ({ isZh }) => (
+  <div className="relative rounded-2xl border border-gray-300/60 dark:border-gray-700/60 bg-gradient-to-br from-gray-500/5 to-transparent p-5 overflow-hidden flex flex-col opacity-70">
+    <div className="relative flex flex-col flex-1">
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
+        {isZh ? '自动成片' : 'Auto'}
+        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
+          {isZh ? '即将推出' : 'Coming Soon'}
+        </span>
       </div>
+      <h3 className="text-base font-bold text-gray-500 dark:text-gray-400 mb-1.5">
+        🔥 {isZh ? '每日热点短视频 · 自动成片' : 'Daily Hot · Auto'}
+      </h3>
+      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-3 flex-1">
+        {isZh
+          ? '每天自动抓取你赛道下的当下热点选题,自动写稿、配音、配画面,按计划批量出片并定时分发。无需人工选题,全自动运转。'
+          : 'Auto-fetches trending topics in your niche daily, writes / narrates / fills visuals, batch-produces and schedules distribution — fully hands-off.'}
+      </p>
+      <button
+        type="button"
+        disabled
+        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed"
+      >
+        {isZh ? '敬请期待' : 'Coming Soon'}
+      </button>
     </div>
-  );
-};
+  </div>
+);
 
 // ── 赛道预设库:选赛道自动带出人设 + 关键词(用户可改) ─────────────────
-// 内置一份「赛道 → 人设/关键词」预设(参考小红书的细分领域),离线即时,
-// 零 token 成本。财经/加密类人设刻意写「不喊单/不荐股」,定位是内容科普,
-// 不做个性化投资建议。'custom' = 自定义,什么都不带,用户自己填。
-// 关键词跟其他任务(ConfigWizard)一致用【空格】分隔,不用逗号。
 
 interface TrackPreset {
   id: string;
@@ -285,16 +505,20 @@ const TRACK_PRESETS: TrackPreset[] = [
   },
 ];
 
-// ── 原创短视频创建向导(两步,内联渲染) ──────────────────────────────
+// ── 配置弹窗(两步向导,模态) ────────────────────────────────────────
 
 type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
 type Platform = 'douyin' | 'xhs' | 'binance';
 
-const SCRIPT_MIN = 10;
 const SCRIPT_MAX = 800;
+const DURATION_OPTIONS = [30, 45, 60, 90];
 
-const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZh, onBack }) => {
+const VideoConfigModal: React.FC<{
+  isZh: boolean;
+  onClose: () => void;
+  onCreated: (taskId: string) => void;
+}> = ({ isZh, onClose, onCreated }) => {
   const [step, setStep] = useState<1 | 2>(1);
 
   // 步骤 1:内容
@@ -302,27 +526,20 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
   const [persona, setPersona] = useState('');
   const [keywords, setKeywords] = useState('');
   const [script, setScript] = useState('');
+  const [targetSeconds, setTargetSeconds] = useState(45);
   const [refImages, setRefImages] = useState<string[]>([]);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<GenMode>('stock');
 
   // 步骤 2:出片去向
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
-  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({
-    douyin: true,
-    xhs: true,
-    binance: true,
-  });
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
-  const [generating, setGenerating] = useState(false);
-  const [progress, setProgress] = useState<VideoCreationProgress | null>(null);
-  const [resultPath, setResultPath] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  // 选赛道 → 自动带出人设/关键词(用户随后可改)
   const onPickTrack = (id: string) => {
     setTrackId(id);
-    const preset = TRACK_PRESETS.find(t => t.id === id);
+    const preset = TRACK_PRESETS.find((t) => t.id === id);
     if (preset && id !== 'custom') {
       setPersona(isZh ? preset.persona.zh : preset.persona.en);
       setKeywords(isZh ? preset.keywords.zh : preset.keywords.en);
@@ -334,143 +551,159 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
     if (remaining <= 0) return;
     const paths = await videoCreationService.pickReferenceImages(remaining);
     if (paths.length) {
-      setRefImages(prev => [...prev, ...paths].slice(0, 3));
-      // 异步拉缩略图(真实图片预览,不再只显示文件名)
+      setRefImages((prev) => [...prev, ...paths].slice(0, 3));
       for (const p of paths) {
-        videoCreationService.readImageDataUrl(p).then(url => {
-          if (url) setThumbs(prev => ({ ...prev, [p]: url }));
+        videoCreationService.readImageDataUrl(p).then((url) => {
+          if (url) setThumbs((prev) => ({ ...prev, [p]: url }));
         });
       }
     }
   };
 
-  const removeImage = (idx: number) => {
-    setRefImages(prev => prev.filter((_, i) => i !== idx));
-  };
-
-  const togglePlatform = (p: Platform) => {
-    setPlatforms(prev => ({ ...prev, [p]: !prev[p] }));
-  };
+  const removeImage = (idx: number) => setRefImages((prev) => prev.filter((_, i) => i !== idx));
+  const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
   const scriptLen = script.trim().length;
-  const scriptValid = scriptLen >= SCRIPT_MIN && scriptLen <= SCRIPT_MAX;
+  // 文案【选填】:留空 = AI 按目标时长写;填了则不能超上限
+  const scriptValid = scriptLen === 0 || scriptLen <= SCRIPT_MAX;
   const step1Valid = trackId !== '' && scriptValid;
 
-  const handleGenerate = async () => {
-    if (generating) return;
-    setGenerating(true);
-    setErrorMsg(null);
-    setResultPath(null);
-    setProgress(null);
+  const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en'] || '';
 
-    // 一期 upload 还没接,publishTarget 一律按 'local' 出片(上传去向只先收集意图)。
+  const buildTitle = (): string => {
+    const kw = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean);
+    const head = kw.slice(0, 2).join(' / ');
+    const base = head || trackLabel || (isZh ? '视频创作' : 'Video');
+    return scriptLen === 0 ? `${base}（AI 写稿 · ${targetSeconds}s）` : base;
+  };
+
+  const handleSubmit = () => {
+    if (videoTaskStore.isAnyRunning()) {
+      setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
+      return;
+    }
     const input: VideoCreationInput = {
       persona: persona.trim(),
-      track: (TRACK_PRESETS.find(t => t.id === trackId)?.[isZh ? 'zh' : 'en']) || '',
-      // 关键词跟其他任务一致:空格 / 逗号都能拆(split 同时吃 ，, 和空白)。
-      keywords: keywords.split(/[,，\s]+/).map(k => k.trim()).filter(Boolean),
+      track: trackLabel,
+      keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
       script: script.trim(),
       referenceImages: refImages,
       aspect: '9:16',
       publishTarget: 'local' as VideoPublishTarget,
+      targetSeconds,
+      useStockVideo: mode === 'stock',
     };
-
-    const res = await videoCreationService.generate(input, (p) => setProgress(p));
-    setGenerating(false);
-    if (res.ok && res.outputPath) {
-      setResultPath(res.outputPath);
-    } else {
-      setErrorMsg(res.error || (isZh ? '生成失败' : 'Generation failed'));
+    const id = videoTaskStore.createAndRun(input, buildTitle());
+    if (!id) {
+      setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
+      return;
     }
+    onCreated(id);
   };
 
   const selectedPlatformLabels = (Object.keys(platforms) as Platform[])
-    .filter(p => platforms[p])
-    .map(p => (p === 'douyin' ? (isZh ? '抖音' : 'Douyin') : p === 'xhs' ? (isZh ? '小红书' : 'XHS') : (isZh ? '币安' : 'Binance')));
+    .filter((p) => platforms[p])
+    .map((p) => (p === 'douyin' ? (isZh ? '抖音' : 'Douyin') : p === 'xhs' ? (isZh ? '小红书' : 'XHS') : (isZh ? '币安' : 'Binance')));
 
   return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <div className="rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-sm">
-        {/* 头部 + 步骤指示 */}
-        <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800">
-          <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
-            🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
-          </h3>
-          <div className="flex items-center gap-2 mt-3">
-            <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
-            <div className={`h-px flex-1 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-            <StepDot n={2} active={step === 2} done={false} label={isZh ? '出片' : 'Output'} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* 遮罩 */}
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      {/* 弹窗主体 */}
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
+              🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
+            </h3>
+            <div className="flex items-center gap-2 mt-3">
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
+              <div className={`h-px w-16 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={false} label={isZh ? '出片' : 'Output'} />
+            </div>
           </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
-          {/* ───── 步骤 1:内容 ───── */}
           {step === 1 && (
             <>
-              {/* 赛道(下拉,选完自动带出人设/关键词) */}
               <Field label={isZh ? '赛道（必选）' : 'Track (required)'} hint={isZh ? '选完自动带出人设和关键词，可再改' : 'auto-fills persona & keywords, editable'}>
                 <select
                   value={trackId}
-                  onChange={e => onPickTrack(e.target.value)}
-                  disabled={generating}
+                  onChange={(e) => onPickTrack(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 >
                   <option value="">{isZh ? '— 请选择赛道 —' : '— Select a track —'}</option>
-                  {TRACK_PRESETS.map(t => (
+                  {TRACK_PRESETS.map((t) => (
                     <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>
                   ))}
                 </select>
               </Field>
 
-              {/* 人设(自动带出,可改) */}
               <Field label={isZh ? '人设' : 'Persona'} hint={isZh ? '你是谁、对谁说话、什么口吻' : 'who you are and your tone'}>
                 <input
                   value={persona}
-                  onChange={e => setPersona(e.target.value)}
-                  disabled={generating}
+                  onChange={(e) => setPersona(e.target.value)}
                   placeholder={isZh ? '选赛道后自动带出，可修改' : 'auto-filled after picking a track'}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 />
               </Field>
 
-              {/* 关键词(自动带出,可改;空格分隔,跟其他任务一致) */}
               <Field label={isZh ? '关键词' : 'Keywords'} hint={isZh ? '空格分隔，用于搜画面素材' : 'space-separated, used to search stock'}>
                 <input
                   value={keywords}
-                  onChange={e => setKeywords(e.target.value)}
-                  disabled={generating}
+                  onChange={(e) => setKeywords(e.target.value)}
                   placeholder={isZh ? '选赛道后自动带出，可修改' : 'auto-filled after picking a track'}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 />
               </Field>
 
-              {/* 参考文案(10~800 字) */}
               <Field
-                label={isZh ? '参考文案（必填）' : 'Reference script (required)'}
-                hint={isZh ? '逐句拆成分镜并配音' : 'split into scenes & narrated line by line'}
+                label={isZh ? '口播文案（选填）' : 'Script (optional)'}
+                hint={isZh ? '留空则由 AI 按目标时长自动写稿' : 'leave empty to let AI write it'}
               >
                 <textarea
                   value={script}
-                  onChange={e => setScript(e.target.value)}
-                  disabled={generating}
-                  rows={6}
-                  placeholder={isZh ? `把你想讲的内容粘进来…（${SCRIPT_MIN}~${SCRIPT_MAX} 字）` : `Paste your script here… (${SCRIPT_MIN}-${SCRIPT_MAX} chars)`}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y min-h-[120px]"
+                  onChange={(e) => setScript(e.target.value)}
+                  rows={5}
+                  placeholder={isZh ? `自己写就粘进来,留空让 AI 写…（≤${SCRIPT_MAX} 字）` : `Paste your own, or leave empty for AI… (≤${SCRIPT_MAX} chars)`}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y min-h-[100px]"
                 />
-                <div className={`mt-1 text-[11px] text-right ${scriptLen === 0 ? 'text-gray-400' : scriptValid ? 'text-gray-400' : 'text-red-500'}`}>
+                <div className={`mt-1 text-[11px] text-right ${scriptLen > SCRIPT_MAX ? 'text-red-500' : 'text-gray-400'}`}>
                   {scriptLen}/{SCRIPT_MAX}
-                  {scriptLen > 0 && scriptLen < SCRIPT_MIN && (isZh ? `（至少 ${SCRIPT_MIN} 字）` : ` (min ${SCRIPT_MIN})`)}
                   {scriptLen > SCRIPT_MAX && (isZh ? '（超出上限）' : ' (over limit)')}
+                </div>
+              </Field>
+
+              {/* 目标时长(AI 写稿时按此控制长度) */}
+              <Field
+                label={isZh ? '目标时长' : 'Target length'}
+                hint={isZh ? 'AI 写稿时按此控制(自己写文案则以文案为准)' : 'used when AI writes the script'}
+              >
+                <div className="flex gap-2">
+                  {DURATION_OPTIONS.map((s) => (
+                    <button
+                      key={s}
+                      type="button"
+                      onClick={() => setTargetSeconds(s)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                        targetSeconds === s
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      {s}s
+                    </button>
+                  ))}
                 </div>
               </Field>
             </>
           )}
 
-          {/* ───── 步骤 2:画面 + 出片去向 ───── */}
           {step === 2 && (
             <>
-              {/* 视频参考图(真实缩略图预览) —— 从第一步挪过来,第一步只留文字内容 */}
-              <Field label={isZh ? '视频参考图（选填，最多 3 张）' : 'Video reference images (optional, max 3)'}>
+              <Field label={isZh ? '视频参考图（选填，最多 3 张）' : 'Reference images (optional, max 3)'}>
                 <div className="flex flex-wrap items-center gap-2">
                   {refImages.map((p, i) => (
                     <div key={i} className="relative group">
@@ -478,15 +711,12 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                         {thumbs[p] ? (
                           <img src={thumbs[p]} alt="" className="w-full h-full object-cover" />
                         ) : (
-                          <span className="text-[10px] text-gray-500 px-1 text-center break-all">
-                            {p.split(/[\\/]/).pop()}
-                          </span>
+                          <span className="text-[10px] text-gray-500 px-1 text-center break-all">{p.split(/[\\/]/).pop()}</span>
                         )}
                       </div>
                       <button
                         type="button"
                         onClick={() => removeImage(i)}
-                        disabled={generating}
                         className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-gray-800 text-white text-xs flex items-center justify-center hover:bg-red-500"
                       >
                         ×
@@ -497,7 +727,6 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                     <button
                       type="button"
                       onClick={pickImages}
-                      disabled={generating}
                       className="w-16 h-16 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-2xl text-gray-400 hover:border-rose-400 hover:text-rose-400 transition-colors"
                     >
                       +
@@ -506,15 +735,13 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                 </div>
               </Field>
 
-              {/* 生成模式 —— 从第一步挪过来 */}
               <Field label={isZh ? '生成模式' : 'Generation mode'}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <ModeOption
                     active={mode === 'stock'}
-                    disabled={generating}
                     onClick={() => setMode('stock')}
-                    title={isZh ? 'AI 分镜 + 在线素材库' : 'AI scenes + stock library'}
-                    desc={isZh ? '参考图 + 免费素材库凑画面，便宜快' : 'your images + free stock, cheap & fast'}
+                    title={isZh ? 'AI 分镜 + 在线视频素材' : 'AI scenes + stock video'}
+                    desc={isZh ? '在线视频素材 + 参考图凑画面,便宜快' : 'stock video + your images, cheap & fast'}
                   />
                   <ModeOption
                     active={mode === 'pure_ai'}
@@ -531,14 +758,12 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                 <div className="space-y-2">
                   <RadioCard
                     active={outputMode === 'local'}
-                    disabled={generating}
                     onClick={() => setOutputMode('local')}
                     title={isZh ? '存本地不上传' : 'Save locally, no upload'}
                     desc={isZh ? '只在本机生成 mp4，自己看 / 手动发都行' : 'just produce an mp4 on this machine'}
                   />
                   <RadioCard
                     active={outputMode === 'upload'}
-                    disabled={generating}
                     onClick={() => setOutputMode('upload')}
                     title={isZh ? '上传到各大平台' : 'Upload to platforms'}
                     desc={isZh ? '出片后自动发到选中的平台' : 'auto-publish to selected platforms after'}
@@ -547,13 +772,12 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                 </div>
               </Field>
 
-              {/* 平台多选(默认全选) */}
               {outputMode === 'upload' && (
                 <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
                   <div className="flex flex-wrap gap-2">
-                    <PlatformCheck checked={platforms.douyin} disabled={generating} onClick={() => togglePlatform('douyin')} label={isZh ? '抖音' : 'Douyin'} />
-                    <PlatformCheck checked={platforms.xhs} disabled={generating} onClick={() => togglePlatform('xhs')} label={isZh ? '小红书' : 'XHS'} />
-                    <PlatformCheck checked={platforms.binance} disabled={generating} onClick={() => togglePlatform('binance')} label={isZh ? '币安' : 'Binance'} />
+                    <PlatformCheck checked={platforms.douyin} onClick={() => togglePlatform('douyin')} label={isZh ? '抖音' : 'Douyin'} />
+                    <PlatformCheck checked={platforms.xhs} onClick={() => togglePlatform('xhs')} label={isZh ? '小红书' : 'XHS'} />
+                    <PlatformCheck checked={platforms.binance} onClick={() => togglePlatform('binance')} label={isZh ? '币安' : 'Binance'} />
                   </div>
                   <div className="mt-2 text-[11px] text-amber-500">
                     {isZh
@@ -563,74 +787,25 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
                 </Field>
               )}
 
-              {/* 出片概要 */}
               <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[11px] text-gray-500 dark:text-gray-400 space-y-1">
-                <div>🎯 {isZh ? '赛道' : 'Track'}：{TRACK_PRESETS.find(t => t.id === trackId)?.[isZh ? 'zh' : 'en'] || '-'}</div>
-                <div>📝 {isZh ? '文案' : 'Script'}：{scriptLen} {isZh ? '字' : 'chars'}</div>
+                <div>🎯 {isZh ? '赛道' : 'Track'}：{trackLabel || '-'}</div>
+                <div>📝 {isZh ? '文案' : 'Script'}：{scriptLen === 0 ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`) : `${scriptLen} ${isZh ? '字' : 'chars'}`}</div>
                 <div>🖼️ {isZh ? '参考图' : 'Images'}：{refImages.length}</div>
               </div>
 
-              {/* 进度 */}
-              {progress && (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
-                  {progress.steps.map(s => (
-                    <div key={s.key} className="flex items-center gap-2 text-xs">
-                      <span>
-                        {s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}
-                      </span>
-                      <span className={s.status === 'running' ? 'text-rose-500 font-medium' : 'text-gray-600 dark:text-gray-300'}>
-                        {s.label}
-                      </span>
-                    </div>
-                  ))}
-                  {progress.message && (
-                    <div className="text-[11px] text-gray-400 pt-1">{progress.message}</div>
-                  )}
-                </div>
-              )}
-
-              {/* 结果 */}
-              {resultPath && (
-                <div className="rounded-lg border border-green-500/40 bg-green-500/5 p-3">
-                  <div className="text-sm font-medium text-green-600 dark:text-green-400 mb-1">
-                    ✅ {isZh ? '生成成功' : 'Done'}
-                  </div>
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-2">{resultPath}</div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => videoCreationService.openFile(resultPath)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600"
-                    >
-                      ▶ {isZh ? '预览' : 'Preview'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => videoCreationService.revealInFolder(resultPath)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                    >
-                      📂 {isZh ? '打开文件夹' : 'Open folder'}
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {errorMsg && (
-                <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500 break-all">
-                  {errorMsg}
-                </div>
+              {submitError && (
+                <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500">{submitError}</div>
               )}
             </>
           )}
         </div>
 
-        {/* 底部按钮 */}
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           {step === 1 ? (
             <>
               <button
                 type="button"
-                onClick={onBack}
+                onClick={onClose}
                 className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
                 {isZh ? '取消' : 'Cancel'}
@@ -638,8 +813,9 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
               <button
                 type="button"
                 onClick={() => {
-                  if (!trackId) { alert(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
-                  if (!scriptValid) { alert(isZh ? `参考文案需 ${SCRIPT_MIN}~${SCRIPT_MAX} 字` : `Script must be ${SCRIPT_MIN}-${SCRIPT_MAX} chars`); return; }
+                  if (!trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
+                  if (!scriptValid) { setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`); return; }
+                  setSubmitError(null);
                   setStep(2);
                 }}
                 disabled={!step1Valid}
@@ -652,22 +828,18 @@ const VideoCreatePanel: React.FC<{ isZh: boolean; onBack: () => void }> = ({ isZ
             <>
               <button
                 type="button"
-                onClick={() => !generating && (resultPath ? onBack() : setStep(1))}
-                disabled={generating}
-                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                onClick={() => setStep(1)}
+                className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
               >
-                {resultPath ? (isZh ? '完成' : 'Done') : (isZh ? '← 上一步' : '← Back')}
+                ← {isZh ? '上一步' : 'Back'}
               </button>
-              {!resultPath && (
-                <button
-                  type="button"
-                  onClick={handleGenerate}
-                  disabled={generating}
-                  className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
-                >
-                  {generating ? (isZh ? '生成中…' : 'Generating…') : '🎬 ' + (isZh ? '开始生成' : 'Generate')}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleSubmit}
+                className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600"
+              >
+                🎬 {isZh ? '开始创作' : 'Start'}
+              </button>
             </>
           )}
         </div>
@@ -714,9 +886,7 @@ const ModeOption: React.FC<{
     onClick={onClick}
     disabled={disabled}
     className={`text-left rounded-lg border p-3 transition-colors ${
-      active
-        ? 'border-rose-500 bg-rose-500/10'
-        : 'border-gray-300 dark:border-gray-700 hover:border-rose-300'
+      active ? 'border-rose-500 bg-rose-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-rose-300'
     } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
   >
     <div className="text-sm font-semibold dark:text-white flex items-center gap-1.5">
