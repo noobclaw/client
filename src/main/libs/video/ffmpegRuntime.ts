@@ -26,17 +26,43 @@ const EXE = process.platform === 'win32' ? '.exe' : '';
 
 function bundledBinDirs(): string[] {
   const dirs: string[] = [];
+  // For each resource root, the binary may sit directly under
+  // <root>/<platform>/bin/… or, on layouts that omit the bin subdir,
+  // <root>/<platform>/… — probe both.
+  const pushRoot = (root: string) => {
+    dirs.push(path.join(root, PLATFORM_DIR, 'bin'));
+    dirs.push(path.join(root, PLATFORM_DIR));
+  };
+
   if (isPackaged()) {
-    dirs.push(path.join(getResourcesPath(), PLATFORM_DIR, 'bin'));
-    dirs.push(path.join(getResourcesPath(), PLATFORM_DIR));
+    const res = getResourcesPath();
+    const exeDir = path.dirname(process.execPath);
+
+    // Tauri bundles resources via the `resources/**/*` glob, which PRESERVES
+    // the leading `resources/` path segment. On Windows the resource root is
+    // the install dir, so files land at <install>/resources/<platform>/… and
+    // getResourcesPath() (== <install>/resources) lines up directly. On macOS
+    // the resource root is already Contents/Resources, so the same glob nests
+    // the payload one level deeper at Contents/Resources/resources/<platform>/…
+    // while getResourcesPath() returns Contents/Resources — i.e. one segment
+    // short. Probe BOTH the root and the nested `resources/` variant so we
+    // resolve on every platform. This mirrors the dual-path walk that
+    // nativeDesktopMac.ts already uses for the .node addon.
+    pushRoot(res);
+    pushRoot(path.join(res, 'resources'));
+
+    // Belt-and-braces: walk relative to the sidecar binary too, covering the
+    // macOS .app sibling layout if getResourcesPath ever returns a different
+    // parent than expected.
+    pushRoot(path.join(exeDir, 'resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources', 'resources'));
   } else {
     const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
-    dirs.push(path.join(projectRoot, 'resources', PLATFORM_DIR, 'bin'));
-    dirs.push(path.join(projectRoot, 'resources', PLATFORM_DIR));
+    pushRoot(path.join(projectRoot, 'resources'));
   }
   // userData synced copy
-  dirs.push(path.join(getUserDataPath(), 'runtimes', PLATFORM_DIR, 'bin'));
-  dirs.push(path.join(getUserDataPath(), 'runtimes', PLATFORM_DIR));
+  pushRoot(path.join(getUserDataPath(), 'runtimes'));
   return dirs;
 }
 
