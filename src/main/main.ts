@@ -2859,13 +2859,42 @@ if (!gotTheLock) {
   {
     ipcMain.handle('video:pickImages', async (_e, max: number) => {
       const limit = Math.max(1, Math.min(Number(max) || 3, 9));
-      const result = await dialog.showOpenDialog({
-        title: '选择参考图',
-        properties: ['openFile', 'multiSelections'],
-        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp'] }],
-      });
+      // Anchor the picker to the focused window so it reliably appears in
+      // front (an app-modal dialog with no parent can open behind the
+      // window on some setups → looks like "nothing happened").
+      const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
+      const opts = {
+        title: '选择视频参考图',
+        properties: ['openFile', 'multiSelections'] as Array<'openFile' | 'multiSelections'>,
+        filters: [{ name: 'Images', extensions: ['jpg', 'jpeg', 'png', 'webp', 'bmp', 'gif'] }],
+      };
+      const result = parent
+        ? await dialog.showOpenDialog(parent, opts)
+        : await dialog.showOpenDialog(opts);
       if (result.canceled || !Array.isArray(result.filePaths)) return [];
       return result.filePaths.slice(0, limit);
+    });
+
+    // Read a local image file and return it as a data: URL so the renderer
+    // can show a real thumbnail (renderer can't load file:// under CSP).
+    ipcMain.handle('video:readImageDataUrl', async (_e, filePath: string) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const buf: Buffer = fs.readFileSync(filePath);
+        // Guard against huge files — thumbnails don't need more than a few MB.
+        if (buf.length > 12 * 1024 * 1024) return '';
+        const ext = path.extname(filePath).toLowerCase().replace('.', '');
+        const mime =
+          ext === 'png' ? 'image/png'
+          : ext === 'webp' ? 'image/webp'
+          : ext === 'bmp' ? 'image/bmp'
+          : ext === 'gif' ? 'image/gif'
+          : 'image/jpeg';
+        return `data:${mime};base64,${buf.toString('base64')}`;
+      } catch {
+        return '';
+      }
     });
 
     ipcMain.handle('video:pickAudio', async () => {

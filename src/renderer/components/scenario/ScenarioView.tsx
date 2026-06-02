@@ -239,9 +239,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const setPlatform = (platform: PlatformId) => {
-    // 视频创作是本地工具,没有"我的任务/运行记录"两个 section —— 切到该 tab
-    // 时强制回到 create,免得带出空的 section tab 栏。
-    const section: SectionId = platform === 'video' ? 'create' : currentSection;
+    // 视频创作是本地工具,没有"运行记录" section —— 切到该 tab 时落到 'tasks'
+    // (= 视频落地页:看当前任务/占位框),跟其他 tab 一样默认进任务视图而不是
+    // 直接弹创建表单。点占位框 / 右上「新建视频创作任务」才进 create。
+    const section: SectionId = platform === 'video' ? 'tasks' : currentSection;
     setView({ kind: 'main', section, platform });
   };
 
@@ -470,10 +471,17 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       );
     }
 
-    // 多平台视频创作 —— 本地合成工具,不走 scenario 任务体系,直接渲染自己的
-    // 工作流页(两张卡片),无视 create/tasks/history 分段。
+    // 多平台视频创作 —— 本地合成工具,不走 scenario 任务体系,但交互跟其他 tab
+    // 对齐:section='create' 走创建向导,否则(tasks)走落地页(占位框 + 卡片)。
+    // 返回 / 新建由 ScenarioView 顶部头部统一处理(见下方 header 区块)。
     if (currentPlatform === 'video') {
-      return <VideoWorkflowsPage />;
+      return (
+        <VideoWorkflowsPage
+          mode={currentSection === 'create' ? 'create' : 'landing'}
+          onGoCreate={() => setView({ kind: 'main', section: 'create', platform: 'video' })}
+          onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
+        />
+      );
     }
 
     // Section + platform branching. Each L1 section has a per-platform
@@ -737,20 +745,43 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           to the My Tasks list. We deliberately do NOT keep the L1 tabs
           here so the page reads as a pushed sub-page, not a sibling
           of My Tasks / Run History. */}
-      {view.kind === 'main' && currentSection === 'create' && currentPlatform !== 'video' && (
+      {view.kind === 'main' && currentSection === 'create' && (
         <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <button
             type="button"
             onClick={() => setSection('tasks')}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
-            title={i18nService.currentLanguage === 'zh' ? '返回我的涨粉任务' : 'Back to My Tasks'}
+            title={i18nService.currentLanguage === 'zh'
+              ? (currentPlatform === 'video' ? '返回视频创作' : '返回我的涨粉任务')
+              : 'Back'}
           >
             <span>←</span>
             <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
           </button>
           <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2">
-            ✨ {i18nService.currentLanguage === 'zh' ? '新建涨粉任务' : 'New Task'}
+            ✨ {i18nService.currentLanguage === 'zh'
+              ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
+              : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
           </h2>
+        </div>
+      )}
+
+      {/* 视频落地页头部 —— 视频是本地工具,没有"运行记录",所以不套 L1 section
+          tab 栏,只给一个标题 + 右上「新建视频创作任务」CTA,跟其他 tab 的 list
+          模式头部布局一致(左标题右 CTA)。 */}
+      {view.kind === 'main' && currentPlatform === 'video' && currentSection !== 'create' && (
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          <h2 className="text-base font-bold dark:text-white text-gray-900 flex items-center gap-2">
+            🎬 {i18nService.currentLanguage === 'zh' ? '我的视频创作' : 'My Videos'}
+          </h2>
+          <button
+            type="button"
+            onClick={() => setView({ kind: 'main', section: 'create', platform: 'video' })}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-rose-500/30 active:scale-95 bg-rose-500 hover:bg-rose-600 text-white border border-rose-500"
+          >
+            <span>✨</span>
+            <span>{i18nService.currentLanguage === 'zh' ? '新建视频创作任务' : 'New Video Task'}</span>
+          </button>
         </div>
       )}
 

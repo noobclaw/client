@@ -98,6 +98,8 @@ contextBridge.exposeInMainWorld('electron', {
     generate: (input: unknown) => ipcRenderer.invoke('video:generate', input),
     /** Open the system file picker to choose reference images (returns abs paths). */
     pickImages: (max: number) => ipcRenderer.invoke('video:pickImages', max),
+    /** Read a local image file as a data: URL for thumbnail preview. */
+    readImageDataUrl: (filePath: string) => ipcRenderer.invoke('video:readImageDataUrl', filePath),
     /** Open the system file picker to choose one background-music file (returns abs path or ''). */
     pickAudio: () => ipcRenderer.invoke('video:pickAudio'),
     /** Open a produced file with the OS default player. */

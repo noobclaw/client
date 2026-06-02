@@ -78,6 +78,17 @@ class VideoCreationService {
     }
   }
 
+  /** 把本地图片读成 data: URL,给参考图缩略图预览用(渲染端 CSP 下加载不了 file://)。 */
+  async readImageDataUrl(path: string): Promise<string> {
+    if (!this.api?.readImageDataUrl) return '';
+    try {
+      const url = await this.api.readImageDataUrl(path);
+      return typeof url === 'string' ? url : '';
+    } catch {
+      return '';
+    }
+  }
+
   /** 弹系统文件选择框选一首背景音乐,返回绝对路径('' = 取消)。 */
   async pickBgm(): Promise<string> {
     if (!this.api?.pickAudio) return '';
