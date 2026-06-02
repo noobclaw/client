@@ -19,6 +19,7 @@ import { noobClawAuth } from '../../../services/noobclawAuth';
 import {
   videoCreationService,
   type VideoCreationInput,
+  type VideoCreationProgressStep,
   type VideoPublishTarget,
 } from '../../../services/videoCreation';
 import {
@@ -124,7 +125,6 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
           onBack();                              // section → tasks(L1 高亮回任务)
           setDetail({ kind: 'task', taskId });   // 直接进新任务详情
         }}
-        onCancel={onBack}
       />
     );
   }
@@ -185,8 +185,52 @@ const VStatCard: React.FC<{
   );
 };
 
+/** id 徽章:任务 / 运行记录用不同前缀,避免两种 id 混淆(都是 12 位 hex,展示前 8 位)。 */
+const IdTag: React.FC<{ kind: 'task' | 'record'; id: string; isZh: boolean }> = ({ kind, id, isZh }) => (
+  <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
+    {kind === 'task' ? (isZh ? '任务' : 'Task') : (isZh ? '记录' : 'Run')} #{id.slice(0, 8)}
+  </span>
+);
+
+/** 视频创作教程入口(对齐币安 MyTasksPage 的「涨粉教程」胶囊:系统浏览器打开 docs)。 */
+const VideoTutorialButton: React.FC<{ isZh: boolean }> = ({ isZh }) => {
+  const url = isZh
+    ? 'https://docs.noobclaw.com/zhong-wen-ban/shi-pin-chuang-zuo-jiao-cheng'
+    : 'https://docs.noobclaw.com/english/video-creation';
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        try {
+          (window as any).electron?.shell?.openExternal?.(url) ?? window.open(url, '_blank', 'noopener,noreferrer');
+        } catch {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        }
+      }}
+      className="group relative inline-flex items-center gap-1.5 text-xs font-medium
+                 px-3.5 py-1.5 rounded-full
+                 bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15
+                 hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25
+                 text-amber-700 dark:text-amber-300
+                 border border-amber-500/30 hover:border-amber-500/60
+                 shadow-sm hover:shadow-md hover:shadow-amber-500/20
+                 transition-all duration-200 hover:-translate-y-0.5"
+      title={isZh ? '查看视频创作教程' : 'Open video creation tutorial'}
+    >
+      <span className="text-sm leading-none">📖</span>
+      <span>{isZh ? '视频创作教程' : 'Tutorial'}</span>
+      <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
+    </button>
+  );
+};
+
 function statusOf(task: VideoTask): VideoRunStatus | 'idle' {
   return task.lastStatus || (task.runCount > 0 ? 'done' : 'idle');
+}
+
+/** 某任务已成功生成的视频条数(= done 状态的运行记录数)。 */
+function doneVideoCount(taskId: string): number {
+  return videoTaskStore.getRunsForTask(taskId).filter((r) => r.status === 'done').length;
 }
 
 const StatusPill: React.FC<{ isZh: boolean; status: VideoRunStatus | 'idle' }> = ({ isZh, status }) => {
@@ -312,17 +356,10 @@ const VideoLanding: React.FC<{
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-base font-bold dark:text-white">
-          {isZh ? '视频创作任务' : 'Video tasks'}
-          <span className="ml-2 text-xs font-normal text-gray-400">{tasks.length}</span>
+        <h2 className="text-lg font-bold dark:text-white">
+          📋 {isZh ? '我的视频任务' : 'My Videos'}
         </h2>
-        <button
-          type="button"
-          onClick={onGoCreate}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-500 hover:bg-rose-600 text-white text-sm font-bold shadow-lg shadow-rose-500/25 transition-colors"
-        >
-          ✨ {isZh ? '新建' : 'New'} →
-        </button>
+        <VideoTutorialButton isZh={isZh} />
       </div>
       <div className="space-y-3">
         {tasks.map((t) => (
@@ -336,12 +373,8 @@ const VideoLanding: React.FC<{
 // ── 任务卡片(运行中发光,展示赛道/人设/关键词/文案) ─────────────────────
 
 const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => void }> = ({ isZh, task, onClick }) => {
-  const status = statusOf(task);
-  const isRunning = status === 'running';
-  const latest = videoTaskStore.getLatestRun(task.id);
-  const doneCount = latest ? latest.steps.filter((s) => s.status === 'done').length : 0;
-  const totalSteps = latest ? latest.steps.length : 0;
-  const runningStep = latest?.steps.find((s) => s.status === 'running');
+  const isRunning = statusOf(task) === 'running';
+  const made = doneVideoCount(task.id);
 
   return (
     <button
@@ -350,24 +383,17 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
       className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
         isRunning
           ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-          : status === 'error'
-            ? 'border-red-400/60 dark:border-red-500/40 bg-white dark:bg-gray-900'
-            : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900'
+          : 'border-gray-200 dark:border-gray-700 hover:border-rose-500/50 dark:hover:border-rose-500/50 bg-white dark:bg-gray-900'
       }`}
     >
-      {/* Top row — 平台 pill + 类型 badge + title + #id 左,状态 pill 右 */}
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <div className="flex items-center gap-2 min-w-0 flex-1">
-          <HeadBadges isZh={isZh} />
-          <span className="font-medium dark:text-white truncate">{task.title}</span>
-          <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
-            #{task.id.slice(0, 8)}
-          </span>
-        </div>
-        <div className="shrink-0"><StatusPill isZh={isZh} status={status} /></div>
+      {/* Top row — 平台 pill + 类型 badge + title + 任务#id */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap min-w-0">
+        <HeadBadges isZh={isZh} />
+        <span className="font-medium dark:text-white truncate">{task.title}</span>
+        <IdTag kind="task" id={task.id} isZh={isZh} />
       </div>
 
-      {/* 配置摘要:赛道 / 人设 / 关键词 / 文案 */}
+      {/* 配置摘要:赛道 / 人设 / 关键词(全部展示) / 文案 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
         <div className="flex items-start gap-1.5">
           <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
@@ -381,7 +407,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         )}
         <div className="flex items-start gap-1.5">
           <span className="text-gray-400 shrink-0">🏷️ {isZh ? '关键词' : 'Keywords'}</span>
-          <KeywordChips keywords={task.input.keywords} />
+          <KeywordChips keywords={task.input.keywords} max={99} />
         </div>
         <div className="flex items-start gap-1.5">
           <span className="text-gray-400 shrink-0">📝 {isZh ? '文案' : 'Script'}</span>
@@ -389,40 +415,10 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         </div>
       </div>
 
-      {/* 当前状态 / 错误信息 */}
-      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 truncate">
-        {status === 'error'
-          ? <span className="text-red-500">{latest?.error}</span>
-          : isRunning
-            ? (latest?.message || runningStep?.label || (isZh ? '准备中…' : 'Preparing…'))
-            : status === 'done'
-              ? (isZh ? '已生成成片,点开查看 / 预览' : 'Video ready — open to preview')
-              : (isZh ? '尚未运行,点开可开始 / 编辑' : 'Not run yet — open to start / edit')}
-      </div>
-
-      {/* Actions strip — 步骤进度 + 跑过几次(对齐 scenario 的「本次运行进度 / 累计完成」) */}
-      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
-        {totalSteps > 0 && (
-          <>
-            <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
-              {isRunning ? (isZh ? '本次运行进度' : 'Current Run') : (isZh ? '步骤' : 'Steps')}:
-            </span>
-            <span className="font-mono">
-              🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
-              <span className="text-gray-400 dark:text-gray-500">/{totalSteps}</span>
-            </span>
-          </>
-        )}
-        <span className="text-[10px] text-gray-400">
-          {isZh ? `运行 ${task.runCount} 次` : `${task.runCount} runs`}
-        </span>
-        {task.cumulativeTokens > 0 && (
-          <span className="text-[10px] text-gray-400">
-            🎟️ {isZh ? '累计' : 'Total'} {fmtNum(task.cumulativeTokens)} tokens
-          </span>
-        )}
-        <span className="ml-auto text-[10px] text-gray-400">
-          {new Date(task.lastRunAt || task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
+      {/* footer — 只展示「已生成 N 个视频」 */}
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs">
+        <span className="text-gray-500 dark:text-gray-400">
+          {isZh ? '已生成' : 'Made'}：🎬 <strong className="dark:text-white">{made}</strong> {isZh ? '个视频' : made === 1 ? 'video' : 'videos'}
         </span>
       </div>
     </button>
@@ -487,7 +483,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <HeadBadges isZh={isZh} />
           <span className="font-medium dark:text-white truncate">{run.title}</span>
-          <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">#{run.id.slice(0, 8)}</span>
+          <IdTag kind="record" id={run.id} isZh={isZh} />
         </div>
         <div className="shrink-0"><StatusPill isZh={isZh} status={run.status} /></div>
       </div>
@@ -542,7 +538,29 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
 
 // ── 运行体(进度 step + 本次消耗 + 流式日志 + 成片操作) 详情/记录共用 ─────────
 
-const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined }> = ({ isZh, run }) => {
+/** step 明细列表(详情/记录共用)。 */
+const StepList: React.FC<{ steps: VideoCreationProgressStep[] }> = ({ steps }) => {
+  if (!steps.length) return null;
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
+      {steps.map((s) => (
+        <div key={s.key} className="flex items-center gap-2 text-xs">
+          <span>{s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}</span>
+          <span className={s.status === 'running' ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-600 dark:text-gray-300'}>
+            {s.label}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+/**
+ * 运行体:step 明细 + 流式日志 + 成片操作。
+ * showProgressPill=true(运行记录详情)时额外渲染顶部「步骤 N/M + 本次消耗 + 状态」一行;
+ * 任务详情页传 false —— 那边上方已有独立的「本次运行进度 / 本次消耗」绿卡对,避免重复。
+ */
+const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showProgressPill?: boolean }> = ({ isZh, run, showProgressPill = true }) => {
   const logRef = useRef<HTMLDivElement>(null);
   const logLen = run?.logs.length ?? 0;
   useEffect(() => {
@@ -564,47 +582,37 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined }> = ({
 
   return (
     <>
-      {/* 本次运行进度 + 本次消耗 */}
-      <div className={`rounded-xl border p-4 mb-4 ${
-        isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow bg-white dark:bg-gray-900' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
-      }`}>
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
-          <div className="flex items-center gap-3 flex-wrap text-xs">
-            {totalSteps > 0 && (
-              <span className={`rounded-lg px-3 py-1.5 inline-flex items-center gap-2 ${
-                isRunning ? 'border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10' : 'border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
-              }`}>
-                <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500'}`}>
-                  {isRunning ? (isZh ? '本次运行进度' : 'Current Run') : (isZh ? '步骤' : 'Steps')}
+      {showProgressPill ? (
+        <div className={`rounded-xl border p-4 mb-4 ${
+          isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow bg-white dark:bg-gray-900' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
+        }`}>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+            <div className="flex items-center gap-3 flex-wrap text-xs">
+              {totalSteps > 0 && (
+                <span className={`rounded-lg px-3 py-1.5 inline-flex items-center gap-2 ${
+                  isRunning ? 'border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10' : 'border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+                }`}>
+                  <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500'}`}>
+                    {isRunning ? (isZh ? '本次运行进度' : 'Current Run') : (isZh ? '步骤' : 'Steps')}
+                  </span>
+                  <span className="font-mono">
+                    🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
+                    <span className="text-gray-400">/{totalSteps}</span>
+                  </span>
                 </span>
-                <span className="font-mono">
-                  🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
-                  <span className="text-gray-400">/{totalSteps}</span>
-                </span>
+              )}
+              <span className="rounded-lg px-3 py-1.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 inline-flex items-center gap-2">
+                <span className="text-[10px] text-gray-500">{isZh ? '本次消耗' : 'Cost'}</span>
+                <span className="font-mono">🎟️ {fmtNum(run.tokensUsed)} <span className="text-[10px] text-gray-400 font-sans">tokens</span></span>
               </span>
-            )}
-            <span className="rounded-lg px-3 py-1.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 inline-flex items-center gap-2">
-              <span className="text-[10px] text-gray-500">{isZh ? '本次消耗' : 'Cost'}</span>
-              <span className="font-mono">🎟️ {fmtNum(run.tokensUsed)} <span className="text-[10px] text-gray-400 font-sans">tokens</span></span>
-            </span>
+            </div>
+            <StatusPill isZh={isZh} status={run.status} />
           </div>
-          <StatusPill isZh={isZh} status={run.status} />
+          <StepList steps={run.steps} />
         </div>
-
-        {/* step 明细 */}
-        {totalSteps > 0 && (
-          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
-            {run.steps.map((s) => (
-              <div key={s.key} className="flex items-center gap-2 text-xs">
-                <span>{s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}</span>
-                <span className={s.status === 'running' ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-600 dark:text-gray-300'}>
-                  {s.label}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      ) : (
+        totalSteps > 0 && <div className="mb-4"><StepList steps={run.steps} /></div>
+      )}
 
       {/* 流式日志 */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
@@ -720,40 +728,14 @@ const VideoTaskDetail: React.FC<{
         ← {isZh ? '返回' : 'Back'}
       </button>
 
-      {/* Header */}
+      {/* Header — 平台/类型 badge + 任务#id(对齐币安详情页头部) */}
       <div className="flex items-center gap-2 mb-2 flex-wrap">
         <HeadBadges isZh={isZh} size="md" />
-        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+        <IdTag kind="task" id={task.id} isZh={isZh} />
       </div>
       <h2 className="text-lg font-bold dark:text-white mb-3">🎬 {task.title}</h2>
 
-      {/* 输出目录(顶部) */}
-      <OutputDirBar isZh={isZh} dir={outDir} />
-
-      {/* 统计卡网格(对齐 scenario 详情页:累计/上次消耗 + 运行次数 + 上次运行)。
-          视频是本地工具,消耗只有 DeepSeek token(无 USD/动作数),故用 🎟️ tokens。 */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <VStatCard
-          label={isZh ? '运行次数' : 'Total Runs'}
-          value={isZh ? `${task.runCount} 次` : `${task.runCount}`}
-        />
-        <VStatCard
-          label={isZh ? '累计消耗' : 'Total Cost'}
-          value={task.cumulativeTokens > 0 ? `🎟️ ${compactNumber(task.cumulativeTokens)}` : '-'}
-        />
-        <VStatCard
-          label={isZh ? '上次消耗' : 'Last Cost'}
-          value={latestRun && latestRun.tokensUsed > 0 ? `🎟️ ${compactNumber(latestRun.tokensUsed)}` : '-'}
-        />
-        <VStatCard
-          label={isZh ? '上次运行' : 'Last Run'}
-          value={fmtRelative(task.lastRunAt, isZh)}
-          onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
-          actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
-        />
-      </div>
-
-      {/* 配置 + 状态卡(运行中绿框发亮) */}
+      {/* 配置 + 操作卡(运行中绿框发亮),放最上(对齐币安:先配置再统计) */}
       <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
         isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700'
       }`}>
@@ -793,12 +775,68 @@ const VideoTaskDetail: React.FC<{
         {actionError && <div className="mt-2 text-xs text-red-500">{actionError}</div>}
       </div>
 
-      {/* 本次运行 */}
-      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-        {isZh ? '本次运行' : 'Latest run'}
-        {latestRun && <span className="ml-2 font-mono text-gray-400">#{latestRun.id.slice(0, 8)}</span>}
+      {/* 运行中专属:本次运行进度 + 本次消耗(绿卡对,对齐币安 running-only pair) */}
+      {isRunning && latestRun && (latestRun.steps.length > 0 || latestRun.tokensUsed > 0) && (
+        <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
+            <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              {isZh ? '本次运行进度' : 'Current Run Progress'}
+            </div>
+            <div className="font-mono text-sm text-gray-700 dark:text-gray-200">
+              🎬 <strong className="text-green-600 dark:text-green-400 text-base">{latestRun.steps.filter((s) => s.status === 'done').length}</strong>
+              <span className="text-gray-400 dark:text-gray-500">/{latestRun.steps.length}</span>{' '}
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-sans">{isZh ? '步骤' : 'steps'}</span>
+            </div>
+          </div>
+          <div className="rounded-xl border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow px-4 py-3">
+            <div className="text-xs font-semibold text-green-600 dark:text-green-400 mb-2 flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              {isZh ? '本次消耗' : 'Current Run Cost'}
+            </div>
+            <div className="flex items-baseline gap-2 font-mono text-sm text-gray-700 dark:text-gray-200">
+              <span>🎟️</span>
+              <strong className="text-green-600 dark:text-green-400 text-base">{compactNumber(latestRun.tokensUsed || 0)}</strong>
+              <span className="text-xs text-gray-400 font-sans">tokens</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 统计网格(对齐币安:累计完成/累计消耗/上次完成/上次消耗/上次运行)。
+          视频是本地工具,消耗只有 DeepSeek token(无 USD/动作数),故用 🎟️ tokens。 */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+        <VStatCard
+          label={isZh ? '累计完成' : 'Total Done'}
+          value={`🎬 ${doneVideoCount(task.id)} ${isZh ? '个视频' : 'videos'}`}
+        />
+        <VStatCard
+          label={isZh ? '累计消耗' : 'Total Cost'}
+          value={task.cumulativeTokens > 0 ? `🎟️ ${compactNumber(task.cumulativeTokens)}` : '-'}
+        />
+        <VStatCard
+          label={isZh ? '上次完成' : 'Last Done'}
+          value={latestRun ? (latestRun.status === 'done' ? `🎬 ${isZh ? '1 个视频' : '1 video'}` : (latestRun.status === 'running' ? (isZh ? '生成中…' : 'Running…') : (isZh ? '失败' : 'Failed'))) : '-'}
+        />
+        <VStatCard
+          label={isZh ? '上次消耗' : 'Last Cost'}
+          value={latestRun && latestRun.tokensUsed > 0 ? `🎟️ ${compactNumber(latestRun.tokensUsed)}` : '-'}
+        />
+        <VStatCard
+          label={isZh ? '上次运行' : 'Last Run'}
+          value={fmtRelative(task.lastRunAt, isZh)}
+          onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
+          actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
+        />
       </div>
-      <RunBody isZh={isZh} run={latestRun} />
+
+      {/* 当前运行明细(对齐币安「当前运行明细」:输出目录 + step + 日志 + 成片) */}
+      <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
+        {latestRun && <IdTag kind="record" id={latestRun.id} isZh={isZh} />}
+      </div>
+      <OutputDirBar isZh={isZh} dir={outDir} />
+      <RunBody isZh={isZh} run={latestRun} showProgressPill={false} />
 
       {/* 历史运行(>1 条时展示,点进运行记录详情) */}
       {runs.length > 1 && (
@@ -813,9 +851,9 @@ const VideoTaskDetail: React.FC<{
                 key={r.id}
                 type="button"
                 onClick={() => onOpenRecord(r.id)}
-                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:border-green-500/50 transition-colors flex items-center gap-3 text-xs"
+                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:border-rose-500/50 transition-colors flex items-center gap-3 text-xs"
               >
-                <span className="font-mono text-gray-400">#{r.id.slice(0, 8)}</span>
+                <IdTag kind="record" id={r.id} isZh={isZh} />
                 <StatusPill isZh={isZh} status={r.status} />
                 {r.tokensUsed > 0 && <span className="text-gray-400">🎟️ {fmtNum(r.tokensUsed)}</span>}
                 <span className="ml-auto text-gray-400">{new Date(r.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</span>
@@ -889,27 +927,11 @@ const VideoRunRecordDetail: React.FC<{
 const VideoCreateFlow: React.FC<{
   isZh: boolean;
   onCreated: (taskId: string) => void;
-  onCancel: () => void;
-}> = ({ isZh, onCreated, onCancel }) => {
+}> = ({ isZh, onCreated }) => {
   const [showConfig, setShowConfig] = useState(false);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
-      <button
-        type="button"
-        onClick={onCancel}
-        className="mb-3 inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
-      >
-        ← {isZh ? '返回' : 'Back'}
-      </button>
-      <div className="mb-5 text-center">
-        <h2 className="text-lg font-bold dark:text-white">
-          {isZh ? '选择创作方式' : 'Choose how to create'}
-        </h2>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {isZh ? '先从「单次成片」开始,自动成片即将推出' : 'Start with one-shot — auto mode coming soon'}
-        </p>
-      </div>
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} />
         <DailyHotVideoCard isZh={isZh} />

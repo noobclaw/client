@@ -242,11 +242,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const setPlatform = (platform: PlatformId) => {
-    // 视频创作是本地工具,没有"运行记录" section —— 切到该 tab 时落到 'tasks'
-    // (= 视频落地页:看当前任务/占位框),跟其他 tab 一样默认进任务视图而不是
-    // 直接弹创建表单。点占位框 / 右上「新建视频创作任务」才进 create。
+    // 视频创作是本地工具,没有"运行记录" section。
+    // 从【别的平台的创建态】切到视频 tab 时,应直接进【多平台视频创作新建页】
+    // (两个 card),而不是掉回视频任务 list —— 跟用户在「新建涨粉任务」里切
+    // tab 的预期一致。其余情况(从任务页/记录页切过来)落到 'tasks'(视频落地页)。
     if (platform === 'video') {
-      setView({ kind: 'main', section: 'tasks', platform });
+      const section: SectionId = currentSection === 'create' ? 'create' : 'tasks';
+      setView({ kind: 'main', section, platform });
       return;
     }
     // 从【视频创建态】切到别的平台时,不要把 'create' 带过去(否则会直接进那个
