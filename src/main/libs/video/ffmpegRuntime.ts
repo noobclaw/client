@@ -87,19 +87,27 @@ function resolveBinary(
     return envOverride;
   }
 
+  const tried: string[] = [];
   for (const dir of bundledBinDirs()) {
     const candidate = path.join(dir, `${name}${EXE}`);
+    tried.push(candidate);
     if (fs.existsSync(candidate)) {
+      console.log(`[ffmpegRuntime] resolved ${name} → ${candidate} (packaged=${isPackaged()})`);
       return candidate;
     }
   }
 
   // System PATH — verify it actually runs before committing to it.
   if (probeOnPath(name)) {
+    console.log(`[ffmpegRuntime] resolved ${name} → system PATH`);
     return name;
   }
 
   // Last resort: return the bare name; callers surface the spawn error.
+  console.warn(
+    `[ffmpegRuntime] could NOT resolve ${name} (packaged=${isPackaged()}); ` +
+      `falling back to bare "${name}". Tried:\n  ${tried.join('\n  ')}`,
+  );
   return name;
 }
 
@@ -118,8 +126,16 @@ export function isFfmpegAvailable(): boolean {
   const p = getFfmpegPath();
   try {
     const r = spawnSync(p, ['-version'], { stdio: 'ignore', timeout: 8000 });
+    if (r.status !== 0) {
+      console.warn(
+        `[ffmpegRuntime] isFfmpegAvailable: spawn of "${p}" returned ` +
+          `status=${r.status} signal=${r.signal ?? 'none'}` +
+          (r.error ? ` error=${String(r.error)}` : ''),
+      );
+    }
     return r.status === 0;
-  } catch {
+  } catch (e) {
+    console.warn(`[ffmpegRuntime] isFfmpegAvailable: spawn of "${p}" threw ${String(e)}`);
     return false;
   }
 }
