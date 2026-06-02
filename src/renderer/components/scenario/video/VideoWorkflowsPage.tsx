@@ -1,20 +1,21 @@
 /**
  * VideoWorkflowsPage — 「多平台视频创作」工作流页面.
  *
- * 本地合成工具,不走 backend scenario 任务体系,但交互对齐 scenario:配置是【弹窗】,
- * 「开始创作」后变成一个挂在 tab 下的【任务】(发光卡片),有【详情页】带进度 step +
- * 流式日志。任务状态由模块级 videoTaskStore 单例托管(页面切换不中断、日志不丢)。
+ * 本地合成工具,不走 backend scenario 任务体系,但交互对齐 scenario:
+ *   - 顶部两个 L1 tab(我的视频任务 / 运行记录)由 ScenarioView 渲染,这里收 section。
+ *   - section='tasks'   → 任务列表(发光卡片,展示赛道/人设/关键词/文案)
+ *   - section='history' → 运行记录列表(每次「开始创作 / 重新跑」一条)
+ *   - section='create'  → 创建流:选创作方式 → 弹出配置弹窗
+ *   - 内部 detail 导航:点任务卡进【任务详情】(配置 + 本次运行 + 历史运行 + 重跑/编辑/删除),
+ *     点运行记录进【运行记录详情】(只读快照 + 该次进度/日志/成片/消耗)。
  *
- * 三个视图(由 ScenarioView 的 mode + 本地 detailId 共同决定):
- *   - detailId != null         —— 任务详情页(进度 step + 流式日志 + 成片操作)
- *   - mode='create'            —— 创建流:选创作方式 → 弹出配置弹窗
- *   - mode='landing'(默认)    —— 落地页:任务列表(发光卡片);无任务时显示占位框
- *
+ * 任务状态由模块级 videoTaskStore 单例托管(页面切换不中断、日志不丢)。
  * 一期只做到「存本地不上传」,自动上传到抖音/小红书/币安先占位。
  */
 
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
+import { noobClawAuth } from '../../../services/noobclawAuth';
 import {
   videoCreationService,
   type VideoCreationInput,
@@ -23,48 +24,185 @@ import {
 import {
   videoTaskStore,
   type VideoTask,
+  type VideoRunRecord,
+  type VideoRunStatus,
 } from '../../../services/videoTaskStore';
 
-// 订阅 store 的 React hook:任意视图都能拿到最新任务列表并自动重渲染。
-function useVideoTasks(): VideoTask[] {
-  const [tasks, setTasks] = useState<VideoTask[]>(() => videoTaskStore.getTasks());
-  useEffect(() => videoTaskStore.subscribe(() => setTasks(videoTaskStore.getTasks())), []);
-  return tasks;
+// 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
+function useVideoStore(): { tasks: VideoTask[]; runs: VideoRunRecord[] } {
+  const [snap, setSnap] = useState(() => ({
+    tasks: videoTaskStore.getTasks(),
+    runs: videoTaskStore.getRuns(),
+  }));
+  useEffect(() => videoTaskStore.subscribe(() => setSnap({
+    tasks: videoTaskStore.getTasks(),
+    runs: videoTaskStore.getRuns(),
+  })), []);
+  return snap;
 }
 
+type VideoSection = 'tasks' | 'history' | 'create';
+type DetailView =
+  | { kind: 'list' }
+  | { kind: 'task'; taskId: string }
+  | { kind: 'record'; recordId: string };
+
 interface VideoWorkflowsPageProps {
-  /** landing = 落地页(看任务/占位框);create = 创建向导。由 ScenarioView 的 section 决定。 */
-  mode: 'landing' | 'create';
+  /** 由 ScenarioView 的 section 决定:tasks=任务列表,history=运行记录,create=创建向导。 */
+  section: VideoSection;
   /** 从落地页进入创建流(ScenarioView 把 section 切到 'create')。 */
   onGoCreate: () => void;
   /** 从创建流返回落地页(ScenarioView 把 section 切回 'tasks')。 */
   onBack: () => void;
 }
 
-export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ mode, onGoCreate, onBack }) => {
+export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack }) => {
   const isZh = i18nService.currentLanguage === 'zh';
-  const tasks = useVideoTasks();
-  const [detailId, setDetailId] = useState<string | null>(null);
+  const { tasks, runs } = useVideoStore();
+  const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
+  const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  // 创建完跳详情时,section 会从 create 变 tasks;别让下面的 effect 把 detail 清掉。
+  const justCreatedRef = useRef(false);
 
-  // 详情页优先:点了某个任务卡 → 看详情(返回回落地页)
-  if (detailId) {
-    const task = tasks.find((t) => t.id === detailId);
-    if (!task) { setDetailId(null); return null; }
-    return <VideoTaskDetail isZh={isZh} task={task} onBack={() => setDetailId(null)} />;
+  // 用户点 L1 tab / CTA 切 section 时,退出当前 detail 回到列表。
+  useEffect(() => {
+    if (justCreatedRef.current) { justCreatedRef.current = false; return; }
+    setDetail({ kind: 'list' });
+  }, [section]);
+
+  const editingTask = editTaskId ? tasks.find((t) => t.id === editTaskId) : null;
+
+  // ── detail 优先 ──
+  if (detail.kind === 'task') {
+    const task = tasks.find((t) => t.id === detail.taskId);
+    if (!task) { setDetail({ kind: 'list' }); return null; }
+    return (
+      <>
+        <VideoTaskDetail
+          isZh={isZh}
+          task={task}
+          runs={videoTaskStore.getRunsForTask(task.id)}
+          latestRun={videoTaskStore.getLatestRun(task.id)}
+          onBack={() => setDetail({ kind: 'list' })}
+          onOpenRecord={(rid) => setDetail({ kind: 'record', recordId: rid })}
+          onEdit={() => setEditTaskId(task.id)}
+        />
+        {editingTask && (
+          <VideoConfigModal
+            isZh={isZh}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onCreated={() => {}}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+      </>
+    );
   }
 
-  if (mode === 'create') {
+  if (detail.kind === 'record') {
+    const run = runs.find((r) => r.id === detail.recordId);
+    if (!run) { setDetail({ kind: 'list' }); return null; }
+    return <VideoRunRecordDetail isZh={isZh} run={run} onBack={() => setDetail({ kind: 'list' })} />;
+  }
+
+  if (section === 'create') {
     return (
       <VideoCreateFlow
         isZh={isZh}
-        onCreated={(taskId) => { onBack(); setDetailId(taskId); }}
+        onCreated={(taskId) => {
+          justCreatedRef.current = true;
+          onBack();                              // section → tasks(L1 高亮回任务)
+          setDetail({ kind: 'task', taskId });   // 直接进新任务详情
+        }}
         onCancel={onBack}
       />
     );
   }
 
-  return <VideoLanding isZh={isZh} tasks={tasks} onGoCreate={onGoCreate} onOpenTask={setDetailId} />;
+  if (section === 'history') {
+    return <VideoRunHistory isZh={isZh} runs={runs} tasks={tasks} onOpenRecord={(rid) => setDetail({ kind: 'record', recordId: rid })} />;
+  }
+
+  return <VideoLanding isZh={isZh} tasks={tasks} onGoCreate={onGoCreate} onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })} />;
 };
+
+// ── 小工具 ──────────────────────────────────────────────────────────
+
+const fmtNum = (n: number) => (n || 0).toLocaleString();
+
+function statusOf(task: VideoTask): VideoRunStatus | 'idle' {
+  return task.lastStatus || (task.runCount > 0 ? 'done' : 'idle');
+}
+
+const StatusPill: React.FC<{ isZh: boolean; status: VideoRunStatus | 'idle' }> = ({ isZh, status }) => {
+  if (status === 'running') {
+    return (
+      <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 inline-flex items-center gap-1.5">
+        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+        {isZh ? '生成中' : 'Running'}
+      </span>
+    );
+  }
+  if (status === 'done') {
+    return (
+      <span className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
+        ✅ {isZh ? '已完成' : 'Done'}
+      </span>
+    );
+  }
+  if (status === 'error') {
+    return (
+      <span className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-500 border border-red-500/30">
+        ❌ {isZh ? '失败' : 'Failed'}
+      </span>
+    );
+  }
+  return (
+    <span className="text-xs px-2 py-1 rounded bg-gray-500/10 text-gray-500 border border-gray-400/30">
+      {isZh ? '未运行' : 'Idle'}
+    </span>
+  );
+};
+
+/** 平台 pill + 类型 badge(对齐 scenario 卡片头部)。 */
+const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md' }> = ({ isZh, size = 'sm' }) => {
+  const cls = size === 'md' ? 'text-xs px-2.5 py-1' : 'text-[11px] px-2 py-0.5';
+  return (
+    <>
+      <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>
+        🎬 {isZh ? '视频创作' : 'Video'}
+      </span>
+      <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30`}>
+        🎬 {isZh ? '单次成片' : 'One-shot'}
+      </span>
+    </>
+  );
+};
+
+/** 关键词 chips(最多 n 个,超出显示 +N)。 */
+const KeywordChips: React.FC<{ keywords: string[]; max?: number }> = ({ keywords, max = 6 }) => {
+  const kws = (keywords || []).filter(Boolean);
+  if (kws.length === 0) return <span className="text-gray-400">-</span>;
+  const shown = kws.slice(0, max);
+  const rest = kws.length - shown.length;
+  return (
+    <span className="inline-flex flex-wrap gap-1 align-middle">
+      {shown.map((k, i) => (
+        <span key={i} className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+          {k}
+        </span>
+      ))}
+      {rest > 0 && <span className="text-[10px] text-gray-400">+{rest}</span>}
+    </span>
+  );
+};
+
+function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
+  const s = (input.script || '').trim();
+  if (!s) return isZh ? `AI 写稿 · ${input.targetSeconds ?? 45}s` : `AI script · ${input.targetSeconds ?? 45}s`;
+  return s.length > 60 ? s.slice(0, 60) + '…' : s;
+}
 
 // ── 落地页:有任务显示发光卡片列表,无任务显示占位框 ────────────────────
 
@@ -141,14 +279,15 @@ const VideoLanding: React.FC<{
   );
 };
 
-// ── 任务卡片(运行中发光,呼应 scenario 的发光卡片) ─────────────────────
+// ── 任务卡片(运行中发光,展示赛道/人设/关键词/文案) ─────────────────────
 
 const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => void }> = ({ isZh, task, onClick }) => {
-  const isRunning = task.status === 'running';
-  const doneCount = task.steps.filter((s) => s.status === 'done').length;
-  const totalSteps = task.steps.length;
-  // 当前正在跑的那一步(给运行中卡片显示「正在做什么」)
-  const runningStep = task.steps.find((s) => s.status === 'running');
+  const status = statusOf(task);
+  const isRunning = status === 'running';
+  const latest = videoTaskStore.getLatestRun(task.id);
+  const doneCount = latest ? latest.steps.filter((s) => s.status === 'done').length : 0;
+  const totalSteps = latest ? latest.steps.length : 0;
+  const runningStep = latest?.steps.find((s) => s.status === 'running');
 
   return (
     <button
@@ -157,166 +296,253 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
       className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
         isRunning
           ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-          : task.status === 'error'
+          : status === 'error'
             ? 'border-red-400/60 dark:border-red-500/40 bg-white dark:bg-gray-900'
             : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 dark:hover:border-green-500/50 bg-white dark:bg-gray-900'
       }`}
     >
-      {/* Top row — 平台 pill + 类型 badge + #id 左,状态 pill 右(对齐 scenario 卡片) */}
+      {/* Top row — 平台 pill + 类型 badge + title + #id 左,状态 pill 右 */}
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <div className="flex items-center gap-2 min-w-0 flex-1">
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">
-            🎬 {isZh ? '视频创作' : 'Video'}
-          </span>
-          <span className="shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30">
-            🎬 {isZh ? '单次成片' : 'One-shot'}
-          </span>
+          <HeadBadges isZh={isZh} />
           <span className="font-medium dark:text-white truncate">{task.title}</span>
           <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">
             #{task.id.slice(0, 8)}
           </span>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          {isRunning ? (
-            <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-              {isZh ? '生成中' : 'Running'}
-            </span>
-          ) : task.status === 'done' ? (
-            <span className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-              ✅ {isZh ? '已完成' : 'Done'}
-            </span>
-          ) : (
-            <span className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-500 border border-red-500/30">
-              ❌ {isZh ? '失败' : 'Failed'}
-            </span>
-          )}
+        <div className="shrink-0"><StatusPill isZh={isZh} status={status} /></div>
+      </div>
+
+      {/* 配置摘要:赛道 / 人设 / 关键词 / 文案 */}
+      <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
+          <span className="truncate">{task.input.track || '-'}</span>
+        </div>
+        {task.input.persona && (
+          <div className="flex items-start gap-1.5">
+            <span className="text-gray-400 shrink-0">🧑 {isZh ? '人设' : 'Persona'}</span>
+            <span className="truncate">{task.input.persona}</span>
+          </div>
+        )}
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0">🏷️ {isZh ? '关键词' : 'Keywords'}</span>
+          <KeywordChips keywords={task.input.keywords} />
+        </div>
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0">📝 {isZh ? '文案' : 'Script'}</span>
+          <span className="truncate text-gray-500 dark:text-gray-400">{scriptSummary(task.input, isZh)}</span>
         </div>
       </div>
 
       {/* 当前状态 / 错误信息 */}
-      <div className="text-xs text-gray-500 dark:text-gray-400 space-y-1">
-        <div className="truncate">
-          {task.status === 'error'
-            ? <span className="text-red-500">{task.error}</span>
-            : isRunning
-              ? (task.message || runningStep?.label || (isZh ? '准备中…' : 'Preparing…'))
-              : task.status === 'done'
-                ? (isZh ? '已生成成片,点开查看 / 预览' : 'Video ready — open to preview')
-                : (task.message || (isZh ? '准备中…' : 'Preparing…'))}
-        </div>
-        <div className="text-[11px] text-gray-400">
-          {isZh ? '创建于 ' : 'Created '}
-          {new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
-        </div>
+      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 truncate">
+        {status === 'error'
+          ? <span className="text-red-500">{latest?.error}</span>
+          : isRunning
+            ? (latest?.message || runningStep?.label || (isZh ? '准备中…' : 'Preparing…'))
+            : status === 'done'
+              ? (isZh ? '已生成成片,点开查看 / 预览' : 'Video ready — open to preview')
+              : (isZh ? '尚未运行,点开可开始 / 编辑' : 'Not run yet — open to start / edit')}
       </div>
 
-      {/* Actions strip — 步骤进度(对齐 scenario 的「本次运行进度 / 累计完成」) */}
-      {totalSteps > 0 && (
-        <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
-          <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
-            {isRunning ? (isZh ? '本次运行进度' : 'Current Run Progress') : (isZh ? '步骤' : 'Steps')}:
+      {/* Actions strip — 步骤进度 + 跑过几次(对齐 scenario 的「本次运行进度 / 累计完成」) */}
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
+        {totalSteps > 0 && (
+          <>
+            <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
+              {isRunning ? (isZh ? '本次运行进度' : 'Current Run') : (isZh ? '步骤' : 'Steps')}:
+            </span>
+            <span className="font-mono">
+              🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
+              <span className="text-gray-400 dark:text-gray-500">/{totalSteps}</span>
+            </span>
+          </>
+        )}
+        <span className="text-[10px] text-gray-400">
+          {isZh ? `运行 ${task.runCount} 次` : `${task.runCount} runs`}
+        </span>
+        {task.cumulativeTokens > 0 && (
+          <span className="text-[10px] text-gray-400">
+            🎟️ {isZh ? '累计' : 'Total'} {fmtNum(task.cumulativeTokens)} tokens
           </span>
-          <span className="font-mono">
-            🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
-            <span className="text-gray-400 dark:text-gray-500">/{totalSteps}</span>{' '}
-            <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{isZh ? '步' : 'steps'}</span>
-          </span>
-        </div>
-      )}
+        )}
+        <span className="ml-auto text-[10px] text-gray-400">
+          {new Date(task.lastRunAt || task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
+        </span>
+      </div>
     </button>
   );
 };
 
-// ── 任务详情页:进度 step + 流式日志 + 成片操作 ───────────────────────
+// ── 运行记录列表 ──────────────────────────────────────────────────────
 
-const VideoTaskDetail: React.FC<{ isZh: boolean; task: VideoTask; onBack: () => void }> = ({ isZh, task, onBack }) => {
+const VideoRunHistory: React.FC<{
+  isZh: boolean;
+  runs: VideoRunRecord[];
+  tasks: VideoTask[];
+  onOpenRecord: (id: string) => void;
+}> = ({ isZh, runs, onOpenRecord }) => {
+  if (runs.length === 0) {
+    return (
+      <div className="p-6 max-w-6xl mx-auto">
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
+          <div className="text-4xl mb-3">📊</div>
+          <div className="text-base font-medium text-gray-700 dark:text-gray-200 mb-1">
+            {isZh ? '还没有运行记录' : 'No run records yet'}
+          </div>
+          <div className="text-sm text-gray-500 dark:text-gray-400">
+            {isZh ? '每次「开始创作 / 重新跑」都会在这里留一条记录。' : 'Each generation run shows up here.'}
+          </div>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="p-6 max-w-6xl mx-auto">
+      <h2 className="text-base font-bold dark:text-white mb-4">
+        {isZh ? '运行记录' : 'Run records'}
+        <span className="ml-2 text-xs font-normal text-gray-400">{runs.length}</span>
+      </h2>
+      <div className="space-y-3">
+        {runs.map((r) => (
+          <VideoRunCard key={r.id} isZh={isZh} run={r} onClick={() => onOpenRecord(r.id)} />
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () => void }> = ({ isZh, run, onClick }) => {
+  const isRunning = run.status === 'running';
+  const doneCount = run.steps.filter((s) => s.status === 'done').length;
+  const totalSteps = run.steps.length;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
+        isRunning
+          ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
+          : run.status === 'error'
+            ? 'border-red-400/60 dark:border-red-500/40 bg-white dark:bg-gray-900'
+            : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 bg-white dark:bg-gray-900'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-1">
+          <HeadBadges isZh={isZh} />
+          <span className="font-medium dark:text-white truncate">{run.title}</span>
+          <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono shrink-0">#{run.id.slice(0, 8)}</span>
+        </div>
+        <div className="shrink-0"><StatusPill isZh={isZh} status={run.status} /></div>
+      </div>
+      <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
+        {run.status === 'error'
+          ? <span className="text-red-500">{run.error}</span>
+          : (run.message || (isZh ? '准备中…' : 'Preparing…'))}
+      </div>
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
+        {totalSteps > 0 && (
+          <span className="font-mono text-[11px]">
+            🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
+            <span className="text-gray-400">/{totalSteps}</span>
+          </span>
+        )}
+        {run.tokensUsed > 0 && (
+          <span className="text-[10px] text-gray-400">🎟️ {fmtNum(run.tokensUsed)} tokens</span>
+        )}
+        <span className="ml-auto text-[10px] text-gray-400">
+          {new Date(run.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
+        </span>
+      </div>
+    </button>
+  );
+};
+
+// ── 配置卡片(详情页 / 运行记录详情共用,展示赛道/人设/关键词/文案) ──────────
+
+const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ isZh, input }) => (
+  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+    <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
+    <Row label={`🧑 ${isZh ? '人设' : 'Persona'}`}>{input.persona || '-'}</Row>
+    <Row label={`🏷️ ${isZh ? '关键词' : 'Keywords'}`}><KeywordChips keywords={input.keywords} max={20} /></Row>
+    <Row label={`📝 ${isZh ? '参考文案' : 'Script'}`}>
+      {(input.script || '').trim()
+        ? <span className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</span>
+        : <span className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</span>}
+    </Row>
+    <Row label={`🖼️ ${isZh ? '参考图' : 'Images'}`}>{(input.referenceImages || []).length}</Row>
+    <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
+      {input.useStockVideo !== false ? (isZh ? '在线视频素材 + 参考图' : 'stock video + images') : (isZh ? '仅图片' : 'images only')}
+    </Row>
+  </div>
+);
+
+const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="flex items-start gap-2">
+    <span className="text-gray-400 shrink-0 w-20">{label}</span>
+    <span className="flex-1 min-w-0 dark:text-gray-200">{children}</span>
+  </div>
+);
+
+// ── 运行体(进度 step + 本次消耗 + 流式日志 + 成片操作) 详情/记录共用 ─────────
+
+const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined }> = ({ isZh, run }) => {
   const logRef = useRef<HTMLDivElement>(null);
-  // 流式日志:新日志进来自动滚到底
+  const logLen = run?.logs.length ?? 0;
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [task.logs.length]);
+  }, [logLen]);
 
-  const isRunning = task.status === 'running';
-  const doneCount = task.steps.filter((s) => s.status === 'done').length;
-  const totalSteps = task.steps.length;
+  if (!run) {
+    return (
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
+        {isZh ? '尚未运行。点上方「开始创作 / 重新跑」启动一次。' : 'Not run yet. Start a run above.'}
+      </div>
+    );
+  }
+
+  const isRunning = run.status === 'running';
+  const doneCount = run.steps.filter((s) => s.status === 'done').length;
+  const totalSteps = run.steps.length;
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
-      >
-        ← {isZh ? '返回' : 'Back'}
-      </button>
-
-      {/* Header: 平台 pill + 类型 badge + #id —— 跟 list 页/scenario 详情页一致 */}
-      <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200">
-          🎬 {isZh ? '视频创作' : 'Video'}
-        </span>
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30">
-          🎬 {isZh ? '单次成片' : 'One-shot'}
-        </span>
-        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">
-          #{task.id.slice(0, 8)}
-        </span>
-      </div>
-
-      {/* 配置 + 状态卡(运行中绿框发亮,对齐 scenario 详情页) */}
-      <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
-        isRunning
-          ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow'
-          : 'border-gray-200 dark:border-gray-700'
+    <>
+      {/* 本次运行进度 + 本次消耗 */}
+      <div className={`rounded-xl border p-4 mb-4 ${
+        isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow bg-white dark:bg-gray-900' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900'
       }`}>
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <h3 className="text-lg font-bold dark:text-white flex-1 min-w-0">🎬 {task.title}</h3>
-          <div className="shrink-0">
-            {isRunning ? (
-              <span className="text-xs px-2 py-1 rounded bg-green-500/10 text-green-500 border border-green-500/30 inline-flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                {isZh ? '生成中' : 'Running'}
-              </span>
-            ) : task.status === 'done' ? (
-              <span className="text-xs px-2 py-1 rounded bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30">
-                ✅ {isZh ? '已完成' : 'Done'}
-              </span>
-            ) : (
-              <span className="text-xs px-2 py-1 rounded bg-red-500/10 text-red-500 border border-red-500/30">
-                ❌ {isZh ? '失败' : 'Failed'}
+        <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+          <div className="flex items-center gap-3 flex-wrap text-xs">
+            {totalSteps > 0 && (
+              <span className={`rounded-lg px-3 py-1.5 inline-flex items-center gap-2 ${
+                isRunning ? 'border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10' : 'border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
+              }`}>
+                <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500'}`}>
+                  {isRunning ? (isZh ? '本次运行进度' : 'Current Run') : (isZh ? '步骤' : 'Steps')}
+                </span>
+                <span className="font-mono">
+                  🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
+                  <span className="text-gray-400">/{totalSteps}</span>
+                </span>
               </span>
             )}
+            <span className="rounded-lg px-3 py-1.5 border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 inline-flex items-center gap-2">
+              <span className="text-[10px] text-gray-500">{isZh ? '本次消耗' : 'Cost'}</span>
+              <span className="font-mono">🎟️ {fmtNum(run.tokensUsed)} <span className="text-[10px] text-gray-400 font-sans">tokens</span></span>
+            </span>
           </div>
+          <StatusPill isZh={isZh} status={run.status} />
         </div>
 
-        {/* 本次运行进度(运行中)/ 步骤总览 —— 对齐 scenario 的进度卡 */}
-        {totalSteps > 0 && (
-          <div className={`rounded-lg px-3 py-2 mb-3 text-xs flex items-center gap-3 flex-wrap ${
-            isRunning
-              ? 'border-2 border-green-500/50 bg-green-500/5 dark:bg-green-500/10 noobclaw-running-glow'
-              : 'border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
-          }`}>
-            <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
-              {isRunning ? (isZh ? '本次运行进度' : 'Current Run Progress') : (isZh ? '步骤' : 'Steps')}:
-            </span>
-            <span className="font-mono">
-              🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
-              <span className="text-gray-400 dark:text-gray-500">/{totalSteps}</span>{' '}
-              <span className="text-[10px] text-gray-500 dark:text-gray-400 font-sans">{isZh ? '步' : 'steps'}</span>
-            </span>
-          </div>
-        )}
-
-        {/* 进度 step 明细 */}
+        {/* step 明细 */}
         {totalSteps > 0 && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-1.5">
-            {task.steps.map((s) => (
+            {run.steps.map((s) => (
               <div key={s.key} className="flex items-center gap-2 text-xs">
-                <span>
-                  {s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}
-                </span>
+                <span>{s.status === 'done' ? '✅' : s.status === 'running' ? '⏳' : s.status === 'error' ? '❌' : '○'}</span>
                 <span className={s.status === 'running' ? 'text-green-600 dark:text-green-400 font-medium' : 'text-gray-600 dark:text-gray-300'}>
                   {s.label}
                 </span>
@@ -333,33 +559,33 @@ const VideoTaskDetail: React.FC<{ isZh: boolean; task: VideoTask; onBack: () => 
         </div>
         <div
           ref={logRef}
-          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 p-3 h-56 overflow-y-auto font-mono text-[11px] leading-relaxed"
+          className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-900 text-gray-200 p-3 h-64 overflow-y-auto font-mono text-[11px] leading-relaxed"
         >
-          {task.logs.map((l, i) => (
+          {run.logs.map((l, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-gray-500 shrink-0">{l.time}</span>
-              <span className="break-all">{l.message}</span>
+              <span className="break-words whitespace-pre-wrap">{l.message}</span>
             </div>
           ))}
-          {isRunning && <div className="text-green-400 animate-pulse">▋</div>}
+          {isRunning && <span className="text-green-400 animate-pulse">▋</span>}
         </div>
       </div>
 
-      {/* 成片操作 / 错误 / 删除 */}
-      {task.status === 'done' && task.outputPath && (
+      {/* 成片操作 / 错误 */}
+      {run.status === 'done' && run.outputPath && (
         <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-4 mb-4">
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-2">{task.outputPath}</div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-2">{run.outputPath}</div>
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => videoCreationService.openFile(task.outputPath!)}
+              onClick={() => videoCreationService.openFile(run.outputPath!)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600"
             >
               ▶ {isZh ? '预览' : 'Preview'}
             </button>
             <button
               type="button"
-              onClick={() => videoCreationService.revealInFolder(task.outputPath!)}
+              onClick={() => videoCreationService.revealInFolder(run.outputPath!)}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               📂 {isZh ? '打开文件夹' : 'Open folder'}
@@ -367,20 +593,216 @@ const VideoTaskDetail: React.FC<{ isZh: boolean; task: VideoTask; onBack: () => 
           </div>
         </div>
       )}
-      {task.status === 'error' && task.error && (
-        <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-4 mb-4 text-xs text-red-500 break-all">
-          {task.error}
+      {run.status === 'error' && run.error && (
+        <div className="rounded-xl border border-red-500/40 bg-red-500/5 p-4 mb-4 text-xs text-red-500 break-words whitespace-pre-wrap">
+          {run.error}
         </div>
       )}
+    </>
+  );
+};
 
-      {!isRunning && (
+/** 输出目录条(详情页顶部)。优先用本次运行的目录,否则从成片路径推。 */
+const OutputDirBar: React.FC<{ isZh: boolean; dir?: string }> = ({ isZh, dir }) => {
+  if (!dir) return null;
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 mb-4 flex items-center gap-2 text-xs">
+      <span className="text-gray-400 shrink-0">📁 {isZh ? '输出目录' : 'Output dir'}</span>
+      <span className="flex-1 min-w-0 truncate font-mono text-gray-600 dark:text-gray-300" title={dir}>{dir}</span>
+      <button
+        type="button"
+        onClick={() => videoCreationService.revealInFolder(dir)}
+        className="shrink-0 px-2 py-1 rounded text-[11px] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        {isZh ? '打开' : 'Open'}
+      </button>
+    </div>
+  );
+};
+
+function dirOf(p?: string): string | undefined {
+  if (!p) return undefined;
+  const idx = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'));
+  return idx > 0 ? p.slice(0, idx) : undefined;
+}
+
+// ── 任务详情页:配置 + 本次运行 + 历史运行 + 重跑/编辑/删除 ─────────────────
+
+const VideoTaskDetail: React.FC<{
+  isZh: boolean;
+  task: VideoTask;
+  runs: VideoRunRecord[];
+  latestRun: VideoRunRecord | undefined;
+  onBack: () => void;
+  onOpenRecord: (id: string) => void;
+  onEdit: () => void;
+}> = ({ isZh, task, runs, latestRun, onBack, onOpenRecord, onEdit }) => {
+  const status = statusOf(task);
+  const isRunning = status === 'running';
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
+
+  const handleRerun = () => {
+    setActionError(null);
+    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+    const rid = videoTaskStore.runTask(task.id);
+    if (!rid) {
+      setActionError(isZh ? '已有任务在生成中,请等它完成后再跑。' : 'A task is already running. Please wait.');
+    }
+  };
+
+  const handleDelete = () => {
+    if (videoTaskStore.deleteTask(task.id)) onBack();
+  };
+
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+      >
+        ← {isZh ? '返回' : 'Back'}
+      </button>
+
+      {/* Header */}
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <HeadBadges isZh={isZh} size="md" />
+        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{task.id.slice(0, 8)}</span>
+      </div>
+      <h2 className="text-lg font-bold dark:text-white mb-3">🎬 {task.title}</h2>
+
+      {/* 输出目录(顶部) */}
+      <OutputDirBar isZh={isZh} dir={outDir} />
+
+      {/* 配置 + 状态卡(运行中绿框发亮) */}
+      <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
+        isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700'
+      }`}>
+        <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400">
+            <span>{isZh ? `运行 ${task.runCount} 次` : `${task.runCount} runs`}</span>
+            {task.cumulativeTokens > 0 && <span>🎟️ {isZh ? '累计消耗' : 'Total'} {fmtNum(task.cumulativeTokens)} tokens</span>}
+          </div>
+          <StatusPill isZh={isZh} status={status} />
+        </div>
+        <ConfigCard isZh={isZh} input={task.input} />
+
+        {/* 操作:重跑 / 编辑 / 删除 */}
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex items-center gap-2 flex-wrap">
+          <button
+            type="button"
+            onClick={handleRerun}
+            disabled={isRunning}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
+          >
+            {task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
+          </button>
+          <button
+            type="button"
+            onClick={onEdit}
+            disabled={isRunning}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+          >
+            ✏️ {isZh ? '编辑' : 'Edit'}
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={isRunning}
+            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5 disabled:opacity-50"
+          >
+            🗑 {isZh ? '删除任务' : 'Delete'}
+          </button>
+        </div>
+        {actionError && <div className="mt-2 text-xs text-red-500">{actionError}</div>}
+      </div>
+
+      {/* 本次运行 */}
+      <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+        {isZh ? '本次运行' : 'Latest run'}
+        {latestRun && <span className="ml-2 font-mono text-gray-400">#{latestRun.id.slice(0, 8)}</span>}
+      </div>
+      <RunBody isZh={isZh} run={latestRun} />
+
+      {/* 历史运行(>1 条时展示,点进运行记录详情) */}
+      {runs.length > 1 && (
+        <div className="mt-2">
+          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+            {isZh ? '历史运行' : 'Run history'}
+            <span className="ml-2 text-gray-400">{runs.length}</span>
+          </div>
+          <div className="space-y-2">
+            {runs.map((r) => (
+              <button
+                key={r.id}
+                type="button"
+                onClick={() => onOpenRecord(r.id)}
+                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:border-green-500/50 transition-colors flex items-center gap-3 text-xs"
+              >
+                <span className="font-mono text-gray-400">#{r.id.slice(0, 8)}</span>
+                <StatusPill isZh={isZh} status={r.status} />
+                {r.tokensUsed > 0 && <span className="text-gray-400">🎟️ {fmtNum(r.tokensUsed)}</span>}
+                <span className="ml-auto text-gray-400">{new Date(r.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── 运行记录详情(只读快照) ──────────────────────────────────────────
+
+const VideoRunRecordDetail: React.FC<{
+  isZh: boolean;
+  run: VideoRunRecord;
+  onBack: () => void;
+}> = ({ isZh, run, onBack }) => {
+  const outDir = run.outputDir || dirOf(run.outputPath);
+  const handleDelete = () => {
+    if (videoTaskStore.deleteRun(run.id)) onBack();
+  };
+  return (
+    <div className="p-6 max-w-5xl mx-auto">
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
+      >
+        ← {isZh ? '返回运行记录' : 'Back to records'}
+      </button>
+
+      <div className="flex items-center gap-2 mb-2 flex-wrap">
+        <HeadBadges isZh={isZh} size="md" />
+        <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{run.id.slice(0, 8)}</span>
+      </div>
+      <h2 className="text-lg font-bold dark:text-white mb-1">🎬 {run.title}</h2>
+      <div className="text-xs text-gray-400 mb-3">
+        {isZh ? '运行于 ' : 'Ran at '}{new Date(run.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
+        {run.finishedAt && <> · {isZh ? '耗时' : 'took'} {Math.max(1, Math.round((run.finishedAt - run.startedAt) / 1000))}s</>}
+      </div>
+
+      <OutputDirBar isZh={isZh} dir={outDir} />
+
+      {/* 配置快照 */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
+        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">{isZh ? '本次配置' : 'Config snapshot'}</div>
+        <ConfigCard isZh={isZh} input={run.input} />
+      </div>
+
+      <RunBody isZh={isZh} run={run} />
+
+      {run.status !== 'running' && (
         <div className="flex justify-end">
           <button
             type="button"
-            onClick={() => { videoTaskStore.deleteTask(task.id); onBack(); }}
+            onClick={handleDelete}
             className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5"
           >
-            🗑 {isZh ? '删除任务' : 'Delete'}
+            🗑 {isZh ? '删除此记录' : 'Delete record'}
           </button>
         </div>
       )}
@@ -583,7 +1005,7 @@ const TRACK_PRESETS: TrackPreset[] = [
   },
 ];
 
-// ── 配置弹窗(两步向导,模态) ────────────────────────────────────────
+// ── 配置弹窗(两步向导,模态;支持新建 + 编辑) ────────────────────────
 
 type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
@@ -596,24 +1018,47 @@ const VideoConfigModal: React.FC<{
   isZh: boolean;
   onClose: () => void;
   onCreated: (taskId: string) => void;
-}> = ({ isZh, onClose, onCreated }) => {
+  /** 传入则为【编辑】模式:预填该任务配置,保存走 updateTask(不立即跑)。 */
+  editTask?: VideoTask;
+  /** 编辑保存成功回调。 */
+  onSaved?: () => void;
+}> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
+  const isEdit = !!editTask;
   const [step, setStep] = useState<1 | 2>(1);
 
+  // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
+  const initialTrackId = (() => {
+    if (!editTask) return '';
+    const t = editTask.input.track;
+    const found = TRACK_PRESETS.find((p) => (isZh ? p.zh : p.en) === t);
+    return found ? found.id : (t ? 'custom' : '');
+  })();
+
   // 步骤 1:内容
-  const [trackId, setTrackId] = useState('');
-  const [persona, setPersona] = useState('');
-  const [keywords, setKeywords] = useState('');
-  const [script, setScript] = useState('');
-  const [targetSeconds, setTargetSeconds] = useState(45);
-  const [refImages, setRefImages] = useState<string[]>([]);
+  const [trackId, setTrackId] = useState(initialTrackId);
+  const [persona, setPersona] = useState(editTask?.input.persona || '');
+  const [keywords, setKeywords] = useState((editTask?.input.keywords || []).join(' '));
+  const [script, setScript] = useState(editTask?.input.script || '');
+  const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 45);
+  const [refImages, setRefImages] = useState<string[]>(editTask?.input.referenceImages || []);
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
-  const [mode, setMode] = useState<GenMode>('stock');
+  const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
 
   // 步骤 2:出片去向
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  // 编辑模式:预填的参考图拉缩略图
+  useEffect(() => {
+    if (!editTask) return;
+    for (const p of (editTask.input.referenceImages || [])) {
+      videoCreationService.readImageDataUrl(p).then((url) => {
+        if (url) setThumbs((prev) => ({ ...prev, [p]: url }));
+      });
+    }
+  }, [editTask]);
 
   const onPickTrack = (id: string) => {
     setTrackId(id);
@@ -646,7 +1091,8 @@ const VideoConfigModal: React.FC<{
   const scriptValid = scriptLen === 0 || scriptLen <= SCRIPT_MAX;
   const step1Valid = trackId !== '' && scriptValid;
 
-  const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en'] || '';
+  const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
+    || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
 
   const buildTitle = (): string => {
     const kw = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean);
@@ -655,22 +1101,35 @@ const VideoConfigModal: React.FC<{
     return scriptLen === 0 ? `${base}（AI 写稿 · ${targetSeconds}s）` : base;
   };
 
+  const buildInput = (): VideoCreationInput => ({
+    persona: persona.trim(),
+    track: trackLabel,
+    keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
+    script: script.trim(),
+    referenceImages: refImages,
+    aspect: '9:16',
+    publishTarget: 'local' as VideoPublishTarget,
+    targetSeconds,
+    useStockVideo: mode === 'stock',
+  });
+
   const handleSubmit = () => {
+    const input = buildInput();
+    if (isEdit && editTask) {
+      // 编辑:保存配置,不立即跑(用户回详情页再点重跑)。
+      const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle());
+      if (!ok) {
+        setSubmitError(isZh ? '任务正在运行,无法编辑。' : 'Task is running, cannot edit.');
+        return;
+      }
+      onSaved?.();
+      return;
+    }
+    // 新建:创建并立即跑。
     if (videoTaskStore.isAnyRunning()) {
       setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
       return;
     }
-    const input: VideoCreationInput = {
-      persona: persona.trim(),
-      track: trackLabel,
-      keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
-      script: script.trim(),
-      referenceImages: refImages,
-      aspect: '9:16',
-      publishTarget: 'local' as VideoPublishTarget,
-      targetSeconds,
-      useStockVideo: mode === 'stock',
-    };
     const id = videoTaskStore.createAndRun(input, buildTitle());
     if (!id) {
       setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
@@ -692,7 +1151,7 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
-              🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
+              🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
@@ -916,7 +1375,7 @@ const VideoConfigModal: React.FC<{
                 onClick={handleSubmit}
                 className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600"
               >
-                🎬 {isZh ? '开始创作' : 'Start'}
+                {isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
               </button>
             </>
           )}

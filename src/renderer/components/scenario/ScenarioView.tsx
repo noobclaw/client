@@ -492,7 +492,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     if (currentPlatform === 'video') {
       return (
         <VideoWorkflowsPage
-          mode={currentSection === 'create' ? 'create' : 'landing'}
+          section={currentSection === 'create' ? 'create' : currentSection === 'history' ? 'history' : 'tasks'}
           onGoCreate={goVideoCreate}
           onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
         />
@@ -715,12 +715,20 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             This makes Create feel like a pushed sub-page rather than
             another tab equal to the others — matches user expectation
             of "task vs view" actions. */}
-      {view.kind === 'main' && currentSection !== 'create' && currentPlatform !== 'video' && (
+      {view.kind === 'main' && currentSection !== 'create' && (() => {
+        const isVideo = currentPlatform === 'video';
+        return (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
           <div className="flex items-center gap-2 overflow-x-auto">
             {SECTION_TABS.map(tab => {
               const active = currentSection === tab.id;
               const isZh = i18nService.currentLanguage === 'zh';
+              // 视频是本地工具,L1「我的涨粉任务」对它来说叫「我的视频任务」。
+              const zhLabel = isVideo && tab.id === 'tasks' ? '我的视频任务' : tab.zh;
+              const enLabel = isVideo && tab.id === 'tasks' ? 'My Videos' : tab.en;
+              const activeCls = isVideo
+                ? 'bg-rose-500/15 text-rose-500 border border-rose-500/50 shadow-sm shadow-rose-500/20'
+                : 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20';
               return (
                 <button
                   key={tab.id}
@@ -728,33 +736,42 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                   onClick={() => setSection(tab.id)}
                   className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
                     active
-                      ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                      ? activeCls
                       : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
                   }`}
                 >
                   <span>{tab.icon}</span>
-                  <span>{isZh ? tab.zh : tab.en}</span>
+                  <span>{isZh ? zhLabel : enLabel}</span>
                 </button>
               );
             })}
           </div>
           {/* Right-aligned CTA — primary "create new task" entry point.
               Always clickable; per-platform task-cap (>= 5) check happens
-              inside the create page's scenario cards, not here. */}
+              inside the create page's scenario cards, not here.
+              Video tab is local-only (no balance gate) and uses rose tint. */}
           <button
             type="button"
             onClick={() => {
+              if (isVideo) { goVideoCreate(); return; }
               // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
               if (!noobClawAuth.hasEnoughBalanceForTask()) return;
               setSection('create');
             }}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-green-500/30 active:scale-95 bg-green-500 hover:bg-green-600 text-white border border-green-500"
+            className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-white ${
+              isVideo
+                ? 'shadow-md shadow-rose-500/30 bg-rose-500 hover:bg-rose-600 border border-rose-500'
+                : 'shadow-md shadow-green-500/30 bg-green-500 hover:bg-green-600 border border-green-500'
+            }`}
           >
             <span>✨</span>
-            <span>{i18nService.currentLanguage === 'zh' ? '新建涨粉任务' : 'New Task'}</span>
+            <span>{i18nService.currentLanguage === 'zh'
+              ? (isVideo ? '新建视频创作任务' : '新建涨粉任务')
+              : (isVideo ? 'New Video Task' : 'New Task')}</span>
           </button>
         </div>
-      )}
+        );
+      })()}
 
       {/* Create-mode header: shows a back arrow that returns the user
           to the My Tasks list. We deliberately do NOT keep the L1 tabs
@@ -778,25 +795,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
               ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
               : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
           </h2>
-        </div>
-      )}
-
-      {/* 视频落地页头部 —— 视频是本地工具,没有"运行记录",所以不套 L1 section
-          tab 栏,只给一个标题 + 右上「新建视频创作任务」CTA,跟其他 tab 的 list
-          模式头部布局一致(左标题右 CTA)。 */}
-      {view.kind === 'main' && currentPlatform === 'video' && currentSection !== 'create' && (
-        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          <h2 className="text-base font-bold dark:text-white text-gray-900 flex items-center gap-2">
-            🎬 {i18nService.currentLanguage === 'zh' ? '我的视频创作' : 'My Videos'}
-          </h2>
-          <button
-            type="button"
-            onClick={goVideoCreate}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap shadow-md shadow-rose-500/30 active:scale-95 bg-rose-500 hover:bg-rose-600 text-white border border-rose-500"
-          >
-            <span>✨</span>
-            <span>{i18nService.currentLanguage === 'zh' ? '新建视频创作任务' : 'New Video Task'}</span>
-          </button>
         </div>
       )}
 

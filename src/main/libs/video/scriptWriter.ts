@@ -26,6 +26,8 @@ function apiBase(): string {
 
 interface ChatResult {
   content: string;
+  /** 本次调用消耗的 token 总数(prompt + completion)。服务端按此计费。 */
+  tokens: number;
 }
 
 /**
@@ -76,7 +78,9 @@ async function callDeepSeek(
     const json: any = await resp.json();
     const content = json?.choices?.[0]?.message?.content || '';
     if (!content) throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
-    return { content };
+    // usage.total_tokens 是服务端计费口径;没回 usage 时退化为 0(不影响出片)。
+    const tokens = Number(json?.usage?.total_tokens) || 0;
+    return { content, tokens };
   } finally {
     clearTimeout(timer);
   }
@@ -100,11 +104,18 @@ export interface GenerateScriptInput {
   targetSeconds?: number;
 }
 
+export interface GenerateScriptResult {
+  /** 生成的口播旁白正文。 */
+  script: string;
+  /** 本步消耗 token(reasoner 档,服务端按 ~3x 计费)。 */
+  tokens: number;
+}
+
 /**
  * 生成一段口播旁白(纯文本,不带分镜标记/序号)。供 splitScript 再拆分镜。
- * 失败抛错(上层提示用户手填文案)。
+ * 失败抛错(上层提示用户手填文案)。返回正文 + 本步 token 消耗。
  */
-export async function generateScript(input: GenerateScriptInput): Promise<string> {
+export async function generateScript(input: GenerateScriptInput): Promise<GenerateScriptResult> {
   const targetSec = input.targetSeconds ?? 45;
   const targetChars = targetCharCount(targetSec);
   const kw = (input.keywords || []).filter(Boolean).join('、');
@@ -127,22 +138,30 @@ export async function generateScript(input: GenerateScriptInput): Promise<string
   ].filter(Boolean).join('\n');
 
   // 旁白创作走 Pro(reasoner),质量明显优于 flash;服务端按 ~3x 计费,故仅此一处用。
-  const { content } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner');
+  const { content, tokens } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner');
   // 去掉可能的包裹引号 / 多余空行
-  return content.trim().replace(/^["'「『]+|["'」』]+$/g, '').trim();
+  const script = content.trim().replace(/^["'「『]+|["'」』]+$/g, '').trim();
+  return { script, tokens };
+}
+
+export interface GenerateSearchTermsResult {
+  /** 与 scenes 等长的逐镜搜索词数组。 */
+  terms: string[][];
+  /** 本步消耗 token(flash 档,1x);兜底时为 0。 */
+  tokens: number;
 }
 
 /**
  * 为每个分镜生成 1-3 个英文素材搜索词。返回与 scenes 等长的数组;某项失败用
- * 全局 keywords 兜底。绝不抛错。
+ * 全局 keywords 兜底。绝不抛错。同时返回本步 token 消耗(兜底时为 0)。
  */
 export async function generateSearchTerms(
   scenes: string[],
   fallbackKeywords: string[],
-): Promise<string[][]> {
+): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
-  if (scenes.length === 0) return [];
+  if (scenes.length === 0) return { terms: [], tokens: 0 };
 
   const system = [
     'You map short-video narration lines to stock-footage search terms.',
@@ -159,11 +178,11 @@ export async function generateSearchTerms(
   const user = `Input lines (${scenes.length}):\n${numbered}\n\nReturn the JSON now.`;
 
   try {
-    const { content } = await callDeepSeek(system, user, true, 60_000);
+    const { content, tokens } = await callDeepSeek(system, user, true, 60_000);
     const parsed = JSON.parse(content);
     const terms = parsed?.terms;
-    if (!Array.isArray(terms)) return fallbackEach;
-    return scenes.map((_, i) => {
+    if (!Array.isArray(terms)) return { terms: fallbackEach, tokens };
+    const mapped = scenes.map((_, i) => {
       const t = terms[i];
       if (Array.isArray(t)) {
         const cleaned = t
@@ -174,7 +193,8 @@ export async function generateSearchTerms(
       }
       return fallbackEach[i];
     });
+    return { terms: mapped, tokens };
   } catch {
-    return fallbackEach;
+    return { terms: fallbackEach, tokens: 0 };
   }
 }

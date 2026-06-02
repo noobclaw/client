@@ -51,6 +51,10 @@ export interface VideoCreationProgress {
   /** 出片后的本地绝对路径。 */
   outputPath?: string;
   error?: string;
+  /** 本次出片累计消耗的 DeepSeek token(写稿 + 搜索词);TTS/ffmpeg 免费不计。 */
+  tokensUsed?: number;
+  /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
+  outputDir?: string;
 }
 
 export interface VideoCreationResult {

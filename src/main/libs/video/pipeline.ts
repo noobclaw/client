@@ -57,6 +57,10 @@ export interface VideoCreationProgress {
   message?: string;
   outputPath?: string;
   error?: string;
+  /** 本次出片累计消耗的 DeepSeek token(写稿 + 搜索词);TTS/ffmpeg 免费不计。 */
+  tokensUsed?: number;
+  /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
+  outputDir?: string;
 }
 
 export interface VideoCreationResult {
@@ -77,6 +81,9 @@ const STEP_DEFS: { key: string; label: string }[] = [
 
 class ProgressTracker {
   private steps: ProgressStep[];
+  // 累计 token + 输出目录随每次 emit 带回,渲染端无需自己算。
+  private tokensUsed = 0;
+  private outputDir?: string;
   constructor(private jobId: string, private emit?: ProgressEmitter) {
     this.steps = STEP_DEFS.map((s) => ({ ...s, status: 'waiting' as const }));
   }
@@ -86,8 +93,18 @@ class ProgressTracker {
       status,
       steps: this.steps.map((s) => ({ ...s })),
       message,
+      tokensUsed: this.tokensUsed,
+      outputDir: this.outputDir,
       ...extra,
     });
+  }
+  /** 累加本步 token,并立即把最新累计值 emit 回去。 */
+  addTokens(n: number) {
+    this.tokensUsed += Math.max(0, Number(n) || 0);
+  }
+  /** 出片目录开跑即确定,设一次即可,后续每次 emit 都会带上。 */
+  setOutputDir(dir: string) {
+    this.outputDir = dir;
   }
   start(key: string, message?: string) {
     const s = this.steps.find((x) => x.key === key);
@@ -197,29 +214,38 @@ export async function generateVideo(
   // 临时素材目录(配音 + 下载的素材图)
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
 
+  // 出片目录开跑即确定,emit 一次让详情页顶部立刻能显示「输出目录」。
+  const destDir = outputDir();
+  tracker.setOutputDir(destDir);
+
   try {
     // 0. 文案:用户没给就用 DeepSeek 按目标时长写一段口播旁白
-    tracker.start('script');
+    tracker.start('script', `输出目录:${destDir}`);
     let script = (input.script || '').trim();
     if (!script) {
       const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
-      tracker.progress('AI 正在撰写旁白脚本…');
+      tracker.progress(`AI 正在撰写旁白脚本（目标约 ${input.targetSeconds ?? 45}s）…`);
       try {
-        script = await generateScript({
+        const r = await generateScript({
           topic,
           persona: input.persona,
           track: input.track,
           keywords: input.keywords,
           targetSeconds: input.targetSeconds ?? 45,
         });
+        script = r.script;
+        tracker.addTokens(r.tokens);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
         tracker.fail('script', `AI 写脚本失败:${err.slice(0, 200)}`);
         return { ok: false, error: err.slice(0, 300) };
       }
       tracker.done('script', `AI 已生成约 ${script.length} 字旁白`);
+      // 把 AI 写的完整口播文案打到日志里(用户点详情页能看到 AI 到底写了啥)。
+      tracker.progress(`📝 口播文案:${script}`);
     } else {
       tracker.done('script', '使用用户提供的文案');
+      tracker.progress(`📝 口播文案:${script}`);
     }
 
     // 1. 拆句
@@ -257,10 +283,15 @@ export async function generateVideo(
 
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走,不再全片复用同一张图)
     tracker.progress('AI 规划每镜画面关键词…');
-    const perSceneTerms = await generateSearchTerms(sentences, input.keywords);
+    const termsResult = await generateSearchTerms(sentences, input.keywords);
+    const perSceneTerms = termsResult.terms;
+    tracker.addTokens(termsResult.tokens);
     // 全片去重后的搜索词集合(服务端最多吃 8 个),用来一次性拉素材池
     const allTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)));
     const searchKeywords = allTerms.length > 0 ? allTerms.slice(0, 8) : input.keywords;
+    if (allTerms.length > 0) {
+      tracker.progress(`🔍 画面搜索词:${allTerms.slice(0, 12).join(', ')}`);
+    }
 
     const refImages = (input.referenceImages || []).filter((p) => p && fs.existsSync(p));
     const wantVideo = input.useStockVideo !== false;
@@ -310,7 +341,7 @@ export async function generateVideo(
       };
     });
 
-    const outPath = path.join(outputDir(), outputFileName());
+    const outPath = path.join(destDir, outputFileName());
     const bgmPath = input.bgmPath && fs.existsSync(input.bgmPath) ? input.bgmPath : undefined;
     await composeVideo({
       scenes,
