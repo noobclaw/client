@@ -54,9 +54,12 @@ interface VideoWorkflowsPageProps {
   onGoCreate: () => void;
   /** 从创建流返回落地页(ScenarioView 把 section 切回 'tasks')。 */
   onBack: () => void;
+  /** 进入/退出任务·运行记录详情时上报,供 ScenarioView 隐藏顶部 L1/L2 tab
+   *  (对齐 scenario 详情页:详情态全屏,顶上不挂那么多 tab)。 */
+  onDetailChange?: (inDetail: boolean) => void;
 }
 
-export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack }) => {
+export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack, onDetailChange }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const { tasks, runs } = useVideoStore();
   const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
@@ -69,6 +72,12 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
     if (justCreatedRef.current) { justCreatedRef.current = false; return; }
     setDetail({ kind: 'list' });
   }, [section]);
+
+  // 详情态变化时上报给 ScenarioView(进详情=隐藏顶部 tab;离开本页时复位)。
+  useEffect(() => {
+    onDetailChange?.(detail.kind !== 'list');
+  }, [detail.kind, onDetailChange]);
+  useEffect(() => () => { onDetailChange?.(false); }, [onDetailChange]);
 
   const editingTask = editTaskId ? tasks.find((t) => t.id === editTaskId) : null;
 

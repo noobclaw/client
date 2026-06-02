@@ -112,6 +112,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const [drafts, setDrafts] = useState<Draft[]>([]);
   const [loading, setLoading] = useState(true);
   const [fatalError, setFatalError] = useState<string | null>(null);
+  // 视频是本地工具,任务/运行记录详情是 VideoWorkflowsPage 的内部状态(view 仍是
+  // 'main'),进详情时由它上报,这里据此隐藏顶部 L1/L2 tab,对齐 scenario 详情页全屏。
+  const [videoInDetail, setVideoInDetail] = useState(false);
 
   // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
@@ -495,6 +498,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           section={currentSection === 'create' ? 'create' : currentSection === 'history' ? 'history' : 'tasks'}
           onGoCreate={goVideoCreate}
           onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
+          onDetailChange={setVideoInDetail}
         />
       );
     }
@@ -715,7 +719,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             This makes Create feel like a pushed sub-page rather than
             another tab equal to the others — matches user expectation
             of "task vs view" actions. */}
-      {view.kind === 'main' && currentSection !== 'create' && (() => {
+      {view.kind === 'main' && currentSection !== 'create' && !(currentPlatform === 'video' && videoInDetail) && (() => {
         const isVideo = currentPlatform === 'video';
         return (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
@@ -806,7 +810,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           visible frame; the active one differentiates only by green tint
           + green border + slight glow shadow, matching the L1 section tabs'
           active treatment. */}
-      {view.kind === 'main' && (
+      {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
           {PLATFORM_TABS.map(tab => {
             const active = currentPlatform === tab.id;
