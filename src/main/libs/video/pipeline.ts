@@ -17,7 +17,7 @@ import path from 'path';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
-import { fetchStockImages, fetchStockVideos, type StockVideoAsset } from './stockProvider';
+import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm } from './stockProvider';
 import { composeVideo, type SceneSpec } from './compose';
 import { generateScript, generateSearchTerms } from './scriptWriter';
 
@@ -278,42 +278,74 @@ export async function generateVideo(
         (reason ? `:${reason.slice(0, 120)}` : '') + ')');
     }
 
-    // 3. 画面:每镜 AI 搜索词 → 在线素材【视频】优先 → 素材图 → 参考图 → 文字卡
+    // 3. 画面:每镜 AI 搜索词 → 该镜对应的在线视频 → 素材图 → 参考图 → 文字卡
     tracker.start('visuals');
 
-    // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走,不再全片复用同一张图)
+    // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
     const termsResult = await generateSearchTerms(sentences, input.keywords);
-    const perSceneTerms = termsResult.terms;
+    const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     tracker.addTokens(termsResult.tokens);
-    // 全片去重后的搜索词集合(服务端最多吃 8 个),用来一次性拉素材池
-    const allTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)));
-    const searchKeywords = allTerms.length > 0 ? allTerms.slice(0, 8) : input.keywords;
-    if (allTerms.length > 0) {
-      tracker.progress(`🔍 画面搜索词:${allTerms.slice(0, 12).join(', ')}`);
+
+    // 要去搜的词集:每镜首词优先(保证每个分镜的主画面词一定被搜到),
+    // 再补其余词,整体封顶 12 个,避免逐词搜请求过多拖慢。
+    const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
+    const extraTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)))
+      .filter((t) => !primaryTerms.includes(t));
+    let searchTerms = [...primaryTerms, ...extraTerms].slice(0, 12);
+    if (searchTerms.length === 0) {
+      searchTerms = (input.keywords || []).map((s) => s.toLowerCase()).filter(Boolean);
+    }
+    if (searchTerms.length > 0) {
+      tracker.progress(`🔍 画面搜索词:${searchTerms.join(', ')}`);
     }
 
     const refImages = (input.referenceImages || []).filter((p) => p && fs.existsSync(p));
     const wantVideo = input.useStockVideo !== false;
 
-    // 3b. 在线素材视频(优先)
-    let stockVideos: StockVideoAsset[] = [];
-    if (wantVideo) {
-      tracker.progress('搜索在线视频素材…');
-      stockVideos = await fetchStockVideos({
-        keywords: searchKeywords,
-        count: Math.min(40, sentences.length),
+    // 3b. 逐词拉视频,保留「词 → 素材」归属(进度逐词回报,不再"没动静")
+    let videoByTerm: StockVideoByTerm[] = [];
+    if (wantVideo && searchTerms.length > 0) {
+      tracker.progress(`搜索在线视频素材(共 ${searchTerms.length} 组关键词)…`);
+      videoByTerm = await fetchStockVideosByTerms({
+        terms: searchTerms,
+        perTermCount: 4,
         destDir: assetDir,
+        onProgress: ({ done, total, term, totalGot }) =>
+          tracker.progress(`搜索在线视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
       });
     }
 
-    // 3c. 视频不够 / 没视频时,用素材图 + 参考图补齐
-    const needImages = Math.max(0, Math.min(20, sentences.length - stockVideos.length - refImages.length));
+    // 建「词 → 该词的视频队列」+ 全局视频列表;分配时各镜按自己的词取,用尽再借全局。
+    const poolByTerm = new Map<string, StockVideoAsset[]>();
+    for (const g of videoByTerm) poolByTerm.set(g.term.toLowerCase(), [...g.assets]);
+    const allVideos: StockVideoAsset[] = videoByTerm.flatMap((g) => g.assets);
+    const usedVideo = new Set<string>();
+    const pickVideoForScene = (i: number): string | undefined => {
+      // 1. 优先吃本镜搜索词命中的、还没被别的镜用过的视频
+      for (const term of perSceneTerms[i] || []) {
+        const q = poolByTerm.get(term);
+        if (q) {
+          const v = q.find((a) => !usedVideo.has(a.path));
+          if (v) { usedVideo.add(v.path); return v.path; }
+        }
+      }
+      // 2. 本镜词都没命中/用尽 → 从全局未用视频借一段(总比退回图片强)
+      const any = allVideos.find((a) => !usedVideo.has(a.path));
+      if (any) { usedVideo.add(any.path); return any.path; }
+      return undefined;
+    };
+
+    const sceneVideos: (string | undefined)[] = sentences.map((_, i) => pickVideoForScene(i));
+    const scenesWithoutVideo = sceneVideos.filter((v) => !v).length;
+
+    // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
+    const needImages = Math.max(0, Math.min(20, scenesWithoutVideo - refImages.length));
     let stockImages: string[] = [];
-    if (needImages > 0) {
+    if (needImages > 0 && searchTerms.length > 0) {
       tracker.progress('补充在线图片素材…');
       stockImages = await fetchStockImages({
-        keywords: searchKeywords,
+        keywords: searchTerms.slice(0, 8),
         count: needImages,
         destDir: assetDir,
       });
@@ -321,17 +353,16 @@ export async function generateVideo(
     const imagePool = [...refImages, ...stockImages];
 
     tracker.done('visuals',
-      (stockVideos.length > 0 || imagePool.length > 0)
-        ? `画面就绪(视频 ${stockVideos.length} + 图片 ${imagePool.length})`
+      (allVideos.length > 0 || imagePool.length > 0)
+        ? `画面就绪(视频 ${allVideos.length} 段 → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
         : '无可用素材,使用文字卡');
 
-    // 4. 组装分镜 + 合成。每镜优先吃一段不重复的视频,用尽后退回图片(循环),再退文字卡
+    // 4. 组装分镜 + 合成。每镜先用分配到的视频,没有则轮转图片,再退文字卡
     tracker.start('compose');
+    let imgCursor = 0;
     const scenes: SceneSpec[] = sentences.map((sentence, i) => {
-      const video = i < stockVideos.length ? stockVideos[i].path : undefined;
-      const image = !video && imagePool.length > 0
-        ? imagePool[(i - stockVideos.length + imagePool.length * 100) % imagePool.length]
-        : undefined;
+      const video = sceneVideos[i];
+      const image = !video && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
       return {
         videoPath: video,
         imagePath: image,

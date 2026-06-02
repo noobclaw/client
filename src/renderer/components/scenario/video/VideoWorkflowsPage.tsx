@@ -463,49 +463,96 @@ const VideoRunHistory: React.FC<{
   );
 };
 
+/** 运行记录列表里单条时间戳:MM-DD HH:MM:SS,对齐币安 RunHistoryPage。 */
+function fmtRecordTime(ts: number, isZh: boolean): string {
+  if (!ts) return '-';
+  return new Date(ts).toLocaleString(isZh ? 'zh-CN' : 'en-US', {
+    month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+}
+
+/**
+ * 运行记录卡。布局对齐币安 RunHistoryPage 的行格式:
+ *   顶行  状态pill + 类型badge + 标题  |  ⏱️时间 · 耗时 · 🎟️消耗
+ *   次行  本次进度/本次完成(运行中给 step 进度,完成给"1 个视频")
+ *   id行  任务id #xxx · 记录id #xxx
+ *   尾行  最新进度/错误摘要 · N 条日志
+ */
 const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () => void }> = ({ isZh, run, onClick }) => {
   const isRunning = run.status === 'running';
   const doneCount = run.steps.filter((s) => s.status === 'done').length;
   const totalSteps = run.steps.length;
+  const durationSec = run.finishedAt ? Math.max(1, Math.round((run.finishedAt - run.startedAt) / 1000)) : null;
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
+      className={`w-full text-left rounded-lg border p-3 transition-colors cursor-pointer ${
         isRunning
-          ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
+          ? 'border-green-500/50 bg-white dark:bg-gray-900 noobclaw-running-glow hover:border-green-500'
           : run.status === 'error'
-            ? 'border-red-400/60 dark:border-red-500/40 bg-white dark:bg-gray-900'
-            : 'border-gray-200 dark:border-gray-700 hover:border-green-500/50 bg-white dark:bg-gray-900'
+            ? 'border-red-400/60 dark:border-red-500/40 bg-white dark:bg-gray-900 hover:border-rose-500/50'
+            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-rose-500/50'
       }`}
     >
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+      {/* 顶行:状态 + 类型 + 标题(左) | 时间 · 耗时 · 消耗(右) */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0 flex-1">
+          <StatusPill isZh={isZh} status={run.status} />
           <HeadBadges isZh={isZh} />
           <span className="font-medium dark:text-white truncate">{run.title}</span>
-          <IdTag kind="record" id={run.id} isZh={isZh} />
         </div>
-        <div className="shrink-0"><StatusPill isZh={isZh} status={run.status} /></div>
-      </div>
-      <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
-        {run.status === 'error'
-          ? <span className="text-red-500">{run.error}</span>
-          : (run.message || (isZh ? '准备中…' : 'Preparing…'))}
-      </div>
-      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 flex items-center gap-3 flex-wrap text-xs">
-        {totalSteps > 0 && (
-          <span className="font-mono text-[11px]">
-            🎬 <strong className={isRunning ? 'text-green-600 dark:text-green-400' : ''}>{doneCount}</strong>
-            <span className="text-gray-400">/{totalSteps}</span>
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
+          <span>⏱️ {fmtRecordTime(run.startedAt, isZh)}</span>
+          {durationSec && <span>· {durationSec}{isZh ? '秒' : 's'}</span>}
+          <span title={isZh ? '本次消耗的 DeepSeek token(TTS/合成免费)' : 'DeepSeek tokens this run (TTS/compose free)'}>
+            · 🎟️ {run.tokensUsed > 0 ? compactNumber(run.tokensUsed) : '—'} tokens
           </span>
-        )}
-        {run.tokensUsed > 0 && (
-          <span className="text-[10px] text-gray-400">🎟️ {fmtNum(run.tokensUsed)} tokens</span>
-        )}
-        <span className="ml-auto text-[10px] text-gray-400">
-          {new Date(run.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}
-        </span>
+        </div>
       </div>
+
+      {/* 次行:本次进度(运行中)/ 本次完成(完成) */}
+      <div className="mt-1.5 flex items-center gap-3 text-xs flex-wrap">
+        <span className={`text-[10px] ${isRunning ? 'text-green-600 dark:text-green-400 font-semibold' : 'text-gray-500 dark:text-gray-500'}`}>
+          {isZh ? (isRunning ? '本次进度' : '本次完成') : (isRunning ? 'Progress' : 'Result')}:
+        </span>
+        {isRunning && totalSteps > 0 ? (
+          <span className="font-mono font-medium">
+            🎬 <span className="text-green-600 dark:text-green-400">{doneCount}</span>
+            <span className="text-gray-400 dark:text-gray-500">/{totalSteps}</span>{' '}
+            <span className="text-gray-500 dark:text-gray-400 font-sans font-normal">{isZh ? '步' : 'steps'}</span>
+          </span>
+        ) : run.status === 'done' ? (
+          <span className="font-mono font-medium">🎬 {isZh ? '1 个视频' : '1 video'}</span>
+        ) : (
+          <span className="text-gray-400">{isZh ? '未生成' : 'none'}</span>
+        )}
+      </div>
+
+      {/* id 行:任务id + 记录id(区分同一任务的不同运行) */}
+      <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 dark:text-gray-500 font-mono">
+        <span>{isZh ? '任务id:' : 'task:'} #{run.taskId.slice(0, 8)}</span>
+        <span>·</span>
+        <span>{isZh ? '记录id:' : 'record:'} #{run.id.slice(0, 8)}</span>
+      </div>
+
+      {/* 尾行:最新进度 / 错误摘要 · 日志条数 */}
+      {(run.error || run.message) && (
+        <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
+          {run.status === 'error' && run.error ? (
+            <span className="text-amber-600 dark:text-amber-400 mr-2">
+              {run.error.length > 100 ? run.error.slice(0, 100) + '…' : run.error}
+            </span>
+          ) : run.message ? (
+            <span className="mr-2">
+              {run.message.length > 100 ? run.message.slice(0, 100) + '…' : run.message}
+            </span>
+          ) : null}
+          <span className="text-[10px] text-gray-400">
+            {isZh ? `· ${run.logs.length} 条日志` : `· ${run.logs.length} log entries`}
+          </span>
+        </div>
+      )}
     </button>
   );
 };

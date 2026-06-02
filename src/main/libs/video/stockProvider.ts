@@ -192,36 +192,72 @@ export interface StockVideoAsset {
   height: number;
 }
 
+/** 一个搜索词 → 它搜到并下好的素材视频(保留归属,供按分镜内容匹配)。 */
+export interface StockVideoByTerm {
+  term: string;
+  assets: StockVideoAsset[];
+}
+
+export interface FetchVideosByTermsOptions {
+  /** 逐个搜索的英文搜索词(已去重)。 */
+  terms: string[];
+  /** 每个搜索词下载几段视频。默认 4。 */
+  perTermCount?: number;
+  /** 下载目录(需已存在)。 */
+  destDir: string;
+  /**
+   * 进度回调,每搜完一个词触发一次。done/total 是词进度,term 是当前词,
+   * got 是该词下到几段,totalGot 是到目前累计下到几段。
+   */
+  onProgress?: (info: { done: number; total: number; term: string; got: number; totalGot: number }) => void;
+}
+
 /**
- * 经服务端代理搜视频并下载到本地,返回本地视频资源数组(长度 ≤ count)。
- * 服务端没 key / 没网 / 没匹配时返回 []。
+ * 逐【搜索词】拉视频素材,保留「词 → 素材」归属。
+ *
+ * 这是相对旧版 bulk 搜的关键改进(抄 MoneyPrinterTurbo):旧版把所有词混成一个
+ * 池子一次性搜,然后 pipeline 第 i 个分镜直接取池子第 i 个——画面跟内容毫无关系。
+ * 现在每个词单独搜,pipeline 再按各分镜自己的搜索词挑对应素材,画面跟着内容走。
+ *
+ * 同时做竖屏过滤:元数据已知尺寸时,高 < 宽(横屏)直接拒收,免得裁成竖屏丢画面。
+ * 全程 onProgress 回调让 UI 不再"搜索素材…没动静"。服务端没 key/没网时返回各词空数组。
  */
-export async function fetchStockVideos(opts: FetchStockOptions): Promise<StockVideoAsset[]> {
-  const { keywords, count, destDir } = opts;
-  if (count <= 0) return [];
+export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): Promise<StockVideoByTerm[]> {
+  const { terms, destDir } = opts;
+  const perTermCount = Math.max(1, opts.perTermCount ?? 4);
+  const out: StockVideoByTerm[] = [];
+  if (!Array.isArray(terms) || terms.length === 0) return out;
 
-  const metas = await searchVideosViaServer(keywords, count);
-  if (metas.length === 0) return [];
-
-  const results: StockVideoAsset[] = [];
+  const seenUrls = new Set<string>();
   let idx = 0;
-  for (const meta of metas) {
-    if (results.length >= count) break;
-    // 元数据里时长太短的直接跳过(0 = 未知,放行)
-    if (meta.durationSec > 0 && meta.durationSec < MIN_VIDEO_SEC) continue;
-    const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
-    const dest = path.join(destDir, `stockvid_${String(idx).padStart(3, '0')}.${ext}`);
-    idx++;
-    const ok = await downloadVideoTo(meta.url, dest);
-    if (ok) {
-      results.push({
-        path: dest,
-        durationSec: meta.durationSec,
-        width: meta.width,
-        height: meta.height,
-      });
+  let totalGot = 0;
+
+  for (let t = 0; t < terms.length; t++) {
+    const term = (terms[t] || '').trim();
+    const assets: StockVideoAsset[] = [];
+    if (term) {
+      const metas = await searchVideosViaServer([term], perTermCount);
+      for (const meta of metas) {
+        if (assets.length >= perTermCount) break;
+        if (seenUrls.has(meta.url)) continue;
+        // 时长太短(<2s)拼起来太碎,跳过(0 = 未知,放行)。
+        if (meta.durationSec > 0 && meta.durationSec < MIN_VIDEO_SEC) continue;
+        // 竖屏比例过滤:已知尺寸且高<宽(横屏素材)拒收,竖屏裁切会丢主体。
+        if (meta.width > 0 && meta.height > 0 && meta.height < meta.width) continue;
+        seenUrls.add(meta.url);
+        const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
+        const dest = path.join(destDir, `stockvid_${String(idx).padStart(3, '0')}.${ext}`);
+        idx++;
+        const ok = await downloadVideoTo(meta.url, dest);
+        if (ok) {
+          assets.push({ path: dest, durationSec: meta.durationSec, width: meta.width, height: meta.height });
+          totalGot++;
+        }
+      }
     }
+    out.push({ term, assets });
+    opts.onProgress?.({ done: t + 1, total: terms.length, term, got: assets.length, totalGot });
   }
 
-  return results;
+  return out;
 }
