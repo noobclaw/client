@@ -6,10 +6,13 @@
  *      由【多段素材】拼成(每段封顶 maxClipSeconds 秒),所以画面一直在换,不再「一句话
  *      盯着一个空镜几秒」。素材不够就循环复用。
  *   2. 所有 scene_bg concat 成 master_bg(无声);所有配音 concat 成 master_audio。
- *   3. 字幕:优先用 Whisper(transcribe 回调)出精确时间戳,失败则按各镜已知时长估算;
+ *   3. 字幕:优先用上层传入的精确 cue(edge-tts 词边界),没有则按各镜已知时长估算;
  *      再把全部 cue 用【一遍 drawtext】烧到 master_bg 上(font/textfile 用相对名,
  *      绕开 Windows 盘符冒号转义),最后 mux 上 master_audio。字幕关 → 直接 mux。
  *   4. 可选 BGM 低音量混入。
+ *
+ * 字体:优先用打包内置的思源黑体(Source Han Sans SC Bold,开源 SIL OFL,商用 OK),
+ * 保证任何用户机器上中文字幕都不会变成「豆腐块」;内置找不到才退回系统字体。
  *
  * 画幅(W×H)由上层按 aspect 传入(9:16 / 16:9 / 1:1),不再写死竖屏。
  */
@@ -18,12 +21,49 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runFfmpeg, probeDuration } from './ffmpegRuntime';
+import { isPackaged, getResourcesPath, getUserDataPath } from '../platformAdapter';
 
 const FPS = 30;
 /** 每段素材最长秒数(换镜节奏);上层不传时的默认值。 */
 const DEFAULT_MAX_CLIP_SEC = 4;
 
-/** 找一个系统里的中文字体给 drawtext 用。 */
+/** 内置 CJK 字体文件名(随包 bundle 在 resources/fonts/ 下)。 */
+const BUNDLED_FONT_FILE = 'SourceHanSansSC-Bold.otf';
+
+/**
+ * 内置字体可能落地的目录集合 —— 套用 ffmpegRuntime.bundledBinDirs 的多根探测,
+ * 覆盖 Windows(<install>/resources/fonts)/ macOS(Contents/Resources[/resources]/fonts)
+ * / 开发态(client/resources/fonts)。
+ */
+function bundledFontDirs(): string[] {
+  const dirs: string[] = [];
+  const pushRoot = (root: string) => dirs.push(path.join(root, 'fonts'));
+  if (isPackaged()) {
+    const res = getResourcesPath();
+    const exeDir = path.dirname(process.execPath);
+    pushRoot(res);
+    pushRoot(path.join(res, 'resources'));
+    pushRoot(path.join(exeDir, 'resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources'));
+    pushRoot(path.join(exeDir, '..', 'Resources', 'resources'));
+  } else {
+    const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
+    pushRoot(path.join(projectRoot, 'resources'));
+  }
+  pushRoot(path.join(getUserDataPath(), 'runtimes'));
+  return dirs;
+}
+
+/** 解析内置思源黑体路径;找不到返回 null(退回系统字体)。 */
+function resolveBundledFont(): string | null {
+  for (const dir of bundledFontDirs()) {
+    const p = path.join(dir, BUNDLED_FONT_FILE);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
+/** 找一个系统里的中文字体给 drawtext 用(内置字体缺失时的兜底)。 */
 function resolveCjkFont(): string | null {
   const candidates = process.platform === 'win32'
     ? [
@@ -351,10 +391,10 @@ export interface ComposeOptions {
   /** 每合成完一镜背景回调(用于进度)。 */
   onScene?: (done: number, total: number) => void;
   /**
-   * 字幕精确时间戳来源(Whisper)。传入则在拼好 master 音频后调用;返回 null/抛错
-   * → 自动退回按各镜时长估算的 cue。
+   * 字幕精确 cue(edge-tts 词边界,时间已对齐到总时间轴)。传入则直接用;
+   * 为空/未传 → 自动退回按各镜时长估算的 cue。
    */
-  transcribe?: (masterAudioPath: string) => Promise<SubtitleCue[] | null>;
+  cues?: SubtitleCue[];
 }
 
 /**
@@ -403,9 +443,10 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
 
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-video-'));
 
-  // 字体拷进 workDir,filtergraph 里只用相对名(避开 C: 转义)
+  // 字体拷进 workDir,filtergraph 里只用相对名(避开 C: 转义)。
+  // 优先内置思源黑体(任何机器中文都不豆腐),缺失才退回系统字体。
   let fontRel: string | null = null;
-  const fontSrc = resolveCjkFont();
+  const fontSrc = resolveBundledFont() ?? resolveCjkFont();
   if (fontSrc) {
     try {
       fontRel = `font${path.extname(fontSrc) || '.ttf'}`;
@@ -433,14 +474,10 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    // 3. 字幕 cue(开了字幕才算):Whisper 优先,失败估算兜底
+    // 3. 字幕 cue(开了字幕才算):优先用上层传入的精确 cue,空则按各镜时长估算
     let drawtext: string[] = [];
     if (style.enabled) {
-      let cues: SubtitleCue[] | null = null;
-      if (opts.transcribe) {
-        try { cues = await opts.transcribe(masterAudio); } catch { cues = null; }
-      }
-      if (!cues || cues.length === 0) cues = deriveCuesFromScenes(scenes);
+      const cues = (opts.cues && opts.cues.length > 0) ? opts.cues : deriveCuesFromScenes(scenes);
       drawtext = buildDrawtextChain(workDir, refineCues(cues), style, fontRel, H);
     }
 

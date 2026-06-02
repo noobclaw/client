@@ -1,9 +1,15 @@
 /**
- * tts — 文案配音。
+ * tts — 文案配音 + 字幕时间轴(抄 MoneyPrinterTurbo 的离线字幕方案)。
  *
  * 首选 edge-tts(微软 Edge 在线 TTS,免费、无需 key),通过内置 Python 跑:
- *   python -m edge_tts --voice <voice> --text <文案> --write-media out.mp3
+ *   python -m edge_tts --voice <voice> --text <文案> --write-media out.mp3 \
+ *                      --write-subtitles out.vtt
  * edge-tts 没装就懒加载 pip install 一次。
+ *
+ * 字幕:--write-subtitles 让 edge-tts 在合成的同时吐出【词边界时间戳】字幕(SRT/VTT
+ * 两种格式都可能,按版本而定),完全离线、不下任何模型、国内可用。我们解析它再按 ~12 字
+ * 攒成短语 cue 返回给 compose 烧字幕,字幕和旁白严丝合缝。解析失败不影响出片(compose
+ * 会退回按各镜时长估算的 cue)。
  *
  * 任何环节失败 → 退化成「按字数估算时长的静音 mp3」,保证流水线总能出片(方便自测)。
  */
@@ -20,6 +26,13 @@ import { getUserDataPath } from '../platformAdapter';
 import { runFfmpeg, probeDuration } from './ffmpegRuntime';
 import { getTtsVoice } from './config';
 
+/** 一条字幕 cue(时间相对【本句配音】起点,秒)。 */
+export interface TtsCue {
+  text: string;
+  start: number;
+  end: number;
+}
+
 export interface TtsResult {
   ok: boolean;
   /** 音频文件路径(成功是真人声,失败是静音兜底)。 */
@@ -27,6 +40,11 @@ export interface TtsResult {
   durationSec: number;
   /** true = 真 TTS;false = 静音兜底。 */
   synthesized: boolean;
+  /**
+   * edge-tts 词边界出的短语级字幕 cue(相对本句起点)。真 TTS 且字幕解析成功才有;
+   * 静音兜底 / 解析失败为 undefined,上层退回估算。
+   */
+  cues?: TtsCue[];
 }
 
 /** 最近一次 TTS 失败原因(给上层/日志用,避免静默)。 */
@@ -147,9 +165,8 @@ let _resolvedPython: string | null | undefined = undefined;
 
 /**
  * 解析出一个【已装好 edge-tts】的 python 可执行;失败返回 null。
- * 导出供 subtitles.ts 复用同一个 python 跑 faster-whisper(免得再找一遍解释器)。
  */
-export async function resolveTtsPython(): Promise<string | null> {
+async function resolveTtsPython(): Promise<string | null> {
   if (_resolvedPython !== undefined) return _resolvedPython;
 
   if (process.platform === 'win32') {
@@ -201,10 +218,68 @@ function normalizeRate(rate?: number): string | null {
   return clamped >= 0 ? `+${clamped}%` : `${clamped}%`;
 }
 
-function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number): Promise<boolean> {
+/**
+ * 解析 edge-tts 写出的字幕文件 —— 同时兼容 SRT(`HH:MM:SS,mmm`)与 VTT(`HH:MM:SS.mmm`)
+ * 两种格式(edge-tts 版本不同输出不同)。返回逐条词边界 cue(时间相对本句起点)。
+ */
+function parseSubtitleFile(filePath: string): TtsCue[] {
+  let raw: string;
+  try { raw = fs.readFileSync(filePath, 'utf8'); } catch { return []; }
+  const lines = raw.split(/\r?\n/);
+  // 毫秒分隔符 [.,] 同时吃 VTT 的点和 SRT 的逗号。
+  const re = /(\d{2}):(\d{2}):(\d{2})[.,](\d{1,3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[.,](\d{1,3})/;
+  const cues: TtsCue[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(re);
+    if (!m) continue;
+    const toSec = (h: string, mi: string, s: string, ms: string) =>
+      Number(h) * 3600 + Number(mi) * 60 + Number(s) + Number(ms.padEnd(3, '0')) / 1000;
+    const start = toSec(m[1], m[2], m[3], m[4]);
+    const end = toSec(m[5], m[6], m[7], m[8]);
+    // 时间行之后到空行之间都是文本(通常一行一个词)。
+    const textLines: string[] = [];
+    let j = i + 1;
+    for (; j < lines.length; j++) {
+      if (!lines[j].trim()) break;
+      textLines.push(lines[j].trim());
+    }
+    i = j;
+    const text = textLines.join(' ').replace(/\s+/g, ' ').trim();
+    if (text && end > start) cues.push({ text, start, end });
+  }
+  return cues;
+}
+
+/**
+ * 把逐词 cue 攒成 ~maxChars 字一段的短语 cue(用真实词级时间戳,不估算)。
+ * 短语 start = 首词 start,end = 末词 end。中文按字,英文按词长累加。
+ */
+function groupWordCues(words: TtsCue[], maxChars = 12): TtsCue[] {
+  const out: TtsCue[] = [];
+  let buf = '';
+  let start: number | null = null;
+  let end = 0;
+  const hasCjk = (s: string) => /[　-鿿＀-￯]/.test(s);
+  for (const w of words) {
+    if (start === null) start = w.start;
+    // 英文词之间加空格,中文不加。
+    buf = buf && !hasCjk(w.text) && !hasCjk(buf.slice(-1)) ? `${buf} ${w.text}` : `${buf}${w.text}`;
+    end = w.end;
+    if (buf.length >= maxChars) {
+      out.push({ text: buf, start, end });
+      buf = '';
+      start = null;
+    }
+  }
+  if (buf && start !== null) out.push({ text: buf, start, end });
+  return out;
+}
+
+function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number, subtitlePath?: string): Promise<boolean> {
   return new Promise((resolve) => {
     const env = pythonEnv();
     const args = ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outPath];
+    if (subtitlePath) args.push('--write-subtitles', subtitlePath);
     const rateArg = normalizeRate(rate);
     if (rateArg) args.push('--rate', rateArg);
     const child = spawn(pyExe, args, { env, windowsHide: true });
@@ -234,14 +309,23 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
     try {
       const pyExe = await resolveTtsPython();
       if (pyExe) {
-        const ok = await runEdgeTts(pyExe, clean, useVoice, outPath, rate);
+        // 字幕和音频同名,扩展名 .vtt(edge-tts 按版本写 VTT/SRT,我们的解析器都吃)。
+        const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
+        const ok = await runEdgeTts(pyExe, clean, useVoice, outPath, rate, subPath);
         if (ok) {
           const dur = await probeDuration(outPath);
+          let cues: TtsCue[] | undefined;
+          try {
+            const words = parseSubtitleFile(subPath);
+            if (words.length > 0) cues = groupWordCues(words);
+          } catch { /* 解析失败 → 上层估算兜底 */ }
+          try { fs.unlinkSync(subPath); } catch {}
           return {
             ok: true,
             audioPath: outPath,
             durationSec: dur > 0 ? dur : estDur,
             synthesized: true,
+            cues,
           };
         }
         _lastTtsError = _lastTtsError || 'edge-tts 运行失败(已装好但合成无输出)';

@@ -184,6 +184,24 @@ function main() {
     }
   }
 
+  // 7. Bundled CJK subtitle font (Source Han Sans SC Bold, SIL OFL, commercial
+  //    OK). Committed to client/resources/fonts/. compose.ts resolves it at
+  //    runtime via getResourcesPath()/fonts/ so Chinese subtitles never render
+  //    as tofu boxes regardless of the user's installed system fonts.
+  {
+    const fontsSrc = path.join(ROOT, 'resources', 'fonts');
+    const fontsDest = path.join(RESOURCES_DIR, 'fonts');
+    if (fs.existsSync(fontsSrc)) {
+      const count = copyDirRecursive(fontsSrc, fontsDest);
+      console.log(`  fonts: ${count} files`);
+    } else {
+      console.warn(
+        '  fonts: NOT FOUND — Chinese subtitles will fall back to system fonts ' +
+        '(may render as tofu boxes on machines without a CJK font).',
+      );
+    }
+  }
+
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
 }
 

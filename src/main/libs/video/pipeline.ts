@@ -18,8 +18,7 @@ import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
-import { composeVideo, type SceneSpec, type SubtitleStyle } from './compose';
-import { transcribeToCues } from './subtitles';
+import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms } from './scriptWriter';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
@@ -292,15 +291,24 @@ export async function generateVideo(
     }
     tracker.done('split', `共 ${sentences.length} 个分镜`);
 
-    // 2. 逐句配音
+    // 2. 逐句配音。同时收集 edge-tts 词边界字幕 cue,按各句在总时间轴上的累计起点
+    //    偏移后合并成全局 cue(离线、精确,抄 MoneyPrinterTurbo);拿不到就让 compose 估算。
     tracker.start('tts');
     const audios: { audioPath: string; durationSec: number }[] = [];
+    const subtitleCues: SubtitleCue[] = [];
+    let timelineOffset = 0;
     let synthCount = 0;
     for (let i = 0; i < sentences.length; i++) {
       const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
       const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
       audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
       if (r.synthesized) synthCount++;
+      if (r.cues && r.cues.length > 0) {
+        for (const c of r.cues) {
+          subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
+        }
+      }
+      timelineOffset += r.durationSec;
       tracker.progress(`配音 ${i + 1}/${sentences.length}`);
     }
     if (synthCount === sentences.length) {
@@ -437,6 +445,12 @@ export async function generateVideo(
 
     const outPath = path.join(destDir, outputFileName());
     const bgmPath = input.bgmPath && fs.existsSync(input.bgmPath) ? input.bgmPath : undefined;
+    if (subtitleEnabled) {
+      tracker.progress(subtitleCues.length > 0
+        ? `字幕时间轴就绪(edge-tts 词边界,共 ${subtitleCues.length} 段)`
+        : '字幕按各镜时长估算(未取到词边界时间轴)');
+    }
+
     await composeVideo({
       scenes,
       outputPath: outPath,
@@ -445,10 +459,8 @@ export async function generateVideo(
       maxClipSeconds: maxClip,
       subtitle,
       bgmPath,
-      // 开了字幕才跑 Whisper(推理有成本);失败 compose 内部自动退回估算 cue。
-      transcribe: subtitleEnabled
-        ? (audioPath) => { tracker.progress('Whisper 识别字幕时间轴…'); return transcribeToCues(audioPath); }
-        : undefined,
+      // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
+      cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
       onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),
     });
 
