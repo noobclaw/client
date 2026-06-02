@@ -750,8 +750,6 @@ const VideoTaskDetail: React.FC<{
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
-
   const handleRerun = () => {
     setActionError(null);
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
@@ -877,13 +875,34 @@ const VideoTaskDetail: React.FC<{
         />
       </div>
 
-      {/* 当前运行明细(对齐币安「当前运行明细」:输出目录 + step + 日志 + 成片) */}
+      {/* 当前运行 — 任务页只看「步骤进度」(对齐币安任务详情:任务是任务)。
+          完整运行日志 / 成片预览 / 报错明细都在「运行记录详情」里看(记录是记录),
+          通过下面的「查看本次运行明细 →」或历史运行列表点进去。 */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
-        {latestRun && <IdTag kind="record" id={latestRun.id} isZh={isZh} />}
+        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行' : 'Current Run'}</h2>
+        {latestRun && (
+          <button
+            type="button"
+            onClick={() => onOpenRecord(latestRun.id)}
+            className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
+          >
+            {isZh ? '查看本次运行明细 →' : 'View run details →'}
+          </button>
+        )}
       </div>
-      <OutputDirBar isZh={isZh} dir={outDir} />
-      <RunBody isZh={isZh} run={latestRun} showProgressPill={false} />
+      {latestRun ? (
+        latestRun.steps.length > 0 ? (
+          <StepList steps={latestRun.steps} />
+        ) : (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
+            {isZh ? '本次运行还没有步骤明细。' : 'No step details yet for this run.'}
+          </div>
+        )
+      ) : (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 text-sm text-gray-500 dark:text-gray-400">
+          {isZh ? '尚未运行。点上方「开始创作 / 重新跑」启动一次。' : 'Not run yet. Start a run above.'}
+        </div>
+      )}
 
       {/* 历史运行(>1 条时展示,点进运行记录详情) */}
       {runs.length > 1 && (
