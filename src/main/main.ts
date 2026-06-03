@@ -2912,6 +2912,32 @@ if (!gotTheLock) {
       }
     });
 
+    // Resolve a BGM token to a playable data: URL for in-wizard preview. builtin:
+    // → bundled mp3; remote: → download+cache (warms the compose cache so the
+    // produced video reuses it without a second download); abs path → user upload.
+    ipcMain.handle('video:previewBgm', async (_e, token: string) => {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const { resolveBgmPath } = require('./libs/video/bgm');
+        const resolved: string | undefined = await resolveBgmPath(token);
+        if (!resolved || !fs.existsSync(resolved)) return '';
+        const buf: Buffer = fs.readFileSync(resolved);
+        if (buf.length === 0 || buf.length > 25 * 1024 * 1024) return '';
+        const ext = path.extname(resolved).toLowerCase().replace('.', '');
+        const mime =
+          ext === 'wav' ? 'audio/wav'
+          : ext === 'ogg' ? 'audio/ogg'
+          : ext === 'flac' ? 'audio/flac'
+          : ext === 'aac' ? 'audio/aac'
+          : ext === 'm4a' ? 'audio/mp4'
+          : 'audio/mpeg';
+        return `data:${mime};base64,${buf.toString('base64')}`;
+      } catch {
+        return '';
+      }
+    });
+
     ipcMain.handle('video:pickAudio', async () => {
       const result = await dialog.showOpenDialog({
         title: '选择背景音乐',
@@ -2965,7 +2991,8 @@ if (!gotTheLock) {
         // Allow connections to all domains without restrictions
         "connect-src *",
         "font-src 'self' data:",
-        "media-src 'self'",
+        // data:/blob: so the video wizard can preview BGM via in-memory data: URLs.
+        "media-src 'self' data: blob:",
         "worker-src 'self' blob:",
         "frame-src 'self'"
       ];

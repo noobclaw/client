@@ -202,6 +202,21 @@ function main() {
     }
   }
 
+  // 8. Bundled background-music library (MoneyPrinterTurbo's royalty-free songs,
+  //    renamed bgm-01..bgm-08). Committed to client/resources/bgm/. The wizard
+  //    offers these as "built-in BGM" via a builtin:<id> token; pipeline/bgm.ts
+  //    resolves the token to getResourcesPath()/bgm/<id>.mp3 at runtime.
+  {
+    const bgmSrc = path.join(ROOT, 'resources', 'bgm');
+    const bgmDest = path.join(RESOURCES_DIR, 'bgm');
+    if (fs.existsSync(bgmSrc)) {
+      const count = copyDirRecursive(bgmSrc, bgmDest);
+      console.log(`  bgm: ${count} files`);
+    } else {
+      console.warn('  bgm: NOT FOUND — built-in background music will be unavailable (upload still works).');
+    }
+  }
+
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
 }
 

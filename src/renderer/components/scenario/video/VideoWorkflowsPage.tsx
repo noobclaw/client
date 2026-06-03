@@ -94,7 +94,6 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
         <VideoTaskDetail
           isZh={isZh}
           task={task}
-          runs={videoTaskStore.getRunsForTask(task.id)}
           latestRun={videoTaskStore.getLatestRun(task.id)}
           onBack={() => setDetail({ kind: 'list' })}
           onOpenRecord={(rid) => setDetail({ kind: 'record', recordId: rid })}
@@ -683,7 +682,7 @@ const LogLines: React.FC<{ logs: VideoTaskLog[]; active?: boolean }> = ({ logs, 
           <span className="break-words whitespace-pre-wrap">{l.message}</span>
         </div>
       ))}
-      {active && <span className="text-green-500 animate-pulse">▋</span>}
+      {active && <span className="text-green-500 noobclaw-blink text-sm font-bold">▋</span>}
     </div>
   );
 };
@@ -752,6 +751,26 @@ const StepLogList: React.FC<{ isZh: boolean; steps: VideoCreationProgressStep[];
   );
 };
 
+/** 把毫秒格式化成 mm:ss(超过 1 小时则 h:mm:ss)。 */
+function fmtDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const s = total % 60;
+  const m = Math.floor(total / 60) % 60;
+  const h = Math.floor(total / 3600);
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+/** 运行中每秒重渲染一次,驱动实时计时;停跑后不再 tick(省渲染)。 */
+function useTicker(active: boolean): void {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const id = setInterval(() => setTick((x) => x + 1), 1000);
+    return () => clearInterval(id);
+  }, [active]);
+}
+
 /**
  * 运行体:step 明细 + 流式日志 + 成片操作。
  * showProgressPill=true(运行记录详情)时额外渲染顶部「步骤 N/M + 本次消耗 + 状态」一行;
@@ -764,6 +783,8 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [logLen]);
+  // 运行中每秒 tick,让下方 ⏱️ 计时实时走字;hook 必须在 early return 前无条件调用。
+  useTicker(run?.status === 'running');
 
   if (!run) {
     return (
@@ -776,6 +797,8 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
   const isRunning = run.status === 'running';
   const doneCount = run.steps.filter((s) => s.status === 'done').length;
   const totalSteps = run.steps.length;
+  // 计时:运行中 = now - startedAt(每秒 tick 走字);已结束 = finishedAt - startedAt 定格。
+  const elapsedLabel = fmtDuration((run.finishedAt ?? Date.now()) - run.startedAt);
 
   return (
     <>
@@ -813,8 +836,12 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
 
       {/* 流式日志 */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-4 mb-4">
-        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
-          {isZh ? '运行日志' : 'Logs'}
+        <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-2">
+          <span>{isZh ? '运行日志' : 'Logs'}</span>
+          <span className={`font-mono text-[11px] inline-flex items-center gap-1 ${isRunning ? 'text-green-500' : 'text-gray-400'}`}>
+            {isRunning && <span className="w-1.5 h-1.5 rounded-full bg-green-500 noobclaw-blink" />}
+            ⏱️ {elapsedLabel}
+          </span>
         </div>
         <div
           ref={logRef}
@@ -826,7 +853,7 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
               <span className="break-words whitespace-pre-wrap">{l.message}</span>
             </div>
           ))}
-          {isRunning && <span className="text-green-400 animate-pulse">▋</span>}
+          {isRunning && <span className="text-green-400 noobclaw-blink text-sm font-bold">▋</span>}
         </div>
       </div>
 
@@ -844,7 +871,7 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
             </button>
             <button
               type="button"
-              onClick={() => videoCreationService.revealInFolder(run.outputPath!)}
+              onClick={() => openFolder(dirOf(run.outputPath))}
               className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
             >
               📂 {isZh ? '打开文件夹' : 'Open folder'}
@@ -870,7 +897,7 @@ const OutputDirBar: React.FC<{ isZh: boolean; dir?: string }> = ({ isZh, dir }) 
       <span className="flex-1 min-w-0 truncate font-mono text-gray-600 dark:text-gray-300" title={dir}>{dir}</span>
       <button
         type="button"
-        onClick={() => videoCreationService.revealInFolder(dir)}
+        onClick={() => openFolder(dir)}
         className="shrink-0 px-2 py-1 rounded text-[11px] border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
       >
         {isZh ? '打开' : 'Open'}
@@ -885,17 +912,27 @@ function dirOf(p?: string): string | undefined {
   return idx > 0 ? p.slice(0, idx) : undefined;
 }
 
+/**
+ * 打开文件夹 —— 走币安详情页同款 shell.openPath(直接在资源管理器/访达里打开目录)。
+ * 旧的 videoCreationService.revealInFolder 走主进程 explorer /select,<dir>,对“目录”
+ * 参数在 Tauri sidecar 下经常没反应(/select 是给文件高亮用的);openPath 是币安那边
+ * 验证可用的同一条路,这里统一改用它,保证“打开输出目录”按钮真的能打开。
+ */
+function openFolder(dir?: string): void {
+  if (!dir) return;
+  try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ }
+}
+
 // ── 任务详情页:配置 + 本次运行 + 历史运行 + 重跑/编辑/删除 ─────────────────
 
 const VideoTaskDetail: React.FC<{
   isZh: boolean;
   task: VideoTask;
-  runs: VideoRunRecord[];
   latestRun: VideoRunRecord | undefined;
   onBack: () => void;
   onOpenRecord: (id: string) => void;
   onEdit: () => void;
-}> = ({ isZh, task, runs, latestRun, onBack, onOpenRecord, onEdit }) => {
+}> = ({ isZh, task, latestRun, onBack, onOpenRecord, onEdit }) => {
   const status = statusOf(task);
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
@@ -939,12 +976,12 @@ const VideoTaskDetail: React.FC<{
         ← {isZh ? '返回' : 'Back'}
       </button>
 
-      {/* Header — 平台/类型 badge + 任务#id(对齐币安详情页头部) */}
-      <div className="flex items-center gap-2 mb-2 flex-wrap">
+      {/* Header — 平台/类型 badge + 任务#id(对齐币安详情页头部:只有徽章 + #id,
+          不挂大标题。任务名已在配置行 / 列表里有,顶上再来个大标题就跟币安不一致)。 */}
+      <div className="flex items-center gap-2 mb-3 flex-wrap">
         <HeadBadges isZh={isZh} size="md" />
         <IdTag kind="task" id={task.id} isZh={isZh} />
       </div>
-      <h2 className="text-lg font-bold dark:text-white mb-3">🎬 {task.title}</h2>
 
       {/* 配置 + 操作卡(运行中绿框发亮)。对齐币安任务详情:左=扁平配置文字行(无嵌套
           边框、无「任务配置」标题),右=横排操作按钮;运行中状态做成右侧绿色「生成中」胶囊。 */}
@@ -961,7 +998,7 @@ const VideoTaskDetail: React.FC<{
                 <span>{isZh ? '输出目录' : 'Output'}：</span>
                 <button
                   type="button"
-                  onClick={() => videoCreationService.revealInFolder(outDir)}
+                  onClick={() => openFolder(outDir)}
                   className="text-blue-500 hover:underline text-[11px]"
                 >
                   📂 {isZh ? '打开输出文件夹' : 'Open folder'}
@@ -970,40 +1007,44 @@ const VideoTaskDetail: React.FC<{
             )}
           </div>
 
-          {/* 右:横排操作。运行中显示绿色「生成中」胶囊;否则重跑(绿) / 编辑 / 删除 */}
+          {/* 右:横排操作(逐字对齐币安任务详情的操作行)。
+              运行中 → 只显示绿色「生成中」胶囊(无停止:本地出片不可中断);
+              空闲   → 手动触发提示 + 直接运行(绿) + 编辑 + 删除。 */}
           <div className="shrink-0 flex items-center gap-2">
-            {isRunning && (
+            {isRunning ? (
               <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
-                <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
                 {isZh ? '生成中' : 'Running'}
               </span>
+            ) : (
+              <>
+                <span className="text-xs text-gray-400">{isZh ? '✋ 手动触发' : '✋ Manual'}</span>
+                <button
+                  type="button"
+                  onClick={handleRerun}
+                  disabled={checking}
+                  className="px-3 py-2 text-sm font-semibold rounded-lg bg-green-500 text-white hover:bg-green-600 transition-colors disabled:opacity-50"
+                >
+                  {checking
+                    ? (isZh ? '校验余额…' : 'Checking…')
+                    : task.runCount > 0 ? (isZh ? '🔁 重新跑' : '🔁 Rerun') : (isZh ? '🎬 开始创作' : '🎬 Start')}
+                </button>
+                <button
+                  type="button"
+                  onClick={onEdit}
+                  className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+                >
+                  {isZh ? '编辑' : 'Edit'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors"
+                >
+                  {isZh ? '删除' : 'Delete'}
+                </button>
+              </>
             )}
-            <button
-              type="button"
-              onClick={handleRerun}
-              disabled={isRunning || checking}
-              className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
-            >
-              {checking
-                ? (isZh ? '校验余额…' : 'Checking balance…')
-                : task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
-            </button>
-            <button
-              type="button"
-              onClick={onEdit}
-              disabled={isRunning}
-              className="px-3 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
-            >
-              ✏️ {isZh ? '编辑' : 'Edit'}
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={isRunning}
-              className="px-3 py-2 rounded-lg text-sm font-medium text-red-500 border border-red-300 dark:border-red-500/40 hover:bg-red-500/5 disabled:opacity-50"
-            >
-              🗑 {isZh ? '删除' : 'Delete'}
-            </button>
           </div>
         </div>
         {actionError && <div className="mt-2 text-xs text-red-500">{actionError}</div>}
@@ -1086,30 +1127,8 @@ const VideoTaskDetail: React.FC<{
         </div>
       )}
 
-      {/* 历史运行(>1 条时展示,点进运行记录详情) */}
-      {runs.length > 1 && (
-        <div className="mt-2">
-          <div className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-            {isZh ? '历史运行' : 'Run history'}
-            <span className="ml-2 text-gray-400">{runs.length}</span>
-          </div>
-          <div className="space-y-2">
-            {runs.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => onOpenRecord(r.id)}
-                className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:border-rose-500/50 transition-colors flex items-center gap-3 text-xs"
-              >
-                <IdTag kind="record" id={r.id} isZh={isZh} />
-                <StatusPill isZh={isZh} status={r.status} />
-                {r.tokensUsed > 0 && <span className="text-gray-400">{formatCreditsCost(r.tokensUsed, r.costUsd || 0)}</span>}
-                <span className="ml-auto text-gray-400">{new Date(r.startedAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* 历史运行不再内嵌在任务详情里(对齐币安:详情页只看「当前运行明细」,
+          往期记录走侧栏「运行记录」tab)。「上次运行」卡片可点进最近一条记录。 */}
     </div>
   );
 };
@@ -1382,6 +1401,46 @@ const VOICE_OPTIONS: { id: string; zh: string; en: string }[] = [
   { id: 'en-US-GuyNeural', zh: 'Guy · 英文男声', en: 'Guy · EN male' },
 ];
 
+// 本地内置背景音乐(随包 bundle 在 resources/bgm/,来源 MoneyPrinterTurbo 免版税曲库)。
+// value 用 builtin:<id> token 传给主进程,bgm.ts 还原成 resources/bgm/<id>.mp3。
+// id 必须与 client/resources/bgm/<id>.mp3 文件名(去扩展名)一致。
+const BUILTIN_BGM_PREFIX = 'builtin:';
+const BUILTIN_BGM: { id: string; zh: string; en: string }[] = [
+  { id: 'bgm-01', zh: '内置曲目 1', en: 'Track 1' },
+  { id: 'bgm-02', zh: '内置曲目 2', en: 'Track 2' },
+  { id: 'bgm-03', zh: '内置曲目 3', en: 'Track 3' },
+  { id: 'bgm-04', zh: '内置曲目 4', en: 'Track 4' },
+  { id: 'bgm-05', zh: '内置曲目 5', en: 'Track 5' },
+  { id: 'bgm-06', zh: '内置曲目 6', en: 'Track 6' },
+  { id: 'bgm-07', zh: '内置曲目 7', en: 'Track 7' },
+  { id: 'bgm-08', zh: '内置曲目 8', en: 'Track 8' },
+];
+
+// 云端曲库:本地只存 8 首,其余放服务端清单(我们手动传 R2 后把中英标题+下载链接配进
+// manifest.json)。用户选中后,合成时主进程才按需下载并缓存(见 bgm.ts)。
+// value 用 remote:<url> token 传给主进程。清单 URL 走 CDN(static.noobclaw.com),
+// 加 ?t= 绕缓存;清单还没上线时 fetch 失败 → 云端列表为空,只展示本地 8 首。
+const REMOTE_BGM_PREFIX = 'remote:';
+const REMOTE_BGM_MANIFEST_URL = 'https://static.noobclaw.com/bgm/manifest.json';
+interface RemoteBgm { id: string; zh: string; en: string; url: string }
+
+/** 把 bgmPath(''/builtin:/remote:/绝对路径)显示成人类可读的名字。 */
+function bgmDisplayName(bgmPath: string, isZh: boolean, remote: RemoteBgm[] = []): string {
+  if (!bgmPath) return isZh ? '无' : 'none';
+  if (bgmPath.startsWith(BUILTIN_BGM_PREFIX)) {
+    const id = bgmPath.slice(BUILTIN_BGM_PREFIX.length);
+    const item = BUILTIN_BGM.find((b) => b.id === id);
+    return item ? (isZh ? item.zh : item.en) : (isZh ? '内置音乐' : 'built-in');
+  }
+  if (bgmPath.startsWith(REMOTE_BGM_PREFIX)) {
+    const url = bgmPath.slice(REMOTE_BGM_PREFIX.length);
+    const item = remote.find((b) => b.url === url);
+    if (item) return `${isZh ? item.zh : item.en}${isZh ? '（云端）' : ' (cloud)'}`;
+    return (url.split('/').pop() || (isZh ? '云端音乐' : 'cloud')) + (isZh ? '（云端）' : ' (cloud)');
+  }
+  return bgmPath.split(/[\\/]/).pop() || (isZh ? '已选' : 'set');
+}
+
 const RATE_OPTIONS: { v: number; zh: string; en: string }[] = [
   { v: -25, zh: '慢', en: 'Slow' },
   { v: -10, zh: '稍慢', en: 'Slower' },
@@ -1436,7 +1495,7 @@ const VideoConfigModal: React.FC<{
   onSaved?: () => void;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
   const initialTrackId = (() => {
@@ -1471,6 +1530,31 @@ const VideoConfigModal: React.FC<{
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
   const [bgmPath, setBgmPath] = useState<string>(editTask?.input.bgmPath || '');
   const [bgmVolume, setBgmVolume] = useState<number>(editTask?.input.bgmVolume ?? 0.18);
+  // 云端曲库清单(从 CDN 拉;失败/未上线时为空,只显示本地 8 首)。
+  const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`);
+        if (!resp.ok) return;
+        const json: any = await resp.json();
+        const arr: any[] = Array.isArray(json) ? json : json?.tracks;
+        if (!alive || !Array.isArray(arr)) return;
+        setRemoteBgm(
+          arr
+            .filter((x) => x && typeof x.url === 'string' && x.url)
+            .map((x) => ({
+              id: String(x.id || x.url),
+              zh: String(x.zh || x.title || x.name || '云端音乐'),
+              en: String(x.en || x.title || x.name || 'Cloud track'),
+              url: String(x.url),
+            })),
+        );
+      } catch { /* 清单未上线 / 网络失败:静默,仅用本地曲库 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // 步骤 4:字幕 + 出片
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.subtitleEnabled !== false);
@@ -1505,7 +1589,60 @@ const VideoConfigModal: React.FC<{
     if (p) setBgmPath(p);
   };
 
+  // BGM 试听:点一下播、再点停;切歌 / 卸载自动停。token 可为 builtin:/remote:/绝对路径,
+  // 云端曲目首次试听时由主进程下载并缓存(resolveBgmPath),既能听又顺带焐热出片缓存。
+  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
+  // 每次 stop / 新请求都自增,用来作废「在途的 previewBgm」:云端下载可能耗时数秒,
+  // 期间若用户关向导或切歌,resolve 回来时 reqId 已变 → 丢弃,绝不再 new Audio 播放
+  // (否则会出现「关了向导音乐还在响」「切了歌却放旧曲」的孤儿播放)。
+  const previewReqRef = useRef(0);
+  const [previewToken, setPreviewToken] = useState('');
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const stopPreview = () => {
+    previewReqRef.current++; // 作废任何在途的 previewBgm
+    const a = bgmAudioRef.current;
+    if (a) { try { a.pause(); } catch { /* noop */ } a.src = ''; }
+    bgmAudioRef.current = null;
+    setPreviewToken('');
+  };
+  const togglePreview = async (token: string) => {
+    if (!token) return;
+    if (previewToken === token) { stopPreview(); return; } // 正在播这首 → 停
+    stopPreview(); // 切到别的曲目 → 先停旧的(并自增 reqId)
+    const myReq = previewReqRef.current; // 取「停旧」之后的最新值作为本次请求号
+    setPreviewLoading(true);
+    try {
+      const dataUrl = await videoCreationService.previewBgm(token);
+      // 在途期间被 stop(关向导 / 切歌 / 卸载)→ reqId 已变 → 丢弃,不播放。
+      if (!dataUrl || previewReqRef.current !== myReq) return;
+      const audio = new Audio(dataUrl);
+      audio.onended = () => { if (bgmAudioRef.current === audio) stopPreview(); };
+      bgmAudioRef.current = audio;
+      setPreviewToken(token);
+      await audio.play().catch(() => { /* 自动播放被拦时静默 */ });
+    } catch {
+      /* 试听失败静默,不打断向导 */
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+  // 切换曲目时停掉正在播的试听;组件卸载时也停。
+  useEffect(() => { stopPreview(); }, [bgmPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopPreview(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
+
+  // BGM 三态:'' = 无;builtin:/remote: = 曲库(本地内置+云端);其它绝对路径 = 用户上传。
+  const bgmIsBuiltin = bgmPath.startsWith(BUILTIN_BGM_PREFIX);
+  const bgmIsRemote = bgmPath.startsWith(REMOTE_BGM_PREFIX);
+  const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
+  const bgmIsUpload = !!bgmPath && !bgmIsLibrary;
+  // 编辑老任务时,选的云端曲目可能还没在已拉到的清单里 → 补一个占位 option,避免下拉空白。
+  const bgmInLibraryList = bgmIsBuiltin
+    ? BUILTIN_BGM.some((b) => `${BUILTIN_BGM_PREFIX}${b.id}` === bgmPath)
+    : bgmIsRemote
+      ? remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath)
+      : true;
 
   const scriptLen = script.trim().length;
   // 严格模式据字数预估时长(向上取整,中文约 4.5 字/秒)。
@@ -1516,9 +1653,9 @@ const VideoConfigModal: React.FC<{
   const scriptValid = scriptMode === 'strict'
     ? (scriptLen >= SCRIPT_MIN_STRICT && scriptLen <= SCRIPT_MAX)
     : (scriptLen === 0 || scriptLen <= SCRIPT_MAX);
-  const step1Valid = trackId !== '' && scriptValid;
+  const scriptStepValid = trackId !== '' && scriptValid;
   // 画面:选了本地上传却没传素材时挡一下
-  const step2Valid = materialSource === 'stock' || localVideos.length > 0;
+  const visualStepValid = materialSource === 'stock' || localVideos.length > 0;
 
   const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
     || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
@@ -1611,20 +1748,71 @@ const VideoConfigModal: React.FC<{
               🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '文案' : 'Script'} />
-              <div className={`h-px w-8 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '画面' : 'Visuals'} />
-              <div className={`h-px w-8 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音频' : 'Audio'} />
-              <div className={`h-px w-8 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={isZh ? '字幕·出片' : 'Output'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '模式' : 'Mode'} />
+              <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '文案' : 'Script'} />
+              <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '画面' : 'Visuals'} />
+              <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音频' : 'Audio'} />
+              <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={false} label={isZh ? '字幕·出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
         <div className="px-6 py-4 space-y-4">
+          {/* ── 步骤 1:生成模式(先定这条视频怎么做)── */}
           {step === 1 && (
+            <>
+              <Field label={isZh ? '生成模式' : 'Generation mode'} hint={isZh ? '先选这条视频怎么做' : 'how this video is made'}>
+                <div className="grid grid-cols-1 gap-2">
+                  <ModeOption
+                    active={materialSource === 'stock' && mode === 'stock'}
+                    onClick={() => { setMaterialSource('stock'); setMode('stock'); }}
+                    title={isZh ? 'AI 分镜 + 在线素材' : 'AI scenes + stock'}
+                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 按文案自动搜在线空镜拼接' : 'voice-over only, no real person; AI auto-searches stock B-roll by your script'}
+                    cost={isZh ? '约 $0.1/分钟起' : '~$0.1/min'}
+                    costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
+                  />
+                  <ModeOption
+                    active={materialSource === 'local'}
+                    onClick={() => setMaterialSource('local')}
+                    title={isZh ? '本地上传素材拼接' : 'Local upload'}
+                    desc={isZh ? '用你自己的视频片段循环拼接，不搜在线素材（也不消耗 AI 搜索词）' : 'your own clips looped to fill; no stock search'}
+                    cost={isZh ? '仅平台基础费' : 'base fee only'}
+                  />
+                  <ModeOption
+                    active={mode === 'pure_ai'}
+                    disabled
+                    onClick={() => {}}
+                    title={isZh ? '纯 AI 生成' : 'Pure AI'}
+                    desc={isZh ? '适合各个场景，由 Seedance 支持' : 'any scene, powered by Seedance'}
+                    cost={isZh ? '约 $2/分钟起' : '~$2/min'}
+                    soon={isZh ? '即将推出' : 'Soon'}
+                  />
+                </div>
+              </Field>
+
+              {/* 计费 + 免费项说明(一并交代,避免用户以为配音/字幕要钱) */}
+              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
+                <div>
+                  {isZh
+                    ? `💰 计费：每条成片收取随机 $0.09~$0.18 平台基础费${materialSource === 'stock' ? '，外加 AI 写稿实际消耗的积分（Pro 模型按 3× 计）' : ''}。生成前会校验余额需 > 200000 积分，余额不足不会开跑。`
+                    : `Billing: a random $0.09~$0.18 base fee per video${materialSource === 'stock' ? ', plus actual AI scripting credits (Pro charged at 3×)' : ''}. Requires balance > 200000 credits before starting.`}
+                </div>
+                <div>
+                  {isZh
+                    ? '🆓 配音用 edge-tts 在线合成、字幕烧录与 ffmpeg 合成均免费，不额外计费。'
+                    : '🆓 Voiceover (edge-tts), subtitle burn-in and ffmpeg compositing are all free.'}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ── 步骤 2:文案 ── */}
+          {step === 2 && (
             <>
               <Field label={isZh ? '赛道（必选）' : 'Track (required)'} hint={isZh ? '选完自动带出人设和关键词，可再改' : 'auto-fills persona & keywords, editable'}>
                 <select
@@ -1736,27 +1924,10 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 2:画面 ── */}
-          {step === 2 && (
+          {/* ── 步骤 3:画面 ── */}
+          {step === 3 && (
             <>
-              <Field label={isZh ? '素材来源' : 'Material source'} hint={isZh ? '在线自动搜 或 用自己的视频拼' : 'auto stock or your own clips'}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <ModeOption
-                    active={materialSource === 'stock'}
-                    onClick={() => setMaterialSource('stock')}
-                    title={isZh ? '在线素材库' : 'Online stock'}
-                    desc={isZh ? 'AI 按文案自动搜空镜，省事' : 'auto-searched B-roll by script'}
-                  />
-                  <ModeOption
-                    active={materialSource === 'local'}
-                    onClick={() => setMaterialSource('local')}
-                    title={isZh ? '本地上传素材' : 'Local upload'}
-                    desc={isZh ? '用你自己的视频片段循环拼接' : 'your own clips, looped to fill'}
-                  />
-                </div>
-              </Field>
-
-              {materialSource === 'local' ? (
+              {materialSource === 'local' && (
                 <Field
                   label={isZh ? `本地视频素材（最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (max ${MAX_LOCAL_VIDEOS})`}
                   hint={isZh ? '可多选，按换镜节奏循环切' : 'multi-select, looped by pacing'}
@@ -1785,35 +1956,6 @@ const VideoConfigModal: React.FC<{
                       </button>
                     )}
                   </div>
-                </Field>
-              ) : (
-                <Field label={isZh ? '生成模式' : 'Generation mode'}>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    <ModeOption
-                      active={mode === 'stock'}
-                      onClick={() => setMode('stock')}
-                      title={isZh ? 'AI 分镜 + 在线素材' : 'AI scenes + stock'}
-                      desc={isZh ? '只适合无真人出镜口播类（如知识科普、资讯解说、好物种草）' : 'voice-over only, no real person on camera'}
-                      cost={isZh ? '约 $0.1/分钟起' : '~$0.1/min'}
-                      costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
-                    />
-                    <ModeOption
-                      active={mode === 'pure_ai'}
-                      disabled
-                      onClick={() => {}}
-                      title={isZh ? '纯 AI 生成' : 'Pure AI'}
-                      desc={isZh ? '适合各个场景，由 Seedance 支持' : 'any scene, powered by Seedance'}
-                      cost={isZh ? '约 $2/分钟起' : '~$2/min'}
-                      soon={isZh ? '即将推出' : 'Soon'}
-                    />
-                  </div>
-                  {mode === 'stock' && (
-                    <div className="mt-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
-                      {isZh
-                        ? '💰 计费：每条成片收取随机 $0.09~$0.18 平台基础费，外加 AI 写稿实际消耗的积分（Pro 模型按 3× 计）。生成前会校验余额需 > 200000 积分，余额不足不会开跑。'
-                        : 'Billing: a random $0.09~$0.18 base fee per video, plus actual AI scripting credits (Pro charged at 3×). Requires balance > 200000 credits before starting.'}
-                    </div>
-                  )}
                 </Field>
               )}
 
@@ -1859,8 +2001,8 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 3:音频 ── */}
-          {step === 3 && (
+          {/* ── 步骤 4:音频 ── */}
+          {step === 4 && (
             <>
               {/* 配音音色 + 语速 */}
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
@@ -1891,22 +2033,103 @@ const VideoConfigModal: React.FC<{
                 </div>
               </Field>
 
-              {/* 背景音乐(选填):无 / 自定义上传 */}
+              {/* 背景音乐(选填):无 / 内置曲库 / 自定义上传 */}
               <Field label={isZh ? '背景音乐（选填）' : 'Background music (optional)'} hint={isZh ? '混在旁白下方，出片末尾自动淡出' : 'mixed under narration, fades out'}>
-                {bgmPath ? (
+                {/* 三选一来源 */}
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <button
+                    type="button"
+                    onClick={() => setBgmPath('')}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                      !bgmPath
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                    }`}
+                  >
+                    {isZh ? '无' : 'None'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                      bgmIsLibrary
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                    }`}
+                  >
+                    {isZh ? '曲库' : 'Library'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={pickBgm}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                      bgmIsUpload
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                    }`}
+                  >
+                    {isZh ? '上传' : 'Upload'}
+                  </button>
+                </div>
+
+                {/* 曲库:下拉选具体曲目(本地内置 + 云端)。value 直接是 builtin:/remote: token。 */}
+                {bgmIsLibrary && (
+                  <>
+                    <select
+                      value={bgmPath}
+                      onChange={(e) => setBgmPath(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                    >
+                      {!bgmInLibraryList && (
+                        <option value={bgmPath}>🎵 {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                      )}
+                      <optgroup label={isZh ? '本地内置' : 'Built-in'}>
+                        {BUILTIN_BGM.map((b) => (
+                          <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
+                        ))}
+                      </optgroup>
+                      {remoteBgm.length > 0 && (
+                        <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads on first use)'}>
+                          {remoteBgm.map((b) => (
+                            <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    {bgmIsRemote && (
+                      <div className="mt-1 text-[11px] text-gray-400">
+                        {isZh ? '☁️ 云端曲目首次合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first compose, then cached.'}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* 用户上传:显示文件名 + 更换/移除 */}
+                {bgmIsUpload && (
                   <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
                     <span className="text-sm">🎵</span>
                     <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
                     <button type="button" onClick={pickBgm} className="text-xs text-rose-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
                     <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                   </div>
-                ) : (
+                )}
+                {/* 试听:本地/上传直接放;云端首次点会下载并缓存(随后出片复用不再下载)。 */}
+                {bgmPath && (
                   <button
                     type="button"
-                    onClick={pickBgm}
-                    className="w-full py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-rose-400 hover:text-rose-400 transition-colors"
+                    onClick={() => togglePreview(bgmPath)}
+                    disabled={previewLoading}
+                    className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs border transition-colors disabled:opacity-60 ${
+                      previewToken === bgmPath
+                        ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                    }`}
                   >
-                    ＋ {isZh ? '上传背景音乐（mp3 / m4a / wav…）' : 'Upload BGM (mp3 / m4a / wav…)'}
+                    {previewLoading && previewToken !== bgmPath
+                      ? (isZh ? (bgmIsRemote ? '⏳ 下载中…' : '⏳ 加载中…') : (bgmIsRemote ? 'Downloading…' : 'Loading…'))
+                      : previewToken === bgmPath
+                        ? (isZh ? '⏹ 停止试听' : '⏹ Stop')
+                        : (isZh ? '▶ 试听' : '▶ Preview')}
                   </button>
                 )}
                 {bgmPath && (
@@ -1932,8 +2155,8 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 4:字幕 + 出片 ── */}
-          {step === 4 && (
+          {/* ── 步骤 5:字幕 + 出片 ── */}
+          {step === 5 && (
             <>
               {/* 字幕样式 + 开关 */}
               <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 edge-tts 词边界对齐时间轴' : 'edge-tts word-boundary timing when on'}>
@@ -2026,7 +2249,7 @@ const VideoConfigModal: React.FC<{
                       ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`)
                       : (isZh ? `AI 写稿 · ${targetSeconds}s（参考 ${scriptLen} 字）` : `AI · ${targetSeconds}s (ref ${scriptLen} ch)`))}</div>
                 <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local' ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`) : (isZh ? '在线素材库' : 'online stock')}</div>
-                <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmPath ? (bgmPath.split(/[\\/]/).pop() || (isZh ? '已选' : 'set')) : (isZh ? '无' : 'none')}</div>
+                <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmDisplayName(bgmPath, isZh, remoteBgm)}</div>
                 <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
               </div>
 
@@ -2040,16 +2263,16 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           <button
             type="button"
-            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4))}
+            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5))}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 4 ? (
+          {step < 5 ? (
             <button
               type="button"
               onClick={() => {
-                if (step === 1) {
+                if (step === 2) {
                   if (!trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
                   if (!scriptValid) {
                     if (scriptMode === 'strict' && scriptLen < SCRIPT_MIN_STRICT) {
@@ -2060,14 +2283,14 @@ const VideoConfigModal: React.FC<{
                     return;
                   }
                 }
-                if (step === 2 && !step2Valid) {
+                if (step === 3 && !visualStepValid) {
                   setSubmitError(isZh ? '选了本地上传,请至少添加一个视频素材' : 'Please add at least one local video');
                   return;
                 }
                 setSubmitError(null);
-                setStep((s) => (s + 1) as 1 | 2 | 3 | 4);
+                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5);
               }}
-              disabled={(step === 1 && !step1Valid) || (step === 2 && !step2Valid)}
+              disabled={(step === 2 && !scriptStepValid) || (step === 3 && !visualStepValid)}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
             >
               {isZh ? '下一步' : 'Next'} →

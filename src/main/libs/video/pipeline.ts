@@ -22,6 +22,7 @@ import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type S
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms } from './scriptWriter';
 import { chargeMode1Video, refundMode1Video } from './billing';
+import { resolveBgmPath } from './bgm';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -124,9 +125,10 @@ export interface VideoCreationResult {
 
 export type ProgressEmitter = (p: VideoCreationProgress) => void;
 
+// v2: 「拆解文案分镜」原是独立一步,但它只是本地纯文本 splitScript()(无 AI、无
+// 耗时),单列一步徒增噪音 → 合并进「脚本」步(脚本生成完顺手拆句,同一步内完成)。
 const STEP_DEFS: { key: string; label: string }[] = [
-  { key: 'script', label: 'AI 撰写旁白脚本' },
-  { key: 'split', label: '拆解文案分镜' },
+  { key: 'script', label: '生成脚本 · 拆解分镜' },
   { key: 'tts', label: '生成 AI 配音' },
   { key: 'visuals', label: '准备画面素材' },
   { key: 'compose', label: '合成竖屏视频' },
@@ -308,7 +310,7 @@ async function runVideoPipeline(
   // 前置:ffmpeg 必须可用
   if (!isFfmpegAvailable()) {
     const err = 'ffmpeg 不可用(开发机请确保 PATH 上有 ffmpeg;打包版需内置 ffmpeg 资源)';
-    tracker.fail('split', err);
+    tracker.fail('script', err);
     return { ok: false, error: err };
   }
 
@@ -371,9 +373,9 @@ async function runVideoPipeline(
         tracker.fail('script', `AI 写脚本失败:${err.slice(0, 200)}`);
         return { ok: false, error: err.slice(0, 300) };
       }
-      tracker.done('script', `AI 已生成约 ${script.length} 字旁白`);
       // 把 AI 写的完整口播文案打到日志里(用户点详情页能看到 AI 到底写了啥)。
-      tracker.progress(`📝 口播文案:${script}`);
+      // 注意:不在这里 done('script') —— 拆句已并入本步,拆完再 done。
+      tracker.progress(`📝 口播文案(约 ${script.length} 字):${script}`);
     } else {
       // strict:严格逐字用用户文案。空文案直接判错(理论上客户端已挡)。
       if (!script) {
@@ -381,19 +383,17 @@ async function runVideoPipeline(
         tracker.fail('script', err);
         return { ok: false, error: err };
       }
-      tracker.done('script', `严格使用用户文案（约 ${script.length} 字 ≈ ${Math.round(script.length / 4.5)}s）`);
-      tracker.progress(`📝 视频文案:${script}`);
+      tracker.progress(`📝 视频文案(约 ${script.length} 字 ≈ ${Math.round(script.length / 4.5)}s):${script}`);
     }
 
-    // 1. 拆句
-    tracker.start('split');
+    // 拆句(并入「脚本」步:本地纯文本切分,无 AI、瞬时完成)。
     const sentences = splitScript(script);
     if (sentences.length === 0) {
       const err = '文案为空或无法拆出有效分镜';
-      tracker.fail('split', err);
+      tracker.fail('script', err);
       return { ok: false, error: err };
     }
-    tracker.done('split', `共 ${sentences.length} 个分镜`);
+    tracker.done('script', `脚本约 ${script.length} 字,拆出 ${sentences.length} 个分镜`);
 
     // 2. 逐句配音。同时收集 edge-tts 词边界字幕 cue,按各句在总时间轴上的累计起点
     //    偏移后合并成全局 cue(离线、精确,抄 MoneyPrinterTurbo);拿不到就让 compose 估算。
@@ -578,7 +578,11 @@ async function runVideoPipeline(
     };
 
     const outPath = path.join(destDir, outputFileName());
-    const bgmPath = input.bgmPath && fs.existsSync(input.bgmPath) ? input.bgmPath : undefined;
+    // BGM 解析:builtin:<id> → 随包路径;remote:<url> → 按需下载并缓存(命中缓存不重下);
+    // 用户上传的绝对路径原样返回。再统一过 existsSync 兜底(取不到 = 不加 BGM,不挡出片)。
+    const resolvedBgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m));
+    const bgmPath = resolvedBgm && fs.existsSync(resolvedBgm) ? resolvedBgm : undefined;
+    if (input.bgmPath && !bgmPath) tracker.progress('⚠️ 背景音乐获取失败，本条将不加 BGM');
     if (subtitleEnabled) {
       tracker.progress(subtitleCues.length > 0
         ? `字幕时间轴就绪(edge-tts 词边界,共 ${subtitleCues.length} 段)`

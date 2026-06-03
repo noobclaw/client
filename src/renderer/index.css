@@ -268,3 +268,13 @@ select::-ms-expand { display: none; }
   0% { transform: translateX(0); }
   100% { transform: translateX(350%); }
 }
+
+/* Terminal-style cursor blink: hard on/off (not a soft opacity fade like
+   Tailwind's animate-pulse), so it reads clearly as a live caret. */
+.noobclaw-blink {
+  animation: noobclawBlink 1s steps(1, end) infinite;
+}
+@keyframes noobclawBlink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}

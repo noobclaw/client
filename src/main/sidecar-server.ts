@@ -1013,6 +1013,31 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, '');
             }
           }
+          case 'video:previewBgm': {
+            // 试听用:把 BGM token 还原成本地文件再读成 data: URL。
+            //   builtin: → 随包 mp3;remote: → 下载并缓存(顺带焐热出片缓存,合成时
+            //   不再重复下载);绝对路径 → 用户上传。失败一律返回 ''。
+            try {
+              const fs = await import('fs');
+              const path = await import('path');
+              const { resolveBgmPath } = await import('./libs/video/bgm');
+              const resolved = await resolveBgmPath(args[0]);
+              if (!resolved || !fs.existsSync(resolved)) return writeJSON(res, 200, '');
+              const buf = fs.readFileSync(resolved);
+              if (buf.length === 0 || buf.length > 25 * 1024 * 1024) return writeJSON(res, 200, '');
+              const ext = path.extname(resolved).toLowerCase().replace('.', '');
+              const mime =
+                ext === 'wav' ? 'audio/wav'
+                : ext === 'ogg' ? 'audio/ogg'
+                : ext === 'flac' ? 'audio/flac'
+                : ext === 'aac' ? 'audio/aac'
+                : ext === 'm4a' ? 'audio/mp4'
+                : 'audio/mpeg';
+              return writeJSON(res, 200, `data:${mime};base64,${buf.toString('base64')}`);
+            } catch {
+              return writeJSON(res, 200, '');
+            }
+          }
           case 'video:generate': {
             // Fire-and-forget (same pattern as scenario:runTaskNow above).
             // The pipeline runs for minutes (TTS + stock downloads + ffmpeg).
