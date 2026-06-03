@@ -14,6 +14,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
@@ -243,7 +244,52 @@ function outputFileName(): string {
 }
 
 /** 主入口:跑完整流水线,返回成片结果。 */
+/**
+ * 出片总入口。在内部实现 runVideoPipeline 外包一层,出片结束(成功/失败)后
+ * 异步 fire-and-forget 上报到后端 user_task_runs(admin 巡检视频创作任务)。
+ *
+ * ⚠️ 上报绝不 await、绝不 throw、绝不阻塞出片(用户硬约束)。这里截一份 emit
+ * 来记录最后一次累计 token / 成本(VideoCreationResult 本身不带),仅用于上报,
+ * 不改变任何对渲染端的行为。
+ */
 export async function generateVideo(
+  input: VideoCreationInput,
+  emit?: ProgressEmitter,
+): Promise<VideoCreationResult> {
+  const runId = randomUUID();
+  const startedAt = Date.now();
+  let lastTokens = 0;
+  let lastCost = 0;
+  const wrappedEmit: ProgressEmitter | undefined = (p) => {
+    if (typeof p?.tokensUsed === 'number') lastTokens = p.tokensUsed;
+    if (typeof p?.costUsd === 'number') lastCost = p.costUsd;
+    emit?.(p);
+  };
+
+  let result: VideoCreationResult;
+  try {
+    result = await runVideoPipeline(input, wrappedEmit);
+  } catch (err) {
+    result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+
+  try {
+    const { scheduleVideoRunReport } = require('../scenario/taskRunReporter');
+    scheduleVideoRunReport({
+      runId,
+      input: { track: input.track, keywords: input.keywords, publishTarget: input.publishTarget },
+      result,
+      startedAt,
+      finishedAt: Date.now(),
+      tokensUsed: lastTokens,
+      costUsd: lastCost,
+    });
+  } catch { /* non-fatal */ }
+
+  return result;
+}
+
+async function runVideoPipeline(
   input: VideoCreationInput,
   emit?: ProgressEmitter,
 ): Promise<VideoCreationResult> {

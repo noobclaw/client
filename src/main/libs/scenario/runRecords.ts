@@ -342,6 +342,17 @@ export function finishRecord(recordId: string, args: {
   // any in-flight log entries.
   flushPending();
   persist();
+
+  // 异步 fire-and-forget 上报到后端 user_task_runs(admin 巡检用)。只在记录
+  // 已进入终态时调度;debounce 会确保同一 run 的多次 finishRecord(先 status
+  // 后 result)只发最后一次最全快照。这一步绝不 await、绝不 throw —— 上报失败
+  // 不能反噬用户任务执行(用户硬约束)。仅 scenario 任务走 runRecords,天然隔离。
+  if (rec.status !== 'running') {
+    try {
+      const { scheduleRunReport } = require('./taskRunReporter');
+      scheduleRunReport(rec);
+    } catch { /* non-fatal */ }
+  }
 }
 
 /** All records, newest-first. Used by the Run History page.
