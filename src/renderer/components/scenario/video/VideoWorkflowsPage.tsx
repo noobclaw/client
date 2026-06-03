@@ -870,13 +870,26 @@ const VideoTaskDetail: React.FC<{
   const status = statusOf(task);
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
 
   // 输出目录:优先本次运行的目录,否则从成片路径推(配置卡「输出目录」链接用)。
   const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
 
-  const handleRerun = () => {
+  const handleRerun = async () => {
     setActionError(null);
-    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+    // 「重新跑」对齐向导首跑的资金安全预检:模式一(在线素材,无本地上传)成片后会扣
+    // 平台基础费 + AI token,这里先刷新余额并用 VIDEO_MODE1_MIN_BALANCE 高门槛校验,
+    // 避免重跑也「生成完才发现没钱」(此前重跑只用默认弱阈值 + 旧缓存余额,已补齐)。
+    const isStock = !(task.input.localVideos && task.input.localVideos.length > 0);
+    if (isStock) {
+      setChecking(true);
+      try { await noobClawAuth.refreshBalance(); } catch { /* 网络失败退回用本地缓存余额判断,不阻塞 */ }
+      setChecking(false);
+      if (!noobClawAuth.hasEnoughBalanceForTask(VIDEO_MODE1_MIN_BALANCE)) return;
+    } else if (!noobClawAuth.hasEnoughBalanceForTask()) {
+      // 本地上传任务不收平台费,但 AI 写稿仍可能实时扣 token → 保留一次轻量余额校验。
+      return;
+    }
     const rid = videoTaskStore.runTask(task.id);
     if (!rid) {
       setActionError(isZh ? '已有任务在生成中,请等它完成后再跑。' : 'A task is already running. Please wait.');
@@ -940,10 +953,12 @@ const VideoTaskDetail: React.FC<{
             <button
               type="button"
               onClick={handleRerun}
-              disabled={isRunning}
+              disabled={isRunning || checking}
               className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
             >
-              {task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
+              {checking
+                ? (isZh ? '校验余额…' : 'Checking balance…')
+                : task.runCount > 0 ? `🔁 ${isZh ? '重新跑' : 'Rerun'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
             </button>
             <button
               type="button"
