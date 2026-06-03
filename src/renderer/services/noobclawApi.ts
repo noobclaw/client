@@ -78,6 +78,22 @@ export interface PaymentInfo {
   };
 }
 
+// CNY 卡密充值 — 用户在咸鱼买卡密 → 客户端填入兑换积分。后端复用主站 USDT
+// 套餐数组用 usdt_to_cny_rate 折算成 ¥档位,所以这里 rmb/tokens 都是算好的。
+export interface RedeemPackage {
+  usdt: number;
+  rmb: number;
+  tokens: number;
+  tokensDisplay: string;
+  label: string;
+}
+
+export interface RedeemPackagesResponse {
+  packages: RedeemPackage[];
+  xianyu_shop_url: string;
+  cny_rate: number;
+}
+
 class NoobClawApiService {
   // Dynamically read, supports local/production environment switching
   private get backendUrl() {
@@ -153,6 +169,48 @@ class NoobClawApiService {
       const data = await res.json();
       if (!res.ok) return { error: data.message || data.error, code: data.code };
       return data;
+    } catch {
+      return null;
+    }
+  }
+
+  // ─── CNY 卡密充值 ───
+  // /packages 是 public(不需登录)— 充值页一进来就能拉档位 + 咸鱼地址。
+  // /preview 和 /redeem 需要登录,走 authedFetch(401 自动弹登录)。
+
+  async getRedeemPackages(): Promise<RedeemPackagesResponse | null> {
+    try {
+      const res = await fetch(`${this.backendUrl}/api/redeem/packages`);
+      if (!res.ok) return null;
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** 预查询卡密面额 + 积分,不核销。前端弹 confirm 前用。 */
+  async previewRedeemCode(code: string): Promise<{ ok?: boolean; face_value_rmb?: number; credits?: number; error?: string; message?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/redeem/preview`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      return res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** 原子化核销卡密,成功后积分秒到账。 */
+  async redeemCode(code: string): Promise<{ ok?: boolean; credits?: number; face_value_rmb?: number; balance_after?: number; error?: string; message?: string } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/redeem`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      return res.json();
     } catch {
       return null;
     }

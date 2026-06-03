@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
-import { noobClawApi, PaymentInfo } from '../../services/noobclawApi';
+import { noobClawApi, PaymentInfo, RedeemPackagesResponse } from '../../services/noobclawApi';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { readCachedPaymentInfo, writeCachedPaymentInfo } from '../../services/paymentInfoCache';
 import { i18nService } from '../../services/i18n';
@@ -126,6 +126,16 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   const [step, setStep] = useState<'select' | 'pay' | 'success'>('select');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // ─── CNY 卡密充值 ───
+  // 后端 /api/redeem/packages 返回档位 + 咸鱼地址。只有 packages 非空(运营在
+  // admin 配了汇率+套餐)才在链选择器里露出「CNY 卡密」tab — 没配就完全隐藏,
+  // 不打扰海外/未启用场景。cnySelected 为 true 时 select 步骤渲染卡密面板而非
+  // 链上充值 grid。
+  const [redeemInfo, setRedeemInfo] = useState<RedeemPackagesResponse | null>(null);
+  const [cnySelected, setCnySelected] = useState(false);
+  const [redeemCodeInput, setRedeemCodeInput] = useState('');
+  const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
+  const [redeemBusy, setRedeemBusy] = useState(false);
   // v1.x: lazy-init profile from cache — without this, every nav into 我的充值
   // page would show no partner theming + no partner badge until /api/user/profile
   // round-trips finish, which user reported as "有时候连我是不是合伙人都加载
@@ -232,6 +242,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
     // v6.x: USDT 真金返佣 summary — 给 balance row 第 3 列 "收到返佣(USDT)" 用
     noobClawApi.getUsdtRebateSummary().then(s => { if (s) setUsdtRebateSummary(s); }).catch(() => {});
+
+    // CNY 卡密档位 + 咸鱼地址。独立 fetch,packages 非空才在 UI 露出 CNY tab。
+    noobClawApi.getRedeemPackages().then((info) => {
+      if (info && info.packages && info.packages.length > 0) setRedeemInfo(info);
+    }).catch(() => { /* 没配卡密通道则 CNY tab 不显示,加密充值不受影响 */ });
   };
 
   const loadNoobEarnings = useCallback(async (page = 1, reason = '', from = '', to = '') => {
@@ -251,6 +266,71 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
     const data = await noobClawApi.getOrderHistory(status || undefined, orderNo || undefined, from || undefined, to || undefined);
     setOrderHistory(data.orders);
   }, []);
+
+  // ─── CNY 卡密充值 handlers ───
+  // 「去咸鱼购买」— 走 OS 默认浏览器打开咸鱼店铺;未配地址则在卡密提示区给 toast。
+  const handleBuyOnXianyu = () => {
+    const url = (redeemInfo?.xianyu_shop_url || '').trim();
+    if (!url) {
+      setRedeemMsg({ text: i18nService.t('walletRedeemXianyuMissing'), color: '#ef4444' });
+      return;
+    }
+    window.electron?.shell?.openExternal(url);
+  };
+
+  // 卡密兑换 — 先 /preview 拉面额 → confirm 弹窗 → /redeem 真正核销 → 刷新余额。
+  const handleSubmitRedeem = async () => {
+    const code = redeemCodeInput.trim();
+    if (!code) {
+      setRedeemMsg({ text: i18nService.t('walletRedeemEmpty'), color: '#ef4444' });
+      return;
+    }
+    setRedeemBusy(true);
+    setRedeemMsg({ text: '', color: '' });
+    try {
+      const preview = await noobClawApi.previewRedeemCode(code);
+      if (!preview || !preview.ok) {
+        setRedeemMsg({ text: (preview && preview.message) || i18nService.t('walletRedeemPreviewFailed'), color: '#ef4444' });
+        return;
+      }
+      const faceValue = preview.face_value_rmb ?? 0;
+      const credits = preview.credits ?? 0;
+      setConfirmDialog({
+        visible: true,
+        title: i18nService.t('walletRedeemConfirmTitle'),
+        message: i18nService.t('walletRedeemConfirmMsg', {
+          rmb: String(faceValue),
+          credits: Number(credits).toLocaleString(),
+        }),
+        onConfirm: async () => {
+          setConfirmDialog(d => ({ ...d, visible: false }));
+          setRedeemBusy(true);
+          setRedeemMsg({ text: '', color: '' });
+          try {
+            const d = await noobClawApi.redeemCode(code);
+            if (!d || !d.ok) {
+              setRedeemMsg({ text: (d && d.message) || i18nService.t('walletRedeemFailed'), color: '#ef4444' });
+              return;
+            }
+            setRedeemCodeInput('');
+            setRedeemMsg({
+              text: i18nService.t('walletRedeemSuccess', {
+                credits: Number(d.credits ?? 0).toLocaleString(),
+                rmb: String(d.face_value_rmb ?? 0),
+                balance: Number(d.balance_after ?? 0).toLocaleString(),
+              }),
+              color: '#4ade80',
+            });
+            await noobClawAuth.refreshBalance();
+          } finally {
+            setRedeemBusy(false);
+          }
+        },
+      });
+    } finally {
+      setRedeemBusy(false);
+    }
+  };
 
   // Countdown timer
   useEffect(() => {
@@ -1381,29 +1461,94 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
           {step === 'select' && (
             <>
-              {/* Chain selector tabs. Only rendered when backend reports a
-                  TRON channel available — single-chain (BSC-only) deployments
-                  see the legacy single-grid look. USDT/TRON is listed first
-                  by product decision since stablecoin deposit is the more
-                  common path for new users. */}
-              {paymentInfo?.chains?.TRON && (
-                <div className="mb-3 grid grid-cols-2 gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+              {/* 支付方式 tabs。原本只在后端报 TRON 通道时渲染(BSC-only 部署看
+                  老单 grid)。现在 CNY 卡密通道(redeemInfo 非空)也会让这行露出,
+                  即使只有 BSC + CNY 两个选项。USDT/TRON 按产品决策排第一。
+                  cnySelected 标记当前是否在卡密面板,与 currentChain 正交。 */}
+              {(paymentInfo?.chains?.TRON || redeemInfo) && (
+                <div className="mb-3 flex gap-2 p-1 rounded-lg dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
+                  {paymentInfo?.chains?.TRON && (
+                    <button
+                      onClick={() => { setCnySelected(false); setCurrentChain('TRON'); }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'TRON' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
+                    >
+                      <ChainLogo chain="TRON" size={16} />
+                      USDT · TRC20
+                    </button>
+                  )}
                   <button
-                    onClick={() => setCurrentChain('TRON')}
-                    className={`flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${currentChain === 'TRON' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
-                  >
-                    <ChainLogo chain="TRON" size={16} />
-                    USDT · TRC20
-                  </button>
-                  <button
-                    onClick={() => setCurrentChain('BSC')}
-                    className={`flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${currentChain === 'BSC' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
+                    onClick={() => { setCnySelected(false); setCurrentChain('BSC'); }}
+                    className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${!cnySelected && currentChain === 'BSC' ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
                   >
                     <ChainLogo chain="BSC" size={16} />
                     BNB · BSC
                   </button>
+                  {redeemInfo && (
+                    <button
+                      onClick={() => { setCnySelected(true); setRedeemMsg({ text: '', color: '' }); }}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition-all ${cnySelected ? 'bg-primary/15 text-primary' : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:dark:text-claude-darkText hover:text-claude-text'}`}
+                    >
+                      {i18nService.t('walletRedeemTab')}
+                    </button>
+                  )}
                 </div>
               )}
+              {cnySelected ? (
+                /* ─── CNY 卡密充值面板 ───
+                   照搬主站 cn 站交互:档位卡片(去咸鱼买)→ 收到卡密填入下方框
+                   → preview 确认面额 → redeem 核销,积分秒到账。 */
+                <>
+                  <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                    <div className="font-semibold text-primary mb-1.5">{i18nService.t('walletRedeemStepsTitle')}</div>
+                    <div>{i18nService.t('walletRedeemStep1')}</div>
+                    <div>{i18nService.t('walletRedeemStep2')}</div>
+                    <div>{i18nService.t('walletRedeemStep3')}</div>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(redeemInfo?.packages || []).map((pkg) => {
+                      const tokensM = (pkg.tokens / 1e6).toFixed(1);
+                      return (
+                        <div key={`CNY-${pkg.usdt}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
+                          <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">¥{pkg.rmb}</p>
+                          <p className="text-xs text-primary font-medium mb-3">{tokensM}M {i18nService.t('walletRedeemCreditsUnit')}</p>
+                          <button
+                            onClick={handleBuyOnXianyu}
+                            className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold transition-all"
+                          >
+                            {i18nService.t('walletRedeemBuy')}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 pt-4 border-t dark:border-claude-darkBorder border-claude-border">
+                    <p className="text-xs font-semibold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('walletRedeemHaveCode')}</p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={redeemCodeInput}
+                        onChange={(e) => setRedeemCodeInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && !redeemBusy) handleSubmitRedeem(); }}
+                        placeholder="NOOB-XXXX-XXXX-XXXX-XXXX"
+                        maxLength={32}
+                        autoComplete="off"
+                        spellCheck={false}
+                        className="flex-1 px-3 py-2 rounded-lg dark:bg-claude-darkBg bg-white border dark:border-claude-darkBorder border-claude-border text-sm font-mono dark:text-claude-darkText text-claude-text uppercase placeholder:normal-case placeholder:text-claude-textSecondary/50 focus:outline-none focus:border-primary"
+                      />
+                      <button
+                        onClick={handleSubmitRedeem}
+                        disabled={redeemBusy}
+                        className="px-4 py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-sm font-semibold disabled:opacity-40 transition-all shrink-0"
+                      >
+                        {redeemBusy ? i18nService.t('walletRedeemBusy') : i18nService.t('walletRedeemBtn')}
+                      </button>
+                    </div>
+                    {redeemMsg.text && (
+                      <p className="text-xs mt-2 leading-relaxed" style={{ color: redeemMsg.color }}>{redeemMsg.text}</p>
+                    )}
+                  </div>
+                </>
+              ) : (
               <div className="grid grid-cols-3 gap-3">
                 {(() => {
                   const block = chainBlockFor(paymentInfo, currentChain);
@@ -1435,6 +1580,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   });
                 })()}
               </div>
+              )}
             </>
           )}
 
