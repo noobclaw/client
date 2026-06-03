@@ -617,6 +617,35 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
   </div>
 );
 
+/**
+ * 扁平配置文本行(任务详情页用)。对齐币安详情卡:左列就是一串纯文本字段,
+ * 没有内嵌灰框、没有「任务配置」小标题 —— 跟 TaskDetailPage 的 persona/频次/
+ * 创建时间块同一种排版。运行记录详情仍用上面带框的 ConfigCard。
+ */
+const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ isZh, input }) => {
+  const kw = (input.keywords || []).filter(Boolean).join(' · ');
+  const s = (input.script || '').trim();
+  const mode = input.scriptMode || (s ? 'strict' : 'ai');
+  const scriptTag = mode === 'strict' ? (isZh ? '严格逐字' : 'verbatim') : (isZh ? 'AI 写稿' : 'AI script');
+  const scriptBody = s || (isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`);
+  const visuals = (input.localVideos && input.localVideos.length > 0)
+    ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+    : input.useStockVideo !== false
+      ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+      : (isZh ? '仅图片' : 'images only');
+  return (
+    <>
+      <div>🎯 {isZh ? '赛道' : 'Track'}：{input.track || '-'}</div>
+      <div>🧑 {isZh ? '人设' : 'Persona'}：{input.persona || '-'}</div>
+      <div>🏷️ {isZh ? '关键词' : 'Keywords'}：{kw || '-'}</div>
+      <div className="break-words whitespace-pre-wrap">
+        📝 {isZh ? '视频文案' : 'Script'}：<span className="text-gray-400">[{scriptTag}]</span> {scriptBody}
+      </div>
+      <div>🎞️ {isZh ? '画面' : 'Visuals'}：{visuals}</div>
+    </>
+  );
+};
+
 // ── 运行体(进度 step + 本次消耗 + 流式日志 + 成片操作) 详情/记录共用 ─────────
 
 /** step 明细列表(详情/记录共用)。 */
@@ -917,44 +946,43 @@ const VideoTaskDetail: React.FC<{
       </div>
       <h2 className="text-lg font-bold dark:text-white mb-3">🎬 {task.title}</h2>
 
-      {/* 配置 + 操作卡(运行中绿框发亮)。两栏:左=配置字段 + 创建时间 + 输出目录,
-          右=操作按钮(对齐币安任务详情:配置左 / 操作右)。 */}
+      {/* 配置 + 操作卡(运行中绿框发亮)。对齐币安任务详情:左=扁平配置文字行(无嵌套
+          边框、无「任务配置」标题),右=横排操作按钮;运行中状态做成右侧绿色「生成中」胶囊。 */}
       <div className={`rounded-xl border bg-white dark:bg-gray-900 p-4 mb-4 ${
         isRunning ? 'border-green-500 ring-2 ring-green-500/30 noobclaw-running-glow' : 'border-gray-200 dark:border-gray-700'
       }`}>
-        <div className="flex items-start justify-between gap-4 flex-wrap">
-          {/* 左:配置字段 */}
-          <div className="flex-1 min-w-[260px]">
-            <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
-              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">{isZh ? '任务配置' : 'Config'}</span>
-              <StatusPill isZh={isZh} status={status} />
-            </div>
-            <ConfigCard isZh={isZh} input={task.input} />
-            {/* 创建时间 + 输出目录(对齐币安详情卡里的「创建时间 / 输出目录」字段) */}
-            <div className="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-400">
-              <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
-              {outDir && (
-                <div className="flex items-center gap-1">
-                  <span>{isZh ? '输出目录' : 'Output'}：</span>
-                  <button
-                    type="button"
-                    onClick={() => videoCreationService.revealInFolder(outDir)}
-                    className="text-blue-500 hover:underline text-[11px]"
-                  >
-                    📂 {isZh ? '打开输出文件夹' : 'Open folder'}
-                  </button>
-                </div>
-              )}
-            </div>
+        <div className="flex items-start justify-between gap-4">
+          {/* 左:扁平配置文字行 + 创建时间 + 输出目录(与币安详情同款,无嵌套框) */}
+          <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 space-y-1">
+            <ConfigRows isZh={isZh} input={task.input} />
+            <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
+            {outDir && (
+              <div className="flex items-center gap-1">
+                <span>{isZh ? '输出目录' : 'Output'}：</span>
+                <button
+                  type="button"
+                  onClick={() => videoCreationService.revealInFolder(outDir)}
+                  className="text-blue-500 hover:underline text-[11px]"
+                >
+                  📂 {isZh ? '打开输出文件夹' : 'Open folder'}
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* 右:操作按钮(重跑 / 编辑 / 删除) */}
-          <div className="shrink-0 flex flex-col gap-2 w-full sm:w-auto">
+          {/* 右:横排操作。运行中显示绿色「生成中」胶囊;否则重跑(绿) / 编辑 / 删除 */}
+          <div className="shrink-0 flex items-center gap-2">
+            {isRunning && (
+              <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
+                <span className="inline-block w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                {isZh ? '生成中' : 'Running'}
+              </span>
+            )}
             <button
               type="button"
               onClick={handleRerun}
               disabled={isRunning || checking}
-              className="px-3 py-2 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg text-sm font-semibold bg-green-500 text-white hover:bg-green-600 disabled:opacity-50"
             >
               {checking
                 ? (isZh ? '校验余额…' : 'Checking balance…')
@@ -972,9 +1000,9 @@ const VideoTaskDetail: React.FC<{
               type="button"
               onClick={handleDelete}
               disabled={isRunning}
-              className="px-3 py-2 rounded-lg text-sm font-medium text-gray-500 hover:text-red-500 hover:bg-red-500/5 disabled:opacity-50"
+              className="px-3 py-2 rounded-lg text-sm font-medium text-red-500 border border-red-300 dark:border-red-500/40 hover:bg-red-500/5 disabled:opacity-50"
             >
-              🗑 {isZh ? '删除任务' : 'Delete'}
+              🗑 {isZh ? '删除' : 'Delete'}
             </button>
           </div>
         </div>
