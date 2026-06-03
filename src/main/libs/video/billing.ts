@@ -1,16 +1,20 @@
 /**
  * billing — 视频成片计费(模式一:AI 分镜 + 在线素材)。
  *
- * pipeline 在【成片成功后】调 chargeMode1Video(),向 NoobClaw 服务端
- * POST /api/video/charge 扣"平台基础费"(每条随机 $0.09~$0.18 → 积分)。
+ * pipeline 在【开跑前(生成视频之前)】调 chargeMode1Video(),向 NoobClaw 服务端
+ * POST /api/video/charge 预扣"平台基础费"(每条随机 $0.09~$0.18 → 积分);成片
+ * 失败再调 refundMode1Video() 按 chargeId 幂等退回。
+ *
+ * 为什么开跑前预扣(而不是成片后扣):并发任务可能在本任务跑的过程里把余额扣光,
+ * 等成片做完再扣就成了「视频做出来了、钱却扣不到」= 我们亏。预扣 = 原子锁住这笔费用。
  *
  * 说明:
  *   · DeepSeek 写稿/搜索词的 token 消耗已在 scriptWriter 调 /api/ai 时实时
  *     扣过了(含 Pro reasoner ×3),这里【不重复扣】,只扣平台基础费。
- *   · 生成前客户端已做 pre-flight 余额校验(> 200000 积分才放行),所以这里
- *     正常都能扣成功;服务端原子 UPDATE 兜底,余额不足返回 402(绝不透支)。
- *   · 失败【不抛】:成片已经做出来了,扣费失败只记日志(pre-flight 已极大
- *     降低这种概率),不回滚用户的视频。
+ *   · 生成前客户端还做了 pre-flight 余额校验(> 200000 积分才放行);服务端
+ *     原子 UPDATE 兜底,余额不足返回 402(绝不透支)。
+ *   · 两个函数都【不抛】:chargeMode1Video 失败返回 {ok:false, reason} 让 pipeline
+ *     判任务失败(不生成);refundMode1Video 失败只返回 false(记日志,不影响清理)。
  */
 
 import { getNoobClawAuthToken } from '../claudeSettings';
