@@ -2887,7 +2887,20 @@ if (!gotTheLock) {
         ? await dialog.showOpenDialog(parent, opts)
         : await dialog.showOpenDialog(opts);
       if (result.canceled || !Array.isArray(result.filePaths)) return [];
-      return result.filePaths.slice(0, limit);
+      // 格式 + 大小白名单兜底:超限的剔除并弹原生提示告诉用户为什么。
+      const { validateMediaFiles, rejectedMessage } = require('./libs/video/mediaLimits');
+      const { valid, rejected } = validateMediaFiles(result.filePaths.slice(0, limit), 'video');
+      if (rejected.length > 0) {
+        try {
+          await dialog.showMessageBox(parent || mainWindow || undefined, {
+            type: 'warning',
+            title: '部分视频已忽略',
+            message: '以下文件不符合要求，已忽略：',
+            detail: rejectedMessage(rejected),
+          });
+        } catch { /* 提示失败不影响返回有效文件 */ }
+      }
+      return valid;
     });
 
     // Read a local image file and return it as a data: URL so the renderer
@@ -2939,13 +2952,27 @@ if (!gotTheLock) {
     });
 
     ipcMain.handle('video:pickAudio', async () => {
+      const parent = BrowserWindow.getFocusedWindow() || mainWindow || undefined;
       const result = await dialog.showOpenDialog({
         title: '选择背景音乐',
         properties: ['openFile'],
         filters: [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }],
       });
       if (result.canceled || !Array.isArray(result.filePaths) || result.filePaths.length === 0) return '';
-      return result.filePaths[0];
+      // 格式 + 大小白名单兜底:不合规则不返回路径,并弹原生提示。
+      const { validateMediaFiles, rejectedMessage } = require('./libs/video/mediaLimits');
+      const { valid, rejected } = validateMediaFiles([result.filePaths[0]], 'audio');
+      if (rejected.length > 0) {
+        try {
+          await dialog.showMessageBox(parent, {
+            type: 'warning',
+            title: '背景音乐已忽略',
+            message: '该文件不符合要求：',
+            detail: rejectedMessage(rejected),
+          });
+        } catch { /* noop */ }
+      }
+      return valid[0] || '';
     });
 
     ipcMain.handle('video:openFile', async (_e, filePath: string) => {

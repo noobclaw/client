@@ -860,21 +860,24 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
       {/* 成片操作 / 错误 */}
       {run.status === 'done' && run.outputPath && (
         <div className="rounded-xl border border-green-500/40 bg-green-500/5 p-4 mb-4">
-          <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-2">{run.outputPath}</div>
-          <div className="flex gap-2">
+          <div className="text-sm font-semibold text-green-600 dark:text-green-400 mb-1">
+            ✅ {isZh ? '合成完成 · 成片已保存' : 'Done · video saved'}
+          </div>
+          <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-3">{run.outputPath}</div>
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => videoCreationService.openFile(run.outputPath!)}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-rose-500 text-white hover:bg-rose-600"
+              className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 transition-colors"
             >
-              ▶ {isZh ? '预览' : 'Preview'}
+              ▶ {isZh ? '预览成片' : 'Preview'}
             </button>
             <button
               type="button"
               onClick={() => openFolder(dirOf(run.outputPath))}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+              className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
             >
-              📂 {isZh ? '打开文件夹' : 'Open folder'}
+              📂 {isZh ? '打开输出目录' : 'Open folder'}
             </button>
           </div>
         </div>
@@ -1379,7 +1382,7 @@ const SCRIPT_MAX = 800;
 const SCRIPT_MIN_STRICT = 200;
 // 中文配音约 4.5 字/秒;严格模式据此把字数实时换算成预估时长展示给用户。
 const CHARS_PER_SEC = 4.5;
-const DURATION_OPTIONS = [30, 45, 60, 90];
+const DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240];
 
 // ── MPT 风格出片参数选项 ──
 const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[] = [
@@ -1514,7 +1517,7 @@ const VideoConfigModal: React.FC<{
   const [scriptMode, setScriptMode] = useState<'strict' | 'ai'>(
     editTask?.input.scriptMode || ((editTask?.input.script || '').trim() ? 'strict' : 'ai'),
   );
-  const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 45);
+  const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 90);
 
   // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
   const [materialSource, setMaterialSource] = useState<MaterialSource>(
@@ -1675,11 +1678,13 @@ const VideoConfigModal: React.FC<{
     script: script.trim(),
     scriptMode,
     referenceImages: [], // 参考图已弃用,保留字段向后兼容
-    localVideos: materialSource === 'local' ? localVideos : undefined,
+    // 用户上传的本地视频素材:有就带上(在线模式下会和在线空镜混拼;
+    // 老的纯本地任务 useStockVideo=false 则只用本地)。
+    localVideos: localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
     targetSeconds,
-    // 本地上传时不再去搜在线视频;在线来源时由生成模式决定
+    // 在线模式(stock)= 用在线素材库(本地素材作为叠加混拼);老的纯本地任务保持不搜在线。
     useStockVideo: materialSource === 'local' ? false : (mode === 'stock'),
     voice,
     voiceRate,
@@ -1772,16 +1777,9 @@ const VideoConfigModal: React.FC<{
                     active={materialSource === 'stock' && mode === 'stock'}
                     onClick={() => { setMaterialSource('stock'); setMode('stock'); }}
                     title={isZh ? 'AI 分镜 + 在线素材' : 'AI scenes + stock'}
-                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 按文案自动搜在线空镜拼接' : 'voice-over only, no real person; AI auto-searches stock B-roll by your script'}
-                    cost={isZh ? '约 $0.1/分钟起' : '~$0.1/min'}
+                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 按文案自动搜在线空镜拼接，也可叠加你自己的视频素材混拼' : 'voice-over only, no real person; AI auto-searches stock B-roll by your script, and can mix in your own clips'}
+                    cost={isZh ? '约 $0.1~$0.2/每条' : '~$0.1~$0.2 each'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
-                  />
-                  <ModeOption
-                    active={materialSource === 'local'}
-                    onClick={() => setMaterialSource('local')}
-                    title={isZh ? '本地上传素材拼接' : 'Local upload'}
-                    desc={isZh ? '用你自己的视频片段循环拼接，不搜在线素材（也不消耗 AI 搜索词）' : 'your own clips looped to fill; no stock search'}
-                    cost={isZh ? '仅平台基础费' : 'base fee only'}
                   />
                   <ModeOption
                     active={mode === 'pure_ai'}
@@ -1789,7 +1787,6 @@ const VideoConfigModal: React.FC<{
                     onClick={() => {}}
                     title={isZh ? '纯 AI 生成' : 'Pure AI'}
                     desc={isZh ? '适合各个场景，由 Seedance 支持' : 'any scene, powered by Seedance'}
-                    cost={isZh ? '约 $2/分钟起' : '~$2/min'}
                     soon={isZh ? '即将推出' : 'Soon'}
                   />
                 </div>
@@ -1889,7 +1886,7 @@ const VideoConfigModal: React.FC<{
                   label={isZh ? '目标时长' : 'Target length'}
                   hint={isZh ? 'AI 写稿时按此控制长度' : 'used when AI writes the script'}
                 >
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     {DURATION_OPTIONS.map((s) => (
                       <button
                         key={s}
@@ -1901,7 +1898,7 @@ const VideoConfigModal: React.FC<{
                             : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
                         }`}
                       >
-                        {s}s
+                        {s >= 120 ? (isZh ? `${s / 60}分钟` : `${s / 60}min`) : `${s}s`}
                       </button>
                     ))}
                   </div>
@@ -1913,12 +1910,16 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 3:画面 ── */}
           {step === 3 && (
             <>
-              {materialSource === 'local' && (
-                <Field
-                  label={isZh ? `本地视频素材（最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (max ${MAX_LOCAL_VIDEOS})`}
-                  hint={isZh ? '可多选，按换镜节奏循环切' : 'multi-select, looped by pacing'}
-                >
-                  <div className="space-y-1.5">
+              {/* 本地视频素材:老的纯本地任务为必填;在线模式下为选填(和在线空镜混拼)。 */}
+              <Field
+                label={materialSource === 'local'
+                  ? (isZh ? `本地视频素材（最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (max ${MAX_LOCAL_VIDEOS})`)
+                  : (isZh ? `也用我的视频素材（选填，最多 ${MAX_LOCAL_VIDEOS} 个）` : `Also use my videos (optional, max ${MAX_LOCAL_VIDEOS})`)}
+                hint={materialSource === 'local'
+                  ? (isZh ? '可多选，按换镜节奏循环切' : 'multi-select, looped by pacing')
+                  : (isZh ? '选填：和在线空镜混着拼；留空则全部用在线素材（仅 mp4/mov/webm 等，单个 ≤200MB）' : 'optional: mixed with online stock; empty = all stock (≤200MB each)')}
+              >
+                <div className="space-y-1.5">
                     {localVideos.map((p, i) => (
                       <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-1.5">
                         <span className="text-sm">🎞️</span>
@@ -1942,8 +1943,7 @@ const VideoConfigModal: React.FC<{
                       </button>
                     )}
                   </div>
-                </Field>
-              )}
+              </Field>
 
               {/* 画幅比例 */}
               <Field label={isZh ? '视频比例' : 'Aspect ratio'} hint={isZh ? '决定成片尺寸与素材搜索方向' : 'sets output size & stock orientation'}>
@@ -2234,7 +2234,11 @@ const VideoConfigModal: React.FC<{
                   : (scriptLen === 0
                       ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`)
                       : (isZh ? `AI 写稿 · ${targetSeconds}s（参考 ${scriptLen} 字）` : `AI · ${targetSeconds}s (ref ${scriptLen} ch)`))}</div>
-                <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local' ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`) : (isZh ? '在线素材库' : 'online stock')}</div>
+                <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local'
+                  ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`)
+                  : (isZh
+                      ? `在线素材库${localVideos.length > 0 ? ` + 本地 ${localVideos.length} 个` : ''}`
+                      : `online stock${localVideos.length > 0 ? ` + ${localVideos.length} local` : ''}`)}</div>
                 <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmDisplayName(bgmPath, isZh, remoteBgm)}</div>
                 <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
               </div>

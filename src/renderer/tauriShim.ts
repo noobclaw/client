@@ -191,6 +191,34 @@ async function tauriDialogOpen(opts: any): Promise<string | string[] | null> {
   return null;
 }
 
+// 弹一个只读提示框(用于「部分文件超限已忽略」之类反馈)。Tauri 原生 message
+// 不可用时退回 window.alert,再不行就只打日志,绝不抛错挡住主流程。
+async function tauriDialogMessage(text: string, title: string): Promise<void> {
+  try {
+    const tauri = (window as any).__TAURI__;
+    if (tauri?.dialog?.message) { await tauri.dialog.message(text, { title, kind: 'warning' }); return; }
+  } catch (e) { console.warn('[TauriShim] dialog.message failed:', e); }
+  try { window.alert(`${title}\n\n${text}`); } catch { /* noop */ }
+}
+
+// 选完文件后按格式 + 大小白名单校验(走 sidecar 的 video:validateMedia,
+// 那里有 fs)。剔除超限文件并弹提示,返回有效路径。
+async function validatePickedMedia(paths: string[], kind: 'audio' | 'video'): Promise<string[]> {
+  if (!paths || paths.length === 0) return [];
+  try {
+    const r: any = await ipcInvoke('video:validateMedia', paths, kind);
+    const valid: string[] = Array.isArray(r?.valid) ? r.valid : paths;
+    const rejected: { name: string; reason: string }[] = Array.isArray(r?.rejected) ? r.rejected : [];
+    if (rejected.length > 0) {
+      const detail = rejected.map((x) => `· ${x.name}：${x.reason}`).join('\n');
+      await tauriDialogMessage(detail, kind === 'audio' ? '背景音乐已忽略' : '部分视频已忽略');
+    }
+    return valid;
+  } catch {
+    return paths; // 校验通道异常不挡用户(主进程合成时还会 existsSync 兜底)
+  }
+}
+
 // ── Build the shim ──
 // Every method's return format MUST match the corresponding ipcMain.handle in main.ts
 
@@ -435,14 +463,18 @@ export function createTauriElectronShim(): typeof window.electron {
         const filters = [{ name: 'Videos', extensions: ['mp4', 'mov', 'm4v', 'webm', 'mkv', 'avi'] }];
         const selected = await tauriDialogOpen({ directory: false, multiple: true, filters, title: '选择本地视频素材' });
         if (!selected) return [];
-        const paths = Array.isArray(selected) ? selected : [selected];
-        return paths.slice(0, Math.max(1, Math.min(Number(max) || 8, 30)));
+        const paths = (Array.isArray(selected) ? selected : [selected])
+          .slice(0, Math.max(1, Math.min(Number(max) || 8, 30)));
+        return validatePickedMedia(paths, 'video');
       },
       pickAudio: async () => {
         const filters = [{ name: 'Audio', extensions: ['mp3', 'm4a', 'aac', 'wav', 'flac', 'ogg'] }];
         const selected = await tauriDialogOpen({ directory: false, multiple: false, filters, title: '选择背景音乐' });
         if (!selected) return '';
-        return typeof selected === 'string' ? selected : (selected[0] || '');
+        const p = typeof selected === 'string' ? selected : (selected[0] || '');
+        if (!p) return '';
+        const valid = await validatePickedMedia([p], 'audio');
+        return valid[0] || '';
       },
       readImageDataUrl: (filePath: string) => ipcInvoke('video:readImageDataUrl', filePath).then((r: any) => r ?? ''),
       previewBgm: (token: string) => ipcInvoke('video:previewBgm', token).then((r: any) => r ?? ''),

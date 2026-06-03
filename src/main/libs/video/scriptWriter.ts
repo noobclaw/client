@@ -97,6 +97,29 @@ function targetCharCount(seconds: number): number {
   return Math.round(Math.max(10, seconds) * 4.5);
 }
 
+/** 内容语言:决定口播稿 + 素材搜索词用哪种语言。 */
+export type ContentLang = 'zh' | 'ja' | 'ko' | 'en';
+
+/**
+ * 轻量语言探测:按字符脚本判别。日文同时含汉字,故先查假名;韩文查谚文;
+ * 再查汉字判中文;都没有 → 当英文/拉丁。够覆盖中/日/韩/英四种主用语言。
+ */
+export function detectLang(text: string): ContentLang {
+  const t = text || '';
+  if (/[぀-ゟ゠-ヿ]/.test(t)) return 'ja'; // 平假名/片假名
+  if (/[가-힯]/.test(t)) return 'ko'; // 谚文
+  if (/[㐀-鿿豈-﫿]/.test(t)) return 'zh'; // 汉字
+  return 'en';
+}
+
+/** 语言代码 → 给 LLM 用的英文语言名。 */
+function langName(l: ContentLang): string {
+  return l === 'zh' ? 'Chinese (Simplified)'
+    : l === 'ja' ? 'Japanese'
+    : l === 'ko' ? 'Korean'
+    : 'English';
+}
+
 export interface GenerateScriptInput {
   /** 视频主题 / 选题(用户输入的关键词拼出来的也行)。 */
   topic: string;
@@ -111,6 +134,8 @@ export interface GenerateScriptInput {
   /** 用户提供的参考文案(scriptMode='ai' 时):作为方向/素材参考,AI 据此再创作,
    *  不逐字照搬。空 / undefined 时按主题从零写。 */
   referenceScript?: string;
+  /** 口播稿语言。缺省 'zh'。由上层按【视频文案语言(有则优先)/ 关键词语言】探测后传入。 */
+  lang?: ContentLang;
 }
 
 export interface GenerateScriptResult {
@@ -130,16 +155,24 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
   const targetSec = input.targetSeconds ?? 45;
   const targetChars = targetCharCount(targetSec);
   const kw = (input.keywords || []).filter(Boolean).join('、');
+  const lang = input.lang || 'zh';
+  const ln = langName(lang);
+
+  // 长度提示:中文按「字符数」最直观;其它语言用「朗读秒数」更准(字符≠时长)。
+  const lengthLine = lang === 'zh'
+    ? `1. 围绕主题写一段【连贯的口播旁白】,目标约 ${targetChars} 个中文字符(对应约 ${targetSec} 秒)。`
+    : `1. Write one coherent voice-over narration of about ${targetSec} seconds when read aloud.`;
 
   const system = [
     '你是一名专业的短视频口播脚本撰稿人,擅长写竖屏短视频(抖音/小红书风格)的旁白。',
+    `【语言】全程只用 ${ln} 撰写口播正文,不要混入其它语言。`,
     input.persona ? `账号人设:${input.persona}。` : '',
     input.track ? `内容赛道:${input.track}。` : '',
     '要求:',
-    `1. 围绕主题写一段【连贯的口播旁白】,目标约 ${targetChars} 个中文字符(对应约 ${targetSec} 秒)。`,
+    lengthLine,
     '2. 开头一句要有钩子,中间分点讲清楚,结尾有行动号召或金句收尾。',
-    '3. 口语化、节奏紧凑,适合配音朗读;不要出现"大家好""今天给大家"这类套话开场。',
-    '4. 只输出旁白正文本身,不要加任何标题、序号、分镜标记、emoji、引号包裹。',
+    '3. 口语化、节奏紧凑,适合配音朗读;不要出现套话开场。',
+    `4. 只输出 ${ln} 旁白正文本身,不要加任何标题、序号、分镜标记、emoji、引号包裹。`,
   ].filter(Boolean).join('\n');
 
   // 参考文案:作为方向/素材给 AI 参考,明确告知"可借鉴但不要逐字照搬",
@@ -149,7 +182,9 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
     `主题:${input.topic}`,
     kw ? `关键词:${kw}` : '',
     ref ? `【用户参考文案,仅供参考方向,请重新创作、不要逐字照搬】:\n${ref.slice(0, 1500)}` : '',
-    `请直接输出约 ${targetChars} 字的口播旁白正文。`,
+    lang === 'zh'
+      ? `请直接输出约 ${targetChars} 字的口播旁白正文。`
+      : `Now output ONLY the ${ln} narration body (about ${targetSec}s when read aloud).`,
   ].filter(Boolean).join('\n');
 
   // 旁白创作走 Pro(reasoner),质量明显优于 flash;服务端按 ~3x 计费,故仅此一处用。
@@ -175,14 +210,17 @@ export interface GenerateSearchTermsResult {
 export async function generateSearchTerms(
   scenes: string[],
   fallbackKeywords: string[],
+  lang: ContentLang = 'en',
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
   if (scenes.length === 0) return { terms: [], tokens: 0, costUsd: 0 };
 
+  // 素材搜索词跟随视频文案的语言(用户指定):做日文视频就出日文词去搜日文素材,更贴题。
+  const ln = langName(lang);
   const system = [
     'You map short-video narration lines to stock-footage search terms.',
-    'For EACH input line, output 1-3 ENGLISH search terms (each 1-3 words) that',
+    `For EACH input line, output 1-3 ${ln} search terms (each 1-3 words) that`,
     'best describe concrete, filmable VISUALS for that line (places, objects,',
     'actions, scenery) — NOT abstract concepts. Prefer terms that exist in stock',
     'video libraries (Pexels/Pixabay).',

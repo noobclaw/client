@@ -20,7 +20,7 @@ import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms } from './scriptWriter';
+import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
 
@@ -193,24 +193,31 @@ class ProgressTracker {
 /** 把参考文案拆成逐句分镜。 */
 export function splitScript(script: string): string[] {
   const raw = (script || '').replace(/\r\n/g, '\n');
-  // 先按换行 + 句末标点切
+  // 语言自适应:CJK 文本字符密度高(中文约 4.5 字/秒),拉丁文本同样秒数字符多得多。
+  // 阈值/合并按是否含 CJK 切换,避免英文/日文被按中文阈值切得过碎、撞到 40 镜上限被截断。
+  const hasCJK = /[぀-ヿ㐀-鿿가-힯]/.test(raw);
+  const longLimit = hasCJK ? 36 : 110;   // 单镜过长再按逗号细切的阈值
+  const shortLimit = hasCJK ? 4 : 12;    // 过短碎句并入上一镜的阈值
+  const sep = hasCJK ? '，' : ', ';       // 细切后回拼用的分隔符
+
+  // 先按换行 + 句末标点切(英文句号 `. ` / 句末句号也算一刀)
   const rough = raw
-    .split(/[\n。！？!?；;]+/)
+    .split(/[\n。！？!?；;]+|\.(?=\s|$)/)
     .map((s) => s.trim())
     .filter(Boolean);
 
   const scenes: string[] = [];
-  for (let piece of rough) {
-    // 过长的句子再按逗号切,单镜别太挤
-    if (piece.length > 36) {
+  for (const piece of rough) {
+    // 过长的句子再按逗号切,单镜别太挤(中英文逗号 + 顿号都算)
+    if (piece.length > longLimit) {
       const sub = piece.split(/[,，、]+/).map((s) => s.trim()).filter(Boolean);
       let buf = '';
       for (const part of sub) {
-        if ((buf + part).length > 36 && buf) {
+        if ((buf + part).length > longLimit && buf) {
           scenes.push(buf);
           buf = part;
         } else {
-          buf = buf ? `${buf}，${part}` : part;
+          buf = buf ? `${buf}${sep}${part}` : part;
         }
       }
       if (buf) scenes.push(buf);
@@ -219,11 +226,11 @@ export function splitScript(script: string): string[] {
     }
   }
 
-  // 合并过短碎句(<4 字)到上一镜
+  // 合并过短碎句到上一镜
   const merged: string[] = [];
   for (const s of scenes) {
-    if (s.length < 4 && merged.length > 0) {
-      merged[merged.length - 1] += `，${s}`;
+    if (s.length < shortLimit && merged.length > 0) {
+      merged[merged.length - 1] += `${sep}${s}`;
     } else {
       merged.push(s);
     }
@@ -317,9 +324,11 @@ async function runVideoPipeline(
   // 计费:模式一(AI 分镜 + 在线素材)在【开跑前】预扣平台基础费(随机 $0.09~$0.18)。
   // 为什么预扣而不是成片后扣:并发任务可能在本任务跑的过程里把余额扣光,等成片做完
   // 再扣就成了「视频做出来了、钱却扣不到」= 我们亏。预扣 = 原子锁住这笔费用;成片失败
-  // 再按 chargeId 幂等退回(refundMode1Video)。本地上传素材路径不收平台费,只消耗已实时
-  // 扣过的 AI token。
-  const isMode1 = !(input.localVideos && input.localVideos.length > 0);
+  // 再按 chargeId 幂等退回(refundMode1Video)。
+  // 判定口径 = 是否用到在线素材(useStockVideo!==false):只要走在线素材库就收平台费,
+  // 哪怕用户同时上传了自己的本地视频混拼也照收(在线搜索/下载 + AI 搜索词都是真实成本);
+  // 仅当纯本地素材(useStockVideo===false,老任务路径)才不收平台费,只耗已实时扣过的 AI token。
+  const isMode1 = input.useStockVideo !== false;
   let chargeId: string | undefined;
   let refundOnExit = false;
   if (isMode1) {
@@ -351,6 +360,9 @@ async function runVideoPipeline(
     tracker.start('script', `输出目录:${destDir}`);
     const userText = (input.script || '').trim();
     const scriptMode = input.scriptMode || (userText ? 'strict' : 'ai');
+    // 内容语言:口播稿 + 素材搜索词都用它。规则(用户指定):有视频文案就按文案语言走,
+    // 否则按关键词语言。空白时退化为中文。strict 模式逐字朗读用户文案,语言天然就是文案语言。
+    const contentLang = detectLang(userText || (input.keywords || []).join(' '));
     let script = userText;
     if (scriptMode === 'ai') {
       const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
@@ -365,6 +377,7 @@ async function runVideoPipeline(
           keywords: input.keywords,
           targetSeconds: input.targetSeconds ?? 45,
           referenceScript: userText || undefined,
+          lang: contentLang,
         });
         script = r.script;
         tracker.addTokens(r.tokens, r.costUsd);
@@ -424,19 +437,21 @@ async function runVideoPipeline(
         (reason ? `:${reason.slice(0, 120)}` : '') + ')');
     }
 
-    // 3. 画面:本地上传素材优先;否则每镜 AI 搜索词 → 在线视频 → 素材图 → 文字卡
+    // 3. 画面:在线素材库(可叠加用户本地素材混拼);纯本地(老任务)走循环拼接。
     tracker.start('visuals');
 
-    // 画面来源 = 本地上传:用户自己传的视频素材非空时,直接循环拼接,
-    // 既不搜在线素材库也不花 DeepSeek 搜索词钱。素材少就循环复用。
+    // 用户上传的本地视频素材(已在 UI 限制格式 + 大小,这里再 existsSync 兜底)。
     const localVideos = (input.localVideos || []).filter((p) => p && fs.existsSync(p));
-    const useLocalMaterial = localVideos.length > 0;
+    // 是否用在线素材库:在线模式(useStockVideo!==false)即走在线 + 本地混拼;
+    // 仅当明确关闭在线(纯本地,老任务路径)才完全离线循环拼本地素材。
+    const usesStock = input.useStockVideo !== false;
     const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
 
     let sceneClips: string[][] = [];
     let imagePool: string[] = [];
 
-    if (useLocalMaterial) {
+    if (!usesStock && localVideos.length > 0) {
+      // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
       tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);
       let localCursor = 0;
       sceneClips = sentences.map((_, i) => {
@@ -449,6 +464,7 @@ async function runVideoPipeline(
       const totalClipsUsed = sceneClips.reduce((n, c) => n + c.length, 0);
       tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个 → 拼成 ${totalClipsUsed} 段,覆盖 ${sentences.length} 镜)`);
     } else {
+      // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满)。
       sceneClips = await prepareStockVisuals();
     }
 
@@ -457,7 +473,7 @@ async function runVideoPipeline(
     async function prepareStockVisuals(): Promise<string[][]> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
-    const termsResult = await generateSearchTerms(sentences, input.keywords);
+    const termsResult = await generateSearchTerms(sentences, input.keywords, contentLang);
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
@@ -513,23 +529,44 @@ async function runVideoPipeline(
       return undefined;
     };
 
+    // 用户本地素材混拼:把本地片段【均匀铺】到各分镜(每段大致出现一次),作为该镜
+    // 的首选片段,其余位置再用在线空镜补满 → 本地 + 在线混着拼。无本地素材时此 map 为空,
+    // 行为与纯在线完全一致。本地片段数 > 分镜数时,多出的会落到同一镜(成为该镜的额外段)。
+    const localForScene = new Map<number, string[]>();
+    if (localVideos.length > 0 && sentences.length > 0) {
+      localVideos.forEach((clip, j) => {
+        const idx = Math.min(sentences.length - 1, Math.round((j * sentences.length) / localVideos.length));
+        const arr = localForScene.get(idx) || [];
+        arr.push(clip);
+        localForScene.set(idx, arr);
+      });
+      tracker.progress(`混入本地视频素材 ${localVideos.length} 个(优先露出,在线空镜补满)`);
+    }
+
     // 该镜要几段素材 = ceil(时长 / maxClip),换镜节奏越快段数越多(封顶 8)。
-    // 先尽量取新鲜素材;不够就回收本镜已用过的素材循环填(总比退图片强)。
+    // 先放用户本地素材(优先露出),再尽量取新鲜在线素材补满;都没有则上层退图片/文字卡。
     const pickClipsForScene = (i: number): string[] => {
       const dur = Math.max(1.2, audios[i].durationSec);
       const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
       const clips: string[] = [];
-      for (let k = 0; k < want; k++) {
+      for (const lc of localForScene.get(i) || []) {
+        if (clips.length >= want) break;
+        clips.push(lc);
+      }
+      while (clips.length < want) {
         const fresh = takeFreshClip(i);
         if (fresh) clips.push(fresh);
         else break;
       }
-      return clips; // 可能为空(无视频素材)→ 上层退图片/文字卡
+      return clips; // 可能为空(无任何素材)→ 上层退图片/文字卡
     };
 
     const stockSceneClips: string[][] = sentences.map((_, i) => pickClipsForScene(i));
     const scenesWithoutVideo = stockSceneClips.filter((c) => c.length === 0).length;
     const totalClipsUsed = stockSceneClips.reduce((n, c) => n + c.length, 0);
+    const localUsed = localVideos.length > 0
+      ? stockSceneClips.reduce((n, c) => n + c.filter((p) => localVideos.includes(p)).length, 0)
+      : 0;
 
     // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
     const needImages = Math.max(0, Math.min(20, scenesWithoutVideo - refImages.length));
@@ -547,7 +584,7 @@ async function runVideoPipeline(
 
     tracker.done('visuals',
       (totalClipsUsed > 0 || imagePool.length > 0)
-        ? `画面就绪(视频 ${totalClipsUsed} 段 → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
+        ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
         : '无可用素材,使用文字卡');
 
     return stockSceneClips;

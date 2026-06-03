@@ -181,11 +181,82 @@ function concatLine(p: string): string {
   return `file '${p.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`;
 }
 
+/** 多段视频背景:切 N 段(每段 ≤maxClip)cover-crop 拼接。失败抛错(由上层降级)。 */
+async function renderClipsBg(
+  workDir: string, out: string, clips: string[], dur: number, W: number, H: number, maxClip: number,
+): Promise<void> {
+  const segCount = Math.max(1, Math.min(8, Math.ceil(dur / Math.max(1, maxClip))));
+  const segDur = dur / segCount;
+  const args: string[] = ['-y'];
+  const filters: string[] = [];
+  for (let s = 0; s < segCount; s++) {
+    const clip = clips[s % clips.length];
+    // 每段单独一个输入,-stream_loop -1 保证够长
+    args.push('-stream_loop', '-1', '-i', clip);
+    filters.push(
+      `[${s}:v]trim=0:${segDur.toFixed(3)},setpts=PTS-STARTPTS,` +
+      `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
+      `fps=${FPS},setsar=1[v${s}]`,
+    );
+  }
+  const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
+  const fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0,format=yuv420p[v]`;
+  args.push(
+    '-filter_complex', fc,
+    '-map', '[v]', '-an',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-r', String(FPS), '-pix_fmt', 'yuv420p',
+    '-t', dur.toFixed(2),
+    out,
+  );
+  const r = await runFfmpeg(args, { timeoutMs: 180_000, cwd: workDir });
+  if (!r.ok || !fs.existsSync(out)) throw new Error(`clips bg failed: ${r.stderr.slice(-400)}`);
+}
+
+/** 单图 Ken Burns 背景。失败抛错(由上层降级到纯色卡)。 */
+async function renderImageBg(
+  workDir: string, out: string, imagePath: string, dur: number, W: number, H: number,
+): Promise<void> {
+  const durFrames = Math.round(dur * FPS);
+  const vChain = [
+    `scale=${W}:${H}:force_original_aspect_ratio=increase`,
+    `crop=${W}:${H}`,
+    `scale=${W * 2}:${H * 2}`,
+    `zoompan=z='min(zoom+0.0012,1.18)':d=${durFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS}`,
+    'format=yuv420p',
+  ];
+  const args = [
+    '-y', '-loop', '1', '-i', imagePath,
+    '-filter_complex', `[0:v]${vChain.join(',')}[v]`,
+    '-map', '[v]', '-an',
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-r', String(FPS), '-pix_fmt', 'yuv420p',
+    '-t', dur.toFixed(2),
+    out,
+  ];
+  const r = await runFfmpeg(args, { timeoutMs: 180_000, cwd: workDir });
+  if (!r.ok || !fs.existsSync(out)) throw new Error(`image bg failed: ${r.stderr.slice(-400)}`);
+}
+
+/** 纯色文字卡背景(最终兜底,lavfi 合成最稳)。失败抛错(此时基本是 ffmpeg 本身坏了)。 */
+async function renderColorBg(out: string, dur: number, W: number, H: number): Promise<void> {
+  const r = await runFfmpeg([
+    '-y', '-f', 'lavfi', '-i', `color=c=0x14142a:s=${W}x${H}:r=${FPS}`,
+    '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+    '-pix_fmt', 'yuv420p', '-t', dur.toFixed(2), out,
+  ], { timeoutMs: 60_000 });
+  if (!r.ok || !fs.existsSync(out)) throw new Error(`color bg failed: ${r.stderr.slice(-400)}`);
+}
+
 /**
- * 合成单镜的【无声背景】→ scene_bg_NNN.mp4,返回路径。
- * 多段视频:把 dur 切成 N 段(每段 ≤ maxClip),逐段取一个 clip(循环复用),
- * 每段 trim+scale-cover-crop+fps,concat 成该镜背景。无 clips 用图片 Ken Burns,
- * 再无则纯色卡。全程 -an(无声),音频在 master 阶段统一拼。
+ * 合成单镜【无声背景】→ scene_bg_NNN.mp4。
+ *
+ * 抄 MPT 的「坏素材不拖垮整片」容错(combine_videos 里每段 clip 都 try/except 继续):
+ *   1. 先 ffprobe 过滤掉【探不到时长】的坏 clip(下载损坏 / 非视频),只留可解码的;
+ *   2. 视频分支失败 → 降级到图片 Ken Burns;
+ *   3. 图片分支失败 → 降级到纯色文字卡;
+ *   4. 只有连纯色卡都失败(ffmpeg 本身坏)才真的 throw。
+ * 这样任何一镜的素材出问题,最坏退成文字卡,整条视频仍能出片。
  */
 async function renderSceneBg(
   workDir: string,
@@ -198,72 +269,29 @@ async function renderSceneBg(
   const out = path.join(workDir, `scene_bg_${String(idx).padStart(3, '0')}.mp4`);
   const dur = Math.max(1.2, scene.durationSec);
 
-  const clips = (scene.clips && scene.clips.length > 0)
+  let clips = (scene.clips && scene.clips.length > 0)
     ? scene.clips.filter((c) => c && fs.existsSync(c))
     : (scene.videoPath && fs.existsSync(scene.videoPath) ? [scene.videoPath] : []);
 
-  const args: string[] = ['-y'];
-
+  // G1:过滤探不到时长的坏 clip(损坏 / 编码异常),避免单段坏素材让 ffmpeg 报错拖垮整片。
   if (clips.length > 0) {
-    // 切成 N 段,每段 ≤ maxClip;素材不够循环复用
-    const segCount = Math.max(1, Math.min(8, Math.ceil(dur / Math.max(1, maxClip))));
-    const segDur = dur / segCount;
-    const filters: string[] = [];
-    for (let s = 0; s < segCount; s++) {
-      const clip = clips[s % clips.length];
-      // 每段单独一个输入,-stream_loop -1 保证够长
-      args.push('-stream_loop', '-1', '-i', clip);
-      filters.push(
-        `[${s}:v]trim=0:${segDur.toFixed(3)},setpts=PTS-STARTPTS,` +
-        `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
-        `fps=${FPS},setsar=1[v${s}]`,
-      );
+    const valid: string[] = [];
+    for (const c of clips) {
+      if (await probeDuration(c) > 0) valid.push(c);
     }
-    const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
-    const fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0,format=yuv420p[v]`;
-    args.push(
-      '-filter_complex', fc,
-      '-map', '[v]',
-      '-an',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-      '-r', String(FPS), '-pix_fmt', 'yuv420p',
-      '-t', dur.toFixed(2),
-      out,
-    );
-  } else if (scene.imagePath && fs.existsSync(scene.imagePath)) {
-    const durFrames = Math.round(dur * FPS);
-    args.push('-loop', '1', '-i', scene.imagePath);
-    const vChain = [
-      `scale=${W}:${H}:force_original_aspect_ratio=increase`,
-      `crop=${W}:${H}`,
-      `scale=${W * 2}:${H * 2}`,
-      `zoompan=z='min(zoom+0.0012,1.18)':d=${durFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS}`,
-      'format=yuv420p',
-    ];
-    args.push(
-      '-filter_complex', `[0:v]${vChain.join(',')}[v]`,
-      '-map', '[v]',
-      '-an',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-      '-r', String(FPS), '-pix_fmt', 'yuv420p',
-      '-t', dur.toFixed(2),
-      out,
-    );
-  } else {
-    args.push(
-      '-f', 'lavfi', '-i', `color=c=0x14142a:s=${W}x${H}:r=${FPS}`,
-      '-an',
-      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
-      '-pix_fmt', 'yuv420p',
-      '-t', dur.toFixed(2),
-      out,
-    );
+    clips = valid;
   }
 
-  const r = await runFfmpeg(args, { timeoutMs: 180_000, cwd: workDir });
-  if (!r.ok || !fs.existsSync(out)) {
-    throw new Error(`scene ${idx} bg render failed: ${r.stderr.slice(-400)}`);
+  // 视频 → 图片 → 纯色,逐级降级,绝不因单镜素材问题让整条视频失败。
+  if (clips.length > 0) {
+    try { await renderClipsBg(workDir, out, clips, dur, W, H, maxClip); return out; }
+    catch { /* 落到图片/纯色兜底 */ }
   }
+  if (scene.imagePath && fs.existsSync(scene.imagePath)) {
+    try { await renderImageBg(workDir, out, scene.imagePath, dur, W, H); return out; }
+    catch { /* 落到纯色兜底 */ }
+  }
+  await renderColorBg(out, dur, W, H);
   return out;
 }
 

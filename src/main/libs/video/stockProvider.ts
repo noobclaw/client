@@ -13,7 +13,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { probeImageSize } from './ffmpegRuntime';
+import { probeImageSize, probeDuration } from './ffmpegRuntime';
 
 const REQ_TIMEOUT_MS = 15_000;
 /** 视频素材下载超时放宽:文件大。 */
@@ -22,6 +22,12 @@ const VIDEO_REQ_TIMEOUT_MS = 60_000;
 const MIN_IMAGE_EDGE = 480;
 /** 太短的素材视频(<2s)拼起来太碎,拒收。 */
 const MIN_VIDEO_SEC = 2;
+/**
+ * 在线视频素材最低短边(像素)。短边低于此值再上采样到 1080 竖屏会明显发糊。
+ * MPT 的做法是 Pexels 精确匹配目标分辨率 / Pixabay 要求 w≥目标宽;我们经服务端
+ * 代理只拿到一个 URL,改为统一卡「短边 ≥720」——上采样到 1080 最多 1.5×,画质可接受。
+ */
+const MIN_VIDEO_EDGE = 720;
 
 function apiBase(): string {
   return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
@@ -170,19 +176,37 @@ async function searchVideosViaServer(keywords: string[], count: number, orientat
   }
 }
 
-/** 下载一个视频文件;太短的(<MIN_VIDEO_SEC)拒收。 */
-async function downloadVideoTo(url: string, destPath: string): Promise<boolean> {
+/**
+ * 下载一个视频文件并【ffprobe 验真伪 + 卡分辨率】(抄 MPT save_video 的完整性校验思路)。
+ * 返回真实宽高 / 时长;任何一关不过就删文件返 null:
+ *   · 时长探不到(probeDuration<=0)→ 下到的是错误页/损坏文件,删。这是关键:坏 clip
+ *     若放进合成会让 ffmpeg 在 renderSceneBg 阶段报错拖垮整条视频。
+ *   · 短边 < MIN_VIDEO_EDGE → 低清,上采样会糊,删(G2;兜底服务端 meta 缺失/不准的情况)。
+ */
+async function downloadVideoTo(
+  url: string,
+  destPath: string,
+): Promise<{ width: number; height: number; durationSec: number } | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), VIDEO_REQ_TIMEOUT_MS);
   try {
     const res = await fetch(url, { signal: ctrl.signal });
-    if (!res.ok) return false;
+    if (!res.ok) return null;
     const buf = Buffer.from(await res.arrayBuffer());
-    if (buf.length < 16 * 1024) return false; // junk / error page
+    if (buf.length < 16 * 1024) return null; // junk / error page
     fs.writeFileSync(destPath, buf);
-    return true;
+    // G1 完整性:探不到时长 = 损坏 / 非视频,删。
+    const durationSec = await probeDuration(destPath);
+    if (durationSec <= 0) { try { fs.unlinkSync(destPath); } catch {} return null; }
+    // G2 分辨率门槛:真实短边低于阈值,删。
+    const { width, height } = await probeImageSize(destPath);
+    if (width > 0 && height > 0 && Math.min(width, height) < MIN_VIDEO_EDGE) {
+      try { fs.unlinkSync(destPath); } catch {}
+      return null;
+    }
+    return { width, height, durationSec };
   } catch {
-    return false;
+    return null;
   } finally {
     clearTimeout(timer);
   }
@@ -254,14 +278,24 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
         if (meta.width > 0 && meta.height > 0) {
           if (orientation === 'portrait' && meta.height < meta.width) continue;
           if (orientation === 'landscape' && meta.width < meta.height) continue;
+          // G2 分辨率预过滤:meta 尺寸已知且短边过小 → 直接跳过,省一次无用下载
+          //（meta 缺失时不拦,留给 downloadVideoTo 用真实探测兜底)。
+          if (Math.min(meta.width, meta.height) < MIN_VIDEO_EDGE) continue;
         }
         seenUrls.add(meta.url);
         const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
         const dest = path.join(destDir, `stockvid_${String(idx).padStart(3, '0')}.${ext}`);
         idx++;
-        const ok = await downloadVideoTo(meta.url, dest);
-        if (ok) {
-          assets.push({ path: dest, durationSec: meta.durationSec, width: meta.width, height: meta.height });
+        // downloadVideoTo 已做完整性校验(ffprobe 验时长)+ 真实分辨率门槛,
+        // 通过的才是可安全进合成的素材;返回真实宽高/时长,优先于 meta(更准)。
+        const probed = await downloadVideoTo(meta.url, dest);
+        if (probed) {
+          assets.push({
+            path: dest,
+            durationSec: probed.durationSec || meta.durationSec,
+            width: probed.width || meta.width,
+            height: probed.height || meta.height,
+          });
           totalGot++;
         }
       }

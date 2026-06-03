@@ -1038,6 +1038,18 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, '');
             }
           }
+          case 'video:validateMedia': {
+            // Tauri 下文件选择走渲染端原生弹窗,无法在那里 fs.stat;由这里按
+            // 格式 + 大小白名单校验选中的路径,回 { valid, rejected } 给 shim 提示用户。
+            try {
+              const { validateMediaFiles } = await import('./libs/video/mediaLimits');
+              const paths = Array.isArray(args[0]) ? args[0] : [];
+              const kind = args[1] === 'audio' ? 'audio' : 'video';
+              return writeJSON(res, 200, validateMediaFiles(paths, kind));
+            } catch {
+              return writeJSON(res, 200, { valid: [], rejected: [] });
+            }
+          }
           case 'video:generate': {
             // Fire-and-forget (same pattern as scenario:runTaskNow above).
             // The pipeline runs for minutes (TTS + stock downloads + ffmpeg).
