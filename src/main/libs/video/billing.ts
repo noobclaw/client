@@ -21,6 +21,8 @@ function apiBase(): string {
 
 export interface VideoChargeResult {
   ok: boolean;
+  /** 本笔扣费的 ledger ref_id —— 退款时凭它定位原始扣费行。 */
+  chargeId?: string;
   /** 实际扣的积分(成功时)。 */
   chargedTokens?: number;
   /** 本条随机基础费(USD)。 */
@@ -55,12 +57,42 @@ export async function chargeMode1Video(durationSec: number): Promise<VideoCharge
     const json: any = await resp.json().catch((): null => null);
     return {
       ok: true,
+      chargeId: typeof json?.chargeId === 'string' ? json.chargeId : undefined,
       chargedTokens: Number(json?.chargedTokens) || 0,
       feeUsd: Number(json?.feeUsd) || 0,
       balanceAfter: Number(json?.balanceAfter) || 0,
     };
   } catch {
     return { ok: false, reason: 'error' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * 退回此前预扣的平台基础费(成片失败时调)。绝不抛错 —— 失败仅返回 false。
+ * 幂等:服务端按 chargeId 防重复退,客户端可安全重试。
+ */
+export async function refundMode1Video(chargeId: string): Promise<boolean> {
+  if (!chargeId) return false;
+  const token = getNoobClawAuthToken();
+  if (!token) return false;
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const resp = await fetch(`${apiBase()}/api/video/refund`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ chargeId }),
+      signal: ctrl.signal,
+    });
+    return resp.ok;
+  } catch {
+    return false;
   } finally {
     clearTimeout(timer);
   }

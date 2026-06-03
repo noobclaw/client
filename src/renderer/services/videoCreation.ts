@@ -23,8 +23,15 @@ export interface VideoCreationInput {
   track: string;
   /** 关键词 —— 决定在线素材库搜什么空镜。 */
   keywords: string[];
-  /** 口播文案。留空时主进程用 DeepSeek 按 targetSeconds 自动写一段。 */
+  /** 视频文案。语义随 scriptMode 而变:strict=逐字朗读;ai=作 AI 写稿的参考。 */
   script: string;
+  /**
+   * 文案模式:
+   *   - 'strict' 严格按我的视频文案:script 逐字朗读,直接决定视频长度(必填,≥200字)。
+   *   - 'ai' AI 参考我的文案:AI 写稿,script 仅作参考(可空),长度按 targetSeconds。
+   * 缺省兼容老任务:有 script → strict,无 → ai(主进程同款回退)。
+   */
+  scriptMode?: 'strict' | 'ai';
   /** 用户上传的参考图本地绝对路径(0-3 张,优先用于画面)。已弃用,保留向后兼容。 */
   referenceImages: string[];
   /**

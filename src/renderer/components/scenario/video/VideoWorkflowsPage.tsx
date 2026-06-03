@@ -311,7 +311,13 @@ const KeywordChips: React.FC<{ keywords: string[]; max?: number }> = ({ keywords
 
 function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
   const s = (input.script || '').trim();
-  if (!s) return isZh ? `AI 写稿 · ${input.targetSeconds ?? 45}s` : `AI script · ${input.targetSeconds ?? 45}s`;
+  const mode = input.scriptMode || (s ? 'strict' : 'ai');
+  if (mode === 'ai') {
+    const prefix = isZh ? `AI 写稿 · ${input.targetSeconds ?? 45}s` : `AI script · ${input.targetSeconds ?? 45}s`;
+    if (!s) return prefix;
+    return `${prefix}｜${isZh ? '参考' : 'ref'}: ${s.length > 40 ? s.slice(0, 40) + '…' : s}`;
+  }
+  // strict:逐字朗读
   return s.length > 60 ? s.slice(0, 60) + '…' : s;
 }
 
@@ -577,10 +583,22 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
     <Row label={`🧑 ${isZh ? '人设' : 'Persona'}`}>{input.persona || '-'}</Row>
     <Row label={`🏷️ ${isZh ? '关键词' : 'Keywords'}`}><KeywordChips keywords={input.keywords} max={20} /></Row>
-    <Row label={`📝 ${isZh ? '参考文案' : 'Script'}`}>
-      {(input.script || '').trim()
-        ? <span className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</span>
-        : <span className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</span>}
+    <Row label={`📝 ${isZh ? '视频文案' : 'Script'}`}>
+      {(() => {
+        const s = (input.script || '').trim();
+        const mode = input.scriptMode || (s ? 'strict' : 'ai');
+        const tag = mode === 'strict'
+          ? (isZh ? '严格逐字' : 'verbatim')
+          : (isZh ? 'AI 写稿' : 'AI script');
+        return (
+          <div className="space-y-1">
+            <span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{tag}</span>
+            {s
+              ? <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div>
+              : <div className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</div>}
+          </div>
+        );
+      })()}
     </Row>
     <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
       {(input.localVideos && input.localVideos.length > 0)
@@ -1295,6 +1313,10 @@ type OutputMode = 'local' | 'upload';
 type Platform = 'douyin' | 'xhs' | 'binance';
 
 const SCRIPT_MAX = 800;
+// 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
+const SCRIPT_MIN_STRICT = 200;
+// 中文配音约 4.5 字/秒;严格模式据此把字数实时换算成预估时长展示给用户。
+const CHARS_PER_SEC = 4.5;
 const DURATION_OPTIONS = [30, 45, 60, 90];
 
 // ── MPT 风格出片参数选项 ──
@@ -1386,6 +1408,10 @@ const VideoConfigModal: React.FC<{
   const [persona, setPersona] = useState(editTask?.input.persona || '');
   const [keywords, setKeywords] = useState((editTask?.input.keywords || []).join(' '));
   const [script, setScript] = useState(editTask?.input.script || '');
+  // 文案模式:strict 严格逐字 / ai 参考再创作。编辑老任务时按 input 推断(无字段则有文案=strict)。
+  const [scriptMode, setScriptMode] = useState<'strict' | 'ai'>(
+    editTask?.input.scriptMode || ((editTask?.input.script || '').trim() ? 'strict' : 'ai'),
+  );
   const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 45);
 
   // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
@@ -1439,8 +1465,14 @@ const VideoConfigModal: React.FC<{
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
   const scriptLen = script.trim().length;
-  // 文案【选填】:留空 = AI 按目标时长写;填了则不能超上限
-  const scriptValid = scriptLen === 0 || scriptLen <= SCRIPT_MAX;
+  // 严格模式据字数预估时长(向上取整,中文约 4.5 字/秒)。
+  const strictEstSec = Math.max(1, Math.round(scriptLen / CHARS_PER_SEC));
+  // 文案校验:
+  //   strict 严格逐字:必填、≥SCRIPT_MIN_STRICT 字、≤SCRIPT_MAX 字(直接决定时长)。
+  //   ai 参考:选填,填了则不超上限。
+  const scriptValid = scriptMode === 'strict'
+    ? (scriptLen >= SCRIPT_MIN_STRICT && scriptLen <= SCRIPT_MAX)
+    : (scriptLen === 0 || scriptLen <= SCRIPT_MAX);
   const step1Valid = trackId !== '' && scriptValid;
   // 画面:选了本地上传却没传素材时挡一下
   const step2Valid = materialSource === 'stock' || localVideos.length > 0;
@@ -1452,7 +1484,8 @@ const VideoConfigModal: React.FC<{
     const kw = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean);
     const head = kw.slice(0, 2).join(' / ');
     const base = head || trackLabel || (isZh ? '视频创作' : 'Video');
-    return scriptLen === 0 ? `${base}（AI 写稿 · ${targetSeconds}s）` : base;
+    if (scriptMode === 'strict') return `${base}（${isZh ? '严格文案' : 'strict'} · ${scriptLen}${isZh ? '字' : 'ch'}）`;
+    return `${base}（AI ${isZh ? '写稿' : 'script'} · ${targetSeconds}s）`;
   };
 
   const buildInput = (): VideoCreationInput => ({
@@ -1460,6 +1493,7 @@ const VideoConfigModal: React.FC<{
     track: trackLabel,
     keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
+    scriptMode,
     referenceImages: [], // 参考图已弃用,保留字段向后兼容
     localVideos: materialSource === 'local' ? localVideos : undefined,
     aspect,
@@ -1580,45 +1614,82 @@ const VideoConfigModal: React.FC<{
                 />
               </Field>
 
+              {/* 文案模式:严格逐字 vs AI 参考再创作 */}
+              <Field label={isZh ? '文案模式' : 'Script mode'} hint={isZh ? '决定视频文案怎么用' : 'how your script is used'}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <ModeOption
+                    active={scriptMode === 'strict'}
+                    onClick={() => setScriptMode('strict')}
+                    title={isZh ? '严格按我的视频文案' : 'Use my script verbatim'}
+                    desc={isZh ? '逐字朗读，文案长度直接决定视频长度' : 'read verbatim; length sets video length'}
+                  />
+                  <ModeOption
+                    active={scriptMode === 'ai'}
+                    onClick={() => setScriptMode('ai')}
+                    title={isZh ? 'AI 参考我的文案' : 'AI writes (reference mine)'}
+                    desc={isZh ? 'AI 写稿，你的文案仅作参考（可不填）' : 'AI writes; your text is just a reference'}
+                  />
+                </div>
+              </Field>
+
               <Field
-                label={isZh ? '口播文案（选填）' : 'Script (optional)'}
-                hint={isZh ? '留空则由 AI 按目标时长自动写稿' : 'leave empty to let AI write it'}
+                label={isZh ? '视频文案' : 'Script'}
+                hint={scriptMode === 'strict'
+                  ? (isZh ? `逐字朗读，不少于 ${SCRIPT_MIN_STRICT} 字；字数越多视频越长` : `read verbatim; at least ${SCRIPT_MIN_STRICT} chars`)
+                  : (isZh ? '选填，留空则由 AI 按目标时长写稿；填了 AI 会参考' : 'optional; AI writes for target length, uses yours as reference')}
               >
                 <textarea
                   value={script}
                   onChange={(e) => setScript(e.target.value)}
                   rows={5}
-                  placeholder={isZh ? `自己写就粘进来,留空让 AI 写…（≤${SCRIPT_MAX} 字）` : `Paste your own, or leave empty for AI… (≤${SCRIPT_MAX} chars)`}
+                  placeholder={scriptMode === 'strict'
+                    ? (isZh ? `把要逐字朗读的视频文案粘进来…（${SCRIPT_MIN_STRICT}~${SCRIPT_MAX} 字）` : `Paste the exact narration… (${SCRIPT_MIN_STRICT}~${SCRIPT_MAX} chars)`)
+                    : (isZh ? `给 AI 的参考方向，可留空…（≤${SCRIPT_MAX} 字）` : `Reference for AI, can be empty… (≤${SCRIPT_MAX} chars)`)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y min-h-[100px]"
                 />
-                <div className={`mt-1 text-[11px] text-right ${scriptLen > SCRIPT_MAX ? 'text-red-500' : 'text-gray-400'}`}>
+                <div className={`mt-1 text-[11px] text-right ${!scriptValid ? 'text-red-500' : 'text-gray-400'}`}>
                   {scriptLen}/{SCRIPT_MAX}
+                  {scriptMode === 'strict' && scriptLen > 0 && scriptLen < SCRIPT_MIN_STRICT
+                    && (isZh ? `（还需 ${SCRIPT_MIN_STRICT - scriptLen} 字）` : ` (need ${SCRIPT_MIN_STRICT - scriptLen} more)`)}
                   {scriptLen > SCRIPT_MAX && (isZh ? '（超出上限）' : ' (over limit)')}
                 </div>
               </Field>
 
-              {/* 目标时长(AI 写稿时按此控制长度) */}
-              <Field
-                label={isZh ? '目标时长' : 'Target length'}
-                hint={isZh ? 'AI 写稿时按此控制(自己写文案则以文案为准)' : 'used when AI writes the script'}
-              >
-                <div className="flex gap-2">
-                  {DURATION_OPTIONS.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setTargetSeconds(s)}
-                      className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                        targetSeconds === s
-                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                      }`}
-                    >
-                      {s}s
-                    </button>
-                  ))}
+              {scriptMode === 'strict' ? (
+                /* 严格模式:不选目标时长,实时按字数预估时长展示 */
+                <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/20 px-3 py-2 text-[12px] text-rose-700 dark:text-rose-300">
+                  {scriptLen >= SCRIPT_MIN_STRICT
+                    ? (isZh
+                        ? `⏱️ 预估视频时长约 ${strictEstSec}s（按中文 ${CHARS_PER_SEC} 字/秒朗读估算，实际以配音为准）`
+                        : `⏱️ Estimated ~${strictEstSec}s (at ${CHARS_PER_SEC} chars/sec; actual depends on TTS)`)
+                    : (isZh
+                        ? `⏱️ 填够 ${SCRIPT_MIN_STRICT} 字后这里显示预估时长（按 ${CHARS_PER_SEC} 字/秒）`
+                        : `⏱️ Estimate shows after ${SCRIPT_MIN_STRICT} chars`)}
                 </div>
-              </Field>
+              ) : (
+                /* AI 模式:目标时长选择(AI 据此控制字数) */
+                <Field
+                  label={isZh ? '目标时长' : 'Target length'}
+                  hint={isZh ? 'AI 写稿时按此控制长度' : 'used when AI writes the script'}
+                >
+                  <div className="flex gap-2">
+                    {DURATION_OPTIONS.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setTargetSeconds(s)}
+                        className={`px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                          targetSeconds === s
+                            ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                        }`}
+                      >
+                        {s}s
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+              )}
             </>
           )}
 
@@ -1906,7 +1977,11 @@ const VideoConfigModal: React.FC<{
 
               <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[11px] text-gray-500 dark:text-gray-400 space-y-1">
                 <div>🎯 {isZh ? '赛道' : 'Track'}：{trackLabel || '-'}</div>
-                <div>📝 {isZh ? '文案' : 'Script'}：{scriptLen === 0 ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`) : `${scriptLen} ${isZh ? '字' : 'chars'}`}</div>
+                <div>📝 {isZh ? '文案' : 'Script'}：{scriptMode === 'strict'
+                  ? (isZh ? `严格逐字 · ${scriptLen} 字 ≈ ${strictEstSec}s` : `verbatim · ${scriptLen} ch ≈ ${strictEstSec}s`)
+                  : (scriptLen === 0
+                      ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`)
+                      : (isZh ? `AI 写稿 · ${targetSeconds}s（参考 ${scriptLen} 字）` : `AI · ${targetSeconds}s (ref ${scriptLen} ch)`))}</div>
                 <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local' ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`) : (isZh ? '在线素材库' : 'online stock')}</div>
                 <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmPath ? (bgmPath.split(/[\\/]/).pop() || (isZh ? '已选' : 'set')) : (isZh ? '无' : 'none')}</div>
                 <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
@@ -1933,7 +2008,14 @@ const VideoConfigModal: React.FC<{
               onClick={() => {
                 if (step === 1) {
                   if (!trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
-                  if (!scriptValid) { setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`); return; }
+                  if (!scriptValid) {
+                    if (scriptMode === 'strict' && scriptLen < SCRIPT_MIN_STRICT) {
+                      setSubmitError(isZh ? `严格模式下视频文案不少于 ${SCRIPT_MIN_STRICT} 字（当前 ${scriptLen} 字）` : `Verbatim mode needs ≥ ${SCRIPT_MIN_STRICT} chars (now ${scriptLen})`);
+                    } else {
+                      setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`);
+                    }
+                    return;
+                  }
                 }
                 if (step === 2 && !step2Valid) {
                   setSubmitError(isZh ? '选了本地上传,请至少添加一个视频素材' : 'Please add at least one local video');

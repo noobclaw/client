@@ -21,7 +21,7 @@ import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms } from './scriptWriter';
-import { chargeMode1Video } from './billing';
+import { chargeMode1Video, refundMode1Video } from './billing';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -51,8 +51,17 @@ export interface VideoCreationInput {
   persona: string;
   track: string;
   keywords: string[];
-  /** 口播旁白文案。为空时用 DeepSeek 按 targetSeconds 自动生成。 */
+  /**
+   * 视频文案。语义随 scriptMode 变:
+   *   · strict → 逐字朗读的成片文案(必填),视频长度由其字数决定。
+   *   · ai     → 仅作 AI 写稿的参考方向(可空),最终文案由 DeepSeek 生成。
+   */
   script: string;
+  /**
+   * 文案模式。'strict' = 严格按用户文案逐字出片;'ai' = AI 写稿(用户文案作参考)。
+   * 缺省时按老逻辑兼容:有 script → strict,无 → ai。
+   */
+  scriptMode?: 'strict' | 'ai';
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -303,6 +312,30 @@ async function runVideoPipeline(
     return { ok: false, error: err };
   }
 
+  // 计费:模式一(AI 分镜 + 在线素材)在【开跑前】预扣平台基础费(随机 $0.09~$0.18)。
+  // 为什么预扣而不是成片后扣:并发任务可能在本任务跑的过程里把余额扣光,等成片做完
+  // 再扣就成了「视频做出来了、钱却扣不到」= 我们亏。预扣 = 原子锁住这笔费用;成片失败
+  // 再按 chargeId 幂等退回(refundMode1Video)。本地上传素材路径不收平台费,只消耗已实时
+  // 扣过的 AI token。
+  const isMode1 = !(input.localVideos && input.localVideos.length > 0);
+  let chargeId: string | undefined;
+  let refundOnExit = false;
+  if (isMode1) {
+    const charge = await chargeMode1Video(input.targetSeconds ?? 45);
+    if (!charge.ok) {
+      let err: string;
+      if (charge.reason === 'insufficient') err = '余额不足,无法生成(模式一需先预扣平台基础费,请充值后重试)';
+      else if (charge.reason === 'no_auth') err = '未登录 NoobClaw,无法生成';
+      else err = '平台基础费预扣失败,请稍后重试';
+      tracker.fail('script', err);
+      return { ok: false, error: err };
+    }
+    chargeId = charge.chargeId;
+    refundOnExit = true;
+    tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+    tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）,成片失败将自动退回`);
+  }
+
   // 临时素材目录(配音 + 下载的素材图)
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
 
@@ -311,12 +344,17 @@ async function runVideoPipeline(
   tracker.setOutputDir(destDir);
 
   try {
-    // 0. 文案:用户没给就用 DeepSeek 按目标时长写一段口播旁白
+    // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
+    //    缺省兼容老任务:有 script → strict,无 → ai。
     tracker.start('script', `输出目录:${destDir}`);
-    let script = (input.script || '').trim();
-    if (!script) {
+    const userText = (input.script || '').trim();
+    const scriptMode = input.scriptMode || (userText ? 'strict' : 'ai');
+    let script = userText;
+    if (scriptMode === 'ai') {
       const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
-      tracker.progress(`AI 正在撰写旁白脚本（目标约 ${input.targetSeconds ?? 45}s）…`);
+      tracker.progress(userText
+        ? `AI 正在参考你的文案撰写旁白（目标约 ${input.targetSeconds ?? 45}s）…`
+        : `AI 正在撰写旁白脚本（目标约 ${input.targetSeconds ?? 45}s）…`);
       try {
         const r = await generateScript({
           topic,
@@ -324,6 +362,7 @@ async function runVideoPipeline(
           track: input.track,
           keywords: input.keywords,
           targetSeconds: input.targetSeconds ?? 45,
+          referenceScript: userText || undefined,
         });
         script = r.script;
         tracker.addTokens(r.tokens, r.costUsd);
@@ -336,8 +375,14 @@ async function runVideoPipeline(
       // 把 AI 写的完整口播文案打到日志里(用户点详情页能看到 AI 到底写了啥)。
       tracker.progress(`📝 口播文案:${script}`);
     } else {
-      tracker.done('script', '使用用户提供的文案');
-      tracker.progress(`📝 口播文案:${script}`);
+      // strict:严格逐字用用户文案。空文案直接判错(理论上客户端已挡)。
+      if (!script) {
+        const err = '严格模式下视频文案不能为空';
+        tracker.fail('script', err);
+        return { ok: false, error: err };
+      }
+      tracker.done('script', `严格使用用户文案（约 ${script.length} 字 ≈ ${Math.round(script.length / 4.5)}s）`);
+      tracker.progress(`📝 视频文案:${script}`);
     }
 
     // 1. 拆句
@@ -554,24 +599,8 @@ async function runVideoPipeline(
       onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),
     });
 
-    // 计费:模式一(AI 分镜 + 在线素材)成片成功后扣平台基础费(随机 $0.09~$0.18)。
-    // 本地上传素材(localVideos)路径不收平台费,只消耗已实时扣过的 AI token。
-    // 失败不回滚视频(成片已落盘),仅记日志 —— pre-flight 已极大降低这种概率。
-    const isMode1 = !(input.localVideos && input.localVideos.length > 0);
-    if (isMode1) {
-      const charge = await chargeMode1Video(input.targetSeconds ?? 45);
-      if (charge.ok) {
-        tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-        tracker.progress(`💎 平台基础费已扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）`);
-      } else if (charge.reason === 'insufficient') {
-        tracker.progress('⚠️ 成片已完成，但扣费时余额不足（本条平台费未扣，请尽快充值）');
-      } else if (charge.reason === 'no_auth') {
-        tracker.progress('⚠️ 未登录 NoobClaw，本条平台费未扣');
-      } else {
-        tracker.progress('⚠️ 平台费扣费请求失败（本条未扣，不影响成片）');
-      }
-    }
-
+    // 成片成功:开跑前预扣的平台基础费正式计入(不再退回)。
+    refundOnExit = false;
     tracker.finish(outPath);
     return { ok: true, outputPath: outPath };
   } catch (e) {
@@ -579,6 +608,15 @@ async function runVideoPipeline(
     tracker.fail('compose', err.slice(0, 300));
     return { ok: false, error: err.slice(0, 300) };
   } finally {
+    // 成片失败 → 退回开跑前预扣的平台基础费(幂等,按 chargeId;退不掉只记日志不影响清理)。
+    if (refundOnExit && chargeId) {
+      try {
+        const refunded = await refundMode1Video(chargeId);
+        tracker.progress(refunded
+          ? '↩️ 成片失败，已退回预扣的平台基础费'
+          : '⚠️ 成片失败，平台基础费退回请求未成功（稍后可联系客服核对）');
+      } catch { /* 退款失败仅忽略,不影响清理 */ }
+    }
     // 清理临时素材(成片已落到 Documents)
     try { fs.rmSync(assetDir, { recursive: true, force: true }); } catch {}
   }

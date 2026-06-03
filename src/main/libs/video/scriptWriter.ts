@@ -108,6 +108,9 @@ export interface GenerateScriptInput {
   keywords?: string[];
   /** 目标时长(秒)。默认 45s。 */
   targetSeconds?: number;
+  /** 用户提供的参考文案(scriptMode='ai' 时):作为方向/素材参考,AI 据此再创作,
+   *  不逐字照搬。空 / undefined 时按主题从零写。 */
+  referenceScript?: string;
 }
 
 export interface GenerateScriptResult {
@@ -139,9 +142,13 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
     '4. 只输出旁白正文本身,不要加任何标题、序号、分镜标记、emoji、引号包裹。',
   ].filter(Boolean).join('\n');
 
+  // 参考文案:作为方向/素材给 AI 参考,明确告知"可借鉴但不要逐字照搬",
+  // 让 AI 重新组织成更适合口播的版本。
+  const ref = (input.referenceScript || '').trim();
   const user = [
     `主题:${input.topic}`,
     kw ? `关键词:${kw}` : '',
+    ref ? `【用户参考文案,仅供参考方向,请重新创作、不要逐字照搬】:\n${ref.slice(0, 1500)}` : '',
     `请直接输出约 ${targetChars} 字的口播旁白正文。`,
   ].filter(Boolean).join('\n');
 
