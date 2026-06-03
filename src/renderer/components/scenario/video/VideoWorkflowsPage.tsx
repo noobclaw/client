@@ -582,9 +582,12 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         ? <span className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</span>
         : <span className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</span>}
     </Row>
-    <Row label={`🖼️ ${isZh ? '参考图' : 'Images'}`}>{(input.referenceImages || []).length}</Row>
     <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
-      {input.useStockVideo !== false ? (isZh ? '在线视频素材 + 参考图' : 'stock video + images') : (isZh ? '仅图片' : 'images only')}
+      {(input.localVideos && input.localVideos.length > 0)
+        ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+        : input.useStockVideo !== false
+          ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+          : (isZh ? '仅图片' : 'images only')}
     </Row>
   </div>
 );
@@ -1352,6 +1355,12 @@ const BGM_VOLUME_OPTIONS: { v: number; zh: string; en: string }[] = [
 type MaterialSource = 'stock' | 'local';
 const MAX_LOCAL_VIDEOS = 20;
 
+// 模式一(AI 分镜 + 在线素材)生成前的余额门槛:积分 > 此值才放行。
+// 一条 1 分钟成片平台基础费约 $0.09~$0.18(≈9~18 万积分,token_price=1.0 口径),
+// 加上 DeepSeek 写稿(Pro reasoner ×3)的 token,200000 ≈ 1~2 条 buffer,确保不会
+// "生成到一半余额扣穿"。模式二(纯 AI / Seedance)门槛 200 万,本期未开放暂不用。
+const VIDEO_MODE1_MIN_BALANCE = 200000;
+
 const VideoConfigModal: React.FC<{
   isZh: boolean;
   onClose: () => void;
@@ -1468,7 +1477,9 @@ const VideoConfigModal: React.FC<{
     maxClipSeconds,
   });
 
-  const handleSubmit = () => {
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
     const input = buildInput();
     if (isEdit && editTask) {
       // 编辑:保存配置,不立即跑(用户回详情页再点重跑)。
@@ -1484,6 +1495,20 @@ const VideoConfigModal: React.FC<{
     if (videoTaskStore.isAnyRunning()) {
       setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
       return;
+    }
+    // 模式一(AI 分镜 + 在线素材)pre-flight:成片成功后会扣平台基础费 + AI token,
+    // 这里先拉最新余额校验 > 200000 积分才放行,避免"视频已生成才发现没钱"。
+    // 不足时 hasEnoughBalanceForTask 会派发 token-insufficient 事件 → 全局充值弹窗。
+    if (materialSource === 'stock') {
+      setSubmitting(true);
+      try {
+        await noobClawAuth.refreshBalance();
+      } catch { /* 网络失败时退回用本地缓存余额判断,不阻塞 */ }
+      setSubmitting(false);
+      if (!noobClawAuth.hasEnoughBalanceForTask(VIDEO_MODE1_MIN_BALANCE)) {
+        onClose();
+        return;
+      }
     }
     const id = videoTaskStore.createAndRun(input, buildTitle());
     if (!id) {
@@ -1653,18 +1678,28 @@ const VideoConfigModal: React.FC<{
                     <ModeOption
                       active={mode === 'stock'}
                       onClick={() => setMode('stock')}
-                      title={isZh ? 'AI 分镜 + 在线视频' : 'AI scenes + stock video'}
-                      desc={isZh ? '在线视频素材凑画面，便宜快' : 'stock video, cheap & fast'}
+                      title={isZh ? 'AI 分镜 + 在线素材' : 'AI scenes + stock'}
+                      desc={isZh ? '只适合无真人出镜口播类（如知识科普、资讯解说、好物种草）' : 'voice-over only, no real person on camera'}
+                      cost={isZh ? '约 $0.1/分钟起' : '~$0.1/min'}
+                      costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                     />
                     <ModeOption
                       active={mode === 'pure_ai'}
                       disabled
                       onClick={() => {}}
-                      title={isZh ? '纯 AI 原创' : 'Pure AI original'}
-                      desc={isZh ? '画面全 AI 生成（即将推出）' : 'fully AI-generated (coming soon)'}
+                      title={isZh ? '纯 AI 生成' : 'Pure AI'}
+                      desc={isZh ? '适合各个场景，由 Seedance 支持' : 'any scene, powered by Seedance'}
+                      cost={isZh ? '约 $2/分钟起' : '~$2/min'}
                       soon={isZh ? '即将推出' : 'Soon'}
                     />
                   </div>
+                  {mode === 'stock' && (
+                    <div className="mt-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed">
+                      {isZh
+                        ? '💰 计费：每条成片收取随机 $0.09~$0.18 平台基础费，外加 AI 写稿实际消耗的积分（Pro 模型按 3× 计）。生成前会校验余额需 > 200000 积分，余额不足不会开跑。'
+                        : 'Billing: a random $0.09~$0.18 base fee per video, plus actual AI scripting credits (Pro charged at 3×). Requires balance > 200000 credits before starting.'}
+                    </div>
+                  )}
                 </Field>
               )}
 
@@ -1916,9 +1951,12 @@ const VideoConfigModal: React.FC<{
             <button
               type="button"
               onClick={handleSubmit}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600"
+              disabled={submitting}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
             >
-              {isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
+              {submitting
+                ? (isZh ? '校验余额…' : 'Checking balance…')
+                : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🎬 ${isZh ? '开始创作' : 'Start'}`}
             </button>
           )}
         </div>
@@ -1959,7 +1997,11 @@ const ModeOption: React.FC<{
   title: string;
   desc: string;
   soon?: string;
-}> = ({ active, disabled, onClick, title, desc, soon }) => (
+  /** 成本提示行(如「≈$0.1/分钟起」),带高亮底色显示。 */
+  cost?: string;
+  /** 成本行右侧小标签(如「推荐」)。 */
+  costTag?: string;
+}> = ({ active, disabled, onClick, title, desc, soon, cost, costTag }) => (
   <button
     type="button"
     onClick={onClick}
@@ -1973,6 +2015,12 @@ const ModeOption: React.FC<{
       {soon && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">{soon}</span>}
     </div>
     <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{desc}</div>
+    {cost && (
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">{cost}</span>
+        {costTag && <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 font-medium">{costTag}</span>}
+      </div>
+    )}
   </button>
 );
 

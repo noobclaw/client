@@ -20,6 +20,7 @@ import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms } from './scriptWriter';
+import { chargeMode1Video } from './billing';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -506,6 +507,24 @@ export async function generateVideo(
       cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
       onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),
     });
+
+    // 计费:模式一(AI 分镜 + 在线素材)成片成功后扣平台基础费(随机 $0.09~$0.18)。
+    // 本地上传素材(localVideos)路径不收平台费,只消耗已实时扣过的 AI token。
+    // 失败不回滚视频(成片已落盘),仅记日志 —— pre-flight 已极大降低这种概率。
+    const isMode1 = !(input.localVideos && input.localVideos.length > 0);
+    if (isMode1) {
+      const charge = await chargeMode1Video(input.targetSeconds ?? 45);
+      if (charge.ok) {
+        tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+        tracker.progress(`💎 平台基础费已扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）`);
+      } else if (charge.reason === 'insufficient') {
+        tracker.progress('⚠️ 成片已完成，但扣费时余额不足（本条平台费未扣，请尽快充值）');
+      } else if (charge.reason === 'no_auth') {
+        tracker.progress('⚠️ 未登录 NoobClaw，本条平台费未扣');
+      } else {
+        tracker.progress('⚠️ 平台费扣费请求失败（本条未扣，不影响成片）');
+      }
+    }
 
     tracker.finish(outPath);
     return { ok: true, outputPath: outPath };
