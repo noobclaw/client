@@ -1794,20 +1794,6 @@ const VideoConfigModal: React.FC<{
                   />
                 </div>
               </Field>
-
-              {/* 计费 + 免费项说明(一并交代,避免用户以为配音/字幕要钱) */}
-              <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2 text-[11px] text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
-                <div>
-                  {isZh
-                    ? `💰 计费：每条成片收取随机 $0.09~$0.18 平台基础费${materialSource === 'stock' ? '，外加 AI 写稿实际消耗的积分（Pro 模型按 3× 计）' : ''}。生成前会校验余额需 > 200000 积分，余额不足不会开跑。`
-                    : `Billing: a random $0.09~$0.18 base fee per video${materialSource === 'stock' ? ', plus actual AI scripting credits (Pro charged at 3×)' : ''}. Requires balance > 200000 credits before starting.`}
-                </div>
-                <div>
-                  {isZh
-                    ? '🆓 配音用 edge-tts 在线合成、字幕烧录与 ffmpeg 合成均免费，不额外计费。'
-                    : '🆓 Voiceover (edge-tts), subtitle burn-in and ffmpeg compositing are all free.'}
-                </div>
-              </div>
             </>
           )}
 
