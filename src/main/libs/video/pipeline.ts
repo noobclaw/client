@@ -644,7 +644,7 @@ async function runVideoPipeline(
     return { assign: assignOnce, imagePool };
     } // end buildStockPool
 
-    // 4. 组装分镜 + 合成。批量出片时【并发】跑 videoCount 条:同脚本/配音、每条不同画面组合。
+    // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
     //    费用(平台费向上限靠拢 + AI 按条数叠加)开跑前【一次性】整笔预扣,全部失败才整笔退回。
     tracker.start('compose');
 
@@ -725,10 +725,33 @@ async function runVideoPipeline(
       return outPath;
     };
 
-    // 并发跑全部条目(allSettled:个别失败不拖累其余),收集成功的成片路径。
-    const settled = await Promise.allSettled(
-      Array.from({ length: videoCount }, (_, v) => composeOne(v)),
-    );
+    // 并发出片但【封顶 2 条同时合成】:ffmpeg 是重 CPU/内存活,5 条全开会互相抢资源、
+    // 反而整体更慢甚至 OOM。顺序保留 + allSettled 语义(个别失败不拖累其余):用固定
+    // 2 个 worker 轮流领下一条,结果按下标回填,与原 Promise.allSettled 收集行为一致。
+    const runWithLimit = async <T,>(
+      count: number,
+      limit: number,
+      task: (i: number) => Promise<T>,
+    ): Promise<PromiseSettledResult<T>[]> => {
+      const results = new Array<PromiseSettledResult<T>>(count);
+      let next = 0;
+      const worker = async (): Promise<void> => {
+        while (next < count) {
+          const i = next++;
+          try {
+            results[i] = { status: 'fulfilled', value: await task(i) };
+          } catch (e) {
+            results[i] = { status: 'rejected', reason: e };
+          }
+        }
+      };
+      const n = Math.max(1, Math.min(limit, count));
+      await Promise.all(Array.from({ length: n }, () => worker()));
+      return results;
+    };
+
+    // 跑全部条目(并发封顶 2),收集成功的成片路径。
+    const settled = await runWithLimit(videoCount, 2, (v) => composeOne(v));
     const outputPaths: string[] = [];
     let failCount = 0;
     for (const r of settled) {
