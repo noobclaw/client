@@ -61,8 +61,14 @@ export interface VideoCreationInput {
   subtitleFontSize?: number;
   /** 字幕位置。默认 bottom。 */
   subtitlePosition?: SubtitlePosition;
+  /** 字幕文字颜色(#RRGGBB)。空 = 白色。 */
+  subtitleColor?: string;
+  /** 字幕描边颜色(#RRGGBB)。空 = 不描边(半透明黑底盒)。 */
+  subtitleStrokeColor?: string;
   /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
   maxClipSeconds?: number;
+  /** 一次出片数量(1~5)。复用脚本/配音,每条不同画面组合。默认 1。 */
+  videoCount?: number;
 }
 
 export interface VideoCreationProgressStep {

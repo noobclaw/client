@@ -16,6 +16,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { noobClawAuth } from '../../../services/noobclawAuth';
+import { getBackendApiUrl } from '../../../services/endpoints';
 import {
   videoCreationService,
   type VideoCreationInput,
@@ -952,9 +953,13 @@ const VideoTaskDetail: React.FC<{
     const isStock = !(task.input.localVideos && task.input.localVideos.length > 0);
     if (isStock) {
       setChecking(true);
-      try { await noobClawAuth.refreshBalance(); } catch { /* 网络失败退回用本地缓存余额判断,不阻塞 */ }
+      let minBalance = VIDEO_MODE1_MIN_BALANCE;
+      try {
+        await noobClawAuth.refreshBalance();
+        minBalance = await fetchVideoMinBalance();
+      } catch { /* 网络失败退回用本地缓存余额 + 兜底门槛判断,不阻塞 */ }
       setChecking(false);
-      if (!noobClawAuth.hasEnoughBalanceForTask(VIDEO_MODE1_MIN_BALANCE)) return;
+      if (!noobClawAuth.hasEnoughBalanceForTask(minBalance)) return;
     } else if (!noobClawAuth.hasEnoughBalanceForTask()) {
       // 本地上传任务不收平台费,但 AI 写稿仍可能实时扣 token → 保留一次轻量余额校验。
       return;
@@ -1474,6 +1479,26 @@ const SUB_FONTSIZE_OPTIONS: { v: number; zh: string; en: string }[] = [
   { v: 64, zh: '大', en: 'L' },
 ];
 
+// 字幕文字颜色调色板(抄 MoneyPrinterTurbo:几个高对比常用色)。
+const SUB_COLOR_OPTIONS: { v: string; zh: string; en: string }[] = [
+  { v: '#FFFFFF', zh: '白', en: 'White' },
+  { v: '#FFE600', zh: '黄', en: 'Yellow' },
+  { v: '#00E5FF', zh: '青', en: 'Cyan' },
+  { v: '#FF4D4F', zh: '红', en: 'Red' },
+  { v: '#000000', zh: '黑', en: 'Black' },
+];
+
+// 字幕描边颜色(空串 = 不描边,沿用半透明黑底盒)。
+const SUB_STROKE_OPTIONS: { v: string; zh: string; en: string }[] = [
+  { v: '', zh: '无', en: 'None' },
+  { v: '#000000', zh: '黑', en: 'Black' },
+  { v: '#FFFFFF', zh: '白', en: 'White' },
+  { v: '#3A0CA3', zh: '紫', en: 'Purple' },
+];
+
+// 一次出片条数(抄 MPT video_count):1~5 条,复用脚本/配音、每条不同画面组合。
+const VIDEO_COUNT_OPTIONS = [1, 2, 3, 4, 5];
+
 // 换镜节奏:每段素材最长秒数,越小切得越快。
 const PACE_OPTIONS: { v: number; zh: string; en: string }[] = [
   { v: 2.5, zh: '快切', en: 'Fast cuts' },
@@ -1492,11 +1517,32 @@ const BGM_VOLUME_OPTIONS: { v: number; zh: string; en: string }[] = [
 type MaterialSource = 'stock' | 'local';
 const MAX_LOCAL_VIDEOS = 20;
 
-// 模式一(AI 分镜 + 在线素材)生成前的余额门槛:积分 > 此值才放行。
-// 一条 1 分钟成片平台基础费约 $0.09~$0.18(≈9~18 万积分,token_price=1.0 口径),
-// 加上 DeepSeek 写稿(Pro reasoner ×3)的 token,200000 ≈ 1~2 条 buffer,确保不会
-// "生成到一半余额扣穿"。模式二(纯 AI / Seedance)门槛 200 万,本期未开放暂不用。
+// 模式一(AI 分镜 + 在线素材)生成前的余额门槛:积分 > 此值才放行。门槛权威值由服务端
+// 下发(system_config.video_min_balance,admin 后台可调),这里的常量只是【拉不到时的兜底】。
+// 一条成片平台基础费约 $0.09~$0.18(≈9~18 万积分,token_price=1.0 口径),加上 DeepSeek
+// 写稿(Pro reasoner ×3)的 token,200000 ≈ 1~2 条 buffer,确保不会"生成到一半余额扣穿"。
+// 注:一次任务即使批量出多条也只收【一份】平台费,所以门槛不随条数翻倍。
 const VIDEO_MODE1_MIN_BALANCE = 200000;
+
+// 服务端下发的余额门槛缓存(60s)。/api/video/config 需登录态;拉不到 → 用上面的兜底常量。
+let _minBalanceCache: { value: number; at: number } | null = null;
+async function fetchVideoMinBalance(): Promise<number> {
+  if (_minBalanceCache && Date.now() - _minBalanceCache.at < 60_000) return _minBalanceCache.value;
+  try {
+    const res = await fetch(`${getBackendApiUrl()}/api/video/config`, {
+      headers: noobClawAuth.getAuthHeaders(),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const mb = Number(data?.config?.minBalance);
+      if (Number.isFinite(mb) && mb > 0) {
+        _minBalanceCache = { value: mb, at: Date.now() };
+        return mb;
+      }
+    }
+  } catch { /* 网络/未登录 → 兜底 */ }
+  return VIDEO_MODE1_MIN_BALANCE;
+}
 
 const VideoConfigModal: React.FC<{
   isZh: boolean;
@@ -1541,7 +1587,10 @@ const VideoConfigModal: React.FC<{
   // 步骤 3:音频(音色 / 语速 / 背景音乐 / BGM 音量)
   const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
-  const [bgmPath, setBgmPath] = useState<string>(editTask?.input.bgmPath || '');
+  // BGM 默认选中第 1 首内置曲目(新建任务);编辑老任务时沿用其已存值(空也保留空)。
+  const [bgmPath, setBgmPath] = useState<string>(
+    editTask ? (editTask.input.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`,
+  );
   const [bgmVolume, setBgmVolume] = useState<number>(editTask?.input.bgmVolume ?? 0.18);
   // 云端曲库清单(从 CDN 拉;失败/未上线时为空,只显示本地 8 首)。
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
@@ -1573,6 +1622,10 @@ const VideoConfigModal: React.FC<{
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.subtitleEnabled !== false);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
+  const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
+  const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(editTask?.input.subtitleStrokeColor ?? '');
+  // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。
+  const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 1);
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
@@ -1705,7 +1758,10 @@ const VideoConfigModal: React.FC<{
     subtitleEnabled,
     subtitleFontSize,
     subtitlePosition,
+    subtitleColor: subtitleColor || undefined,
+    subtitleStrokeColor: subtitleStrokeColor || undefined,
     maxClipSeconds,
+    videoCount,
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -1732,11 +1788,14 @@ const VideoConfigModal: React.FC<{
     // 不足时 hasEnoughBalanceForTask 会派发 token-insufficient 事件 → 全局充值弹窗。
     if (materialSource === 'stock') {
       setSubmitting(true);
+      let minBalance = VIDEO_MODE1_MIN_BALANCE;
       try {
         await noobClawAuth.refreshBalance();
-      } catch { /* 网络失败时退回用本地缓存余额判断,不阻塞 */ }
+        minBalance = await fetchVideoMinBalance();
+      } catch { /* 网络失败时退回用本地缓存余额 + 兜底门槛判断,不阻塞 */ }
       setSubmitting(false);
-      if (!noobClawAuth.hasEnoughBalanceForTask(VIDEO_MODE1_MIN_BALANCE)) {
+      // 一次任务即使批量出多条也只收【一份】平台费,门槛不随条数翻倍。阈值由服务端下发。
+      if (!noobClawAuth.hasEnoughBalanceForTask(minBalance)) {
         onClose();
         return;
       }
@@ -2096,36 +2155,83 @@ const VideoConfigModal: React.FC<{
                   </button>
                 </div>
 
-                {/* 曲库:下拉选具体曲目(本地内置 + 云端)。value 直接是 builtin:/remote: token。 */}
+                {/* 曲库:本地内置逐首列出(每首右侧一个全色试听按钮,无需先选中即可试听);
+                    云端曲目放下拉(可能很多)。value 都是 builtin:/remote: token。 */}
                 {bgmIsLibrary && (
-                  <>
-                    <select
-                      value={bgmPath}
-                      onChange={(e) => setBgmPath(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-                    >
-                      {!bgmInLibraryList && (
-                        <option value={bgmPath}>🎵 {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
-                      )}
-                      <optgroup label={isZh ? '本地内置' : 'Built-in'}>
-                        {BUILTIN_BGM.map((b) => (
-                          <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
-                        ))}
-                      </optgroup>
-                      {remoteBgm.length > 0 && (
-                        <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads on first use)'}>
+                  <div className="space-y-1.5">
+                    {BUILTIN_BGM.map((b) => {
+                      const token = `${BUILTIN_BGM_PREFIX}${b.id}`;
+                      const selected = bgmPath === token;
+                      const playing = previewToken === token;
+                      return (
+                        <div
+                          key={b.id}
+                          className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
+                            selected ? 'border-rose-500 bg-rose-500/10' : 'border-gray-200 dark:border-gray-700'
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setBgmPath(token)}
+                            className={`flex-1 text-left text-xs ${
+                              selected ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-gray-600 dark:text-gray-300'
+                            }`}
+                          >
+                            🎵 {isZh ? b.zh : b.en}{selected ? (isZh ? ' · 已选' : ' · selected') : ''}
+                          </button>
+                          {/* 全色试听按钮(显眼),点这首即试听,不改变已选曲目 */}
+                          <button
+                            type="button"
+                            onClick={() => togglePreview(token)}
+                            disabled={previewLoading && !playing}
+                            className={`shrink-0 px-3 py-1 rounded-md text-xs font-medium text-white transition-colors disabled:opacity-60 ${
+                              playing ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
+                            }`}
+                          >
+                            {playing ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
+                          </button>
+                        </div>
+                      );
+                    })}
+
+                    {/* 云端曲库:下拉选 + 全色试听 */}
+                    {remoteBgm.length > 0 && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <select
+                          value={bgmIsRemote ? bgmPath : ''}
+                          onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
+                          className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                        >
+                          <option value="">{isZh ? '☁️ 云端曲库（首次需下载）' : '☁️ Cloud (downloads on first use)'}</option>
+                          {!bgmInLibraryList && bgmIsRemote && (
+                            <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                          )}
                           {remoteBgm.map((b) => (
                             <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
                           ))}
-                        </optgroup>
-                      )}
-                    </select>
+                        </select>
+                        {bgmIsRemote && (
+                          <button
+                            type="button"
+                            onClick={() => togglePreview(bgmPath)}
+                            disabled={previewLoading && previewToken !== bgmPath}
+                            className={`shrink-0 px-3 py-2 rounded-md text-xs font-medium text-white transition-colors disabled:opacity-60 ${
+                              previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
+                            }`}
+                          >
+                            {previewLoading && previewToken !== bgmPath
+                              ? (isZh ? '⏳ 下载中' : '⏳')
+                              : previewToken === bgmPath ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {bgmIsRemote && (
                       <div className="mt-1 text-[11px] text-gray-400">
                         {isZh ? '☁️ 云端曲目首次合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first compose, then cached.'}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
 
                 {/* 用户上传:显示文件名 + 更换/移除 */}
@@ -2137,20 +2243,18 @@ const VideoConfigModal: React.FC<{
                     <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                   </div>
                 )}
-                {/* 试听:本地/上传直接放;云端首次点会下载并缓存(随后出片复用不再下载)。 */}
-                {bgmPath && (
+                {/* 上传曲目的试听(内置/云端各自在列表里已有试听按钮)。 */}
+                {bgmIsUpload && (
                   <button
                     type="button"
                     onClick={() => togglePreview(bgmPath)}
                     disabled={previewLoading}
-                    className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs border transition-colors disabled:opacity-60 ${
-                      previewToken === bgmPath
-                        ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                        : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                    className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 ${
+                      previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
                     }`}
                   >
                     {previewLoading && previewToken !== bgmPath
-                      ? (isZh ? (bgmIsRemote ? '⏳ 下载中…' : '⏳ 加载中…') : (bgmIsRemote ? 'Downloading…' : 'Loading…'))
+                      ? (isZh ? '⏳ 加载中…' : 'Loading…')
                       : previewToken === bgmPath
                         ? (isZh ? '⏹ 停止试听' : '⏹ Stop')
                         : (isZh ? '▶ 试听' : '▶ Preview')}
@@ -2195,45 +2299,124 @@ const VideoConfigModal: React.FC<{
                   </button>
                 </div>
                 {subtitleEnabled && (
-                  <div className="flex gap-2">
-                    <div className="flex gap-1">
-                      {SUB_FONTSIZE_OPTIONS.map((f) => (
-                        <button
-                          key={f.v}
-                          type="button"
-                          onClick={() => setSubtitleFontSize(f.v)}
-                          className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                            subtitleFontSize === f.v
-                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                          }`}
-                        >
-                          {isZh ? f.zh : f.en}
-                        </button>
-                      ))}
+                  <div className="space-y-2">
+                    <div className="flex gap-2">
+                      <div className="flex gap-1">
+                        {SUB_FONTSIZE_OPTIONS.map((f) => (
+                          <button
+                            key={f.v}
+                            type="button"
+                            onClick={() => setSubtitleFontSize(f.v)}
+                            className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                              subtitleFontSize === f.v
+                                ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                            }`}
+                          >
+                            {isZh ? f.zh : f.en}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1">
+                        {SUB_POSITION_OPTIONS.map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setSubtitlePosition(s.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
+                              subtitlePosition === s.id
+                                ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                                : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                            }`}
+                          >
+                            {isZh ? s.zh : s.en}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex gap-1">
-                      {SUB_POSITION_OPTIONS.map((s) => (
-                        <button
-                          key={s.id}
-                          type="button"
-                          onClick={() => setSubtitlePosition(s.id)}
-                          className={`px-3 py-1.5 rounded-lg text-xs border transition-colors ${
-                            subtitlePosition === s.id
-                              ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                          }`}
-                        >
-                          {isZh ? s.zh : s.en}
-                        </button>
-                      ))}
+
+                    {/* 文字颜色调色板 */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '颜色' : 'Color'}</span>
+                      <div className="flex gap-1.5">
+                        {SUB_COLOR_OPTIONS.map((c) => (
+                          <button
+                            key={c.v}
+                            type="button"
+                            title={isZh ? c.zh : c.en}
+                            onClick={() => setSubtitleColor(c.v)}
+                            className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                              subtitleColor === c.v ? 'border-rose-500 scale-110' : 'border-gray-300 dark:border-gray-600'
+                            }`}
+                            style={{ backgroundColor: c.v }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 描边颜色调色板("无" = 用半透明黑底盒) */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '描边' : 'Stroke'}</span>
+                      <div className="flex gap-1.5">
+                        {SUB_STROKE_OPTIONS.map((c) => {
+                          const active = subtitleStrokeColor === c.v;
+                          if (c.v === '') {
+                            return (
+                              <button
+                                key="none"
+                                type="button"
+                                onClick={() => setSubtitleStrokeColor('')}
+                                className={`px-2 h-6 rounded-full text-[11px] border-2 transition-colors ${
+                                  active
+                                    ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400'
+                                    : 'border-gray-300 dark:border-gray-600 text-gray-500'
+                                }`}
+                              >
+                                {isZh ? '无' : 'None'}
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              key={c.v}
+                              type="button"
+                              title={isZh ? c.zh : c.en}
+                              onClick={() => setSubtitleStrokeColor(c.v)}
+                              className={`w-6 h-6 rounded-full border-2 transition-transform ${
+                                active ? 'border-rose-500 scale-110' : 'border-gray-300 dark:border-gray-600'
+                              }`}
+                              style={{ backgroundColor: c.v }}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
               </Field>
 
+              {/* 生成数量(1~5):复用脚本/配音,每条不同画面组合,平台费按条数计。 */}
+              <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh ? '复用同一脚本与配音，每条画面组合不同；平台费按条数计' : 'reuse script & voice, vary clips; fee per video'}>
+                <div className="flex gap-2">
+                  {VIDEO_COUNT_OPTIONS.map((n) => (
+                    <button
+                      key={n}
+                      type="button"
+                      onClick={() => setVideoCount(n)}
+                      className={`flex-1 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
+                        videoCount === n
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
               <Field label={isZh ? '出片后' : 'After generation'}>
-                <div className="space-y-2">
+                <div className="grid grid-cols-2 gap-2">
                   <RadioCard
                     active={outputMode === 'local'}
                     onClick={() => setOutputMode('local')}
@@ -2264,20 +2447,6 @@ const VideoConfigModal: React.FC<{
                   </div>
                 </Field>
               )}
-
-              <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 text-[11px] text-gray-500 dark:text-gray-400 space-y-1">
-                <div>🎯 {isZh ? '赛道' : 'Track'}：{trackLabel || '-'}</div>
-                <div>📝 {isZh ? '文案' : 'Script'}：{scriptMode === 'strict'
-                  ? (isZh ? `严格逐字 · ${scriptLen} 字 ≈ ${strictEstSec}s` : `verbatim · ${scriptLen} ch ≈ ${strictEstSec}s`)
-                  : (scriptLen === 0
-                      ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`)
-                      : (isZh ? `AI 写稿 · ${targetSeconds}s（参考 ${scriptLen} 字）` : `AI · ${targetSeconds}s (ref ${scriptLen} ch)`))}</div>
-                <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local'
-                  ? (isZh ? `本地素材 ${localVideos.length} 个（全部拼接）` : `${localVideos.length} local clips`)
-                  : (isZh ? '在线素材库' : 'online stock')}</div>
-                <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmDisplayName(bgmPath, isZh, remoteBgm)}</div>
-                <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
-              </div>
 
               {submitError && (
                 <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500">{submitError}</div>

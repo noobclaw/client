@@ -421,7 +421,10 @@ class VideoTaskStore {
           if (res.ok && res.outputPath) {
             r.status = 'done';
             r.outputPath = res.outputPath;
-            this.appendLog(r, '✅ 生成完成');
+            // 批量出片(videoCount>1):全部成片都落在同一输出目录,点「打开文件夹」可见;
+            // 这里据快照里的条数提示一下,outputPath 仍指向首条(详情页快捷打开用)。
+            const n = Math.max(1, Math.min(5, Math.round(r.input.videoCount ?? 1)));
+            this.appendLog(r, n > 1 ? `✅ 生成完成(${n} 条已输出到同一文件夹)` : '✅ 生成完成');
           } else {
             r.status = 'error';
             r.error = res.error || '生成失败';

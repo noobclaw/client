@@ -27,6 +27,14 @@ const FPS = 30;
 /** 每段素材最长秒数(换镜节奏);上层不传时的默认值。 */
 const DEFAULT_MAX_CLIP_SEC = 4;
 
+/**
+ * 成片首尾留白(秒):开头停一拍再起旁白、结尾留一拍再收,避免「一上来就开口 / 最后一字
+ * 戛然而止」的生硬感(尤其严格逐字模式下配音正好卡满全片时)。画面用 tpad 冻结首/尾帧
+ * 撑住,音频用 adelay 延后起播 + apad 补尾;开了 BGM 时音乐会自然盖住这两段留白。
+ */
+const DEFAULT_LEAD_IN_SEC = 0.4;
+const DEFAULT_TAIL_OUT_SEC = 1.2;
+
 /** 内置 CJK 字体文件名(随包 bundle 在 resources/fonts/ 下)。 */
 const BUNDLED_FONT_FILE = 'SourceHanSansSC-Bold.otf';
 
@@ -156,6 +164,20 @@ export interface SubtitleStyle {
   fontSize: number;
   /** 位置。 */
   position: 'top' | 'center' | 'bottom';
+  /** 字幕文字颜色(#RRGGBB 或颜色名)。空 = 白色。 */
+  color?: string;
+  /** 描边颜色(#RRGGBB 或颜色名)。空 = 不描边(沿用半透明黑底盒)。 */
+  strokeColor?: string;
+}
+
+/** 把 #RRGGBB / RRGGBB / 颜色名归一成 ffmpeg drawtext 认的写法(#RRGGBB → 0xRRGGBB)。 */
+function normalizeColor(c: string | undefined, fallback: string): string {
+  const v = (c || '').trim();
+  if (!v) return fallback;
+  const hex = v.replace(/^#/, '');
+  if (/^[0-9a-fA-F]{6}$/.test(hex)) return `0x${hex.toUpperCase()}`;
+  // 已经是颜色名或 0x 前缀,原样用
+  return v;
 }
 
 export interface SceneSpec {
@@ -378,21 +400,27 @@ function buildDrawtextChain(
   H: number,
 ): string[] {
   const yExpr = subtitleY(style.position, H);
+  const fontColor = normalizeColor(style.color, 'white');
+  // 选了描边色 → MPT 风格描边(borderw 随字号放大),不再用半透明黑底盒;
+  // 没选 → 沿用原来的半透明黑底盒(可读性兜底)。
+  const stroke = (style.strokeColor || '').trim();
+  const borderW = Math.max(2, Math.round(style.fontSize * 0.06));
   const filters: string[] = [];
   cues.forEach((cue, j) => {
     const wrapped = wrapSubtitle(cue.text);
     if (!wrapped) return;
     const txtName = `cue_${String(j).padStart(4, '0')}.txt`;
     fs.writeFileSync(path.join(workDir, txtName), wrapped, 'utf8');
+    const styleParts = stroke
+      ? [`bordercolor=${normalizeColor(stroke, 'black')}`, `borderw=${borderW}`]
+      : ['box=1', 'boxcolor=black@0.45', 'boxborderw=24'];
     const parts = [
       fontRel ? `fontfile=${fontRel}` : '',
       `textfile=${txtName}`,
-      'fontcolor=white',
+      `fontcolor=${fontColor}`,
       `fontsize=${Math.max(16, Math.round(style.fontSize))}`,
       'line_spacing=14',
-      'box=1',
-      'boxcolor=black@0.45',
-      'boxborderw=24',
+      ...styleParts,
       'x=(w-text_w)/2',
       `y=${yExpr}`,
       `enable='between(t,${cue.start.toFixed(2)},${cue.end.toFixed(2)})'`,
@@ -423,6 +451,10 @@ export interface ComposeOptions {
    * 为空/未传 → 自动退回按各镜时长估算的 cue。
    */
   cues?: SubtitleCue[];
+  /** 片头留白(秒):旁白延后起播,画面冻结首帧撑住。默认 0.4,传 0 关闭。 */
+  leadInSeconds?: number;
+  /** 片尾留白(秒):旁白结束后再留一拍,画面冻结尾帧撑住。默认 1.2,传 0 关闭。 */
+  tailOutSeconds?: number;
 }
 
 /**
@@ -502,24 +534,45 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
-    // 3. 字幕 cue(开了字幕才算):优先用上层传入的精确 cue,空则按各镜时长估算
+    // 首尾留白:画面冻结首/尾帧、音频延后起播 + 补尾,避免开口太突/收尾太硬。
+    const leadSec = opts.leadInSeconds !== undefined && opts.leadInSeconds >= 0 ? opts.leadInSeconds : DEFAULT_LEAD_IN_SEC;
+    const tailSec = opts.tailOutSeconds !== undefined && opts.tailOutSeconds >= 0 ? opts.tailOutSeconds : DEFAULT_TAIL_OUT_SEC;
+    const hasPad = leadSec > 0 || tailSec > 0;
+
+    // 3. 字幕 cue(开了字幕才算):优先用上层传入的精确 cue,空则按各镜时长估算。
+    //    有片头留白时把所有 cue 整体后移 leadSec,才能跟延后起播的旁白对齐。
     let drawtext: string[] = [];
     if (style.enabled) {
-      const cues = (opts.cues && opts.cues.length > 0) ? opts.cues : deriveCuesFromScenes(scenes);
+      const rawCues = (opts.cues && opts.cues.length > 0) ? opts.cues : deriveCuesFromScenes(scenes);
+      const cues = leadSec > 0
+        ? rawCues.map((c) => ({ ...c, start: c.start + leadSec, end: c.end + leadSec }))
+        : rawCues;
       drawtext = buildDrawtextChain(workDir, refineCues(cues), style, fontRel, H);
     }
 
-    // 4. 烧字幕(或直接 mux)→ merged
+    // 4. 烧字幕 / 加留白(或直接 mux)→ merged
     const wantBgm = !!(opts.bgmPath && fs.existsSync(opts.bgmPath));
     const mergedPath = wantBgm ? path.join(workDir, 'merged.mp4') : outputPath;
 
-    if (drawtext.length > 0) {
+    // 画面滤镜链:留白(tpad 冻结首/尾帧)→ 字幕 → 像素格式。
+    const vPad = hasPad
+      ? `tpad=start_duration=${leadSec.toFixed(2)}:start_mode=clone:stop_duration=${tailSec.toFixed(2)}:stop_mode=clone`
+      : '';
+    const vParts = [vPad, ...drawtext, 'format=yuv420p'].filter(Boolean);
+    const needVideoFilter = vPad !== '' || drawtext.length > 0;
+    // 音频:adelay 把旁白整体后移 leadSec,apad 无限补尾;配合 -shortest 由画面总时长(已含
+    // 首尾留白)裁齐 → 实际尾部留白 = 全片时长 - 旁白结束点。
+    const aFilter = hasPad ? `[1:a]adelay=${Math.round(leadSec * 1000)}:all=1,apad[a]` : '';
+
+    if (needVideoFilter) {
+      const fcParts = [`[0:v]${vParts.join(',')}[v]`];
+      if (aFilter) fcParts.push(aFilter);
       const r = await runFfmpeg([
         '-y',
         '-i', masterBg,
         '-i', masterAudio,
-        '-filter_complex', `[0:v]${drawtext.join(',')},format=yuv420p[v]`,
-        '-map', '[v]', '-map', '1:a',
+        '-filter_complex', fcParts.join(';'),
+        '-map', '[v]', '-map', aFilter ? '[a]' : '1:a',
         '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
         '-r', String(FPS), '-pix_fmt', 'yuv420p',
         '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
@@ -527,10 +580,10 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
         mergedPath,
       ], { timeoutMs: 300_000, cwd: workDir });
       if (!r.ok || !fs.existsSync(mergedPath)) {
-        throw new Error(`burn subtitle failed: ${r.stderr.slice(-400)}`);
+        throw new Error(`burn/pad failed: ${r.stderr.slice(-400)}`);
       }
     } else {
-      // 不烧字幕:画面 copy,只 mux 音频
+      // 无字幕、无留白:画面 copy,只 mux 音频(最快路径)
       const r = await runFfmpeg([
         '-y',
         '-i', masterBg,

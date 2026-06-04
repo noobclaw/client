@@ -93,8 +93,17 @@ export interface VideoCreationInput {
   subtitleFontSize?: number;
   /** 字幕位置。默认 bottom。 */
   subtitlePosition?: SubtitlePosition;
+  /** 字幕文字颜色(#RRGGBB)。空 = 白色。 */
+  subtitleColor?: string;
+  /** 字幕描边颜色(#RRGGBB)。空 = 不描边(用半透明黑底盒)。 */
+  subtitleStrokeColor?: string;
   /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
   maxClipSeconds?: number;
+  /**
+   * 一次出片数量(1~5)。抄 MoneyPrinterTurbo:复用同一份脚本 + 配音,
+   * 只对每条做不同的素材片段组合,平台费按条数 ×N。默认 1。
+   */
+  videoCount?: number;
 }
 
 export interface ProgressStep {
@@ -120,7 +129,10 @@ export interface VideoCreationProgress {
 
 export interface VideoCreationResult {
   ok: boolean;
+  /** 首条成片路径(兼容老调用 / 单条场景)。 */
   outputPath?: string;
+  /** 批量出片时的全部成片路径(videoCount>1 时长度>1)。 */
+  outputPaths?: string[];
   error?: string;
 }
 
@@ -256,10 +268,12 @@ function outputDir(): string {
   return dir;
 }
 
-function outputFileName(): string {
+function outputFileName(index = 0): string {
   const t = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `video_${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}_${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}.mp4`;
+  // 批量出片在同一秒内循环写多条 → 时间戳会撞;index>0 时加序号后缀避免覆盖。
+  const suffix = index > 0 ? `_${index + 1}` : '';
+  return `video_${t.getFullYear()}${pad(t.getMonth() + 1)}${pad(t.getDate())}_${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}${suffix}.mp4`;
 }
 
 /** 主入口:跑完整流水线,返回成片结果。 */
@@ -322,31 +336,19 @@ async function runVideoPipeline(
     return { ok: false, error: err };
   }
 
-  // 计费:模式一(AI 分镜 + 在线素材)在【开跑前】预扣平台基础费(随机 $0.09~$0.18)。
+  // 计费:模式一(AI 分镜 + 在线素材)预扣平台基础费(随机 $0.09~$0.18)。
   // 为什么预扣而不是成片后扣:并发任务可能在本任务跑的过程里把余额扣光,等成片做完
   // 再扣就成了「视频做出来了、钱却扣不到」= 我们亏。预扣 = 原子锁住这笔费用;成片失败
   // 再按 chargeId 幂等退回(refundMode1Video)。
   // 判定口径 = 是否用到在线素材(useStockVideo!==false):只要走在线素材库就收平台费,
   // 哪怕用户同时上传了自己的本地视频混拼也照收(在线搜索/下载 + AI 搜索词都是真实成本);
   // 仅当纯本地素材(useStockVideo===false,老任务路径)才不收平台费,只耗已实时扣过的 AI token。
+  // 批量出片(videoCount>1):脚本/配音/素材池复用一次,N 条画面并发合成;平台费一次任务
+  // 只收【一份】(不随条数翻倍),在下面 compose 阶段开跑前一次性预扣。chargeId/refundOnExit
+  // 跟踪这一份在途预扣,供「全部条目失败 / 异常」时 finally 兜底退回。
   const isMode1 = input.useStockVideo !== false;
   let chargeId: string | undefined;
   let refundOnExit = false;
-  if (isMode1) {
-    const charge = await chargeMode1Video(input.targetSeconds ?? 45);
-    if (!charge.ok) {
-      let err: string;
-      if (charge.reason === 'insufficient') err = '余额不足,无法生成(模式一需先预扣平台基础费,请充值后重试)';
-      else if (charge.reason === 'no_auth') err = '未登录 NoobClaw,无法生成';
-      else err = '平台基础费预扣失败,请稍后重试';
-      tracker.fail('script', err);
-      return { ok: false, error: err };
-    }
-    chargeId = charge.chargeId;
-    refundOnExit = true;
-    tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-    tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）,成片失败将自动退回`);
-  }
 
   // 临时素材目录(配音 + 下载的素材图)
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
@@ -453,31 +455,53 @@ async function runVideoPipeline(
     // 仅当明确关闭在线(纯本地,老任务路径)才完全离线循环拼本地素材。
     const usesStock = input.useStockVideo !== false;
     const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
+    // 一次出片条数(1~5)。抄 MPT:脚本/配音/素材池只做一次,每条只换片段组合。
+    const videoCount = Math.max(1, Math.min(5, Math.round(input.videoCount ?? 1)));
 
-    let sceneClips: string[][] = [];
-    let imagePool: string[] = [];
+    // Fisher–Yates 洗牌(不改原数组),用于批量出片时让每条的片段组合各不相同。
+    const shuffled = <T,>(arr: T[]): T[] => {
+      const a = [...arr];
+      for (let i = a.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [a[i], a[j]] = [a[j], a[i]];
+      }
+      return a;
+    };
+
+    // 画面分配器:给定第几条视频(0-based),产出该条的 { sceneClips, imagePool }。
+    // 第 0 条按原顺序;后续条把素材池打乱再分配 → 同脚本/配音、不同画面。
+    let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[] };
 
     if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
       tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);
-      let localCursor = 0;
-      sceneClips = sentences.map((_, i) => {
-        const dur = Math.max(1.2, audios[i].durationSec);
-        const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
-        const clips: string[] = [];
-        for (let k = 0; k < want; k++) clips.push(localVideos[localCursor++ % localVideos.length]);
-        return clips;
-      });
-      const totalClipsUsed = sceneClips.reduce((n, c) => n + c.length, 0);
-      tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个 → 拼成 ${totalClipsUsed} 段,覆盖 ${sentences.length} 镜)`);
+      assignVisuals = (videoIdx: number) => {
+        // 每条错开起始游标 → 同样的本地素材排出不同组合。
+        let localCursor = videoIdx;
+        const sceneClips = sentences.map((_, i) => {
+          const dur = Math.max(1.2, audios[i].durationSec);
+          const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+          const clips: string[] = [];
+          for (let k = 0; k < want; k++) clips.push(localVideos[localCursor++ % localVideos.length]);
+          return clips;
+        });
+        return { sceneClips, imagePool: [] };
+      };
+      tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`);
     } else {
       // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满)。
-      sceneClips = await prepareStockVisuals();
+      // 素材池只建一次,assign(shuffle) 供每条按需取片段。
+      const pool = await buildStockPool();
+      assignVisuals = (videoIdx: number) => ({
+        sceneClips: pool.assign(videoIdx > 0),
+        imagePool: pool.imagePool,
+      });
     }
 
-    // 在线素材库分支(无本地上传时):AI 搜索词 → 逐词拉视频 → 图片补位。
-    // 抽成闭包是为了让本地上传时整段跳过(省时间 + 省 DeepSeek token)。
-    async function prepareStockVisuals(): Promise<string[][]> {
+    // 在线素材库分支:AI 搜索词 → 逐词拉视频 → 图片补位 → 返回 { assign, imagePool }。
+    // 抽成闭包是为了让本地上传时整段跳过(省时间 + 省 DeepSeek token);
+    // assign(shuffle) 可被批量出片重复调用,每次用 fresh usedVideo 集分配。
+    async function buildStockPool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[] }> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
     const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt);
@@ -521,25 +545,10 @@ async function runVideoPipeline(
       });
     }
 
-    // 建「词 → 该词的视频队列」+ 全局视频列表;分配时各镜按自己的词取,用尽再借全局。
+    // 建「词 → 该词的视频队列」(持久池)+ 全局视频列表;分配时各镜按自己的词取,用尽再借全局。
     const poolByTerm = new Map<string, StockVideoAsset[]>();
     for (const g of videoByTerm) poolByTerm.set(g.term.toLowerCase(), [...g.assets]);
     const allVideos: StockVideoAsset[] = videoByTerm.flatMap((g) => g.assets);
-    const usedVideo = new Set<string>();
-
-    // 取一段【还没被任何镜用过】的素材:先本镜搜索词命中,再借全局。都没有返 undefined。
-    const takeFreshClip = (i: number): string | undefined => {
-      for (const term of perSceneTerms[i] || []) {
-        const q = poolByTerm.get(term);
-        if (q) {
-          const v = q.find((a) => !usedVideo.has(a.path));
-          if (v) { usedVideo.add(v.path); return v.path; }
-        }
-      }
-      const any = allVideos.find((a) => !usedVideo.has(a.path));
-      if (any) { usedVideo.add(any.path); return any.path; }
-      return undefined;
-    };
 
     // 用户本地素材混拼:把本地片段【均匀铺】到各分镜(每段大致出现一次),作为该镜
     // 的首选片段,其余位置再用在线空镜补满 → 本地 + 在线混着拼。无本地素材时此 map 为空,
@@ -555,29 +564,55 @@ async function runVideoPipeline(
       tracker.progress(`混入本地视频素材 ${localVideos.length} 个(优先露出,在线空镜补满)`);
     }
 
-    // 该镜要几段素材 = ceil(时长 / maxClip),换镜节奏越快段数越多(封顶 8)。
-    // 先放用户本地素材(优先露出),再尽量取新鲜在线素材补满;都没有则上层退图片/文字卡。
-    const pickClipsForScene = (i: number): string[] => {
-      const dur = Math.max(1.2, audios[i].durationSec);
-      const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
-      const clips: string[] = [];
-      for (const lc of localForScene.get(i) || []) {
-        if (clips.length >= want) break;
-        clips.push(lc);
-      }
-      while (clips.length < want) {
-        const fresh = takeFreshClip(i);
-        if (fresh) clips.push(fresh);
-        else break;
-      }
-      return clips; // 可能为空(无任何素材)→ 上层退图片/文字卡
+    // 单条视频的片段分配:每次用 fresh usedVideo 集 + (批量时)打乱后的素材队列,
+    // 让批量出片的每条画面组合都不同。同一份持久池,各条互不影响。
+    const assignOnce = (shuffle: boolean): string[][] => {
+      const usedVideo = new Set<string>();
+      const workByTerm = new Map<string, StockVideoAsset[]>();
+      for (const [k, v] of poolByTerm) workByTerm.set(k, shuffle ? shuffled(v) : [...v]);
+      const workAll = shuffle ? shuffled(allVideos) : [...allVideos];
+
+      // 取一段【本条还没用过】的素材:先本镜搜索词命中,再借全局。都没有返 undefined。
+      const takeFreshClip = (i: number): string | undefined => {
+        for (const term of perSceneTerms[i] || []) {
+          const q = workByTerm.get(term);
+          if (q) {
+            const v = q.find((a) => !usedVideo.has(a.path));
+            if (v) { usedVideo.add(v.path); return v.path; }
+          }
+        }
+        const any = workAll.find((a) => !usedVideo.has(a.path));
+        if (any) { usedVideo.add(any.path); return any.path; }
+        return undefined;
+      };
+
+      // 该镜要几段素材 = ceil(时长 / maxClip),换镜节奏越快段数越多(封顶 8)。
+      // 先放用户本地素材(优先露出),再尽量取新鲜在线素材补满;都没有则上层退图片/文字卡。
+      const pickClipsForScene = (i: number): string[] => {
+        const dur = Math.max(1.2, audios[i].durationSec);
+        const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+        const clips: string[] = [];
+        for (const lc of localForScene.get(i) || []) {
+          if (clips.length >= want) break;
+          clips.push(lc);
+        }
+        while (clips.length < want) {
+          const fresh = takeFreshClip(i);
+          if (fresh) clips.push(fresh);
+          else break;
+        }
+        return clips; // 可能为空(无任何素材)→ 上层退图片/文字卡
+      };
+
+      return sentences.map((_, i) => pickClipsForScene(i));
     };
 
-    const stockSceneClips: string[][] = sentences.map((_, i) => pickClipsForScene(i));
-    const scenesWithoutVideo = stockSceneClips.filter((c) => c.length === 0).length;
-    const totalClipsUsed = stockSceneClips.reduce((n, c) => n + c.length, 0);
+    // 用第一条(不打乱)的分配统计覆盖率 + 决定补位图片数量(各条覆盖率相近,算一次即可)。
+    const probe = assignOnce(false);
+    const scenesWithoutVideo = probe.filter((c) => c.length === 0).length;
+    const totalClipsUsed = probe.reduce((n, c) => n + c.length, 0);
     const localUsed = localVideos.length > 0
-      ? stockSceneClips.reduce((n, c) => n + c.filter((p) => localVideos.includes(p)).length, 0)
+      ? probe.reduce((n, c) => n + c.filter((p) => localVideos.includes(p)).length, 0)
       : 0;
 
     // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
@@ -593,31 +628,19 @@ async function runVideoPipeline(
         minImageEdge: vcfg.minImageEdge,
       });
     }
-    imagePool = [...refImages, ...stockImages];
+    const imagePool = [...refImages, ...stockImages];
 
     tracker.done('visuals',
       (totalClipsUsed > 0 || imagePool.length > 0)
-        ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位)`
+        ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`
         : '无可用素材,使用文字卡');
 
-    return stockSceneClips;
-    } // end prepareStockVisuals
+    return { assign: assignOnce, imagePool };
+    } // end buildStockPool
 
-    // 4. 组装分镜 + 合成。每镜先用分配到的【多段】视频,没有则轮转图片,再退文字卡
+    // 4. 组装分镜 + 合成。批量出片时【并发】跑 videoCount 条:同脚本/配音、每条不同画面组合。
+    //    平台基础费一次任务只收【一份】(不随条数翻倍),开跑前一次性预扣,全部失败才退回。
     tracker.start('compose');
-    let imgCursor = 0;
-    const scenes: SceneSpec[] = sentences.map((sentence, i) => {
-      const clips = sceneClips[i];
-      const hasVideo = clips.length > 0;
-      const image = !hasVideo && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
-      return {
-        clips: hasVideo ? clips : undefined,
-        imagePath: image,
-        audioPath: audios[i].audioPath,
-        durationSec: audios[i].durationSec,
-        subtitle: sentence,
-      };
-    });
 
     const { width, height } = aspectToSize(input.aspect);
     const subtitleEnabled = input.subtitleEnabled !== false;
@@ -625,11 +648,13 @@ async function runVideoPipeline(
       enabled: subtitleEnabled,
       fontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 52,
       position: input.subtitlePosition || 'bottom',
+      color: input.subtitleColor,
+      strokeColor: input.subtitleStrokeColor,
     };
 
-    const outPath = path.join(destDir, outputFileName());
-    // BGM 解析:builtin:<id> → 随包路径;remote:<url> → 按需下载并缓存(命中缓存不重下);
-    // 用户上传的绝对路径原样返回。再统一过 existsSync 兜底(取不到 = 不加 BGM,不挡出片)。
+    // BGM 解析(全条共用,只解析一次):builtin:<id> → 随包路径;remote:<url> → 按需下载
+    // 并缓存(命中缓存不重下);用户上传的绝对路径原样返回。再统一过 existsSync 兜底
+    // (取不到 = 不加 BGM,不挡出片)。
     const resolvedBgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m));
     const bgmPath = resolvedBgm && fs.existsSync(resolvedBgm) ? resolvedBgm : undefined;
     if (input.bgmPath && !bgmPath) tracker.progress('⚠️ 背景音乐获取失败，本条将不加 BGM');
@@ -639,24 +664,89 @@ async function runVideoPipeline(
         : '字幕按各镜时长估算(未取到词边界时间轴)');
     }
 
-    await composeVideo({
-      scenes,
-      outputPath: outPath,
-      width,
-      height,
-      maxClipSeconds: maxClip,
-      subtitle,
-      bgmPath,
-      bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
-      // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
-      cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
-      onScene: (done, total) => tracker.progress(`合成分镜 ${done}/${total}`),
-    });
+    // 平台基础费:一次任务只收【一份】,不随 videoCount 翻倍。开跑前一次性预扣(在线模式);
+    // 全部条目都失败时才在 finally 按 chargeId 退回(幂等)。
+    if (isMode1) {
+      const charge = await chargeMode1Video(input.targetSeconds ?? 45);
+      if (!charge.ok) {
+        let err: string;
+        if (charge.reason === 'insufficient') err = '余额不足,无法生成(模式一需先预扣平台基础费,请充值后重试)';
+        else if (charge.reason === 'no_auth') err = '未登录 NoobClaw,无法生成';
+        else err = '平台基础费预扣失败,请稍后重试';
+        tracker.fail('compose', err);
+        return { ok: false, error: err };
+      }
+      chargeId = charge.chargeId;
+      refundOnExit = true;
+      tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+      tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）,失败将自动退回${videoCount > 1 ? `（一次任务只收一份,${videoCount} 条不翻倍）` : ''}`);
+    }
 
-    // 成片成功:开跑前预扣的平台基础费正式计入(不再退回)。
+    // 单条合成:组装本条画面组合(第 0 条原序、之后打乱)→ composeVideo,成功返回成片路径,失败抛错。
+    const composeOne = async (v: number): Promise<string> => {
+      const label = videoCount > 1 ? `第 ${v + 1}/${videoCount} 条` : '';
+      const { sceneClips, imagePool } = assignVisuals(v);
+      let imgCursor = 0;
+      const scenes: SceneSpec[] = sentences.map((sentence, i) => {
+        const clips = sceneClips[i];
+        const hasVideo = clips.length > 0;
+        const image = !hasVideo && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
+        return {
+          clips: hasVideo ? clips : undefined,
+          imagePath: image,
+          audioPath: audios[i].audioPath,
+          durationSec: audios[i].durationSec,
+          subtitle: sentence,
+        };
+      });
+      const outPath = path.join(destDir, outputFileName(v));
+      await composeVideo({
+        scenes,
+        outputPath: outPath,
+        width,
+        height,
+        maxClipSeconds: maxClip,
+        subtitle,
+        bgmPath,
+        bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
+        // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
+        cues: subtitleEnabled && subtitleCues.length > 0 ? subtitleCues : undefined,
+        onScene: (done, total) => tracker.progress(`${label ? label + ' · ' : ''}合成分镜 ${done}/${total}`),
+      });
+      if (videoCount > 1) tracker.progress(`✅ ${label} 合成完成`);
+      return outPath;
+    };
+
+    // 并发跑全部条目(allSettled:个别失败不拖累其余),收集成功的成片路径。
+    const settled = await Promise.allSettled(
+      Array.from({ length: videoCount }, (_, v) => composeOne(v)),
+    );
+    const outputPaths: string[] = [];
+    let failCount = 0;
+    for (const r of settled) {
+      if (r.status === 'fulfilled') {
+        outputPaths.push(r.value);
+      } else {
+        failCount++;
+        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
+        tracker.progress(`⚠️ 有一条合成失败:${msg.slice(0, 160)}`);
+      }
+    }
+
+    if (outputPaths.length === 0) {
+      // 全部失败:保持 refundOnExit=true,finally 退回那一份预扣的平台基础费。
+      const err = '所有视频合成失败,未生成任何成片';
+      tracker.fail('compose', err);
+      return { ok: false, error: err };
+    }
+
+    // 至少一条成功 → 平台费照收(一份),不退回。
     refundOnExit = false;
-    tracker.finish(outPath);
-    return { ok: true, outputPath: outPath };
+    if (videoCount > 1 && failCount > 0) {
+      tracker.progress(`已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,平台费一份不变）`);
+    }
+    tracker.finish(outputPaths[0]);
+    return { ok: true, outputPath: outputPaths[0], outputPaths };
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);
     tracker.fail('compose', err.slice(0, 300));
