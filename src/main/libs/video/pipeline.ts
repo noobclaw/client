@@ -343,9 +343,10 @@ async function runVideoPipeline(
   // 判定口径 = 是否用到在线素材(useStockVideo!==false):只要走在线素材库就收平台费,
   // 哪怕用户同时上传了自己的本地视频混拼也照收(在线搜索/下载 + AI 搜索词都是真实成本);
   // 仅当纯本地素材(useStockVideo===false,老任务路径)才不收平台费,只耗已实时扣过的 AI token。
-  // 批量出片(videoCount>1):脚本/配音/素材池复用一次,N 条画面并发合成;平台费一次任务
-  // 只收【一份】(不随条数翻倍),在下面 compose 阶段开跑前一次性预扣。chargeId/refundOnExit
-  // 跟踪这一份在途预扣,供「全部条目失败 / 异常」时 finally 兜底退回。
+  // 批量出片(videoCount>1):脚本/配音/素材池复用一次,N 条画面并发合成。计费随条数走
+  // (服务端 /charge 按 videoCount + aiCostUsd 算):平台费向上限靠拢 + AI 费按条数线性叠加,
+  // 在下面 compose 阶段开跑前【一次性】预扣这笔(含全部条数)总费。chargeId/refundOnExit
+  // 跟踪这笔在途预扣,供「全部条目失败 / 异常」时 finally 兜底整笔退回。
   const isMode1 = input.useStockVideo !== false;
   let chargeId: string | undefined;
   let refundOnExit = false;
@@ -368,6 +369,9 @@ async function runVideoPipeline(
     // 内容语言:口播稿 + 素材搜索词都用它。规则(用户指定):有视频文案就按文案语言走,
     // 否则按关键词语言。空白时退化为中文。strict 模式逐字朗读用户文案,语言天然就是文案语言。
     const contentLang = detectLang(userText || (input.keywords || []).join(' '));
+    // 本任务【写稿 + 搜索词】已扣的权威 USD 之和(含 reasoner ×3),供下面平台费预扣时
+    // 按 videoCount 让服务端补收剩余 (count-1) 份 AI 费。AI 只调一次,各步累加进来。
+    let aiCostUsd = 0;
     let script = userText;
     if (scriptMode === 'ai') {
       const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
@@ -385,6 +389,7 @@ async function runVideoPipeline(
           lang: contentLang,
         }, vcfg.scriptSystemTemplate);
         script = r.script;
+        aiCostUsd += r.costUsd;
         tracker.addTokens(r.tokens, r.costUsd);
       } catch (e) {
         const err = e instanceof Error ? e.message : String(e);
@@ -506,6 +511,7 @@ async function runVideoPipeline(
     tracker.progress('AI 规划每镜画面关键词…');
     const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt);
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
+    aiCostUsd += termsResult.costUsd;
     tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
     // 要去搜的词集:每镜首词优先(保证每个分镜的主画面词一定被搜到),
@@ -639,7 +645,7 @@ async function runVideoPipeline(
     } // end buildStockPool
 
     // 4. 组装分镜 + 合成。批量出片时【并发】跑 videoCount 条:同脚本/配音、每条不同画面组合。
-    //    平台基础费一次任务只收【一份】(不随条数翻倍),开跑前一次性预扣,全部失败才退回。
+    //    费用(平台费向上限靠拢 + AI 按条数叠加)开跑前【一次性】整笔预扣,全部失败才整笔退回。
     tracker.start('compose');
 
     const { width, height } = aspectToSize(input.aspect);
@@ -664,10 +670,10 @@ async function runVideoPipeline(
         : '字幕按各镜时长估算(未取到词边界时间轴)');
     }
 
-    // 平台基础费:一次任务只收【一份】,不随 videoCount 翻倍。开跑前一次性预扣(在线模式);
-    // 全部条目都失败时才在 finally 按 chargeId 退回(幂等)。
+    // 费用预扣:开跑前【一次性】整笔预扣(在线模式),金额由服务端按 videoCount + aiCostUsd 算
+    // (平台费向上限靠拢 + AI 费按条数叠加)。全部条目都失败时才在 finally 按 chargeId 整笔退回(幂等)。
     if (isMode1) {
-      const charge = await chargeMode1Video(input.targetSeconds ?? 45);
+      const charge = await chargeMode1Video(input.targetSeconds ?? 45, { videoCount, aiCostUsd });
       if (!charge.ok) {
         let err: string;
         if (charge.reason === 'insufficient') err = '余额不足,无法生成(模式一需先预扣平台基础费,请充值后重试)';
@@ -679,7 +685,9 @@ async function runVideoPipeline(
       chargeId = charge.chargeId;
       refundOnExit = true;
       tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
-      tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}）,失败将自动退回${videoCount > 1 ? `（一次任务只收一份,${videoCount} 条不翻倍）` : ''}`);
+      tracker.progress(videoCount > 1
+        ? `💎 已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}，${videoCount} 条:平台费向上限靠拢 + AI 费按条数叠加），失败将自动退回`
+        : `💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
     }
 
     // 单条合成:组装本条画面组合(第 0 条原序、之后打乱)→ composeVideo,成功返回成片路径,失败抛错。
@@ -734,16 +742,16 @@ async function runVideoPipeline(
     }
 
     if (outputPaths.length === 0) {
-      // 全部失败:保持 refundOnExit=true,finally 退回那一份预扣的平台基础费。
+      // 全部失败:保持 refundOnExit=true,finally 整笔退回预扣的费用(平台 + AI 叠加份)。
       const err = '所有视频合成失败,未生成任何成片';
       tracker.fail('compose', err);
       return { ok: false, error: err };
     }
 
-    // 至少一条成功 → 平台费照收(一份),不退回。
+    // 至少一条成功 → 整笔费用照收(已按 videoCount 预扣),不退回。
     refundOnExit = false;
     if (videoCount > 1 && failCount > 0) {
-      tracker.progress(`已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,平台费一份不变）`);
+      tracker.progress(`已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,费用已按 ${videoCount} 条预扣）`);
     }
     tracker.finish(outputPaths[0]);
     return { ok: true, outputPath: outputPaths[0], outputPaths };

@@ -39,10 +39,21 @@ export interface VideoChargeResult {
 
 /**
  * 扣模式一平台基础费。绝不抛错 —— 返回 { ok:false, reason } 让 pipeline 记日志。
+ *
+ * opts(批量出片计费,服务端按此算):
+ *   · videoCount —— 本任务出片条数(1~5)。平台费随条数向上限靠拢,缺省 1。
+ *   · aiCostUsd  —— 本任务【写稿+搜索词】已扣的权威 USD 成本之和(各次 _noobclaw.costUsd
+ *                  相加,含 reasoner ×3)。服务端凭它补收 (count-1) 份 AI 费,缺省 0。
  */
-export async function chargeMode1Video(durationSec: number): Promise<VideoChargeResult> {
+export async function chargeMode1Video(
+  durationSec: number,
+  opts?: { videoCount?: number; aiCostUsd?: number },
+): Promise<VideoChargeResult> {
   const token = getNoobClawAuthToken();
   if (!token) return { ok: false, reason: 'no_auth' };
+
+  const videoCount = Math.max(1, Math.min(5, Math.round(opts?.videoCount ?? 1)));
+  const aiCostUsd = Math.max(0, Number(opts?.aiCostUsd) || 0);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 15_000);
@@ -53,7 +64,12 @@ export async function chargeMode1Video(durationSec: number): Promise<VideoCharge
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ mode: 'stock', durationSec: Math.max(0, Number(durationSec) || 0) }),
+      body: JSON.stringify({
+        mode: 'stock',
+        durationSec: Math.max(0, Number(durationSec) || 0),
+        videoCount,
+        aiCostUsd,
+      }),
       signal: ctrl.signal,
     });
     if (resp.status === 402) return { ok: false, reason: 'insufficient' };
