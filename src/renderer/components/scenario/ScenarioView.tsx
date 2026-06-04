@@ -251,11 +251,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       setView({ kind: 'main', section, platform });
       return;
     }
-    // 从【视频创建态】切到别的平台时,不要把 'create' 带过去(否则会直接进那个
-    // 平台的创建页),强制落到目标平台的任务页;其余平台间互切沿用 section 跟随。
-    const leavingVideoCreate = currentPlatform === 'video' && currentSection === 'create';
-    const section: SectionId = leavingVideoCreate ? 'tasks' : currentSection;
-    setView({ kind: 'main', section, platform });
+    // 平台间互切一律沿用当前 section:在【创建态】点别的平台 tab,就停在该平台的
+    // 创建页(跟用户预期一致 —— 进了"新建视频任务"再点币安,应看到币安的新建页,
+    // 而不是掉回币安任务 list)。其余 section(tasks/history)同样跟随。
+    setView({ kind: 'main', section: currentSection, platform });
   };
 
   // 进入视频创建流。跟其他平台「新建」一致先过积分门槛(余额 < 10000 弹"积分

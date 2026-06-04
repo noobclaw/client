@@ -1508,7 +1508,7 @@ const VideoConfigModal: React.FC<{
   onSaved?: () => void;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
   const initialTrackId = (() => {
@@ -1666,7 +1666,10 @@ const VideoConfigModal: React.FC<{
   const scriptValid = scriptMode === 'strict'
     ? (scriptLen >= SCRIPT_MIN_STRICT && scriptLen <= SCRIPT_MAX)
     : (scriptLen === 0 || scriptLen <= SCRIPT_MAX);
-  const scriptStepValid = trackId !== '' && scriptValid;
+  // 赛道步:只校验赛道必选(人设/关键词选完自动带出,可空)。
+  const trackStepValid = trackId !== '';
+  // 文案步:只校验文案本身。
+  const scriptStepValid = scriptValid;
   // 画面:选了本地上传却没传素材时挡一下
   const visualStepValid = materialSource === 'stock' || localVideos.length > 0;
 
@@ -1688,14 +1691,13 @@ const VideoConfigModal: React.FC<{
     script: script.trim(),
     scriptMode,
     referenceImages: [], // 参考图已弃用,保留字段向后兼容
-    // 用户上传的本地视频素材:有就带上(在线模式下会和在线空镜混拼;
-    // 老的纯本地任务 useStockVideo=false 则只用本地)。
-    localVideos: localVideos.length > 0 ? localVideos : undefined,
+    // 素材来源二选一,不混拼:仅本地来源才带 localVideos,在线来源一律不带(避免混入)。
+    localVideos: materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
     targetSeconds,
-    // 在线模式(stock)= 用在线素材库(本地素材作为叠加混拼);老的纯本地任务保持不搜在线。
-    useStockVideo: materialSource === 'local' ? false : (mode === 'stock'),
+    // 在线来源 = 搜在线素材库(收平台费);本地来源 = 只用上传的视频拼接(不搜在线、免平台费)。
+    useStockVideo: materialSource === 'stock',
     voice,
     voiceRate,
     bgmPath: bgmPath || undefined,
@@ -1765,13 +1767,15 @@ const VideoConfigModal: React.FC<{
             <div className="flex items-center gap-2 mt-3">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '模式' : 'Mode'} />
               <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '文案' : 'Script'} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '赛道' : 'Track'} />
               <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '画面' : 'Visuals'} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '文案' : 'Script'} />
               <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音频' : 'Audio'} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '画面' : 'Visuals'} />
               <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={false} label={isZh ? '字幕·出片' : 'Output'} />
+              <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '音频' : 'Audio'} />
+              <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={6} active={step === 6} done={false} label={isZh ? '字幕·出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -1784,11 +1788,11 @@ const VideoConfigModal: React.FC<{
               <Field label={isZh ? '生成模式' : 'Generation mode'} hint={isZh ? '先选这条视频怎么做' : 'how this video is made'}>
                 <div className="grid grid-cols-1 gap-2">
                   <ModeOption
-                    active={materialSource === 'stock' && mode === 'stock'}
-                    onClick={() => { setMaterialSource('stock'); setMode('stock'); }}
-                    title={isZh ? 'AI 分镜 + 在线素材' : 'AI scenes + stock'}
-                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 按文案自动搜在线空镜拼接，也可叠加你自己的视频素材混拼' : 'voice-over only, no real person; AI auto-searches stock B-roll by your script, and can mix in your own clips'}
-                    cost={isZh ? '约 $0.1~$0.2/每条' : '~$0.1~$0.2 each'}
+                    active={mode === 'stock'}
+                    onClick={() => setMode('stock')}
+                    title={isZh ? 'AI 分镜口播视频' : 'AI scene voice-over'}
+                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 写稿配音，画面在下一步「画面」里二选一：在线素材库 或 全部用你上传的本地视频' : 'voice-over only, no real person; AI writes & narrates, then in the Visuals step pick ONE source: online stock or all your own clips'}
+                    cost={isZh ? '在线素材约 $0.1~$0.2/每条 · 本地免平台费' : '~$0.1~$0.2 stock · local has no platform fee'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -1804,7 +1808,7 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 2:文案 ── */}
+          {/* ── 步骤 2:赛道（选完自动带出人设 / 关键词） ── */}
           {step === 2 && (
             <>
               <Field label={isZh ? '赛道（必选）' : 'Track (required)'} hint={isZh ? '选完自动带出人设和关键词，可再改' : 'auto-fills persona & keywords, editable'}>
@@ -1837,7 +1841,12 @@ const VideoConfigModal: React.FC<{
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 />
               </Field>
+            </>
+          )}
 
+          {/* ── 步骤 3:文案（文案模式 + 视频文案 + 时长） ── */}
+          {step === 3 && (
+            <>
               {/* 文案模式:严格逐字 vs AI 参考再创作 */}
               <Field label={isZh ? '文案模式' : 'Script mode'} hint={isZh ? '决定视频文案怎么用' : 'how your script is used'}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1917,17 +1926,35 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 3:画面 ── */}
-          {step === 3 && (
+          {/* ── 步骤 4:画面 ── */}
+          {step === 4 && (
             <>
-              {/* 本地视频素材:老的纯本地任务为必填;在线模式下为选填(和在线空镜混拼)。 */}
+              {/* 素材来源:二选一,不混拼(对齐 MoneyPrinterTurbo)。
+                  stock=全部在线素材库;local=全部用上传的本地视频拼接。 */}
+              <Field label={isZh ? '素材来源（二选一）' : 'Footage source'} hint={isZh ? '要么全部在线，要么全部本地，不混拼' : 'all online OR all local, no mixing'}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <ModeOption
+                    active={materialSource === 'stock'}
+                    onClick={() => setMaterialSource('stock')}
+                    title={isZh ? '在线素材库' : 'Online stock'}
+                    desc={isZh ? 'AI 按文案自动搜在线空镜拼接' : 'AI auto-searches stock B-roll by your script'}
+                    cost={isZh ? '约 $0.1~$0.2/每条' : '~$0.1~$0.2 each'}
+                  />
+                  <ModeOption
+                    active={materialSource === 'local'}
+                    onClick={() => setMaterialSource('local')}
+                    title={isZh ? '本地上传' : 'My own clips'}
+                    desc={isZh ? '全部用你上传的视频，按换镜节奏循环拼接' : 'all your uploaded clips, looped by pacing'}
+                    cost={isZh ? '免平台费' : 'no platform fee'}
+                  />
+                </div>
+              </Field>
+
+              {/* 本地视频素材:仅本地来源显示,且必填(至少 1 个)。 */}
+              {materialSource === 'local' && (
               <Field
-                label={materialSource === 'local'
-                  ? (isZh ? `本地视频素材（最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (max ${MAX_LOCAL_VIDEOS})`)
-                  : (isZh ? `也用我的视频素材（选填，最多 ${MAX_LOCAL_VIDEOS} 个）` : `Also use my videos (optional, max ${MAX_LOCAL_VIDEOS})`)}
-                hint={materialSource === 'local'
-                  ? (isZh ? '可多选，按换镜节奏循环切' : 'multi-select, looped by pacing')
-                  : (isZh ? '选填：和在线空镜混着拼；留空则全部用在线素材（仅 mp4/mov/webm 等，单个 ≤200MB）' : 'optional: mixed with online stock; empty = all stock (≤200MB each)')}
+                label={isZh ? `本地视频素材（必填，最多 ${MAX_LOCAL_VIDEOS} 个）` : `Local videos (required, max ${MAX_LOCAL_VIDEOS})`}
+                hint={isZh ? '可多选，按换镜节奏循环切；仅 mp4/mov/webm 等，单个 ≤200MB' : 'multi-select, looped by pacing; mp4/mov/webm, ≤200MB each'}
               >
                 <div className="space-y-1.5">
                     {localVideos.map((p, i) => (
@@ -1954,6 +1981,7 @@ const VideoConfigModal: React.FC<{
                     )}
                   </div>
               </Field>
+              )}
 
               {/* 画幅比例 */}
               <Field label={isZh ? '视频比例' : 'Aspect ratio'} hint={isZh ? '决定成片尺寸与素材搜索方向' : 'sets output size & stock orientation'}>
@@ -1997,8 +2025,8 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 4:音频 ── */}
-          {step === 4 && (
+          {/* ── 步骤 5:音频 ── */}
+          {step === 5 && (
             <>
               {/* 配音音色 + 语速 */}
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
@@ -2151,8 +2179,8 @@ const VideoConfigModal: React.FC<{
             </>
           )}
 
-          {/* ── 步骤 5:字幕 + 出片 ── */}
-          {step === 5 && (
+          {/* ── 步骤 6:字幕 + 出片 ── */}
+          {step === 6 && (
             <>
               {/* 字幕样式 + 开关 */}
               <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 edge-tts 词边界对齐时间轴' : 'edge-tts word-boundary timing when on'}>
@@ -2245,10 +2273,8 @@ const VideoConfigModal: React.FC<{
                       ? (isZh ? `AI 写稿 · ${targetSeconds}s` : `AI · ${targetSeconds}s`)
                       : (isZh ? `AI 写稿 · ${targetSeconds}s（参考 ${scriptLen} 字）` : `AI · ${targetSeconds}s (ref ${scriptLen} ch)`))}</div>
                 <div>🎬 {isZh ? '画面' : 'Visuals'}：{materialSource === 'local'
-                  ? (isZh ? `本地素材 ${localVideos.length} 个` : `${localVideos.length} local clips`)
-                  : (isZh
-                      ? `在线素材库${localVideos.length > 0 ? ` + 本地 ${localVideos.length} 个` : ''}`
-                      : `online stock${localVideos.length > 0 ? ` + ${localVideos.length} local` : ''}`)}</div>
+                  ? (isZh ? `本地素材 ${localVideos.length} 个（全部拼接）` : `${localVideos.length} local clips`)
+                  : (isZh ? '在线素材库' : 'online stock')}</div>
                 <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{bgmDisplayName(bgmPath, isZh, remoteBgm)}</div>
                 <div>💬 {isZh ? '字幕' : 'Subtitles'}：{subtitleEnabled ? (isZh ? '开' : 'on') : (isZh ? '关' : 'off')}</div>
               </div>
@@ -2263,34 +2289,32 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           <button
             type="button"
-            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5))}
+            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5 | 6))}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 5 ? (
+          {step < 6 ? (
             <button
               type="button"
               onClick={() => {
-                if (step === 2) {
-                  if (!trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
-                  if (!scriptValid) {
-                    if (scriptMode === 'strict' && scriptLen < SCRIPT_MIN_STRICT) {
-                      setSubmitError(isZh ? `严格模式下视频文案不少于 ${SCRIPT_MIN_STRICT} 字（当前 ${scriptLen} 字）` : `Verbatim mode needs ≥ ${SCRIPT_MIN_STRICT} chars (now ${scriptLen})`);
-                    } else {
-                      setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`);
-                    }
-                    return;
+                if (step === 2 && !trackId) { setSubmitError(isZh ? '请先选择赛道' : 'Please pick a track'); return; }
+                if (step === 3 && !scriptValid) {
+                  if (scriptMode === 'strict' && scriptLen < SCRIPT_MIN_STRICT) {
+                    setSubmitError(isZh ? `严格模式下视频文案不少于 ${SCRIPT_MIN_STRICT} 字（当前 ${scriptLen} 字）` : `Verbatim mode needs ≥ ${SCRIPT_MIN_STRICT} chars (now ${scriptLen})`);
+                  } else {
+                    setSubmitError(isZh ? `文案不能超过 ${SCRIPT_MAX} 字` : `Script must be ≤ ${SCRIPT_MAX} chars`);
                   }
+                  return;
                 }
-                if (step === 3 && !visualStepValid) {
+                if (step === 4 && !visualStepValid) {
                   setSubmitError(isZh ? '选了本地上传,请至少添加一个视频素材' : 'Please add at least one local video');
                   return;
                 }
                 setSubmitError(null);
-                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5);
+                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5 | 6);
               }}
-              disabled={(step === 2 && !scriptStepValid) || (step === 3 && !visualStepValid)}
+              disabled={(step === 2 && !trackStepValid) || (step === 3 && !scriptStepValid) || (step === 4 && !visualStepValid)}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
             >
               {isZh ? '下一步' : 'Next'} →
