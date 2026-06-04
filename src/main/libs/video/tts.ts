@@ -11,7 +11,10 @@
  * 攒成短语 cue 返回给 compose 烧字幕,字幕和旁白严丝合缝。解析失败不影响出片(compose
  * 会退回按各镜时长估算的 cue)。
  *
- * 任何环节失败 → 退化成「按字数估算时长的静音 mp3」,保证流水线总能出片(方便自测)。
+ * 可靠性:edge-tts 在线接口偶发抖动/限流,synthesize() 内置最多 3 次重试(指数退避)。
+ * 仍合成不出真人声时返回 synthesized:false(并把 stderr 诊断写进 _lastTtsError),
+ * 静音 mp3 只作为占位返回 —— 由 pipeline 判定为配音失败、终止出片并退费,
+ * 绝不把「无配音的视频」当成片交付。
  */
 
 import { spawn, spawnSync } from 'child_process';
@@ -275,26 +278,45 @@ function groupWordCues(words: TtsCue[], maxChars = 12): TtsCue[] {
   return out;
 }
 
-function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number, subtitlePath?: string): Promise<boolean> {
+interface EdgeTtsRun {
+  ok: boolean;
+  /** 失败诊断(进程 stderr / 超时 / 空输出),给上层拼进 _lastTtsError。 */
+  detail: string;
+}
+
+function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number, subtitlePath?: string): Promise<EdgeTtsRun> {
   return new Promise((resolve) => {
     const env = pythonEnv();
     const args = ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outPath];
     if (subtitlePath) args.push('--write-subtitles', subtitlePath);
     const rateArg = normalizeRate(rate);
     if (rateArg) args.push('--rate', rateArg);
+    // 每次重试前清掉上轮可能残留的半截输出,避免「旧文件 >256 字节」骗过校验。
+    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
     const child = spawn(pyExe, args, { env, windowsHide: true });
+    let stderr = '';
+    try { child.stderr?.on('data', (d) => { if (stderr.length < 2000) stderr += d.toString(); }); } catch {}
     let settled = false;
     const timer = setTimeout(() => {
-      if (!settled) { settled = true; try { child.kill('SIGKILL'); } catch {} resolve(false); }
+      if (!settled) { settled = true; try { child.kill('SIGKILL'); } catch {} resolve({ ok: false, detail: '合成超时(60s,可能是网络到微软 TTS 端点不通)' }); }
     }, 60_000);
-    child.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); resolve(false); } });
+    child.on('error', (e) => { if (!settled) { settled = true; clearTimeout(timer); resolve({ ok: false, detail: `进程启动失败:${e instanceof Error ? e.message : String(e)}` }); } });
     child.on('close', (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      resolve(code === 0 && fs.existsSync(outPath) && fs.statSync(outPath).size > 256);
+      const hasOut = fs.existsSync(outPath) && fs.statSync(outPath).size > 256;
+      if (code === 0 && hasOut) { resolve({ ok: true, detail: '' }); return; }
+      const err = stderr.trim().replace(/\s+/g, ' ').slice(-200);
+      const why = code !== 0 ? `退出码 ${code}` : '退出码 0 但无有效音频输出';
+      resolve({ ok: false, detail: err ? `${why}:${err}` : why });
     });
   });
+}
+
+/** 重试间隔休眠(edge-tts 网络抖动,退避一下再试)。 */
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
@@ -311,24 +333,33 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
       if (pyExe) {
         // 字幕和音频同名,扩展名 .vtt(edge-tts 按版本写 VTT/SRT,我们的解析器都吃)。
         const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
-        const ok = await runEdgeTts(pyExe, clean, useVoice, outPath, rate, subPath);
-        if (ok) {
-          const dur = await probeDuration(outPath);
-          let cues: TtsCue[] | undefined;
-          try {
-            const words = parseSubtitleFile(subPath);
-            if (words.length > 0) cues = groupWordCues(words);
-          } catch { /* 解析失败 → 上层估算兜底 */ }
-          try { fs.unlinkSync(subPath); } catch {}
-          return {
-            ok: true,
-            audioPath: outPath,
-            durationSec: dur > 0 ? dur : estDur,
-            synthesized: true,
-            cues,
-          };
+        // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 3 次再判失败(指数退避)。
+        const MAX_ATTEMPTS = 3;
+        let lastDetail = '';
+        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+          const run = await runEdgeTts(pyExe, clean, useVoice, outPath, rate, subPath);
+          if (run.ok) {
+            const dur = await probeDuration(outPath);
+            let cues: TtsCue[] | undefined;
+            try {
+              const words = parseSubtitleFile(subPath);
+              if (words.length > 0) cues = groupWordCues(words);
+            } catch { /* 解析失败 → 上层估算兜底 */ }
+            try { fs.unlinkSync(subPath); } catch {}
+            return {
+              ok: true,
+              audioPath: outPath,
+              durationSec: dur > 0 ? dur : estDur,
+              synthesized: true,
+              cues,
+            };
+          }
+          lastDetail = run.detail || lastDetail;
+          if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
         }
-        _lastTtsError = _lastTtsError || 'edge-tts 运行失败(已装好但合成无输出)';
+        _lastTtsError = lastDetail
+          ? `edge-tts 合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`
+          : `edge-tts 运行失败(已装好但合成无输出,已重试 ${MAX_ATTEMPTS} 次)`;
       }
     } catch (e) {
       _lastTtsError = e instanceof Error ? e.message : String(e);

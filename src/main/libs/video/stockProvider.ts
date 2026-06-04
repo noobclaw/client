@@ -143,7 +143,9 @@ interface StockVideoMeta {
 }
 
 /** 调服务端代理搜视频(type=video),返回公开 CDN 视频 URL + 元数据。 */
-async function searchVideosViaServer(keywords: string[], count: number, orientation: StockOrientation): Promise<StockVideoMeta[]> {
+async function searchVideosViaServer(
+  keywords: string[], count: number, orientation: StockOrientation, locale?: string, size?: string,
+): Promise<StockVideoMeta[]> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
@@ -153,6 +155,9 @@ async function searchVideosViaServer(keywords: string[], count: number, orientat
       orientation,
       type: 'video',
     });
+    // locale:区域语境兜底(母语长尾词也能命中);size:Pexels 源头最低分辨率档(small=HD≥720)。
+    if (locale) qs.set('locale', locale);
+    if (size) qs.set('size', size);
     const res = await fetch(`${apiBase()}/api/video/stock/search?${qs.toString()}`, {
       signal: ctrl.signal,
       headers: authHeaders(),
@@ -236,6 +241,10 @@ export interface FetchVideosByTermsOptions {
   destDir: string;
   /** 画幅方向,默认 portrait;决定搜竖/横/方素材 + 比例过滤方向。 */
   orientation?: StockOrientation;
+  /** 区域 locale(如 zh-CN / ja-JP / en-US),透传给素材库做语境兜底。可选。 */
+  locale?: string;
+  /** Pexels 视频最低分辨率档:small=HD / medium=Full HD / large=4K。默认 small。 */
+  videoSize?: string;
   /**
    * 进度回调,每搜完一个词触发一次。done/total 是词进度,term 是当前词,
    * got 是该词下到几段,totalGot 是到目前累计下到几段。
@@ -257,6 +266,8 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
   const { terms, destDir } = opts;
   const perTermCount = Math.max(1, opts.perTermCount ?? 4);
   const orientation = opts.orientation ?? 'portrait';
+  const locale = opts.locale;
+  const videoSize = opts.videoSize ?? 'small';
   const out: StockVideoByTerm[] = [];
   if (!Array.isArray(terms) || terms.length === 0) return out;
 
@@ -268,7 +279,7 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
     const term = (terms[t] || '').trim();
     const assets: StockVideoAsset[] = [];
     if (term) {
-      const metas = await searchVideosViaServer([term], perTermCount, orientation);
+      const metas = await searchVideosViaServer([term], perTermCount, orientation, locale, videoSize);
       for (const meta of metas) {
         if (assets.length >= perTermCount) break;
         if (seenUrls.has(meta.url)) continue;

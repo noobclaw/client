@@ -20,7 +20,7 @@ import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
+import { generateScript, generateSearchTerms, detectLang, contentLangToLocale } from './scriptWriter';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
 
@@ -418,8 +418,19 @@ async function runVideoPipeline(
     for (let i = 0; i < sentences.length; i++) {
       const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
       const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
+      if (!r.synthesized) {
+        // 硬约束:必须有真人配音。某句重试 3 次仍合不出 → 立即终止(别再耗时间硬磨剩余句),
+        // 判任务失败。pre-charge 预扣的平台基础费会在 finally 里自动退回(不交付无配音的视频)。
+        const reason = getLastTtsError();
+        const err = `配音失败:第 ${i + 1}/${sentences.length} 句无法合成语音`
+          + (reason ? `(${reason.slice(0, 160)})` : '')
+          + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
+          + '常见原因:网络无法访问微软在线 TTS 接口,请检查网络/代理后重试。';
+        tracker.fail('tts', err);
+        return { ok: false, error: err };
+      }
       audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
-      if (r.synthesized) synthCount++;
+      synthCount++;
       if (r.cues && r.cues.length > 0) {
         for (const c of r.cues) {
           subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
@@ -428,14 +439,7 @@ async function runVideoPipeline(
       timelineOffset += r.durationSec;
       tracker.progress(`配音 ${i + 1}/${sentences.length}`);
     }
-    if (synthCount === sentences.length) {
-      tracker.done('tts', '配音完成');
-    } else {
-      const reason = getLastTtsError();
-      tracker.done('tts',
-        `配音完成(${sentences.length - synthCount} 句用静音兜底` +
-        (reason ? `:${reason.slice(0, 120)}` : '') + ')');
-    }
+    tracker.done('tts', `配音完成(${synthCount} 句全部真人语音)`);
 
     // 3. 画面:在线素材库(可叠加用户本地素材混拼);纯本地(老任务)走循环拼接。
     tracker.start('visuals');
@@ -473,7 +477,7 @@ async function runVideoPipeline(
     async function prepareStockVisuals(): Promise<string[][]> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
-    const termsResult = await generateSearchTerms(sentences, input.keywords, contentLang);
+    const termsResult = await generateSearchTerms(sentences, input.keywords);
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
@@ -504,6 +508,9 @@ async function runVideoPipeline(
         perTermCount: 6,
         destDir: assetDir,
         orientation,
+        // 英文词 + 内容语言 locale 兜底;size=small 让 Pexels 源头只返 HD(≥720),省下白下白删。
+        locale: contentLangToLocale(contentLang),
+        videoSize: 'small',
         onProgress: ({ done, total, term, totalGot }) =>
           tracker.progress(`搜索在线视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
       });

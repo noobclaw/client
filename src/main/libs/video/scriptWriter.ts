@@ -120,6 +120,17 @@ function langName(l: ContentLang): string {
     : 'English';
 }
 
+/**
+ * 内容语言 → Pexels/库 locale(区域)。搜索词统一用英文(库标注以英文为主、召回最全),
+ * 但把内容语言对应的 locale 一并传给素材库做【区域语境兜底】,母语长尾词也能命中。
+ */
+export function contentLangToLocale(l: ContentLang): string {
+  return l === 'zh' ? 'zh-CN'
+    : l === 'ja' ? 'ja-JP'
+    : l === 'ko' ? 'ko-KR'
+    : 'en-US';
+}
+
 export interface GenerateScriptInput {
   /** 视频主题 / 选题(用户输入的关键词拼出来的也行)。 */
   topic: string;
@@ -210,17 +221,16 @@ export interface GenerateSearchTermsResult {
 export async function generateSearchTerms(
   scenes: string[],
   fallbackKeywords: string[],
-  lang: ContentLang = 'en',
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
   if (scenes.length === 0) return { terms: [], tokens: 0, costUsd: 0 };
 
-  // 素材搜索词跟随视频文案的语言(用户指定):做日文视频就出日文词去搜日文素材,更贴题。
-  const ln = langName(lang);
+  // 搜索词统一用英文:Pexels/Pixabay 库标注以英文为主,英文词召回最全最稳;
+  // 区域语境靠 locale 参数兜底(由调用方按内容语言传)。
   const system = [
     'You map short-video narration lines to stock-footage search terms.',
-    `For EACH input line, output 1-3 ${ln} search terms (each 1-3 words) that`,
+    'For EACH input line, output 1-3 English search terms (each 1-3 words) that',
     'best describe concrete, filmable VISUALS for that line (places, objects,',
     'actions, scenery) — NOT abstract concepts. Prefer terms that exist in stock',
     'video libraries (Pexels/Pixabay).',
