@@ -20,7 +20,8 @@ import { isFfmpegAvailable } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms, detectLang, contentLangToLocale } from './scriptWriter';
+import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
+import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
 
@@ -131,7 +132,7 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'script', label: '生成脚本 · 拆解分镜' },
   { key: 'tts', label: '生成 AI 配音' },
   { key: 'visuals', label: '准备画面素材' },
-  { key: 'compose', label: '合成竖屏视频' },
+  { key: 'compose', label: '合成视频' },
 ];
 
 class ProgressTracker {
@@ -358,6 +359,8 @@ async function runVideoPipeline(
     // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
     //    缺省兼容老任务:有 script → strict,无 → ai。
     tracker.start('script', `输出目录:${destDir}`);
+    // 拉服务端可调配置(prompt 模板 + 各阈值)。拉不到 / 没登录 → 用内置默认,出片照常。
+    const vcfg = await getVideoConfig();
     const userText = (input.script || '').trim();
     const scriptMode = input.scriptMode || (userText ? 'strict' : 'ai');
     // 内容语言:口播稿 + 素材搜索词都用它。规则(用户指定):有视频文案就按文案语言走,
@@ -378,7 +381,7 @@ async function runVideoPipeline(
           targetSeconds: input.targetSeconds ?? 45,
           referenceScript: userText || undefined,
           lang: contentLang,
-        });
+        }, vcfg.scriptSystemTemplate);
         script = r.script;
         tracker.addTokens(r.tokens, r.costUsd);
       } catch (e) {
@@ -477,7 +480,7 @@ async function runVideoPipeline(
     async function prepareStockVisuals(): Promise<string[][]> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
-    const termsResult = await generateSearchTerms(sentences, input.keywords);
+    const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt);
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
@@ -486,7 +489,7 @@ async function runVideoPipeline(
     const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
     const extraTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)))
       .filter((t) => !primaryTerms.includes(t));
-    let searchTerms = [...primaryTerms, ...extraTerms].slice(0, 12);
+    let searchTerms = [...primaryTerms, ...extraTerms].slice(0, vcfg.maxSearchTerms);
     if (searchTerms.length === 0) {
       searchTerms = (input.keywords || []).map((s) => s.toLowerCase()).filter(Boolean);
     }
@@ -505,12 +508,14 @@ async function runVideoPipeline(
       tracker.progress(`搜索在线视频素材(共 ${searchTerms.length} 组关键词)…`);
       videoByTerm = await fetchStockVideosByTerms({
         terms: searchTerms,
-        perTermCount: 6,
+        perTermCount: vcfg.perTermCount,
         destDir: assetDir,
         orientation,
-        // 英文词 + 内容语言 locale 兜底;size=small 让 Pexels 源头只返 HD(≥720),省下白下白删。
-        locale: contentLangToLocale(contentLang),
-        videoSize: 'small',
+        // 英文词 + 内容语言 locale 兜底;size 让 Pexels 源头按档过滤(默认 small=HD≥720),省下白下白删。
+        locale: localeFor(vcfg, contentLang),
+        videoSize: vcfg.stockVideoSize,
+        minVideoEdge: vcfg.minVideoEdge,
+        minVideoSec: vcfg.minVideoSec,
         onProgress: ({ done, total, term, totalGot }) =>
           tracker.progress(`搜索在线视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
       });
@@ -585,6 +590,7 @@ async function runVideoPipeline(
         count: needImages,
         destDir: assetDir,
         orientation,
+        minImageEdge: vcfg.minImageEdge,
       });
     }
     imagePool = [...refImages, ...stockImages];

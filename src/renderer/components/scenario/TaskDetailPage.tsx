@@ -455,6 +455,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     (scenario?.workflow_type as any) === 'auto_reply' ||
     scenario?.id === 'xhs_reply_fans_comment' ||
     scenario?.id === 'douyin_reply_fans_comment';
+  // 打开本任务输出目录(报告 / 草稿 / 图片)。头部链接 + 醒目按钮 + 运行明细大按钮共用。
+  const openTaskDir = async () => {
+    try {
+      const res = await window.electron?.scenario?.getTaskDir?.(task.id);
+      const dir = typeof res === 'string' ? res : res?.dir;
+      if (dir) window.electron?.shell?.openPath?.(dir);
+    } catch { /* ignore */ }
+  };
   // Platform detection — used for badge / step copy on the task detail page.
   // For Twitter scenarios (x_auto_engage / x_post_creator / x_link_rewrite)
   // we can't reuse XHS-specific copy like "直接发布到小红书".
@@ -1238,18 +1246,21 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
             {/* Output folder link — for auto_reply this contains the run-report
                 Markdown; for viral_production this contains the rewrite drafts
                 + images. Either way it's the place to look for what was produced. */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
               <span>{isZh ? '输出目录:' : 'Output:'}</span>
-              <button type="button" onClick={async () => {
-                try {
-                  const res = await window.electron?.scenario?.getTaskDir?.(task.id);
-                  const dir = typeof res === 'string' ? res : res?.dir;
-                  if (dir) window.electron?.shell?.openPath?.(dir);
-                } catch {}
-              }} className="text-blue-500 hover:underline text-[11px]">
+              {/* 点文字也能打开(保留旧交互) */}
+              <button type="button" onClick={openTaskDir} className="text-blue-500 hover:underline text-[11px]">
                 {isZh
                   ? (isAutoReplyTask ? '📂 打开报告文件夹' : '📂 打开输出文件夹')
                   : '📂 Open folder'}
+              </button>
+              {/* 醒目按钮:跟视频任务一致,让用户一眼能点 */}
+              <button
+                type="button"
+                onClick={openTaskDir}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                📂 {isZh ? '打开' : 'Open'}
               </button>
             </div>
             {/* v1.x: 删了截短 persona preview — 跟上面完整 persona 块 (line ~814) 重复了 */}
@@ -1606,13 +1617,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               </div>
               <button
                 type="button"
-                onClick={async () => {
-                  try {
-                    const res = await window.electron?.scenario?.getTaskDir?.(task.id);
-                    const dir = typeof res === 'string' ? res : res?.dir;
-                    if (dir) window.electron?.shell?.openPath?.(dir);
-                  } catch {}
-                }}
+                onClick={openTaskDir}
                 className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
               >
                 📂 {isZh ? '打开输出目录' : 'Open folder'}
@@ -1657,13 +1662,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                     <p>{isZh ? '已生成的标题、正文、配图都保存在本地。打开下方文件夹，自己挑选文章并手动上传到小红书草稿箱（每篇 ≤3 篇/天可降低封号风险）。' : 'Generated titles, bodies and images are saved locally. Open the folder below and manually upload to XHS drafts (≤3/day to reduce ban risk).'}</p>
                     <button
                       type="button"
-                      onClick={async () => {
-                        try {
-                          const res = await window.electron?.scenario?.getTaskDir?.(task.id);
-                          const dir = typeof res === 'string' ? res : res?.dir;
-                          if (dir) window.electron?.shell?.openPath?.(dir);
-                        } catch {}
-                      }}
+                      onClick={openTaskDir}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
                     >
                       📂 {isZh ? '打开本地文件夹' : 'Open folder'}

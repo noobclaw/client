@@ -997,14 +997,24 @@ const VideoTaskDetail: React.FC<{
             <ConfigRows isZh={isZh} input={task.input} />
             <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
             {outDir && (
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span>{isZh ? '输出目录' : 'Output'}：</span>
+                {/* 点文字也能打开(保留旧交互) */}
                 <button
                   type="button"
                   onClick={() => openFolder(outDir)}
-                  className="text-blue-500 hover:underline text-[11px]"
+                  className="text-blue-500 hover:underline text-[11px] min-w-0 truncate font-mono"
+                  title={outDir}
                 >
                   📂 {isZh ? '打开输出文件夹' : 'Open folder'}
+                </button>
+                {/* 醒目按钮:让用户一眼看到「去看自己的视频」 */}
+                <button
+                  type="button"
+                  onClick={() => openFolder(outDir)}
+                  className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+                >
+                  📂 {isZh ? '打开' : 'Open'}
                 </button>
               </div>
             )}
@@ -1233,8 +1243,8 @@ const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> =
       </h3>
       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
         {isZh
-          ? '选赛道自动带出人设和关键词,文案可自己写、也可让 AI 按目标时长写。AI 自动拆分镜、配音、配字幕,用在线视频素材 + 你的参考图凑画面,本地合成竖屏短视频。'
-          : 'Pick a track to auto-fill persona & keywords. Write your own script or let AI write one for a target length. AI splits scenes, narrates, subtitles, and fills visuals from stock video + your images, composing a portrait short locally.'}
+          ? '选赛道自动带出人设和关键词,文案可自己写、也可让 AI 按目标时长写。AI 自动拆分镜、配音、配字幕,用在线视频素材 + 你的参考图凑画面,本地合成短视频(竖屏/横屏/方屏按画幅自选)。'
+          : 'Pick a track to auto-fill persona & keywords. Write your own script or let AI write one for a target length. AI splits scenes, narrates, subtitles, and fills visuals from stock video + your images, composing a short video locally (portrait / landscape / square).'}
       </p>
       <button
         type="button"

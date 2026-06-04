@@ -19,6 +19,7 @@
  */
 
 import { getNoobClawAuthToken } from '../claudeSettings';
+import { DEFAULT_VIDEO_CONFIG, interpolate } from './videoConfig';
 
 function apiBase(): string {
   return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
@@ -120,17 +121,6 @@ function langName(l: ContentLang): string {
     : 'English';
 }
 
-/**
- * 内容语言 → Pexels/库 locale(区域)。搜索词统一用英文(库标注以英文为主、召回最全),
- * 但把内容语言对应的 locale 一并传给素材库做【区域语境兜底】,母语长尾词也能命中。
- */
-export function contentLangToLocale(l: ContentLang): string {
-  return l === 'zh' ? 'zh-CN'
-    : l === 'ja' ? 'ja-JP'
-    : l === 'ko' ? 'ko-KR'
-    : 'en-US';
-}
-
 export interface GenerateScriptInput {
   /** 视频主题 / 选题(用户输入的关键词拼出来的也行)。 */
   topic: string;
@@ -162,7 +152,10 @@ export interface GenerateScriptResult {
  * 生成一段口播旁白(纯文本,不带分镜标记/序号)。供 splitScript 再拆分镜。
  * 失败抛错(上层提示用户手填文案)。返回正文 + 本步 token 消耗。
  */
-export async function generateScript(input: GenerateScriptInput): Promise<GenerateScriptResult> {
+export async function generateScript(
+  input: GenerateScriptInput,
+  scriptSystemTemplate?: string,
+): Promise<GenerateScriptResult> {
   const targetSec = input.targetSeconds ?? 45;
   const targetChars = targetCharCount(targetSec);
   const kw = (input.keywords || []).filter(Boolean).join('、');
@@ -174,17 +167,14 @@ export async function generateScript(input: GenerateScriptInput): Promise<Genera
     ? `1. 围绕主题写一段【连贯的口播旁白】,目标约 ${targetChars} 个中文字符(对应约 ${targetSec} 秒)。`
     : `1. Write one coherent voice-over narration of about ${targetSec} seconds when read aloud.`;
 
-  const system = [
-    '你是一名专业的短视频口播脚本撰稿人,擅长写竖屏短视频(抖音/小红书风格)的旁白。',
-    `【语言】全程只用 ${ln} 撰写口播正文,不要混入其它语言。`,
-    input.persona ? `账号人设:${input.persona}。` : '',
-    input.track ? `内容赛道:${input.track}。` : '',
-    '要求:',
-    lengthLine,
-    '2. 开头一句要有钩子,中间分点讲清楚,结尾有行动号召或金句收尾。',
-    '3. 口语化、节奏紧凑,适合配音朗读;不要出现套话开场。',
-    `4. 只输出 ${ln} 旁白正文本身,不要加任何标题、序号、分镜标记、emoji、引号包裹。`,
-  ].filter(Boolean).join('\n');
+  // system prompt 走模板(服务端可调措辞),只认 4 个占位符;空的人设/赛道行替换后被 filter 掉。
+  const tpl = scriptSystemTemplate || DEFAULT_VIDEO_CONFIG.scriptSystemTemplate;
+  const system = interpolate(tpl, {
+    LANG_NAME: ln,
+    PERSONA_LINE: input.persona ? `账号人设:${input.persona}。` : '',
+    TRACK_LINE: input.track ? `内容赛道:${input.track}。` : '',
+    LENGTH_LINE: lengthLine,
+  }).split('\n').map((s) => s.trim()).filter(Boolean).join('\n');
 
   // 参考文案:作为方向/素材给 AI 参考,明确告知"可借鉴但不要逐字照搬",
   // 让 AI 重新组织成更适合口播的版本。
@@ -221,6 +211,7 @@ export interface GenerateSearchTermsResult {
 export async function generateSearchTerms(
   scenes: string[],
   fallbackKeywords: string[],
+  termsSystemPrompt?: string,
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
@@ -228,16 +219,8 @@ export async function generateSearchTerms(
 
   // 搜索词统一用英文:Pexels/Pixabay 库标注以英文为主,英文词召回最全最稳;
   // 区域语境靠 locale 参数兜底(由调用方按内容语言传)。
-  const system = [
-    'You map short-video narration lines to stock-footage search terms.',
-    'For EACH input line, output 1-3 English search terms (each 1-3 words) that',
-    'best describe concrete, filmable VISUALS for that line (places, objects,',
-    'actions, scenery) — NOT abstract concepts. Prefer terms that exist in stock',
-    'video libraries (Pexels/Pixabay).',
-    'Return ONLY a JSON object of this exact shape:',
-    '{"terms": [["term a","term b"], ["term c"], ...]}',
-    'The "terms" array length MUST equal the number of input lines, in order.',
-  ].join('\n');
+  // prompt 走服务端可调(默认见 videoConfig);务必保持 {"terms":[[...]]} 输出契约。
+  const system = termsSystemPrompt || DEFAULT_VIDEO_CONFIG.termsSystemPrompt;
 
   const numbered = scenes.map((s, i) => `${i + 1}. ${s}`).join('\n');
   const user = `Input lines (${scenes.length}):\n${numbered}\n\nReturn the JSON now.`;

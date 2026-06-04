@@ -375,15 +375,24 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
             </div>
           )}
           {rec.output_dir && (
-            <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-1">
+            <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-1 flex-wrap">
               <span>{isZh ? '输出目录:' : 'Output:'}</span>
+              {/* 点路径文字也能打开(保留旧交互) */}
               <button
                 type="button"
                 onClick={openOutputDir}
-                className="text-blue-500 hover:underline truncate max-w-md text-left"
+                className="text-blue-500 hover:underline truncate max-w-md text-left min-w-0"
                 title={rec.output_dir}
               >
                 📂 {rec.output_dir}
+              </button>
+              {/* 醒目按钮:跟视频/任务详情一致 */}
+              <button
+                type="button"
+                onClick={openOutputDir}
+                className="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-semibold bg-blue-500 text-white hover:bg-blue-600 transition-colors"
+              >
+                📂 {isZh ? '打开' : 'Open'}
               </button>
             </div>
           )}

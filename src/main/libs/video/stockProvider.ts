@@ -44,7 +44,7 @@ function authHeaders(): Record<string, string> {
   return headers;
 }
 
-async function downloadTo(url: string, destPath: string): Promise<boolean> {
+async function downloadTo(url: string, destPath: string, minEdge = MIN_IMAGE_EDGE): Promise<boolean> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
@@ -55,7 +55,7 @@ async function downloadTo(url: string, destPath: string): Promise<boolean> {
     fs.writeFileSync(destPath, buf);
     // 分辨率门槛:太小的图拉满竖屏会糊,拒收并删文件
     const { width, height } = await probeImageSize(destPath);
-    if (width > 0 && height > 0 && (width < MIN_IMAGE_EDGE || height < MIN_IMAGE_EDGE)) {
+    if (width > 0 && height > 0 && (width < minEdge || height < minEdge)) {
       try { fs.unlinkSync(destPath); } catch {}
       return false;
     }
@@ -105,6 +105,8 @@ export interface FetchStockOptions {
   destDir: string;
   /** 画幅方向,默认 portrait。 */
   orientation?: StockOrientation;
+  /** 素材图最低边长(像素),低于则拒收。默认 MIN_IMAGE_EDGE。 */
+  minImageEdge?: number;
 }
 
 /**
@@ -126,7 +128,7 @@ export async function fetchStockImages(opts: FetchStockOptions): Promise<string[
     const ext = (url.split('?')[0].match(/\.(jpg|jpeg|png|webp)$/i)?.[1] || 'jpg').toLowerCase();
     const dest = path.join(destDir, `stock_${String(idx).padStart(3, '0')}.${ext}`);
     idx++;
-    const ok = await downloadTo(url, dest);
+    const ok = await downloadTo(url, dest, opts.minImageEdge ?? MIN_IMAGE_EDGE);
     if (ok) results.push(dest);
   }
 
@@ -191,6 +193,7 @@ async function searchVideosViaServer(
 async function downloadVideoTo(
   url: string,
   destPath: string,
+  minEdge = MIN_VIDEO_EDGE,
 ): Promise<{ width: number; height: number; durationSec: number } | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), VIDEO_REQ_TIMEOUT_MS);
@@ -205,7 +208,7 @@ async function downloadVideoTo(
     if (durationSec <= 0) { try { fs.unlinkSync(destPath); } catch {} return null; }
     // G2 分辨率门槛:真实短边低于阈值,删。
     const { width, height } = await probeImageSize(destPath);
-    if (width > 0 && height > 0 && Math.min(width, height) < MIN_VIDEO_EDGE) {
+    if (width > 0 && height > 0 && Math.min(width, height) < minEdge) {
       try { fs.unlinkSync(destPath); } catch {}
       return null;
     }
@@ -245,6 +248,10 @@ export interface FetchVideosByTermsOptions {
   locale?: string;
   /** Pexels 视频最低分辨率档:small=HD / medium=Full HD / large=4K。默认 small。 */
   videoSize?: string;
+  /** 下载后真实 probe 的最低短边(像素)。默认 MIN_VIDEO_EDGE。 */
+  minVideoEdge?: number;
+  /** 素材视频最短秒数,低于则拒收。默认 MIN_VIDEO_SEC。 */
+  minVideoSec?: number;
   /**
    * 进度回调,每搜完一个词触发一次。done/total 是词进度,term 是当前词,
    * got 是该词下到几段,totalGot 是到目前累计下到几段。
@@ -268,6 +275,8 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
   const orientation = opts.orientation ?? 'portrait';
   const locale = opts.locale;
   const videoSize = opts.videoSize ?? 'small';
+  const minVideoEdge = opts.minVideoEdge ?? MIN_VIDEO_EDGE;
+  const minVideoSec = opts.minVideoSec ?? MIN_VIDEO_SEC;
   const out: StockVideoByTerm[] = [];
   if (!Array.isArray(terms) || terms.length === 0) return out;
 
@@ -284,14 +293,14 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
         if (assets.length >= perTermCount) break;
         if (seenUrls.has(meta.url)) continue;
         // 时长太短(<2s)拼起来太碎,跳过(0 = 未知,放行)。
-        if (meta.durationSec > 0 && meta.durationSec < MIN_VIDEO_SEC) continue;
+        if (meta.durationSec > 0 && meta.durationSec < minVideoSec) continue;
         // 比例过滤(已知尺寸时):竖屏拒横屏素材,横屏拒竖屏素材,方形不过滤。
         if (meta.width > 0 && meta.height > 0) {
           if (orientation === 'portrait' && meta.height < meta.width) continue;
           if (orientation === 'landscape' && meta.width < meta.height) continue;
           // G2 分辨率预过滤:meta 尺寸已知且短边过小 → 直接跳过,省一次无用下载
           //（meta 缺失时不拦,留给 downloadVideoTo 用真实探测兜底)。
-          if (Math.min(meta.width, meta.height) < MIN_VIDEO_EDGE) continue;
+          if (Math.min(meta.width, meta.height) < minVideoEdge) continue;
         }
         seenUrls.add(meta.url);
         const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
@@ -299,7 +308,7 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
         idx++;
         // downloadVideoTo 已做完整性校验(ffprobe 验时长)+ 真实分辨率门槛,
         // 通过的才是可安全进合成的素材;返回真实宽高/时长,优先于 meta(更准)。
-        const probed = await downloadVideoTo(meta.url, dest);
+        const probed = await downloadVideoTo(meta.url, dest, minVideoEdge);
         if (probed) {
           assets.push({
             path: dest,
