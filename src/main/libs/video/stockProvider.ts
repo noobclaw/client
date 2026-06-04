@@ -16,8 +16,14 @@ import path from 'path';
 import { probeImageSize, probeDuration } from './ffmpegRuntime';
 
 const REQ_TIMEOUT_MS = 15_000;
-/** 视频素材下载超时放宽:文件大。 */
-const VIDEO_REQ_TIMEOUT_MS = 60_000;
+/**
+ * 单段视频下载超时。素材 clip 一般几 MB,正常几秒就下完;给到 25s 已很宽。
+ * 收紧(原 60s)是因为:逐词串行 + 60s/段会让一个慢词白等好几分钟看着像卡死,
+ * 25s 下不完基本就是链路卡住,早 bail 早试下一段/下一词。
+ */
+const VIDEO_REQ_TIMEOUT_MS = 25_000;
+/** 同一搜索词内并发下载的段数上限(并发提速,又不至于把带宽打满让每段都变慢)。 */
+const VIDEO_DOWNLOAD_CONCURRENCY = 4;
 /** 低于这个边长的素材图拉伸到 1080×1920 会糊,直接拒收(抄 MoneyPrinterTurbo 的 480 门槛)。 */
 const MIN_IMAGE_EDGE = 480;
 /** 太短的素材视频(<2s)拼起来太碎,拒收。 */
@@ -253,10 +259,14 @@ export interface FetchVideosByTermsOptions {
   /** 素材视频最短秒数,低于则拒收。默认 MIN_VIDEO_SEC。 */
   minVideoSec?: number;
   /**
-   * 进度回调,每搜完一个词触发一次。done/total 是词进度,term 是当前词,
-   * got 是该词下到几段,totalGot 是到目前累计下到几段。
+   * 进度回调。done/total 是词进度,term 是当前词,got 是该词当前下到几段,
+   * totalGot 是累计下到几段。clip 存在时 = 词【下载中】的段级心跳(index/count),
+   * 不存在 = 该词整体下完的收尾回报。让 UI 不会因一个慢词几分钟没动静而像卡死。
    */
-  onProgress?: (info: { done: number; total: number; term: string; got: number; totalGot: number }) => void;
+  onProgress?: (info: {
+    done: number; total: number; term: string; got: number; totalGot: number;
+    clip?: { index: number; count: number };
+  }) => void;
 }
 
 /**
@@ -269,6 +279,19 @@ export interface FetchVideosByTermsOptions {
  * 同时做竖屏过滤:元数据已知尺寸时,高 < 宽(横屏)直接拒收,免得裁成竖屏丢画面。
  * 全程 onProgress 回调让 UI 不再"搜索素材…没动静"。服务端没 key/没网时返回各词空数组。
  */
+/** 限流并发执行(顺序无关):最多 limit 个任务同时跑,用于并行下载素材段。 */
+async function mapWithLimit<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < items.length) {
+      const i = next++;
+      await task(items[i]);
+    }
+  };
+  const n = Math.max(1, Math.min(limit, items.length));
+  await Promise.all(Array.from({ length: n }, () => worker()));
+}
+
 export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): Promise<StockVideoByTerm[]> {
   const { terms, destDir } = opts;
   const perTermCount = Math.max(1, opts.perTermCount ?? 4);
@@ -288,9 +311,12 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
     const term = (terms[t] || '').trim();
     const assets: StockVideoAsset[] = [];
     if (term) {
-      const metas = await searchVideosViaServer([term], perTermCount, orientation, locale, videoSize);
+      // 多搜几条做候选(给下载失败留 backfill 余量),预过滤(去重 + 时长 + 比例 + 分辨率)
+      // 后再【并发】下载;边下边报"段"级进度,不再因一个慢词几分钟没动静而像卡死。
+      const metas = await searchVideosViaServer([term], perTermCount + 3, orientation, locale, videoSize);
+      const candidates: { meta: StockVideoMeta; dest: string }[] = [];
       for (const meta of metas) {
-        if (assets.length >= perTermCount) break;
+        if (candidates.length >= perTermCount + 2) break;
         if (seenUrls.has(meta.url)) continue;
         // 时长太短(<2s)拼起来太碎,跳过(0 = 未知,放行)。
         if (meta.durationSec > 0 && meta.durationSec < minVideoSec) continue;
@@ -306,9 +332,15 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
         const ext = (meta.url.split('?')[0].match(/\.(mp4|mov|webm|m4v)$/i)?.[1] || 'mp4').toLowerCase();
         const dest = path.join(destDir, `stockvid_${String(idx).padStart(3, '0')}.${ext}`);
         idx++;
-        // downloadVideoTo 已做完整性校验(ffprobe 验时长)+ 真实分辨率门槛,
-        // 通过的才是可安全进合成的素材;返回真实宽高/时长,优先于 meta(更准)。
+        candidates.push({ meta, dest });
+      }
+
+      // 并发下载候选(限流 VIDEO_DOWNLOAD_CONCURRENCY)。downloadVideoTo 内做完整性校验
+      // (ffprobe 验时长)+ 真实分辨率门槛,过关的才收;真实宽高/时长优先于 meta(更准)。
+      let settled = 0;
+      await mapWithLimit(candidates, VIDEO_DOWNLOAD_CONCURRENCY, async ({ meta, dest }) => {
         const probed = await downloadVideoTo(meta.url, dest, minVideoEdge);
+        settled++;
         if (probed) {
           assets.push({
             path: dest,
@@ -318,7 +350,12 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
           });
           totalGot++;
         }
-      }
+        // 段级心跳(done=t 表示已完成 t 个词,当前是第 t+1 个词的下载中)。
+        opts.onProgress?.({
+          done: t, total: terms.length, term, got: assets.length, totalGot,
+          clip: { index: settled, count: candidates.length },
+        });
+      });
     }
     out.push({ term, assets });
     opts.onProgress?.({ done: t + 1, total: terms.length, term, got: assets.length, totalGot });
