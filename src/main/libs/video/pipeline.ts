@@ -532,13 +532,17 @@ async function runVideoPipeline(
     const orientation = aspectToOrientation(input.aspect);
 
     // 3b. 逐词拉视频,保留「词 → 素材」归属(进度逐词回报,不再"没动静")
-    // 换镜节奏开了之后单镜要多段素材,多拉点冗余(perTermCount=6)。
+    // 每词下载几段【随出片条数缩放】:单条只需 ~1 段/词,多条才需多备(N 条不重复靠
+    // 同词下的不同段轮流分配)。videoCount=1→2 段/词(够覆盖且最快),videoCount=5→封顶
+    // vcfg.perTermCount(=6)。这是搜索耗时的主因——以前不论出几条都按 6 段/词下载,
+    // 单条视频会白下 3 倍素材;按需缩放后单条下载量直接砍半。
+    const perTermCount = Math.max(2, Math.min(vcfg.perTermCount, videoCount + 1));
     let videoByTerm: StockVideoByTerm[] = [];
     if (wantVideo && searchTerms.length > 0) {
       tracker.progress(`搜索在线视频素材(共 ${searchTerms.length} 组关键词)…`);
       videoByTerm = await fetchStockVideosByTerms({
         terms: searchTerms,
-        perTermCount: vcfg.perTermCount,
+        perTermCount,
         destDir: assetDir,
         orientation,
         // 英文词 + 内容语言 locale 兜底;size 让 Pexels 源头按档过滤(默认 small=HD≥720),省下白下白删。
