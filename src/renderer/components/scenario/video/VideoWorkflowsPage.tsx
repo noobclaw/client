@@ -1664,6 +1664,7 @@ const VideoConfigModal: React.FC<{
   const previewReqRef = useRef(0);
   const [previewToken, setPreviewToken] = useState('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const stopPreview = () => {
     previewReqRef.current++; // 作废任何在途的 previewBgm
     const a = bgmAudioRef.current;
@@ -1680,14 +1681,23 @@ const VideoConfigModal: React.FC<{
     try {
       const dataUrl = await videoCreationService.previewBgm(token);
       // 在途期间被 stop(关向导 / 切歌 / 卸载)→ reqId 已变 → 丢弃,不播放。
-      if (!dataUrl || previewReqRef.current !== myReq) return;
+      if (previewReqRef.current !== myReq) return;
+      if (!dataUrl) {
+        // 主进程没还原出可播文件(内置缺失 / 云端下载失败)→ 给用户一个可见反馈,
+        // 而不是「点了没反应」。同时打日志便于定位是哪一步空了。
+        console.warn('[bgm preview] empty dataUrl for token:', token);
+        setPreviewError(isZh ? '试听失败：未取到音频(内置缺失或云端下载失败)' : 'Preview failed: no audio');
+        return;
+      }
+      setPreviewError('');
       const audio = new Audio(dataUrl);
       audio.onended = () => { if (bgmAudioRef.current === audio) stopPreview(); };
+      audio.onerror = () => { console.warn('[bgm preview] audio element error for token:', token); };
       bgmAudioRef.current = audio;
       setPreviewToken(token);
-      await audio.play().catch(() => { /* 自动播放被拦时静默 */ });
-    } catch {
-      /* 试听失败静默,不打断向导 */
+      await audio.play().catch((e) => { console.warn('[bgm preview] play() rejected:', e); });
+    } catch (e) {
+      console.warn('[bgm preview] exception:', e);
     } finally {
       setPreviewLoading(false);
     }
@@ -1851,7 +1861,6 @@ const VideoConfigModal: React.FC<{
                     onClick={() => setMode('stock')}
                     title={isZh ? 'AI 分镜口播视频' : 'AI scene voice-over'}
                     desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 写稿配音，画面在下一步「画面」里二选一：在线素材库 或 全部用你上传的本地视频' : 'voice-over only, no real person; AI writes & narrates, then in the Visuals step pick ONE source: online stock or all your own clips'}
-                    cost={isZh ? '在线素材约 $0.1~$0.2/每条 · 本地免平台费' : '~$0.1~$0.2 stock · local has no platform fee'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -1997,14 +2006,12 @@ const VideoConfigModal: React.FC<{
                     onClick={() => setMaterialSource('stock')}
                     title={isZh ? '在线素材库' : 'Online stock'}
                     desc={isZh ? 'AI 按文案自动搜在线空镜拼接' : 'AI auto-searches stock B-roll by your script'}
-                    cost={isZh ? '约 $0.1~$0.2/每条' : '~$0.1~$0.2 each'}
                   />
                   <ModeOption
                     active={materialSource === 'local'}
                     onClick={() => setMaterialSource('local')}
                     title={isZh ? '本地上传' : 'My own clips'}
                     desc={isZh ? '全部用你上传的视频，按换镜节奏循环拼接' : 'all your uploaded clips, looped by pacing'}
-                    cost={isZh ? '免平台费' : 'no platform fee'}
                   />
                 </div>
               </Field>
@@ -2155,80 +2162,52 @@ const VideoConfigModal: React.FC<{
                   </button>
                 </div>
 
-                {/* 曲库:本地内置逐首列出(每首右侧一个全色试听按钮,无需先选中即可试听);
-                    云端曲目放下拉(可能很多)。value 都是 builtin:/remote: token。 */}
+                {/* 曲库:一个下拉(内置 + 云端合并,分两组)+ 一个试听按钮(试听当前选中那首)。
+                    value = builtin:/remote: token;选哪首就试听哪首,云端首次试听由主进程下载并缓存。 */}
                 {bgmIsLibrary && (
                   <div className="space-y-1.5">
-                    {BUILTIN_BGM.map((b) => {
-                      const token = `${BUILTIN_BGM_PREFIX}${b.id}`;
-                      const selected = bgmPath === token;
-                      const playing = previewToken === token;
-                      return (
-                        <div
-                          key={b.id}
-                          className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 transition-colors ${
-                            selected ? 'border-rose-500 bg-rose-500/10' : 'border-gray-200 dark:border-gray-700'
-                          }`}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setBgmPath(token)}
-                            className={`flex-1 text-left text-xs ${
-                              selected ? 'text-rose-600 dark:text-rose-400 font-medium' : 'text-gray-600 dark:text-gray-300'
-                            }`}
-                          >
-                            🎵 {isZh ? b.zh : b.en}{selected ? (isZh ? ' · 已选' : ' · selected') : ''}
-                          </button>
-                          {/* 全色试听按钮(显眼),点这首即试听,不改变已选曲目 */}
-                          <button
-                            type="button"
-                            onClick={() => togglePreview(token)}
-                            disabled={previewLoading && !playing}
-                            className={`shrink-0 px-3 py-1 rounded-md text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                              playing ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
-                            }`}
-                          >
-                            {playing ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                    {/* 云端曲库:下拉选 + 全色试听 */}
-                    {remoteBgm.length > 0 && (
-                      <div className="flex items-center gap-2 pt-1">
-                        <select
-                          value={bgmIsRemote ? bgmPath : ''}
-                          onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
-                          className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
-                        >
-                          <option value="">{isZh ? '☁️ 云端曲库（首次需下载）' : '☁️ Cloud (downloads on first use)'}</option>
-                          {!bgmInLibraryList && bgmIsRemote && (
-                            <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
-                          )}
-                          {remoteBgm.map((b) => (
-                            <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={bgmPath}
+                        onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                      >
+                        <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                          {BUILTIN_BGM.map((b) => (
+                            <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
                           ))}
-                        </select>
-                        {bgmIsRemote && (
-                          <button
-                            type="button"
-                            onClick={() => togglePreview(bgmPath)}
-                            disabled={previewLoading && previewToken !== bgmPath}
-                            className={`shrink-0 px-3 py-2 rounded-md text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                              previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
-                            }`}
-                          >
-                            {previewLoading && previewToken !== bgmPath
-                              ? (isZh ? '⏳ 下载中' : '⏳')
-                              : previewToken === bgmPath ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
-                          </button>
+                        </optgroup>
+                        {remoteBgm.length > 0 && (
+                          <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads on first use)'}>
+                            {/* 编辑老任务时选中的云端曲目可能不在已拉清单里 → 补占位,避免下拉空白 */}
+                            {!bgmInLibraryList && bgmIsRemote && (
+                              <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                            )}
+                            {remoteBgm.map((b) => (
+                              <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                            ))}
+                          </optgroup>
                         )}
-                      </div>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => togglePreview(bgmPath)}
+                        disabled={previewLoading && previewToken !== bgmPath}
+                        className={`shrink-0 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 ${
+                          previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
+                        }`}
+                      >
+                        {previewLoading && previewToken !== bgmPath
+                          ? (isZh ? '⏳ 下载中…' : '⏳')
+                          : previewToken === bgmPath ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
+                      </button>
+                    </div>
+                    {previewError && (
+                      <div className="text-[11px] text-red-500">{previewError}</div>
                     )}
                     {bgmIsRemote && (
-                      <div className="mt-1 text-[11px] text-gray-400">
-                        {isZh ? '☁️ 云端曲目首次合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first compose, then cached.'}
+                      <div className="text-[11px] text-gray-400">
+                        {isZh ? '☁️ 云端曲目首次试听/合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first preview/compose, then cached.'}
                       </div>
                     )}
                   </div>
@@ -2396,7 +2375,7 @@ const VideoConfigModal: React.FC<{
               </Field>
 
               {/* 生成数量(1~5):复用脚本/配音,每条不同画面组合,平台费按条数计。 */}
-              <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh ? '复用同一脚本与配音，每条画面组合不同；平台费按条数计' : 'reuse script & voice, vary clips; fee per video'}>
+              <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh ? '复用同一脚本与配音，每条画面组合不同' : 'reuse script & voice, vary clips'}>
                 <div className="flex gap-2">
                   {VIDEO_COUNT_OPTIONS.map((n) => (
                     <button
