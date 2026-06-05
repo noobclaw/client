@@ -97,6 +97,8 @@ export interface VideoCreationInput {
   subtitleColor?: string;
   /** 字幕描边颜色(#RRGGBB)。空 = 不描边(用半透明黑底盒)。 */
   subtitleStrokeColor?: string;
+  /** 字幕字体文件名(resources/fonts/ 下,如 SmileySans-Oblique.ttf)。空 = 默认思源黑体。 */
+  subtitleFont?: string;
   /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
   maxClipSeconds?: number;
   /**
@@ -663,6 +665,7 @@ async function runVideoPipeline(
       position: input.subtitlePosition || 'bottom',
       color: input.subtitleColor,
       strokeColor: input.subtitleStrokeColor,
+      fontFile: input.subtitleFont,
     };
 
     // BGM 解析(全条共用,只解析一次):builtin:<id> → 随包路径;remote:<url> → 按需下载

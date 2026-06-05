@@ -71,6 +71,23 @@ function resolveBundledFont(): string | null {
   return null;
 }
 
+/**
+ * 按用户选中的字体文件名解析 resources/fonts/ 下的字体路径。
+ * 用 path.basename 强制只取文件名(防目录穿越),且只接受 .otf/.ttf/.ttc;
+ * 找不到 / 非法 → 返回 null,由调用方退回默认思源黑体。
+ */
+function resolveBundledFontByName(name?: string): string | null {
+  const raw = (name || '').trim();
+  if (!raw) return null;
+  const base = path.basename(raw);
+  if (!/\.(otf|ttf|ttc)$/i.test(base)) return null;
+  for (const dir of bundledFontDirs()) {
+    const p = path.join(dir, base);
+    if (fs.existsSync(p)) return p;
+  }
+  return null;
+}
+
 /** 找一个系统里的中文字体给 drawtext 用(内置字体缺失时的兜底)。 */
 function resolveCjkFont(): string | null {
   const candidates = process.platform === 'win32'
@@ -168,6 +185,8 @@ export interface SubtitleStyle {
   color?: string;
   /** 描边颜色(#RRGGBB 或颜色名)。空 = 不描边(沿用半透明黑底盒)。 */
   strokeColor?: string;
+  /** 字幕字体文件名(resources/fonts/ 下,如 SmileySans-Oblique.ttf)。空 = 默认思源黑体。 */
+  fontFile?: string;
 }
 
 /** 把 #RRGGBB / RRGGBB / 颜色名归一成 ffmpeg drawtext 认的写法(#RRGGBB → 0xRRGGBB)。 */
@@ -504,9 +523,10 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
   const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-video-'));
 
   // 字体拷进 workDir,filtergraph 里只用相对名(避开 C: 转义)。
-  // 优先内置思源黑体(任何机器中文都不豆腐),缺失才退回系统字体。
+  // 优先用户选中的字体(style.fontFile),其次内置思源黑体(任何机器中文都不豆腐),
+  // 都缺失才退回系统字体。
   let fontRel: string | null = null;
-  const fontSrc = resolveBundledFont() ?? resolveCjkFont();
+  const fontSrc = resolveBundledFontByName(style.fontFile) ?? resolveBundledFont() ?? resolveCjkFont();
   if (fontSrc) {
     try {
       fontRel = `font${path.extname(fontSrc) || '.ttf'}`;

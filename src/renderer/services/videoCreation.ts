@@ -65,6 +65,8 @@ export interface VideoCreationInput {
   subtitleColor?: string;
   /** 字幕描边颜色(#RRGGBB)。空 = 不描边(半透明黑底盒)。 */
   subtitleStrokeColor?: string;
+  /** 字幕字体文件名(resources/fonts/ 下,如 SmileySans-Oblique.ttf)。空 = 默认思源黑体。 */
+  subtitleFont?: string;
   /** 每段素材最长秒数(换镜节奏)。默认 4,越小换镜越快。 */
   maxClipSeconds?: number;
   /** 一次出片数量(1~5)。复用脚本/配音,每条不同画面组合。默认 1。 */
