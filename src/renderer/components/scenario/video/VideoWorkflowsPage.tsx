@@ -1860,7 +1860,7 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'stock'}
                     onClick={() => setMode('stock')}
                     title={isZh ? 'AI 分镜口播视频' : 'AI scene voice-over'}
-                    desc={isZh ? '只适合无真人出镜口播类（知识科普 / 资讯解说 / 好物种草）；AI 写稿配音，画面在下一步「画面」里二选一：在线素材库 或 全部用你上传的本地视频' : 'voice-over only, no real person; AI writes & narrates, then in the Visuals step pick ONE source: online stock or all your own clips'}
+                    desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
