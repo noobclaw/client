@@ -89,6 +89,8 @@ export interface VideoRunRecord {
   outputPath?: string;
   /** 成片输出目录(开跑即确定)。 */
   outputDir?: string;
+  /** 本次实际产出的成片条数(批量出片时>1);缺省 / 老记录按 1 计。 */
+  videoCount?: number;
   error?: string;
   /** 本次运行消耗的 DeepSeek token(TTS/ffmpeg 免费不计)。 */
   tokensUsed: number;
@@ -423,9 +425,14 @@ class VideoTaskStore {
           if (res.ok && res.outputPath) {
             r.status = 'done';
             r.outputPath = res.outputPath;
-            // 批量出片(videoCount>1):全部成片都落在同一输出目录,点「打开文件夹」可见;
-            // 这里据快照里的条数提示一下,outputPath 仍指向首条(详情页快捷打开用)。
-            const n = Math.max(1, Math.min(5, Math.round(r.input.videoCount ?? 1)));
+            // 实际产出条数以主进程终态回传的 videoCount 为准(个别条失败时 < 请求数),
+            // 兜底用配置里的请求数;计入「累计/上次完成」的视频条数统计。
+            const n = res.videoCount && res.videoCount > 0
+              ? res.videoCount
+              : Math.max(1, Math.min(5, Math.round(r.input.videoCount ?? 1)));
+            r.videoCount = n;
+            // 批量出片(n>1):全部成片都落在同一输出目录,点「打开文件夹」可见;
+            // outputPath 仍指向首条(详情页快捷打开用)。
             this.appendLog(r, n > 1 ? `✅ 生成完成(${n} 条已输出到同一文件夹)` : '✅ 生成完成');
           } else {
             r.status = 'error';

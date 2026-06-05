@@ -138,6 +138,8 @@ export interface VideoCreationProgress {
   costUsd?: number;
   /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
   outputDir?: string;
+  /** 本次实际产出的成片条数(批量出片时>1,随终态 done 事件带回供渲染端计数)。 */
+  videoCount?: number;
 }
 
 export interface VideoCreationResult {
@@ -210,9 +212,9 @@ class ProgressTracker {
     }
     this.send('error', undefined, { error });
   }
-  finish(outputPath: string) {
+  finish(outputPath: string, videoCount = 1) {
     this.steps.forEach((s) => { if (s.status !== 'done') s.status = 'done'; });
-    this.send('done', undefined, { outputPath });
+    this.send('done', undefined, { outputPath, videoCount });
   }
 }
 
@@ -802,7 +804,7 @@ async function runVideoPipeline(
       refundOnExit = true;
       tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
       tracker.progress(videoCount > 1
-        ? `💎 已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}，${videoCount} 条:平台费向上限靠拢 + AI 费按条数叠加），失败将自动退回`
+        ? `💎 已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}，准备生成 ${videoCount} 条视频），失败将自动退回`
         : `💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
     }
 
@@ -892,10 +894,11 @@ async function runVideoPipeline(
 
     // 至少一条成功 → 整笔费用照收(已按 videoCount 预扣),不退回。
     refundOnExit = false;
-    if (videoCount > 1 && failCount > 0) {
-      tracker.progress(`已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,费用已按 ${videoCount} 条预扣）`);
-    }
-    tracker.finish(outputPaths[0]);
+    // 结尾把【本次实际写片的目录】打出来,方便用户直接点过去(destDir = 任务/日期/批次号)。
+    tracker.progress(videoCount > 1 && failCount > 0
+      ? `🎉 已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,费用已按 ${videoCount} 条预扣） · 📂 输出目录:${destDir}`
+      : `🎉 已生成 ${outputPaths.length} 条 · 📂 输出目录:${destDir}`);
+    tracker.finish(outputPaths[0], outputPaths.length);
     return { ok: true, outputPath: outputPaths[0], outputPaths };
   } catch (e) {
     const err = e instanceof Error ? e.message : String(e);

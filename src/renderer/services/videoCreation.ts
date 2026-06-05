@@ -98,12 +98,16 @@ export interface VideoCreationProgress {
   costUsd?: number;
   /** 成片输出目录(开跑即确定,供详情页顶部展示)。 */
   outputDir?: string;
+  /** 本次实际产出的成片条数(批量出片时>1,随终态 done 事件带回供计数)。 */
+  videoCount?: number;
 }
 
 export interface VideoCreationResult {
   ok: boolean;
   outputPath?: string;
   error?: string;
+  /** 本次实际产出的成片条数(批量出片时>1);缺省按 1 计。 */
+  videoCount?: number;
 }
 
 type ProgressHandler = (p: VideoCreationProgress) => void;
@@ -220,7 +224,7 @@ class VideoCreationService {
       if (this.api.onProgress) {
         unsub = this.api.onProgress((p: VideoCreationProgress) => {
           onProgress?.(p);
-          if (p.status === 'done') finish({ ok: true, outputPath: p.outputPath });
+          if (p.status === 'done') finish({ ok: true, outputPath: p.outputPath, videoCount: p.videoCount });
           else if (p.status === 'error') finish({ ok: false, error: p.error || '生成失败' });
         });
       }

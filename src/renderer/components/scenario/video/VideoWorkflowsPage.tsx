@@ -241,9 +241,14 @@ function statusOf(task: VideoTask): VideoRunStatus | 'idle' {
   return task.lastStatus || (task.runCount > 0 ? 'done' : 'idle');
 }
 
-/** 某任务已成功生成的视频条数(= done 状态的运行记录数)。 */
+/** 某任务已成功生成的视频条数(= 各 done 运行记录实际产出条数之和;一次批量出片可>1)。 */
+function runVideoCount(r: { videoCount?: number }): number {
+  return r.videoCount && r.videoCount > 0 ? r.videoCount : 1;
+}
 function doneVideoCount(taskId: string): number {
-  return videoTaskStore.getRunsForTask(taskId).filter((r) => r.status === 'done').length;
+  return videoTaskStore.getRunsForTask(taskId)
+    .filter((r) => r.status === 'done')
+    .reduce((sum, r) => sum + runVideoCount(r), 0);
 }
 
 const StatusPill: React.FC<{ isZh: boolean; status: VideoRunStatus | 'idle' }> = ({ isZh, status }) => {
@@ -542,7 +547,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
             <span className="text-gray-500 dark:text-gray-400 font-sans font-normal">{isZh ? '步' : 'steps'}</span>
           </span>
         ) : run.status === 'done' ? (
-          <span className="font-mono font-medium">🎬 {isZh ? '1 个视频' : '1 video'}</span>
+          <span className="font-mono font-medium">🎬 {runVideoCount(run)} {isZh ? '个视频' : runVideoCount(run) === 1 ? 'video' : 'videos'}</span>
         ) : (
           <span className="text-gray-400">{isZh ? '未生成' : 'none'}</span>
         )}
@@ -1108,7 +1113,7 @@ const VideoTaskDetail: React.FC<{
         />
         <VStatCard
           label={isZh ? '上次完成' : 'Last Done'}
-          value={latestRun ? (latestRun.status === 'done' ? `🎬 ${isZh ? '1 个视频' : '1 video'}` : (latestRun.status === 'running' ? (isZh ? '生成中…' : 'Running…') : (isZh ? '失败' : 'Failed'))) : '-'}
+          value={latestRun ? (latestRun.status === 'done' ? `🎬 ${runVideoCount(latestRun)} ${isZh ? '个视频' : runVideoCount(latestRun) === 1 ? 'video' : 'videos'}` : (latestRun.status === 'running' ? (isZh ? '生成中…' : 'Running…') : (isZh ? '失败' : 'Failed'))) : '-'}
         />
         <VStatCard
           label={isZh ? '上次消耗' : 'Last Cost'}
