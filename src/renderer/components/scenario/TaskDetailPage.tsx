@@ -1598,31 +1598,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                 </span>
               )}
             </div>
-            {/* v?.x: 醒目「打开输出目录」条 —— 用户反馈"不知道产出在哪里"。
-                头部那个小链接太隐蔽,这里在运行明细顶部再给一个大按钮,直达
-                explorer/finder。dir 异步从 getTaskDir 取(跟头部同一条路)。
-                所有 output-producing 场景都有报告/草稿目录,故无条件展示。 */}
-            <div className="rounded-xl border border-blue-500/30 bg-blue-500/5 px-4 py-3 mb-4 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <div className="text-sm font-medium dark:text-gray-200">
-                  {isZh
-                    ? (isAutoReplyTask ? '运行报告 / 输出目录' : '生成结果 / 输出目录')
-                    : 'Output folder'}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {isZh
-                    ? (isAutoReplyTask ? '每次运行的报告都保存在这个文件夹里' : '本任务的草稿 / 图片 / 报告都保存在这个文件夹里')
-                    : 'Drafts, images and run reports are saved in this folder'}
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={openTaskDir}
-                className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold rounded-lg bg-blue-500 text-white hover:bg-blue-600 transition-colors"
-              >
-                📂 {isZh ? '打开输出目录' : 'Open folder'}
-              </button>
-            </div>
+            {/* v?.x: 运行明细顶部原有一条醒目「打开输出目录」大按钮,但头部「输出目录:」
+                那行已经带了链接 + 按钮,这里重复 → 按用户反馈移除,避免一页两个同功能入口。 */}
             <div className="space-y-4">
               {STEP_NAMES.map((n, i) => ({ name: n, idx: i })).map(({ name, idx }) => {
           const stepNum = idx + 1;
