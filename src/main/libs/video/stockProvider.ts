@@ -24,6 +24,12 @@ const REQ_TIMEOUT_MS = 15_000;
 const VIDEO_REQ_TIMEOUT_MS = 25_000;
 /** 同一搜索词内并发下载的段数上限(并发提速,又不至于把带宽打满让每段都变慢)。 */
 const VIDEO_DOWNLOAD_CONCURRENCY = 4;
+/**
+ * 搜索阶段并发上限。搜索是【延迟瓶颈】(每词一次双跳往返:客户端→我们服务端→素材库),
+ * 不吃带宽;并发把 N 个词的 N×RTT 压成 ~ceil(N/limit)×RTT —— 这是「搜索半天没动静」的
+ * 主要提速点。下载才是带宽瓶颈,所以下载仍逐词串行(词内 4 并发),不在这里堆并发。
+ */
+const SEARCH_CONCURRENCY = 6;
 /** 低于这个边长的素材图拉伸到 1080×1920 会糊,直接拒收(抄 MoneyPrinterTurbo 的 480 门槛)。 */
 const MIN_IMAGE_EDGE = 480;
 /** 太短的素材视频(<2s)拼起来太碎,拒收。 */
@@ -259,11 +265,16 @@ export interface FetchVideosByTermsOptions {
   /** 素材视频最短秒数,低于则拒收。默认 MIN_VIDEO_SEC。 */
   minVideoSec?: number;
   /**
-   * 进度回调。done/total 是词进度,term 是当前词,got 是该词当前下到几段,
-   * totalGot 是累计下到几段。clip 存在时 = 词【下载中】的段级心跳(index/count),
-   * 不存在 = 该词整体下完的收尾回报。让 UI 不会因一个慢词几分钟没动静而像卡死。
+   * 进度回调。phase 区分两段:
+   *   · 'search'   = 并发搜索阶段。done/total 是【已搜完/总词数】,term 是刚搜完的词;
+   *                  此阶段 got/totalGot 恒为 0(还没开始下载)。
+   *   · 'download' = 逐词下载阶段。done/total 是词进度,got 是该词当前下到几段,
+   *                  totalGot 是累计下到几段;clip 存在 = 词【下载中】的段级心跳(index/count),
+   *                  不存在 = 该词整体下完的收尾回报。
+   * 让 UI 既能显示「搜索 x/N」也能显示「下载 段 i/count」,不会几分钟没动静像卡死。
    */
   onProgress?: (info: {
+    phase: 'search' | 'download';
     done: number; total: number; term: string; got: number; totalGot: number;
     clip?: { index: number; count: number };
   }) => void;
@@ -277,7 +288,10 @@ export interface FetchVideosByTermsOptions {
  * 现在每个词单独搜,pipeline 再按各分镜自己的搜索词挑对应素材,画面跟着内容走。
  *
  * 同时做竖屏过滤:元数据已知尺寸时,高 < 宽(横屏)直接拒收,免得裁成竖屏丢画面。
- * 全程 onProgress 回调让 UI 不再"搜索素材…没动静"。服务端没 key/没网时返回各词空数组。
+ *
+ * 两阶段:① 并发搜索所有词(延迟瓶颈,SEARCH_CONCURRENCY 把 N×RTT 压成 ~N/limit×RTT,
+ * 这是搜索提速主因);② 逐词下载(带宽瓶颈,词内 4 并发)。onProgress 用 phase 区分两段,
+ * UI 既显示「搜索 x/N」又显示「下载 段 i/count」,不再"没动静"。没 key/没网时返回各词空数组。
  */
 /** 限流并发执行(顺序无关):最多 limit 个任务同时跑,用于并行下载素材段。 */
 async function mapWithLimit<T>(items: T[], limit: number, task: (item: T) => Promise<void>): Promise<void> {
@@ -303,17 +317,37 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
   const out: StockVideoByTerm[] = [];
   if (!Array.isArray(terms) || terms.length === 0) return out;
 
+  const termList = terms.map((t) => (t || '').trim());
+
+  // ── 阶段一:并发搜索所有词。搜索是延迟瓶颈(双跳 RTT),并发把 N×RTT 压成 ~N/limit×RTT。
+  // 各词候选 meta 收进 metasByIndex[i],保持与 termList 下标对应,供阶段二按序去重+下载。
+  const metasByIndex: StockVideoMeta[][] = termList.map((): StockVideoMeta[] => []);
+  let searched = 0;
+  await mapWithLimit(
+    termList.map((term, i) => ({ term, i })),
+    SEARCH_CONCURRENCY,
+    async ({ term, i }) => {
+      // 多搜几条做候选(给下载失败留 backfill 余量)。空词跳过(metasByIndex[i] 保持空数组)。
+      if (term) {
+        metasByIndex[i] = await searchVideosViaServer([term], perTermCount + 3, orientation, locale, videoSize);
+      }
+      searched++;
+      opts.onProgress?.({ phase: 'search', done: searched, total: termList.length, term, got: 0, totalGot: 0 });
+    },
+  );
+
+  // ── 阶段二:逐词下载(下载是带宽瓶颈,词内已 4 并发;词间串行便于稳定回报进度)。
   const seenUrls = new Set<string>();
   let idx = 0;
   let totalGot = 0;
 
-  for (let t = 0; t < terms.length; t++) {
-    const term = (terms[t] || '').trim();
+  for (let t = 0; t < termList.length; t++) {
+    const term = termList[t];
     const assets: StockVideoAsset[] = [];
     if (term) {
-      // 多搜几条做候选(给下载失败留 backfill 余量),预过滤(去重 + 时长 + 比例 + 分辨率)
-      // 后再【并发】下载;边下边报"段"级进度,不再因一个慢词几分钟没动静而像卡死。
-      const metas = await searchVideosViaServer([term], perTermCount + 3, orientation, locale, videoSize);
+      // 阶段一已搜好的候选,预过滤(去重 + 时长 + 比例 + 分辨率)后再【并发】下载;
+      // 边下边报"段"级进度,不再因一个慢词几分钟没动静而像卡死。
+      const metas = metasByIndex[t];
       const candidates: { meta: StockVideoMeta; dest: string }[] = [];
       for (const meta of metas) {
         if (candidates.length >= perTermCount + 2) break;
@@ -352,13 +386,13 @@ export async function fetchStockVideosByTerms(opts: FetchVideosByTermsOptions): 
         }
         // 段级心跳(done=t 表示已完成 t 个词,当前是第 t+1 个词的下载中)。
         opts.onProgress?.({
-          done: t, total: terms.length, term, got: assets.length, totalGot,
+          phase: 'download', done: t, total: termList.length, term, got: assets.length, totalGot,
           clip: { index: settled, count: candidates.length },
         });
       });
     }
     out.push({ term, assets });
-    opts.onProgress?.({ done: t + 1, total: terms.length, term, got: assets.length, totalGot });
+    opts.onProgress?.({ phase: 'download', done: t + 1, total: termList.length, term, got: assets.length, totalGot });
   }
 
   return out;

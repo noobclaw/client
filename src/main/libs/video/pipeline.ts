@@ -552,11 +552,14 @@ async function runVideoPipeline(
         videoSize: vcfg.stockVideoSize,
         minVideoEdge: vcfg.minVideoEdge,
         minVideoSec: vcfg.minVideoSec,
-        onProgress: ({ done, total, term, totalGot, clip }) =>
-          tracker.progress(clip
-            // 段级心跳:done=已完成词数,当前是第 done+1 个词下载中,段 index/count。
-            ? `搜索在线视频素材 词 ${done + 1}/${total}「${term}」· 段 ${clip.index}/${clip.count}(累计 ${totalGot} 段)`
-            : `搜索在线视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
+        onProgress: ({ phase, done, total, term, totalGot, clip }) =>
+          tracker.progress(phase === 'search'
+            // 搜索阶段(并发):done=已搜完词数。
+            ? `搜索关键词 ${done}/${total}「${term}」…`
+            : clip
+              // 下载阶段段级心跳:done=已完成词数,当前是第 done+1 个词下载中,段 index/count。
+              ? `下载视频素材 词 ${done + 1}/${total}「${term}」· 段 ${clip.index}/${clip.count}(累计 ${totalGot} 段)`
+              : `下载视频素材 ${done}/${total}:「${term}」(累计 ${totalGot} 段)`),
       });
     }
 
