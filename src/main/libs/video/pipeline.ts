@@ -6,8 +6,8 @@
  *   2. 每句 edge-tts 配音(拿到每镜真实时长)
  *   3. 凑画面:参考图优先 → Pexels/Pixabay 素材图补 → 都没有上纯色文字卡
  *   4. ffmpeg 逐镜 Ken Burns + 烧字幕,concat 成竖屏 mp4
- *   5. 输出到 ~/Documents/NoobClaw/视频创作/<任务ID前8位>_<任务名>/
- *      (无任务上下文的老调用退回按日期 视频创作/<日期>/)
+ *   5. 输出到 ~/Documents/NoobClaw/视频创作/<任务ID前8位>_<任务名>/<日期>/<批次号>/
+ *      (同一任务同一天每跑一次 +1:1/、2/、3/…;无任务上下文的老调用退回 视频创作/<日期>/<批次号>/)
  *
  * 全程 emit 进度(steps 数组)给渲染端 UI。
  */
@@ -109,9 +109,10 @@ export interface VideoCreationInput {
   videoCount?: number;
   /**
    * v6.x: 所属视频任务 id。传入时,成片输出到【按任务】的文件夹
-   * (视频创作/<id前8位>_<任务名>/),让详情页顶部「输出目录」稳定指向
-   * 这个任务的总目录(对齐涨粉任务 getTaskDirPath 的按任务分目录)。
-   * 缺省(无任务上下文的老调用)退回按日期分桶。
+   * (视频创作/<id前8位>_<任务名>/<日期>/<批次号>/),详情页顶部「输出目录」稳定指向
+   * 任务总目录(视频创作/<id前8位>_<任务名>/),每次运行在其下按 日期/批次号 分桶
+   * (对齐涨粉任务 getTaskDirPath/getNextBatch 的按任务+批次分目录)。
+   * 缺省(无任务上下文的老调用)退回按日期+批次分桶。
    */
   taskId?: string;
   /** v6.x: 任务标题,派生输出文件夹名用(配合 taskId)。 */
@@ -273,13 +274,40 @@ function sanitizeFolderName(s: string): string {
     .slice(0, 40);
 }
 
+/** 本地日期串 年-月-日(对齐 scenario artifactWriter.todayStr)。 */
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /**
- * 成片输出目录。
- *   · 有 taskId(正常从视频任务发起)→ 视频创作/<id前8位>_<任务名>/,
- *     该任务所有运行的成片都落在这一个文件夹 = 详情页顶部「输出目录」指向的总目录。
- *   · 无 taskId(无任务上下文的老调用)→ 退回按日期分桶 视频创作/<年-月-日>/。
+ * 当天目录里下一个运行批次号(扫已有数字子目录取 max+1)。同一任务同一天每跑一次 +1。
+ * 算法照搬 scenario artifactWriter.getNextBatch,让视频与涨粉任务的批次目录规范一致。
  */
-function outputDir(input?: { taskId?: string; taskTitle?: string }): string {
+function getNextBatch(dayDir: string): number {
+  try {
+    if (!fs.existsSync(dayDir)) return 1;
+    let max = 0;
+    for (const e of fs.readdirSync(dayDir)) {
+      const n = parseInt(e, 10);
+      if (!isNaN(n) && n > max) max = n;
+    }
+    return max + 1;
+  } catch {
+    return 1;
+  }
+}
+
+/**
+ * 成片目录,对齐 scenario 的「任务总目录 + 日期 + 批次号」规范:
+ *   · taskDir(详情页顶部「输出目录」指向它,稳定不随运行变):
+ *       - 有 taskId → 视频创作/<id前8位>_<任务名>/
+ *       - 无 taskId(老调用)→ 视频创作/<年-月-日>/(日期桶充当任务根)
+ *   · runDir(本次运行实际写成片的目录)= taskDir/<年-月-日>/<批次号>/
+ *       同一任务同一天每手动跑一次新建 1/、2/、3/…(无 taskId 时任务根已是日期,不再套一层)。
+ *   一次批量出片(videoCount>1)只调一次 → N 条成片同落一个 <批次号>/,靠文件名 _N 后缀区分。
+ */
+function resolveOutputDirs(input?: { taskId?: string; taskTitle?: string }): { taskDir: string; runDir: string } {
   let docs: string;
   try {
     docs = require('electron').app.getPath('documents');
@@ -287,19 +315,20 @@ function outputDir(input?: { taskId?: string; taskTitle?: string }): string {
     docs = path.join(getHomePath(), 'Documents');
   }
   const root = path.join(docs, 'NoobClaw', '视频创作');
-  let dir: string;
+  let taskDir: string;
+  let dayDir: string;
   if (input?.taskId) {
     const folder = sanitizeFolderName(`${input.taskId.slice(0, 8)}_${input.taskTitle || ''}`) || input.taskId.slice(0, 8);
-    dir = path.join(root, folder);
+    taskDir = path.join(root, folder);
+    dayDir = path.join(taskDir, todayStr());
   } else {
-    const date = new Date();
-    const y = date.getFullYear();
-    const m = String(date.getMonth() + 1).padStart(2, '0');
-    const d = String(date.getDate()).padStart(2, '0');
-    dir = path.join(root, `${y}-${m}-${d}`);
+    // 无任务上下文:日期桶既当任务根(UI 显示)又当当天目录,批次号直接挂其下,避免 日期/日期 套娃。
+    taskDir = path.join(root, todayStr());
+    dayDir = taskDir;
   }
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const runDir = path.join(dayDir, String(getNextBatch(dayDir)));
+  fs.mkdirSync(runDir, { recursive: true });
+  return { taskDir, runDir };
 }
 
 function outputFileName(index = 0): string {
@@ -389,14 +418,14 @@ async function runVideoPipeline(
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
 
   // 出片目录开跑即确定,emit 一次让详情页顶部立刻能显示「输出目录」。
-  // 有 taskId 时按任务分目录(详情页顶部指向任务总目录),否则按日期分桶。
-  const destDir = outputDir(input);
-  tracker.setOutputDir(destDir);
+  // taskDir = 任务总目录(详情页顶部稳定指向它);destDir = 本次运行 <日期>/<批次号>/(实际写成片)。
+  const { taskDir, runDir: destDir } = resolveOutputDirs(input);
+  tracker.setOutputDir(taskDir);
 
   try {
     // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
     //    缺省兼容老任务:有 script → strict,无 → ai。
-    tracker.start('script', `输出目录:${destDir}`);
+    tracker.start('script', `输出目录:${taskDir}`);
     // 拉服务端可调配置(prompt 模板 + 各阈值)。拉不到 / 没登录 → 用内置默认,出片照常。
     const vcfg = await getVideoConfig();
     const userText = (input.script || '').trim();
@@ -510,7 +539,7 @@ async function runVideoPipeline(
 
     // 画面分配器:给定第几条视频(0-based),产出该条的 { sceneClips, imagePool }。
     // 第 0 条按原顺序;后续条把素材池打乱再分配 → 同脚本/配音、不同画面。
-    let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[] };
+    let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[]; imageByScene?: Map<number, string> };
 
     if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
@@ -535,26 +564,37 @@ async function runVideoPipeline(
       assignVisuals = (videoIdx: number) => ({
         sceneClips: pool.assign(videoIdx > 0),
         imagePool: pool.imagePool,
+        imageByScene: pool.imageByScene,
       });
     }
 
     // 在线素材库分支:AI 搜索词 → 逐词拉视频 → 图片补位 → 返回 { assign, imagePool }。
     // 抽成闭包是为了让本地上传时整段跳过(省时间 + 省 DeepSeek token);
     // assign(shuffle) 可被批量出片重复调用,每次用 fresh usedVideo 集分配。
-    async function buildStockPool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[] }> {
+    async function buildStockPool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string> }> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
-    const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt);
+    // A:把整条视频的主题/赛道/人设/关键词当语境喂给映射模型,让每镜的词锁定选题。
+    const termsTopic = (input.keywords || []).filter(Boolean).join('、') || input.track || '';
+    const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt, {
+      topic: termsTopic,
+      persona: input.persona,
+      track: input.track,
+      keywords: input.keywords,
+    });
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     aiCostUsd += termsResult.costUsd;
     tracker.addTokens(termsResult.tokens, termsResult.costUsd);
 
-    // 要去搜的词集:每镜首词优先(保证每个分镜的主画面词一定被搜到),
-    // 再补其余词,整体封顶 12 个,避免逐词搜请求过多拖慢。
+    // 要去搜的词集:每镜首词优先(保证每个分镜的主画面词一定被搜到),再补其余词。
     const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
     const extraTerms = Array.from(new Set(perSceneTerms.flat().filter(Boolean)))
       .filter((t) => !primaryTerms.includes(t));
-    let searchTerms = [...primaryTerms, ...extraTerms].slice(0, vcfg.maxSearchTerms);
+    // C:有效上限至少容得下【所有去重首词】(否则首词被砍的镜只能借全局 → 跑题),
+    // 再封个硬顶 24 防极端长稿逐词搜请求过多;config 的 maxSearchTerms 作下限基线。
+    const HARD_TERM_CAP = 24;
+    const effectiveTermCap = Math.max(vcfg.maxSearchTerms, Math.min(primaryTerms.length, HARD_TERM_CAP));
+    let searchTerms = [...primaryTerms, ...extraTerms].slice(0, effectiveTermCap);
     if (searchTerms.length === 0) {
       searchTerms = (input.keywords || []).map((s) => s.toLowerCase()).filter(Boolean);
     }
@@ -571,7 +611,8 @@ async function runVideoPipeline(
     // 同词下的不同段轮流分配)。videoCount=1→2 段/词(够覆盖且最快),videoCount=5→封顶
     // vcfg.perTermCount(=6)。这是搜索耗时的主因——以前不论出几条都按 6 段/词下载,
     // 单条视频会白下 3 倍素材;按需缩放后单条下载量直接砍半。
-    const perTermCount = Math.max(2, Math.min(vcfg.perTermCount, videoCount + 1));
+    // C:每词至少备 3 段(原 2)。本镜词够用就不必借全局,关联更稳;多条出片再按需上探。
+    const perTermCount = Math.max(3, Math.min(vcfg.perTermCount, videoCount + 2));
     let videoByTerm: StockVideoByTerm[] = [];
     if (wantVideo && searchTerms.length > 0) {
       tracker.progress(`搜索在线视频素材(共 ${searchTerms.length} 组关键词)…`);
@@ -666,27 +707,56 @@ async function runVideoPipeline(
       ? probe.reduce((n, c) => n + c.filter((p) => localVideos.includes(p)).length, 0)
       : 0;
 
-    // 3c. 视频没覆盖到的分镜,用参考图 + 在线素材图补齐(图片仍走聚合搜,影响小)
-    const needImages = Math.max(0, Math.min(20, scenesWithoutVideo - refImages.length));
-    let stockImages: string[] = [];
-    if (needImages > 0 && searchTerms.length > 0) {
-      tracker.progress('补充在线图片素材…');
-      stockImages = await fetchStockImages({
-        keywords: searchTerms.slice(0, 8),
-        count: needImages,
-        destDir: assetDir,
-        orientation,
-        minImageEdge: vcfg.minImageEdge,
-      });
+    // 3c. 视频没覆盖到的分镜补图。D:按【该镜自己的搜索词】分组搜图,让补位图也贴该镜内容,
+    //     而不是从全局词汤里随便挑一张。建 imageByScene(镜号→图)精确回填;另留扁平
+    //     imagePool 兜底(批量出片打乱后,某条里没覆盖的镜可能不在 map 内,用它顶上)。
+    const uncoveredIdx = probe.map((c, i) => (c.length === 0 ? i : -1)).filter((i) => i >= 0);
+    const imageByScene = new Map<number, string>();
+    const flatImages: string[] = [];
+    if (uncoveredIdx.length > 0 && (searchTerms.length > 0 || refImages.length > 0)) {
+      tracker.progress('补充在线图片素材(按各镜内容)…');
+      // 先把用户参考图按顺序铺给最前面没覆盖的镜(参考图本就是用户想露出的画面)。
+      let ri = 0;
+      for (const idx of uncoveredIdx) {
+        if (ri >= refImages.length) break;
+        imageByScene.set(idx, refImages[ri++]);
+      }
+      // 其余没覆盖的镜:按各自首词(空则退全局首词/keywords)分组,逐词搜图后回填。
+      const byTerm = new Map<string, number[]>();
+      for (const idx of uncoveredIdx) {
+        if (imageByScene.has(idx)) continue;
+        const term = (perSceneTerms[idx] && perSceneTerms[idx][0])
+          || searchTerms[0] || (input.keywords || []).map((s) => s.toLowerCase())[0] || '';
+        if (!term) continue;
+        const arr = byTerm.get(term) || [];
+        arr.push(idx);
+        byTerm.set(term, arr);
+      }
+      // 逐词搜图,总量封顶 20(避免长稿请求过多)。每词要够覆盖该词下的所有镜。
+      let budget = 20;
+      for (const [term, idxs] of byTerm) {
+        if (budget <= 0) break;
+        const want = Math.min(idxs.length, budget);
+        const imgs = await fetchStockImages({
+          keywords: [term],
+          count: want,
+          destDir: assetDir,
+          orientation,
+          minImageEdge: vcfg.minImageEdge,
+        });
+        budget -= imgs.length;
+        imgs.forEach((p, k) => { if (idxs[k] !== undefined) imageByScene.set(idxs[k], p); });
+        flatImages.push(...imgs);
+      }
     }
-    const imagePool = [...refImages, ...stockImages];
+    const imagePool = [...flatImages, ...refImages];
 
     tracker.done('visuals',
-      (totalClipsUsed > 0 || imagePool.length > 0)
-        ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imagePool.length} 张补位${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`
+      (totalClipsUsed > 0 || imageByScene.size > 0 || imagePool.length > 0)
+        ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imageByScene.size} 张按镜补位${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`
         : '无可用素材,使用文字卡');
 
-    return { assign: assignOnce, imagePool };
+    return { assign: assignOnce, imagePool, imageByScene };
     } // end buildStockPool
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
@@ -739,12 +809,15 @@ async function runVideoPipeline(
     // 单条合成:组装本条画面组合(第 0 条原序、之后打乱)→ composeVideo,成功返回成片路径,失败抛错。
     const composeOne = async (v: number): Promise<string> => {
       const label = videoCount > 1 ? `第 ${v + 1}/${videoCount} 条` : '';
-      const { sceneClips, imagePool } = assignVisuals(v);
+      const { sceneClips, imagePool, imageByScene } = assignVisuals(v);
       let imgCursor = 0;
       const scenes: SceneSpec[] = sentences.map((sentence, i) => {
         const clips = sceneClips[i];
         const hasVideo = clips.length > 0;
-        const image = !hasVideo && imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined;
+        // D:无视频的镜优先用「按本镜内容搜来的图」(imageByScene);没有再退扁平池轮转。
+        const image = hasVideo ? undefined
+          : (imageByScene?.get(i)
+            ?? (imagePool.length > 0 ? imagePool[imgCursor++ % imagePool.length] : undefined));
         return {
           clips: hasVideo ? clips : undefined,
           imagePath: image,
