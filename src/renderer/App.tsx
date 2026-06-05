@@ -48,7 +48,7 @@ const App: React.FC = () => {
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'web3news' | 'partners' | 'personality'>('cowork');
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
-  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'video' | undefined>(undefined);
+  const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video' | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -875,13 +875,13 @@ const App: React.FC = () => {
   const handleShowInvite = () => setMainView('invite');
   // v6.x: 菜单拆分 ——「一键涨粉」(新建页)= 'scenarioCreate';「我的涨粉任务」(管理页)= 'quickuse'。
   // 「一键涨粉」create 页(可带平台,落到对应平台的新建 tab)。
-  const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'video') => {
+  const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video') => {
     setQuickUseInitialPlatform(platform);
     setMainView('scenarioCreate');
   };
   // 带平台调用(首页快捷入口「立即在 X 平台涨粉」)→ 直接进新建页;无参(侧栏
   // 「我的涨粉任务」)→ 管理页。
-  const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin') => {
+  const handleShowQuickUse = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili') => {
     if (platform) { handleShowScenarioCreate(platform); return; }
     setQuickUseInitialPlatform(undefined);
     setMainView('quickuse');

@@ -142,6 +142,8 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     : (sc.platform as any) === 'youtube' ? 'YouTube'
     : (sc.platform as any) === 'tiktok' ? 'TikTok'
     : (sc.platform as any) === 'douyin' ? (isZh ? '抖音' : 'Douyin')
+    : (sc.platform as any) === 'kuaishou' ? (isZh ? '快手' : 'Kuaishou')
+    : (sc.platform as any) === 'bilibili' ? (isZh ? '哔哩哔哩' : 'Bilibili')
     : (sc.platform || '');
   // Same TRACK_ICONS + type-badge logic as MyTasksPage / RunHistoryPage so
   // the detail page header matches the row the user clicked on. Inlined
@@ -193,6 +195,12 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     if (sid === 'xhs_video_download')           return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'douyin_video_download')        return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'tiktok_video_download')        return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if (sid === 'kuaishou_video_download')      return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'bilibili_auto_engage')         return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (sid === 'bilibili_video_download')      return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+    if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // Platform-guarded fallback so Binance / YouTube / TikTok / Douyin auto_reply
     // don't get mis-labeled as 小红书.
@@ -201,6 +209,8 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
       if ((sc.platform as any) === 'youtube') return { icon: '💬', label: isZh ? 'YouTube · 互动涨粉' : 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
       if ((sc.platform as any) === 'tiktok')  return { icon: '💬', label: isZh ? 'TikTok · 互动涨粉' : 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
       if ((sc.platform as any) === 'douyin')  return { icon: '💬', label: isZh ? '抖音 · 互动涨粉' : 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+      if ((sc.platform as any) === 'kuaishou') return { icon: '💬', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+      if ((sc.platform as any) === 'bilibili') return { icon: '💬', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
       return { icon: '💬', label: isZh ? '小红书 · 互动涨粉' : 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     }
     if (sc.platform === 'binance') return { icon: '🔶', label: isZh ? '币安广场发帖' : 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
@@ -208,6 +218,8 @@ export const RunRecordDetailPage: React.FC<Props> = ({ recordId, onBack, onOpenT
     if ((sc.platform as any) === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
     if ((sc.platform as any) === 'tiktok')  return { icon: '🎵', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if ((sc.platform as any) === 'douyin')  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if ((sc.platform as any) === 'kuaishou') return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+    if ((sc.platform as any) === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 

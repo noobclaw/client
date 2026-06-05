@@ -5,7 +5,7 @@
  * (via a type-only import) and main can use it.
  */
 
-export type Platform = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube';
+export type Platform = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
 
 export type WorkflowType =
   | 'viral_production'
@@ -15,7 +15,17 @@ export type WorkflowType =
   | 'data_monitor'
   | 'xhs_video_download'
   | 'douyin_video_download'
-  | 'tiktok_video_download';
+  | 'tiktok_video_download'
+  | 'kuaishou_auto_engage'
+  | 'kuaishou_video_download'
+  | 'kuaishou_reply_fans_comment'
+  | 'bilibili_auto_engage'
+  | 'bilibili_video_download'
+  | 'bilibili_reply_fans_comment'
+  | 'shipinhao_image_text_creation'
+  | 'shipinhao_reply_fans_comment'
+  | 'toutiao_image_text_creation'
+  | 'toutiao_reply_fans_comment';
 
 export interface ScenarioManifest {
   id: string;                // e.g. "xhs_viral_production_career"

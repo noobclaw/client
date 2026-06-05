@@ -30,12 +30,16 @@ import { BinanceWorkflowsPage } from './BinanceWorkflowsPage';
 import { YoutubeWorkflowsPage } from './YoutubeWorkflowsPage';
 import { TikTokWorkflowsPage } from './TikTokWorkflowsPage';
 import { DouyinWorkflowsPage } from './DouyinWorkflowsPage';
+import { ShipinhaoWorkflowsPage } from './ShipinhaoWorkflowsPage';
+import { ToutiaoWorkflowsPage } from './ToutiaoWorkflowsPage';
+import { KuaishouWorkflowsPage } from './KuaishouWorkflowsPage';
+import { BilibiliWorkflowsPage } from './BilibiliWorkflowsPage';
 import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
 
-type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'tiktok' | 'youtube' | 'video';
+type PlatformId = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'kuaishou' | 'bilibili' | 'tiktok' | 'youtube' | 'video';
 
 // Top-level navigation:
 //   create  — scenario cards (current XhsWorkflowsPage / XWorkflowsPage,
@@ -83,6 +87,10 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
   { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
   { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎶', enabled: true },
+  { id: 'shipinhao', labelKey: 'scenarioPlatformShipinhao', icon: '📱', enabled: true },
+  { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
+  { id: 'kuaishou', labelKey: 'scenarioPlatformKuaishou', icon: '⚡', enabled: true },
+  { id: 'bilibili', labelKey: 'scenarioPlatformBilibili', icon: '📺', enabled: true },
 ];
 
 // L1 tabs are now PURELY for "switch view": My Tasks vs Run History.
@@ -201,6 +209,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             : s?.platform === 'tiktok' ? 'TikTok'
             : s?.platform === 'youtube' ? 'YouTube'
             : s?.platform === 'douyin' ? '抖音'
+            : s?.platform === 'shipinhao' ? '视频号'
+            : s?.platform === 'toutiao' ? '头条号'
             : (s?.platform || '');
           // Get this task's progress to know which step it's in
           const prog = await scenarioService.getRunProgress(id).catch(() => null);
@@ -236,7 +246,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
       const p = s?.platform;
       // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
-      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'tiktok' || p === 'youtube') return p;
+      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube') return p;
       return 'xhs';
     }
     return 'xhs';
@@ -537,6 +547,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       : currentPlatform === 'tiktok' ? 'TikTok'
       : currentPlatform === 'youtube' ? 'YouTube'
       : currentPlatform === 'douyin' ? (isZh ? '抖音' : 'Douyin')
+      : currentPlatform === 'shipinhao' ? (isZh ? '视频号' : 'WeChat Channels')
+      : currentPlatform === 'toutiao' ? (isZh ? '头条号' : 'Toutiao')
+      : currentPlatform === 'kuaishou' ? (isZh ? '快手' : 'Kuaishou')
+      : currentPlatform === 'bilibili' ? (isZh ? '哔哩哔哩' : 'Bilibili')
       : currentPlatform;
 
     if (currentSection === 'tasks') {
@@ -657,6 +671,66 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onConfigure={openWizardFor}
           onChanged={refreshAll}
           onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'douyin' })}
+        />
+      );
+    }
+
+    if (currentPlatform === 'shipinhao') {
+      return (
+        <ShipinhaoWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'shipinhao')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'shipinhao' })}
+        />
+      );
+    }
+
+    if (currentPlatform === 'toutiao') {
+      return (
+        <ToutiaoWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'toutiao')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'toutiao' })}
+        />
+      );
+    }
+
+    if (currentPlatform === 'kuaishou') {
+      return (
+        <KuaishouWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'kuaishou')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'kuaishou' })}
+        />
+      );
+    }
+
+    if (currentPlatform === 'bilibili') {
+      return (
+        <BilibiliWorkflowsPage
+          scenarios={scenarios.filter(s => (s.platform as any) === 'bilibili')}
+          tasks={tasksForPlatform}
+          draftsByTask={draftsByTask}
+          loading={loading}
+          onOpenTask={openTask}
+          onConfigure={openWizardFor}
+          onChanged={refreshAll}
+          onGoToMyTasks={() => setView({ kind: 'main', section: 'tasks', platform: 'bilibili' })}
         />
       );
     }
@@ -964,16 +1038,26 @@ const LinkModeEditModal: React.FC<{
   //   载,无 AI、无上传)。三个平台共用同一个分支,只在 label + 域名校验上分流。
   const isVideoDownload = scenario?.id === 'xhs_video_download'
     || scenario?.id === 'douyin_video_download'
-    || scenario?.id === 'tiktok_video_download';
-  const vdPlatform: 'xhs' | 'douyin' | 'tiktok' = scenario?.id === 'douyin_video_download'
+    || scenario?.id === 'tiktok_video_download'
+    || scenario?.id === 'kuaishou_video_download'
+    || scenario?.id === 'bilibili_video_download';
+  const vdPlatform: 'xhs' | 'douyin' | 'tiktok' | 'kuaishou' | 'bilibili' = scenario?.id === 'douyin_video_download'
     ? 'douyin'
     : scenario?.id === 'tiktok_video_download'
     ? 'tiktok'
+    : scenario?.id === 'kuaishou_video_download'
+    ? 'kuaishou'
+    : scenario?.id === 'bilibili_video_download'
+    ? 'bilibili'
     : 'xhs';
   const vdLabel = vdPlatform === 'douyin'
     ? (isZh ? '抖音' : 'Douyin')
     : vdPlatform === 'tiktok'
     ? 'TikTok'
+    : vdPlatform === 'kuaishou'
+    ? (isZh ? '快手' : 'Kuaishou')
+    : vdPlatform === 'bilibili'
+    ? (isZh ? '哔哩哔哩' : 'Bilibili')
     : (isZh ? '小红书' : 'XHS');
   // v4.28.x: sourceLabel 之前用在描述文案里("粘贴 1-3 个 ${sourceLabel} 原文链接"),
   // 现在描述按 acceptsTwitterUrl 直接走两个固定文案,不再需要 sourceLabel 占位 ——
@@ -997,6 +1081,14 @@ const LinkModeEditModal: React.FC<{
         } else if (vdPlatform === 'tiktok') {
           if (!/^https?:\/\/([\w-]+\.)?tiktok\.com\//i.test(l)) {
             return { ok: [], err: (isZh ? '不是 TikTok 链接：' : 'Not a TikTok link: ') + l.slice(0, 80) };
+          }
+        } else if (vdPlatform === 'kuaishou') {
+          if (!/^https?:\/\/([\w-]+\.)?(kuaishou|chenzhongtech)\.com\//i.test(l)) {
+            return { ok: [], err: (isZh ? '不是快手链接：' : 'Not a Kuaishou link: ') + l.slice(0, 80) };
+          }
+        } else if (vdPlatform === 'bilibili') {
+          if (!/^https?:\/\/([\w-]+\.)?(bilibili\.com|b23\.tv)\//i.test(l)) {
+            return { ok: [], err: (isZh ? '不是哔哩哔哩链接：' : 'Not a Bilibili link: ') + l.slice(0, 80) };
           }
         } else {
           if (!/^https?:\/\/(www\.)?xiaohongshu\.com\//i.test(l) && !/^https?:\/\/xhslink\.com\//i.test(l)) {

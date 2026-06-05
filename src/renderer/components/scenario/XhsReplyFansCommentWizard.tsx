@@ -34,13 +34,27 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
 }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
-  // v6.x: 这个 wizard 同时服务小红书 / 抖音两个"回复粉丝评论"场景,
-  // 平台相关文案靠 scenario.platform 切换(抖音=作品/抖音创作者中心,
-  // 小红书=笔记/小红书创作者中心)。字段(引流语+概率+间隔)完全平台无关。
-  const isDouyin = scenario.platform === 'douyin';
-  const ccNameZh = isDouyin ? '抖音创作者中心' : '小红书创作者中心';
-  const ccNameEn = isDouyin ? 'Douyin Creator Center' : 'Xiaohongshu Creator Center';
-  const itemZh = isDouyin ? '作品' : '笔记';
+  // v6.x: 这个 wizard 同时服务小红书 / 抖音 / 快手 / 哔哩哔哩四个"回复粉丝评论"
+  // 场景,平台相关文案靠 scenario.platform 切换。字段(引流语+概率+间隔)完全
+  // 平台无关。小红书是唯一"逐篇笔记进详情页"的流程,其余三个短视频平台都在
+  // 各自创作者中心「评论管理」集中回复(作品=video,creator center 名各异)。
+  const plat = scenario.platform as any;
+  const isXhs = plat === 'xhs';
+  // isDouyin 保留给沿用抖音文案的旧分支(短视频平台共用同一套"作品/评论管理"措辞)。
+  const isDouyin = !isXhs;
+  const ccNameZh = plat === 'kuaishou' ? '快手创作者服务平台'
+    : plat === 'bilibili' ? '哔哩哔哩创作中心'
+    : plat === 'douyin' ? '抖音创作者中心'
+    : plat === 'shipinhao' ? '视频号助手'
+    : plat === 'toutiao' ? '头条号后台'
+    : '小红书创作者中心';
+  const ccNameEn = plat === 'kuaishou' ? 'Kuaishou Creator Platform'
+    : plat === 'bilibili' ? 'Bilibili Creator Center'
+    : plat === 'douyin' ? 'Douyin Creator Center'
+    : plat === 'shipinhao' ? 'WeChat Channels Assistant'
+    : plat === 'toutiao' ? 'Toutiao Backend'
+    : 'Xiaohongshu Creator Center';
+  const itemZh = isXhs ? '笔记' : '作品';
 
   const [step, setStep] = useState<WizardStep>(1);
 
@@ -147,10 +161,10 @@ export const XhsReplyFansCommentWizard: React.FC<Props> = ({
               <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-fuchsia-500/30 bg-fuchsia-500/5 text-fuchsia-700 dark:text-fuchsia-300">
                 💌 {isZh
                   ? (isDouyin
-                      ? <>本任务在你的<strong>抖音创作者中心评论管理</strong>里逐条读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,只回复粉丝、从不评论作品本身。</>
+                      ? <>本任务在你的<strong>{ccNameZh}评论管理</strong>里逐条读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,只回复粉丝、从不评论作品本身。</>
                       : <>本任务会自动打开你的<strong>创作者中心</strong>,逐篇笔记进详情页,读粉丝评论 → AI 写回应 → 真人节奏发送。<strong>已回复过的、自己留的评论自动跳过</strong>,从不评论笔记本身。</>)
                   : (isDouyin
-                      ? <>This task reads fan comments in your <strong>Douyin Creator Center Comment Management</strong> → AI writes replies → posts on human-paced jitter. <strong>Auto-skips already-replied / your own comments</strong>; only replies to fans, never comments on the video itself.</>
+                      ? <>This task reads fan comments in your <strong>{ccNameEn} Comment Management</strong> → AI writes replies → posts on human-paced jitter. <strong>Auto-skips already-replied / your own comments</strong>; only replies to fans, never comments on the video itself.</>
                       : <>This task opens your <strong>Creator Center</strong>, walks each note's detail page, reads fan comments → AI writes replies → posts on human-paced jitter. <strong>Auto-skips comments you've already replied to or your own.</strong></>)}
               </div>
 

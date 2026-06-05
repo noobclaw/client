@@ -310,10 +310,10 @@ interface IElectronAPI {
     getRunProgress: (taskId?: string) => Promise<ScenarioRunProgress | null>;
     getLatestRunRecord: (taskId: string) => Promise<any | null>;
     requestAbort: (taskId?: string) => Promise<{ ok: boolean }>;
-    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<XhsLoginStatus>;
-    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => Promise<{ ok: boolean; reason?: string }>;
-    checkCreatorCenter: (platform: 'xhs' | 'douyin') => Promise<XhsLoginStatus>;
-    openCreatorCenter: (platform: 'xhs' | 'douyin') => Promise<{ ok: boolean; reason?: string }>;
+    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili') => Promise<XhsLoginStatus>;
+    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili') => Promise<{ ok: boolean; reason?: string }>;
+    checkCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili') => Promise<XhsLoginStatus>;
+    openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili') => Promise<{ ok: boolean; reason?: string }>;
   };
   mcp: {
     list: () => Promise<{ success: boolean; servers?: McpServerConfigIPC[]; error?: string }>;

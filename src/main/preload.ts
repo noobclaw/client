@@ -87,10 +87,10 @@ contextBridge.exposeInMainWorld('electron', {
     getRunProgress: (taskId?: string) => ipcRenderer.invoke('scenario:getRunProgress', taskId),
     getLatestRunRecord: (taskId: string) => ipcRenderer.invoke('scenario:getLatestRunRecord', taskId),
     requestAbort: (taskId?: string) => ipcRenderer.invoke('scenario:requestAbort', taskId),
-    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
-    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
-    checkCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
-    openCreatorCenter: (platform: 'xhs' | 'douyin') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
+    checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:checkXhsLogin', platform),
+    openXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
+    checkCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
+    openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
   },
   // ── Multi-platform Video Creation (phase 1: local synthesis) ──
   video: {

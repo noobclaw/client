@@ -46,6 +46,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
   const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
 
+  // 平台名跟着 scenario.platform 走 —— 同一个 wizard 复用给抖音 / 视频号 / 头条号。
+  const platZh = scenario.platform === 'shipinhao' ? '视频号' : scenario.platform === 'toutiao' ? '头条号' : '抖音';
+  const platEn = scenario.platform === 'shipinhao' ? 'WeChat Channels' : scenario.platform === 'toutiao' ? 'Toutiao' : 'Douyin';
+
   const [step, setStep] = useState<WizardStep>(1);
 
   // ── 3 段参考文案 ──
@@ -222,8 +226,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
             📝 {editing
-              ? (isZh ? '编辑抖音图文任务' : 'Edit Douyin Image-Text Task')
-              : (isZh ? '配置抖音图文创作' : 'Configure Douyin Image-Text Creation')}
+              ? (isZh ? `编辑${platZh}图文任务` : `Edit ${platEn} Image-Text Task`)
+              : (isZh ? `配置${platZh}图文创作` : `Configure ${platEn} Image-Text Creation`)}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">
@@ -240,8 +244,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
             <>
               <div className="rounded-lg border px-3 py-2 text-[11px] leading-relaxed border-violet-500/30 bg-violet-500/5 text-violet-700 dark:text-violet-300">
                 ✨ {isZh
-                  ? <>填 <strong>3 段参考文案</strong>(可以是经历、想法、笔记、随手记)。每次任务运行会从里面<strong>随机抽 1 段</strong>,AI 拿这段参考文案直接创作抖音图文。可以只填 1 段,但 3 段不重复才能让生成多样化。</>
-                  : <>Fill in <strong>3 reference texts</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and AI uses it as the basis to compose a Douyin image-text post. 1 is the minimum, 3 keeps results varied.</>}
+                  ? <>填 <strong>3 段参考文案</strong>(可以是经历、想法、笔记、随手记)。每次任务运行会从里面<strong>随机抽 1 段</strong>,AI 拿这段参考文案直接创作{platZh}图文。可以只填 1 段,但 3 段不重复才能让生成多样化。</>
+                  : <>Fill in <strong>3 reference texts</strong> (notes, thoughts, experiences). Each run picks one <strong>at random</strong> and AI uses it as the basis to compose a {platEn} image-text post. 1 is the minimum, 3 keeps results varied.</>}
               </div>
 
               {[
@@ -301,10 +305,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: '网络图片（从抖音抓现成的）',
-                      titleEn: 'Web images (from Douyin)',
-                      descZh: '按你填的关键词去抖音抓相关图片,成本较低。',
-                      descEn: 'Grabs relevant images from Douyin by your keywords. Lower cost.',
+                      titleZh: `网络图片（从${platZh}抓现成的）`,
+                      titleEn: `Web images (from ${platEn})`,
+                      descZh: `按你填的关键词去${platZh}抓相关图片,成本较低。`,
+                      descEn: `Grabs relevant images from ${platEn} by your keywords. Lower cost.`,
                     },
                   ]).map((opt) => {
                     const active = useRealPhotos === opt.mode;
@@ -428,8 +432,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       不用 UI 点;按本篇张数逐张独立抽 1 个关键词,每次取 1 张。 */}
                   <div className="mt-2 rounded-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
                     {isZh
-                      ? 'ℹ️ 抓图规则: 按本篇所需张数, 逐张从你填的关键词里随机抽 1 个去搜抖音「图文 · 半年内」, 每搜一次只取 1 张图 — 关键词填得越多, 本篇配图越多样。'
-                      : 'ℹ️ Scrape rule: For each image needed, randomly pick 1 keyword from your list to search Douyin (filtered to Image-Text + Last 6 Months), take 1 image per search. More keywords = more variety per post.'}
+                      ? `ℹ️ 抓图规则: 按本篇所需张数, 逐张从你填的关键词里随机抽 1 个去搜${platZh}相关图片, 每搜一次只取 1 张图 — 关键词填得越多, 本篇配图越多样。`
+                      : `ℹ️ Scrape rule: For each image needed, randomly pick 1 keyword from your list to search ${platEn}, take 1 image per search. More keywords = more variety per post.`}
                   </div>
                 </div>
               )}
@@ -443,10 +447,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     {
                       mode: 'publish' as UploadMode,
                       icon: '📤',
-                      titleZh: '直接发布到抖音(推荐)',
-                      titleEn: 'Auto-publish to Douyin (recommended)',
-                      descZh: '生成完每篇直接走抖音「发布」按钮。⚠️ 一旦发出无法撤回。',
-                      descEn: 'Each post hits Douyin Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent.',
+                      titleZh: `直接发布到${platZh}(推荐)`,
+                      titleEn: `Auto-publish to ${platEn} (recommended)`,
+                      descZh: `生成完每篇直接走${platZh}「发布」按钮。⚠️ 一旦发出无法撤回。`,
+                      descEn: `Each post hits ${platEn} Publish on completion. ⚠️ Posts go live immediately and can\'t be unsent.`,
                     },
                     {
                       mode: 'local' as UploadMode,
@@ -492,7 +496,7 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     <li>{isZh ? '直接发布模式 — 跑完立即可见' : 'Publish mode — posts go live immediately'}</li>
                   )}
                   {uploadMode === 'draft' && (
-                    <li>{isZh ? '抖音侧只保留最新 1 篇草稿,daily_count > 1 时只剩最后一篇' : 'Douyin keeps only 1 draft — multi-post runs leave just the last'}</li>
+                    <li>{isZh ? `${platZh}侧只保留最新 1 篇草稿,daily_count > 1 时只剩最后一篇` : `${platEn} keeps only 1 draft — multi-post runs leave just the last`}</li>
                   )}
                   {uploadMode === 'local' && (
                     <li>{isZh ? '只本地保存,不动浏览器,可在任务详情页手动逐条审核 + 上传' : 'Local only — no browser action; review + upload one-by-one from task detail'}</li>
@@ -549,9 +553,9 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     : (isZh ? `🎨 AI 生图 ${realPhotoCount} 张/篇` : `🎨 AI ${realPhotoCount}/post`)} />
                 <SummaryRow label={isZh ? '生成后' : 'After gen'} value={
                   uploadMode === 'publish'
-                    ? (isZh ? '直接发布到抖音' : 'Auto-publish to Douyin')
+                    ? (isZh ? `直接发布到${platZh}` : `Auto-publish to ${platEn}`)
                     : uploadMode === 'draft'
-                      ? (isZh ? '存抖音草稿(只 1 篇,会覆盖)' : 'Douyin draft (1-only, overwrites)')
+                      ? (isZh ? `存${platZh}草稿(只 1 篇,会覆盖)` : `${platEn} draft (1-only, overwrites)`)
                       : (isZh ? '仅本地保存,人工审核' : 'Local only, manual review')
                 } />
                 <SummaryRow label={isZh ? '运行频率' : 'Frequency'} value={intervalLabel} />
@@ -563,8 +567,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                 </div>
                 {[
                   isZh
-                    ? '我理解 NoobClaw 会在我本地浏览器代我打开抖音创作者中心,所有行为使用我自己的 IP 和账号'
-                    : 'I understand NoobClaw drives the Douyin creator center inside my own browser using my IP and my account.',
+                    ? `我理解 NoobClaw 会在我本地浏览器代我打开${platZh}创作者中心,所有行为使用我自己的 IP 和账号`
+                    : `I understand NoobClaw drives the ${platEn} creator center inside my own browser using my IP and my account.`,
                   isZh
                     ? '我理解平台账号风险由我自己承担,草稿仅暂存,需自行审核后再发布'
                     : 'I accept platform account risk, and that drafts are stored only — I review them before publishing.',

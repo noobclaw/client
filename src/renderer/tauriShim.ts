@@ -329,13 +329,13 @@ export function createTauriElectronShim(): typeof window.electron {
       getRunProgress: (taskId?: string) => ipcInvoke('scenario:getRunProgress', { taskId }),
       getLatestRunRecord: (taskId: string) => ipcInvoke('scenario:getLatestRunRecord', { taskId }),
       requestAbort: (taskId?: string) => ipcInvoke('scenario:requestAbort', { taskId }).then(r => r ?? { ok: true }),
-      checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance') =>
+      checkXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili') =>
         ipcInvoke('scenario:checkXhsLogin', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
-      openXhsLogin: (platform?: 'xhs' | 'x' | 'binance') =>
+      openXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili') =>
         ipcInvoke('scenario:openXhsLogin', platform).then(r => r ?? { ok: false }),
-      checkCreatorCenter: (platform: 'xhs' | 'douyin') =>
+      checkCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili') =>
         ipcInvoke('scenario:checkCreatorCenter', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
-      openCreatorCenter: (platform: 'xhs' | 'douyin') =>
+      openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili') =>
         ipcInvoke('scenario:openCreatorCenter', platform).then(r => r ?? { ok: false }),
     },
 

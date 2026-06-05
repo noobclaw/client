@@ -56,6 +56,8 @@ const PLATFORM_NAMES: Record<string, string> = {
   xhs: '小红书',
   x: '推特',
   douyin: '抖音',
+  kuaishou: '快手',
+  bilibili: '哔哩哔哩',
   tiktok: 'TikTok',
   youtube: 'YouTube',
 };
@@ -80,6 +82,8 @@ function inferPlatformFromTask(task: ScenarioTask): string {
   //   用户反馈"抖音视频无水印下载的输出目录不对"才发现。PLATFORM_NAMES.douyin
   //   一直都有"抖音"映射,只是 inferPlatformFromTask 没把抖音 sid 喂进来。
   if (sid.startsWith('douyin_')) return 'douyin';
+  if (sid.startsWith('kuaishou_')) return 'kuaishou';
+  if (sid.startsWith('bilibili_')) return 'bilibili';
   return 'xhs';
 }
 

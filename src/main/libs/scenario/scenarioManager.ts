@@ -775,6 +775,10 @@ function humanizePlatformFromKey(key: string): string {
   if (lc.indexOf('youtube') >= 0) return 'YouTube';
   if (lc.indexOf('tiktok') >= 0) return 'TikTok';
   if (lc.indexOf('douyin') >= 0) return '抖音';
+  if (lc.indexOf('kuaishou') >= 0) return '快手';
+  if (lc.indexOf('bilibili') >= 0) return '哔哩哔哩';
+  if (lc.indexOf('channels.weixin') >= 0 || lc.indexOf('shipinhao') >= 0) return '视频号';
+  if (lc.indexOf('toutiao') >= 0) return '头条号';
   if (key === 'tab:default') return '默认浏览器标签';
   return key;
 }

@@ -229,7 +229,7 @@ class ScenarioService {
 
   // ── XHS login gate ──
 
-  async checkXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' = 'xhs'): Promise<XhsLoginStatus> {
+  async checkXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' = 'xhs'): Promise<XhsLoginStatus> {
     try {
       return await window.electron.scenario.checkXhsLogin(platform as any);
     } catch (err) {
@@ -237,7 +237,7 @@ class ScenarioService {
     }
   }
 
-  async openXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
+  async openXhsLogin(platform: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' = 'xhs'): Promise<{ ok: boolean; reason?: string }> {
     try {
       return await window.electron.scenario.openXhsLogin(platform as any);
     } catch (err) {
@@ -249,17 +249,17 @@ class ScenarioService {
   // 首页 tab 不等于创作者中心 tab,LoginRequiredModal 额外加一行检查保证用户
   // 真打开过 creator.* 子域、且不是停在登录重定向页。
 
-  async checkCreatorCenter(platform: 'xhs' | 'douyin'): Promise<XhsLoginStatus> {
+  async checkCreatorCenter(platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao'): Promise<XhsLoginStatus> {
     try {
-      return await window.electron.scenario.checkCreatorCenter(platform);
+      return await window.electron.scenario.checkCreatorCenter(platform as any);
     } catch (err) {
       return { loggedIn: false, reason: 'browser_not_connected' };
     }
   }
 
-  async openCreatorCenter(platform: 'xhs' | 'douyin'): Promise<{ ok: boolean; reason?: string }> {
+  async openCreatorCenter(platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao'): Promise<{ ok: boolean; reason?: string }> {
     try {
-      return await window.electron.scenario.openCreatorCenter(platform);
+      return await window.electron.scenario.openCreatorCenter(platform as any);
     } catch (err) {
       return { ok: false, reason: String(err) };
     }

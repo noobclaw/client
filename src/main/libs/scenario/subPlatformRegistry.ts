@@ -62,6 +62,15 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   x_main:         { label: 'X',        emoji: '🐦', domain: 'x.com' },
   binance_square: { label: 'BN·广场',  emoji: '🟡', domain: 'www.binance.com/square' },
   youtube_main:   { label: 'YT',       emoji: '🔴', domain: 'www.youtube.com' },
+  kuaishou_creator: { label: 'KS·创作', emoji: '🎬', domain: 'cp.kuaishou.com' },
+  kuaishou_main:    { label: 'KS',      emoji: '⚡', domain: 'www.kuaishou.com' },
+  bilibili_creator: { label: 'B站·创作', emoji: '📺', domain: 'member.bilibili.com' },
+  bilibili_main:    { label: 'B站',     emoji: '📺', domain: 'www.bilibili.com' },
+  // 视频号 / 头条号 没有独立的"主站浏览 vs 创作者中心"双子域 —— 创作 + 回复
+  // 粉丝都在同一个后台域名(channels.weixin.qq.com / mp.toutiao.com)上完成,
+  // 所以只登记一个 *_main,不设 *_creator。
+  shipinhao_main:   { label: '视频号',  emoji: '📱', domain: 'channels.weixin.qq.com' },
+  toutiao_main:     { label: '头条号',  emoji: '📰', domain: 'mp.toutiao.com' },
 };
 
 /** Lookup set for fast enum validation. Derived from the registry. */
@@ -103,6 +112,12 @@ const HOST_TO_SUB_PLATFORM: Array<[RegExp, string]> = [
   [/(\.|^)binance\.com$/i,         'binance_square'],
   [/(\.|^)youtube\.com$/i,         'youtube_main'],
   [/^youtu\.be$/i,                 'youtube_main'],
+  [/^cp\.kuaishou\.com$/i,         'kuaishou_creator'],
+  [/(\.|^)kuaishou\.com$/i,        'kuaishou_main'],
+  [/^member\.bilibili\.com$/i,     'bilibili_creator'],
+  [/(\.|^)bilibili\.com$/i,        'bilibili_main'],
+  [/^channels\.weixin\.qq\.com$/i, 'shipinhao_main'],
+  [/(\.|^)toutiao\.com$/i,         'toutiao_main'],
 ];
 
 export function urlToSubPlatform(url: string | undefined | null): string | null {

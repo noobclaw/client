@@ -55,6 +55,10 @@ function platformMeta(platformId: string, isZh: boolean): { icon: string; label:
   if (platformId === 'youtube') return { icon: '📺', label: 'YouTube' };
   if (platformId === 'tiktok')  return { icon: '🎵', label: 'TikTok' };
   if (platformId === 'douyin')  return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
+  if (platformId === 'kuaishou') return { icon: '⚡', label: isZh ? '快手' : 'Kuaishou' };
+  if (platformId === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
+  if (platformId === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
+  if (platformId === 'toutiao')  return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
   return { icon: '🤖', label: platformId };
 }
 
@@ -370,7 +374,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               // 视频无水印下载(xhs/douyin/tiktok)也是"粘 URL 列表"任务 —— 跟 link 仿写
               // 一样隐藏 track/persona、改显 URL 列表,但它有自己的徽章/副标题/图标,
               // 必须跟「指定链接爆款仿写」区分开(两者都带 urls[],别混了)。
-              const isVideoDownload = sid === 'xhs_video_download' || sid === 'douyin_video_download' || sid === 'tiktok_video_download';
+              const isVideoDownload = sid === 'xhs_video_download' || sid === 'douyin_video_download' || sid === 'tiktok_video_download' || sid === 'kuaishou_video_download' || sid === 'bilibili_video_download';
               // v4.28.x: 任何"用户粘 URL 列表仿写"任务统一处理 —— 之前 binance_from_x_link
               // 没被算进去,导致它在列表里还显示 track 名 + persona 摘要(其实用户没填,
               // 是 wizard fallback 的默认人设),完全跟 X / XHS link 模式不一致。
@@ -386,7 +390,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
               //   3 个 binance source-viral 详情页用 isBinanceSourceViral 跳 persona(人设是固定模板,展示也只会误导)。
               //   列表卡片这里跟着关掉 persona snippet,字段口径才跟详情一致。
               const isXhsImageText = sid === 'xhs_image_text';
-              const isImageTextTask = isDouyinImageText || isXhsImageText;
+              // 视频号 / 头条号 图文创作复用 douyin 同款 wizard + source_segments 结构,
+              // 列表口径(隐藏 persona/track)跟着同一 family 走。
+              const isShipinhaoImageText = sid === 'shipinhao_image_text';
+              const isToutiaoImageText = sid === 'toutiao_image_text';
+              const isImageTextTask = isDouyinImageText || isXhsImageText || isShipinhaoImageText || isToutiaoImageText;
               const isBinanceSourceViral =
                 sid === 'binance_from_xhs_viral'
                 || sid === 'binance_from_douyin_viral'
@@ -417,6 +425,16 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'xhs_video_download')           return { icon: '⬇️', zh: '小红书 · 视频无水印下载', en: 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
                 if (sid === 'douyin_video_download')        return { icon: '⬇️', zh: '抖音 · 视频无水印下载', en: 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', zh: 'TikTok · 视频无水印下载', en: 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', zh: '快手 · 互动涨粉', en: 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if (sid === 'kuaishou_video_download')      return { icon: '⬇️', zh: '快手 · 视频无水印下载', en: 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', zh: '快手 · 自动回复粉丝', en: 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'bilibili_auto_engage')         return { icon: '📺', zh: '哔哩哔哩 · 互动涨粉', en: 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if (sid === 'bilibili_video_download')      return { icon: '⬇️', zh: '哔哩哔哩 · 视频无水印下载', en: 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', zh: '哔哩哔哩 · 自动回复粉丝', en: 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'shipinhao_image_text')          return { icon: '📝', zh: '视频号 · 图文创作', en: 'WeChat Channels Image-Text', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', zh: '视频号 · 自动回复粉丝', en: 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+                if (sid === 'toutiao_image_text')            return { icon: '📝', zh: '头条号 · 图文创作', en: 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+                if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', zh: '头条号 · 自动回复粉丝', en: 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (isXhsLinkMode)                            return { icon: '🔗', zh: '小红书 · 指定链接爆款仿写', en: 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
                 // workflow_type fallbacks — MUST check platform BEFORE labeling,
                 // otherwise Binance / YouTube / TikTok / Douyin scenarios with
@@ -429,6 +447,8 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                   if ((plat as any) === 'youtube') return { icon: '💬', zh: 'YouTube · 互动涨粉', en: 'YouTube Engage & Grow', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                   if ((plat as any) === 'tiktok')  return { icon: '💬', zh: 'TikTok · 互动涨粉', en: 'TikTok Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                   if ((plat as any) === 'douyin')  return { icon: '💬', zh: '抖音 · 互动涨粉', en: 'Douyin Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                  if ((plat as any) === 'kuaishou') return { icon: '💬', zh: '快手 · 互动涨粉', en: 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                  if ((plat as any) === 'bilibili') return { icon: '💬', zh: '哔哩哔哩 · 互动涨粉', en: 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                   return { icon: '💬', zh: '小红书 · 互动涨粉', en: 'XHS Engage & Grow', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 }
                 if (plat === 'binance') return { icon: '🔶', zh: '币安广场发帖', en: 'Binance Square Post', color: 'text-amber-500 bg-amber-500/10 border-amber-500/30' };
@@ -436,6 +456,10 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if ((plat as any) === 'youtube') return { icon: '📺', zh: 'YouTube 任务', en: 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                 if ((plat as any) === 'tiktok')  return { icon: '🎵', zh: 'TikTok 任务', en: 'TikTok Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if ((plat as any) === 'douyin')  return { icon: '🎵', zh: '抖音创作', en: 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'kuaishou') return { icon: '⚡', zh: '快手任务', en: 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
+                if ((plat as any) === 'bilibili') return { icon: '📺', zh: '哔哩哔哩任务', en: 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+                if ((plat as any) === 'shipinhao') return { icon: '📱', zh: '视频号任务', en: 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+                if ((plat as any) === 'toutiao')  return { icon: '📰', zh: '头条号任务', en: 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
                 return { icon: '🔥', zh: '小红书 · 爆款批量仿写', en: 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
               })();
               // Track / display name
@@ -584,8 +608,11 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                           if (sid === 'xhs_reply_fans_comment') {
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇笔记/次' : 'latest 30 notes/run'}`;
                           }
-                          if (sid === 'douyin_reply_fans_comment') {
+                          if (sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment' || sid === 'shipinhao_reply_fans_comment') {
                             return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 个作品/次' : 'latest 30 videos/run'}`;
+                          }
+                          if (sid === 'toutiao_reply_fans_comment') {
+                            return `⏰ ${scheduleLabel(task, isZh)} · ${isZh ? '最近 30 篇/次' : 'latest 30 posts/run'}`;
                           }
                           // XHS auto_reply:用 daily_count_min/max
                           if ((task as any).scenario_id?.includes('auto_reply') ||
@@ -673,7 +700,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                     //   「文章进度 当前/总」,不是「N/target 评论」。评论没法预知总数(每篇
                     //   点开才知道有几条未回复)所以是纯累计;文章扫描后才知道总数,扫描前显
                     //   示 "-"。专属渲染,精确 id 门控,不碰其他场景的通用逻辑。
-                    if (sid === 'xhs_reply_fans_comment' || sid === 'douyin_reply_fans_comment') {
+                    if (sid === 'xhs_reply_fans_comment' || sid === 'douyin_reply_fans_comment' || sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment') {
                       const d = effectiveInfo.data as any;
                       const running = effectiveInfo.mode === 'running';
                       const commentDone = running ? (d.comment?.done ?? 0) : (d.comment ?? 0);

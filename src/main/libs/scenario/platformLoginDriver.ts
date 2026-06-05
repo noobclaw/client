@@ -27,17 +27,23 @@ import { groupTitle as buildGroupTitle, getStandardBounds } from './subPlatformR
 //   stamps its checker window with the right windowKey so a task starting
 //   later finds it via windowRegistry.get() instead of cascading a new one.
 const PLATFORM_TO_MAIN_SUBPLATFORM: Record<LoginPlatform, string> = {
-  xhs:     'xhs_main',
-  douyin:  'douyin_main',
-  tiktok:  'tiktok_main',
-  x:       'x_main',
-  binance: 'binance_square',
-  youtube: 'youtube_main',
+  xhs:        'xhs_main',
+  douyin:     'douyin_main',
+  tiktok:     'tiktok_main',
+  x:          'x_main',
+  binance:    'binance_square',
+  youtube:    'youtube_main',
+  kuaishou:   'kuaishou_main',
+  bilibili:   'bilibili_main',
+  shipinhao:  'shipinhao_main',
+  toutiao:    'toutiao_main',
 };
 
 const PLATFORM_TO_CREATOR_SUBPLATFORM: Partial<Record<LoginPlatform, string>> = {
-  xhs:    'xhs_creator',
-  douyin: 'douyin_creator',
+  xhs:      'xhs_creator',
+  douyin:   'douyin_creator',
+  kuaishou: 'kuaishou_creator',
+  bilibili: 'bilibili_creator',
 };
 
 // v6.x window bounds moved to subPlatformRegistry.getStandardBounds so
@@ -57,7 +63,7 @@ export interface PlatformLoginStatus {
 // use PlatformLoginStatus.
 export type XhsLoginStatus = PlatformLoginStatus;
 
-export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+export type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
 
 const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   // (?<!creator\.) 排除 creator.xiaohongshu.com 子域 —— 用户只打开
@@ -90,6 +96,15 @@ const TAB_PATTERNS: Record<LoginPlatform, RegExp> = {
   // 任务执行时 ctx.navigate(creator.* URL) 走 manifest 的 tab_url_pattern,
   // 跟这个 client 端 TAB_PATTERNS 是分开的,不受这条改动影响。
   douyin: /(?<!creator\.)douyin\.com/i,
+  // 快手 web 主站 — 排除 cp.kuaishou.com 创作者服务平台子域(走独立
+  // checkCreatorCenter)。
+  kuaishou: /(?<!cp\.)kuaishou\.com/i,
+  // 哔哩哔哩 web 主站 — 排除 member.bilibili.com 创作中心子域。
+  bilibili: /(?<!member\.)bilibili\.com/i,
+  // 视频号助手后台 —— 创作 + 回复粉丝都在 channels.weixin.qq.com,无独立主站。
+  shipinhao: /channels\.weixin\.qq\.com/i,
+  // 头条号后台 —— 创作 + 回复粉丝都在 mp.toutiao.com(区别于 www/so.toutiao.com)。
+  toutiao: /mp\.toutiao\.com/i,
 };
 
 const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
@@ -99,6 +114,10 @@ const NOT_REACHABLE_REASON: Record<LoginPlatform, string> = {
   tiktok: 'tiktok_tab_not_reachable',
   youtube: 'youtube_tab_not_reachable',
   douyin: 'douyin_tab_not_reachable',
+  kuaishou: 'kuaishou_tab_not_reachable',
+  bilibili: 'bilibili_tab_not_reachable',
+  shipinhao: 'shipinhao_tab_not_reachable',
+  toutiao: 'toutiao_tab_not_reachable',
 };
 
 const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
@@ -108,6 +127,10 @@ const PLATFORM_LOGIN_URL: Record<LoginPlatform, string> = {
   tiktok: 'https://www.tiktok.com/explore',
   youtube: 'https://www.youtube.com',
   douyin: 'https://www.douyin.com/jingxuan',
+  kuaishou: 'https://www.kuaishou.com',
+  bilibili: 'https://www.bilibili.com',
+  shipinhao: 'https://channels.weixin.qq.com/platform',
+  toutiao: 'https://mp.toutiao.com/',
 };
 
 /** v2.6+: chrome-extension tab-group label/color per platform.
@@ -131,6 +154,10 @@ export const PLATFORM_TAB_GROUPS: Record<LoginPlatform, { title: string; color: 
   youtube: { title: '🤖 YouTube · NoobClaw', color: 'purple' },
   tiktok:  { title: '🤖 TikTok · NoobClaw',  color: 'cyan'   },
   douyin:  { title: '🤖 Douyin · NoobClaw',  color: 'pink'   },
+  kuaishou:{ title: '🤖 Kuaishou · NoobClaw',color: 'orange' },
+  bilibili:{ title: '🤖 Bilibili · NoobClaw',color: 'blue'   },
+  shipinhao:{title: '🤖 视频号 · NoobClaw',  color: 'green'  },
+  toutiao: { title: '🤖 头条号 · NoobClaw',  color: 'red'    },
 };
 
 /** Single source of truth for "which platform does this regex string target".
@@ -145,6 +172,10 @@ export function inferPlatformFromPattern(pattern: string | undefined): LoginPlat
   if (/youtube/i.test(pattern)) return 'youtube';
   if (/tiktok/i.test(pattern)) return 'tiktok';
   if (/douyin/i.test(pattern)) return 'douyin';
+  if (/kuaishou/i.test(pattern)) return 'kuaishou';
+  if (/bilibili/i.test(pattern)) return 'bilibili';
+  if (/channels\.weixin\.qq\.com/i.test(pattern)) return 'shipinhao';
+  if (/toutiao/i.test(pattern)) return 'toutiao';
   if (/twitter|x\\?\.com/i.test(pattern)) return 'x';
   return undefined;
 }
@@ -264,11 +295,15 @@ export async function openPlatformLogin(platform: LoginPlatform = 'xhs'): Promis
 const CREATOR_TAB_PATTERNS: Partial<Record<LoginPlatform, RegExp>> = {
   xhs: /creator\.xiaohongshu\.com/i,
   douyin: /creator\.douyin\.com/i,
+  kuaishou: /cp\.kuaishou\.com/i,
+  bilibili: /member\.bilibili\.com/i,
 };
 
 const CREATOR_URLS: Partial<Record<LoginPlatform, string>> = {
   xhs: 'https://creator.xiaohongshu.com/',
   douyin: 'https://creator.douyin.com/',
+  kuaishou: 'https://cp.kuaishou.com/article/comment',
+  bilibili: 'https://member.bilibili.com/platform/comment/article',
 };
 
 // 抖音 creator 未登录会 302 到 /passport/login;小红书会 hash 路由到 #/login。

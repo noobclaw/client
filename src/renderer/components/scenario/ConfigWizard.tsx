@@ -425,8 +425,16 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   //   字段。TikTok 在 media_filter 区块被 lock 成 video_only(下面 mediaFilter
   //   useState 初值 + 渲染时 disabled 处理)。
 
-  // 抖音也走独立 wizard (TikTok 的中国版,但 DOM / 入口 / 登录都不同)。
-  if (scenario.id === 'douyin_auto_engage') {
+  // 抖音 / 快手 / 哔哩哔哩 互动涨粉共用 DouyinConfigWizard。三者都是
+  // 短视频平台的「搜索关键词 → 刷流 → 点赞/关注/评论」同款字段;wizard 内
+  // 文案靠 scenario.platform 自适配,DOM / 入口 / 登录差异都在 orchestrator
+  // 与 LoginRequiredModal 里隔离,这里只复用表单结构(各自独立 scenario.id,
+  // 不会串台)。
+  if (
+    scenario.id === 'douyin_auto_engage' ||
+    scenario.id === 'kuaishou_auto_engage' ||
+    scenario.id === 'bilibili_auto_engage'
+  ) {
     return (
       <DouyinConfigWizard
         scenario={scenario}
@@ -437,9 +445,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
     );
   }
 
-  // 抖音图文创作 — 输入是 3 段灵感来源 + persona,跟互动涨粉差异很大,走
-  // 独立 wizard 避免字段串台。
-  if (scenario.id === 'douyin_image_text') {
+  // 抖音 / 视频号 / 头条号 图文创作 — 输入是 3 段灵感来源 + persona,跟互动
+  // 涨粉差异很大,走独立 wizard 避免字段串台。wizard 内文案靠 scenario.platform
+  // 切平台名(抖音/视频号/头条号)。
+  if (
+    scenario.id === 'douyin_image_text' ||
+    scenario.id === 'shipinhao_image_text' ||
+    scenario.id === 'toutiao_image_text'
+  ) {
     return (
       <DouyinImageTextWizard
         scenario={scenario}
@@ -467,7 +480,14 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
   // 引流语 textarea + 概率 slider)。wizard 内文案靠 scenario.platform 切
   // 换(笔记/作品、小红书/抖音创作者中心)。跟 auto_reply 完全不同(那个是
   // 给别人的爆文留评论涨粉,这个是回自己作品下的粉丝评论)。
-  if (scenario.id === 'xhs_reply_fans_comment' || scenario.id === 'douyin_reply_fans_comment') {
+  if (
+    scenario.id === 'xhs_reply_fans_comment' ||
+    scenario.id === 'douyin_reply_fans_comment' ||
+    scenario.id === 'kuaishou_reply_fans_comment' ||
+    scenario.id === 'bilibili_reply_fans_comment' ||
+    scenario.id === 'shipinhao_reply_fans_comment' ||
+    scenario.id === 'toutiao_reply_fans_comment'
+  ) {
     return (
       <XhsReplyFansCommentWizard
         scenario={scenario}

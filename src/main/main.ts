@@ -2832,22 +2832,22 @@ if (!gotTheLock) {
       cooldown_ends_at: scenarioRiskGuard.getCooldown(task_id),
     }));
 
-    ipcMain.handle('scenario:checkXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance') => {
+    ipcMain.handle('scenario:checkXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { checkXhsLogin } = require('./libs/scenario/xhsDriver');
       return await checkXhsLogin(platform);
     });
 
-    ipcMain.handle('scenario:openXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance') => {
+    ipcMain.handle('scenario:openXhsLogin', async (_e, platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openXhsLogin } = require('./libs/scenario/xhsDriver');
       return await openXhsLogin(platform);
     });
 
-    ipcMain.handle('scenario:checkCreatorCenter', async (_e, platform: 'xhs' | 'douyin') => {
+    ipcMain.handle('scenario:checkCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { checkCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await checkCreatorCenter(platform);
     });
 
-    ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin') => {
+    ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await openCreatorCenter(platform);
     });

@@ -86,6 +86,13 @@ export const DouyinConfigWizard: React.FC<Props> = ({
   const isZh = i18nService.currentLanguage === 'zh';
   const editing = !!initialTask;
 
+  // 本 wizard 被抖音 / 快手 / 哔哩哔哩三个互动涨粉场景共用,标签/域名靠
+  // scenario.platform 自适配,避免快手/B站任务上显示"抖音"字样。
+  const plat = (scenario.platform as any) as 'douyin' | 'kuaishou' | 'bilibili';
+  const platLabelZh = plat === 'kuaishou' ? '快手' : plat === 'bilibili' ? '哔哩哔哩' : '抖音';
+  const platLabelEn = plat === 'kuaishou' ? 'Kuaishou' : plat === 'bilibili' ? 'Bilibili' : 'Douyin';
+  const platDomain = plat === 'kuaishou' ? 'kuaishou.com' : plat === 'bilibili' ? 'bilibili.com' : 'douyin.com';
+
   const [step, setStep] = useState<WizardStep>(1);
 
   // ── Track + keywords (replaces persona in v5.x) ──
@@ -252,9 +259,9 @@ export const DouyinConfigWizard: React.FC<Props> = ({
       <div className="w-full max-w-2xl max-h-[90vh] rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden flex flex-col">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-800 shrink-0">
           <div className="text-base font-semibold dark:text-white">
-            🎶 {editing
-              ? (isZh ? '编辑抖音互动任务' : 'Edit Douyin Engagement Task')
-              : (isZh ? '配置抖音互动涨粉' : 'Configure Douyin Engage & Grow')}
+            {scenario.icon || '🎶'} {editing
+              ? (isZh ? `编辑${platLabelZh}互动任务` : `Edit ${platLabelEn} Engagement Task`)
+              : (isZh ? `配置${platLabelZh}互动涨粉` : `Configure ${platLabelEn} Engage & Grow`)}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-xs px-2.5 py-1 rounded-full border border-violet-500/40 text-violet-500 bg-violet-500/5">
@@ -336,7 +343,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
               <RangeSlider
                 label={isZh ? '每次运行关注数量' : 'Follows per run'}
                 min={folMin} max={folMax} setMin={setFolMin} setMax={setFolMax}
-                hardCap={FOLLOW_HARDCAP} hint={isZh ? `每次随机关注 ${folMin}-${folMax} 个作者 (0-${FOLLOW_HARDCAP},关注是抖音风控最严的动作,建议保守)` : `Random ${folMin}-${folMax} follows (0-${FOLLOW_HARDCAP}, this is Douyin's most-flagged action — keep low)`}
+                hardCap={FOLLOW_HARDCAP} hint={isZh ? `每次随机关注 ${folMin}-${folMax} 个作者 (0-${FOLLOW_HARDCAP},关注是${platLabelZh}风控最严的动作,建议保守)` : `Random ${folMin}-${folMax} follows (0-${FOLLOW_HARDCAP}, this is ${platLabelEn}'s most-flagged action — keep low)`}
                 disabled={saving}
               />
 
@@ -350,7 +357,7 @@ export const DouyinConfigWizard: React.FC<Props> = ({
               <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-700 dark:text-amber-300 leading-relaxed space-y-1">
                 <div className="font-semibold">⚠️ {isZh ? '安全提示' : 'Safety notes'}</div>
                 <ul className="list-disc list-inside space-y-0.5">
-                  <li>{isZh ? '关注默认 0-3 — 抖音对自动关注检测最严,长期跑建议保守' : 'Follow defaults to 0-3 — Douyin flags auto-follow most aggressively, keep low for long-term'}</li>
+                  <li>{isZh ? `关注默认 0-3 — ${platLabelZh}对自动关注检测最严,长期跑建议保守` : `Follow defaults to 0-3 — ${platLabelEn} flags auto-follow most aggressively, keep low for long-term`}</li>
                   <li>{isZh ? '动作之间随机停 30 秒-3 分钟,模拟真人节奏' : 'Random 30s-3min between actions to mimic human cadence'}</li>
                 </ul>
               </div>
@@ -405,8 +412,8 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 </div>
                 {[
                   isZh
-                    ? '我理解 NoobClaw 会在我本地浏览器代我浏览 douyin.com,所有行为使用我自己的 IP 和账号'
-                    : 'I understand NoobClaw browses douyin.com inside my own browser using my IP and my account.',
+                    ? `我理解 NoobClaw 会在我本地浏览器代我浏览 ${platDomain},所有行为使用我自己的 IP 和账号`
+                    : `I understand NoobClaw browses ${platDomain} inside my own browser using my IP and my account.`,
                   isZh
                     ? '我理解平台账号风险由我自己承担'
                     : 'I accept that account risk on the platform is my own responsibility.',

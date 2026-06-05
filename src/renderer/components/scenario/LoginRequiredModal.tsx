@@ -25,11 +25,11 @@ interface Props {
    *  back-compat. 'x' (Twitter) opens x.com + surfaces a VPN reminder for
    *  mainland China users. 'binance' opens binance.com/square. 'tiktok'
    *  opens tiktok.com/explore (also needs proxy in mainland China). */
-  platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+  platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
   /** v4.25.4 Cross-tab scenarios (binance_from_x_repost) need both platforms
    *  open + logged in. Pass the secondary platform here — modal will render
    *  an extra row and gate the "下一步" button until BOTH check pass. */
-  secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+  secondaryPlatform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
   /** v6.x: 是否需要 creator.*.com 子域登录检查 — 只有图文创作 / 爆款仿写等
    *  "发布到 creator center" 类场景需要 (douyin_image_text / xhs_image_text /
    *  xhs_viral_production_career)。互动涨粉 / auto_reply 类场景只用主站,
@@ -51,7 +51,7 @@ type StepStatus = 'pass' | 'fail' | 'checking' | 'waiting';
 export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', secondaryPlatform, requireCreatorCenter: requireCreatorCenterProp, creatorOnly = false, onCancel, onConfirmed }) => {
   const isZh = i18nService.currentLanguage === 'zh';
 
-  type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin';
+  type LoginPlatform = 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
 
   // Per-platform label/url helpers (primary AND secondary use these).
   // VPN reminders below check both primary and secondary so cross-tab
@@ -62,6 +62,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'tiktok') return 'TikTok (tiktok.com)';
     if (p === 'youtube') return 'YouTube (youtube.com)';
     if (p === 'douyin') return isZh ? '抖音 (douyin.com)' : 'Douyin (douyin.com)';
+    if (p === 'kuaishou') return isZh ? '快手 (kuaishou.com)' : 'Kuaishou (kuaishou.com)';
+    if (p === 'bilibili') return isZh ? '哔哩哔哩 (bilibili.com)' : 'Bilibili (bilibili.com)';
+    if (p === 'shipinhao') return isZh ? '视频号助手 (channels.weixin.qq.com)' : 'WeChat Channels (channels.weixin.qq.com)';
+    if (p === 'toutiao') return isZh ? '头条号后台 (mp.toutiao.com)' : 'Toutiao Backend (mp.toutiao.com)';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
   function platformShortOf(p: LoginPlatform): string {
@@ -70,6 +74,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'tiktok') return 'TikTok';
     if (p === 'youtube') return 'YouTube';
     if (p === 'douyin') return isZh ? '抖音' : 'Douyin';
+    if (p === 'kuaishou') return isZh ? '快手' : 'Kuaishou';
+    if (p === 'bilibili') return isZh ? '哔哩哔哩' : 'Bilibili';
+    if (p === 'shipinhao') return isZh ? '视频号' : 'WeChat Channels';
+    if (p === 'toutiao') return isZh ? '头条号' : 'Toutiao';
     return isZh ? '小红书' : 'Xiaohongshu';
   }
   function platformUrlOf(p: LoginPlatform): string {
@@ -78,6 +86,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'tiktok') return 'https://www.tiktok.com/explore';
     if (p === 'youtube') return 'https://www.youtube.com';
     if (p === 'douyin') return 'https://www.douyin.com/jingxuan';
+    if (p === 'kuaishou') return 'https://www.kuaishou.com';
+    if (p === 'bilibili') return 'https://www.bilibili.com';
+    if (p === 'shipinhao') return 'https://channels.weixin.qq.com/platform';
+    if (p === 'toutiao') return 'https://mp.toutiao.com/';
     return 'https://www.xiaohongshu.com';
   }
   // Back-compat aliases — primary platform's label/url, used by step ① UI
@@ -113,6 +125,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   function creatorLabelOf(p: LoginPlatform): string {
     if (p === 'douyin') return isZh ? '抖音创作者中心 (creator.douyin.com)' : 'Douyin Creator Center (creator.douyin.com)';
     if (p === 'xhs') return isZh ? '小红书创作者中心 (creator.xiaohongshu.com)' : 'Xiaohongshu Creator Center (creator.xiaohongshu.com)';
+    if (p === 'kuaishou') return isZh ? '快手创作者服务平台 (cp.kuaishou.com)' : 'Kuaishou Creator Center (cp.kuaishou.com)';
+    if (p === 'bilibili') return isZh ? '哔哩哔哩创作中心 (member.bilibili.com)' : 'Bilibili Creator Center (member.bilibili.com)';
     return platformLabelOf(p);
   }
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
@@ -184,6 +198,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
         status.reason === 'tiktok_tab_not_reachable' ||
         status.reason === 'youtube_tab_not_reachable' ||
         status.reason === 'douyin_tab_not_reachable' ||
+        status.reason === 'kuaishou_tab_not_reachable' ||
+        status.reason === 'bilibili_tab_not_reachable' ||
+        status.reason === 'shipinhao_tab_not_reachable' ||
+        status.reason === 'toutiao_tab_not_reachable' ||
         status.reason === 'tab_not_reachable'
       ) {
         setExtensionStatus('pass');
@@ -198,7 +216,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
       // 显式判为未登录,而不是当成"已打开"。
       if (requireCreatorCenter && status.reason !== 'browser_not_connected') {
         try {
-          const cStatus = await scenarioService.checkCreatorCenter(platform as 'xhs' | 'douyin');
+          const cStatus = await scenarioService.checkCreatorCenter(platform as 'xhs' | 'douyin' | 'kuaishou' | 'bilibili');
           if (cStatus.reason === 'browser_not_connected') {
             setCreatorTabStatus('waiting');
           } else if (cStatus.loggedIn) {
@@ -227,6 +245,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
             sStatus.reason === 'tiktok_tab_not_reachable' ||
             sStatus.reason === 'youtube_tab_not_reachable' ||
             sStatus.reason === 'douyin_tab_not_reachable' ||
+            sStatus.reason === 'kuaishou_tab_not_reachable' ||
+            sStatus.reason === 'bilibili_tab_not_reachable' ||
+            sStatus.reason === 'shipinhao_tab_not_reachable' ||
+            sStatus.reason === 'toutiao_tab_not_reachable' ||
             sStatus.reason === 'tab_not_reachable'
           ) {
             setSecondaryTabStatus('fail');
@@ -411,13 +433,19 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   //         附带的 popup_window.open hint 让 chrome 把它视为独立窗)。
   const handleOpenCreator = async () => {
     if (!requireCreatorCenter) return;
-    const p = platform as 'xhs' | 'douyin';
+    const p = platform as 'xhs' | 'douyin' | 'kuaishou' | 'bilibili';
     setOpening(true);
     try {
       const res = await scenarioService.openCreatorCenter(p);
       if (!res.ok) {
         // ext 整个挂掉时兜底:popup window.open 保证用户至少能开 tab 完成登录
-        const creatorUrl = p === 'douyin' ? 'https://creator.douyin.com/' : 'https://creator.xiaohongshu.com/';
+        const creatorUrlMap: Record<string, string> = {
+          douyin: 'https://creator.douyin.com/',
+          xhs: 'https://creator.xiaohongshu.com/',
+          kuaishou: 'https://cp.kuaishou.com/article/comment',
+          bilibili: 'https://member.bilibili.com/platform/comment/article',
+        };
+        const creatorUrl = creatorUrlMap[p] || 'https://creator.xiaohongshu.com/';
         try {
           window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
         } catch {
