@@ -6,12 +6,14 @@
  *      连贯的中文口播旁白。时长靠字数控制(中文约 4.5 字/秒)。
  *   2. generateSearchTerms(): 把已拆好的逐句分镜,各自映射成 1-3 个英文搜索词
  *      (Pexels/Pixabay 是英文库),让画面跟着内容走,而不是所有镜头复用同一张图。
+ *      映射时会把整条视频的【主题/赛道/人设/关键词】当语境一并喂进去(见 ctx 参数),
+ *      避免模型孤立看单句憋出跑题泛词。
  *
  * 两步都走 NoobClaw 服务端的 DeepSeek 代理(/api/ai/chat/completions)。
- * 模型分两档(服务端 MODEL_MAP):
- *   - generateScript() 写旁白是创作活 → noobclawai-reasoner(=deepseek-v4-pro,
- *     质量更好,但服务端按 ~3x credits 计费,所以只在这一步用)。
- *   - generateSearchTerms() 是机械映射 → noobclawai-chat(=deepseek-v4-flash,1x)。
+ * 两步都用 noobclawai-reasoner(=deepseek-v4-pro,质量更好,服务端按 ~3x credits 计费):
+ *   - generateScript() 写旁白是创作活,理所当然走 Pro。
+ *   - generateSearchTerms() 映射也升 Pro —— 实测语义更准、词更贴内容;reasoner 不支持
+ *     response_format=json_object,故 JSON 契约改靠 prompt 强约束 + extractJsonObject 兜底。
  * 鉴权用 NoobClaw JWT。
  *
  * 任何环节失败都【不抛】(脚本生成除外):搜索词失败 → 退回用全局 keywords,
@@ -57,7 +59,10 @@ async function callDeepSeek(
     stream: false,
     max_tokens: 4000,
   };
-  if (jsonMode && /json/i.test(systemPrompt + userMessage)) {
+  // response_format=json_object 这道「强制只能输出合法 JSON」的开关仅 chat(flash)支持;
+  // reasoner(Pro 思考模型)不支持该开关(DeepSeek 官方限制),强行带上会被拒/失效。
+  // 故 reasoner 不发此字段,改靠 prompt 约束 + 下游 extractJsonObject 宽松解析兜底。
+  if (jsonMode && model === 'noobclawai-chat' && /json/i.test(systemPrompt + userMessage)) {
     body.response_format = { type: 'json_object' };
   }
 
@@ -198,20 +203,61 @@ export async function generateScript(
 export interface GenerateSearchTermsResult {
   /** 与 scenes 等长的逐镜搜索词数组。 */
   terms: string[][];
-  /** 本步消耗 token(flash 档,1x);兜底时为 0。 */
+  /** 本步消耗 token(reasoner 档,~3x);兜底时为 0。 */
   tokens: number;
   /** 本步服务端权威 USD 成本(兜底 / 老后端时为 0)。 */
   costUsd: number;
 }
 
+/** 搜索词映射的整体语境:让模型按【这条视频在讲什么】给每镜配词,而不是孤立看单句。 */
+export interface SearchTermsContext {
+  /** 视频主题/选题(关键词拼出来的也行)。 */
+  topic?: string;
+  /** 账号人设。 */
+  persona?: string;
+  /** 内容赛道。 */
+  track?: string;
+  /** 关键词。 */
+  keywords?: string[];
+}
+
+/**
+ * 从可能夹带思考文字 / markdown 围栏的模型输出里,抠出第一个 JSON 对象再交给 JSON.parse。
+ * reasoner 不支持 response_format=json_object,可能把 JSON 包在 ```json``` 或推理段落里,
+ * 这里先剥围栏、再截取首个 {...} 平衡块,保证 chat(本就纯 JSON)与 reasoner 都能解析。
+ */
+function extractJsonObject(raw: string): string {
+  let t = (raw || '').trim();
+  // 剥 ```json ... ``` / ``` ... ``` 围栏
+  const fence = t.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence && fence[1]) t = fence[1].trim();
+  // 截取第一个完整的 {...}(按花括号配平,容忍前后多余文字)
+  const start = t.indexOf('{');
+  if (start >= 0) {
+    let depth = 0;
+    for (let i = start; i < t.length; i++) {
+      if (t[i] === '{') depth++;
+      else if (t[i] === '}') {
+        depth--;
+        if (depth === 0) return t.slice(start, i + 1);
+      }
+    }
+  }
+  return t;
+}
+
 /**
  * 为每个分镜生成 1-3 个英文素材搜索词。返回与 scenes 等长的数组;某项失败用
  * 全局 keywords 兜底。绝不抛错。同时返回本步 token 消耗(兜底时为 0)。
+ *
+ * ctx:整条视频的主题/赛道/人设/关键词语境。映射时把它当上下文喂给模型,
+ * 让每镜的词锁定到该选题(否则模型孤立看单句,常憋出跑题的泛词)。
  */
 export async function generateSearchTerms(
   scenes: string[],
   fallbackKeywords: string[],
   termsSystemPrompt?: string,
+  ctx?: SearchTermsContext,
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
@@ -222,12 +268,26 @@ export async function generateSearchTerms(
   // prompt 走服务端可调(默认见 videoConfig);务必保持 {"terms":[[...]]} 输出契约。
   const system = termsSystemPrompt || DEFAULT_VIDEO_CONFIG.termsSystemPrompt;
 
+  // A:整体语境前置 —— 让模型据此消歧、把每镜的词钉在选题上(不再孤立看单句)。
+  const ctxLines: string[] = [];
+  if (ctx?.topic) ctxLines.push(`Overall video topic: ${ctx.topic}`);
+  if (ctx?.track) ctxLines.push(`Content niche: ${ctx.track}`);
+  if (ctx?.persona) ctxLines.push(`Creator persona: ${ctx.persona}`);
+  const ctxKw = (ctx?.keywords || []).filter(Boolean);
+  if (ctxKw.length) ctxLines.push(`Keywords: ${ctxKw.join(', ')}`);
+  const ctxBlock = ctxLines.length
+    ? `Context for the WHOLE video (use it to disambiguate each line and keep every term on-topic):\n${ctxLines.join('\n')}\n\n`
+    : '';
+
   const numbered = scenes.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  const user = `Input lines (${scenes.length}):\n${numbered}\n\nReturn the JSON now.`;
+  const user = `${ctxBlock}Input lines (${scenes.length}):\n${numbered}\n\n`
+    + 'Return ONLY the raw JSON object now (no markdown fences, no explanation, no reasoning).';
 
   try {
-    const { content, tokens, costUsd } = await callDeepSeek(system, user, true, 60_000);
-    const parsed = JSON.parse(content);
+    // B:映射走 reasoner(Pro),语义更准 → 词更贴内容;服务端按 ~3x 计费。
+    // reasoner 不吃 json_object 开关,故靠 prompt + extractJsonObject 兜住 JSON 契约。
+    const { content, tokens, costUsd } = await callDeepSeek(system, user, true, 90_000, 'noobclawai-reasoner');
+    const parsed = JSON.parse(extractJsonObject(content));
     const terms = parsed?.terms;
     if (!Array.isArray(terms)) return { terms: fallbackEach, tokens, costUsd };
     const mapped = scenes.map((_, i) => {
