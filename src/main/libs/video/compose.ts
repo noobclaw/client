@@ -58,6 +58,18 @@ function bundledFontDirs(): string[] {
     const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
     pushRoot(path.join(projectRoot, 'resources'));
   }
+  // Dev / non-CI fallback: 同 bgm.bundledBgmDirs。sidecar 二进制里 isPackaged() 恒为
+  // true,上面 packaged 分支在 `tauri:dev` 下永远找不到随包字体(那些只由 CI-only 的
+  // prepare-tauri-resources.js 拷进去)。所以无条件再探一遍源码里的 client/resources/fonts:
+  // 从本文件和 cwd 往上走。真实安装包里这些目录不存在,existsSync() 自然跳过。
+  for (const base of [
+    path.resolve(__dirname, '..', '..', '..', '..'),
+    path.resolve(__dirname, '..', '..', '..'),
+    process.cwd(),
+    path.join(process.cwd(), 'client'),
+  ]) {
+    pushRoot(path.join(base, 'resources'));
+  }
   pushRoot(path.join(getUserDataPath(), 'runtimes'));
   return dirs;
 }
