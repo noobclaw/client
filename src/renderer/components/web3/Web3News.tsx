@@ -239,7 +239,7 @@ const Web3News: React.FC = () => {
   return (
     <div className="flex flex-col h-full">
       {/* Category tabs */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
         <button
           onClick={() => setActiveCategory('all')}
           className={`px-4 py-2 rounded-full text-sm font-medium transition-colors whitespace-nowrap ${
