@@ -46,6 +46,20 @@ function bundledBgmDirs(): string[] {
     const projectRoot = path.resolve(__dirname, '..', '..', '..', '..');
     pushRoot(path.join(projectRoot, 'resources'));
   }
+  // Dev / non-CI fallback: prepare-tauri-resources.js (a CI-only step) is what
+  // copies bgm into the bundled resources dir, and isPackaged() is ALWAYS true
+  // in the sidecar binary — so under `tauri:dev` the packaged branch above can
+  // never find the built-in songs. Always also probe the committed source
+  // `client/resources/bgm` by walking up from this file and from cwd. These
+  // dirs don't exist in a real install, so existsSync() just skips them.
+  for (const base of [
+    path.resolve(__dirname, '..', '..', '..', '..'),
+    path.resolve(__dirname, '..', '..', '..'),
+    process.cwd(),
+    path.join(process.cwd(), 'client'),
+  ]) {
+    pushRoot(path.join(base, 'resources'));
+  }
   pushRoot(path.join(getUserDataPath(), 'runtimes'));
   return dirs;
 }
