@@ -1502,7 +1502,6 @@ const SUB_FONT_OPTIONS: { v: string; zh: string; en: string }[] = [
   { v: '', zh: '思源黑体（默认）', en: 'Source Han Sans' },
   { v: 'SourceHanSerifSC-Bold.otf', zh: '思源宋体', en: 'Source Han Serif' },
   { v: 'SmileySans-Oblique.ttf', zh: '得意黑', en: 'Smiley Sans' },
-  { v: 'LXGWWenKai-Regular.ttf', zh: '霞鹜文楷', en: 'LXGW WenKai' },
 ];
 
 // 一次出片条数(抄 MPT video_count):1~5 条,复用脚本/配音、每条不同画面组合。
