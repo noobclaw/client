@@ -70,6 +70,9 @@ interface ScenarioViewProps {
   /** manage 模式下任何「新建涨粉任务」入口 → 切到「一键涨粉」create 菜单(干净拆分,
    *  避免两个菜单内容重叠)。由 App 注入,内部切 mainView='scenarioCreate'。 */
   onSwitchToCreate?: (platform?: PlatformId) => void;
+  /** v6.x: create 模式(「一键涨粉」新建页)右上角「查看已有的涨粉任务」按钮 →
+   *  切到「我的涨粉任务」manage 菜单。由 App 注入,内部切 mainView='quickuse'。 */
+  onSwitchToManage?: () => void;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -106,6 +109,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onShowInvite,
   mode = 'manage',
   onSwitchToCreate,
+  onSwitchToManage,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
@@ -794,25 +798,50 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           上一页可回 —— 隐藏返回按钮,只留段标题。仅 manage 模式(已不会进 create
           段)才保留返回按钮,但实际上 manage 不再渲染本块。 */}
       {view.kind === 'main' && currentSection === 'create' && (
-        <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          {mode !== 'create' && (
+        <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            {mode !== 'create' && (
+            <button
+              type="button"
+              onClick={() => setSection('tasks')}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
+              title={i18nService.currentLanguage === 'zh'
+                ? (currentPlatform === 'video' ? '返回视频创作' : '返回我的涨粉任务')
+                : 'Back'}
+            >
+              <span>←</span>
+              <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
+            </button>
+            )}
+            <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2 whitespace-nowrap">
+              ✨ {i18nService.currentLanguage === 'zh'
+                ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
+                : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
+            </h2>
+            {/* v6.x: 标题后跟一个「涨粉教程」入口 → 外部浏览器打开文档站。 */}
+            {mode === 'create' && (
+            <button
+              type="button"
+              onClick={() => { try { window.electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* sandbox/无 xdg-open 时静默 */ } }}
+              className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 hover:underline whitespace-nowrap"
+              title={i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Tutorial'}
+            >
+              <span>📖</span>
+              <span>{i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Tutorial'}</span>
+            </button>
+            )}
+          </div>
+          {/* v6.x: create 模式右上角「查看已有的涨粉任务」→ 切到 manage 菜单。 */}
+          {mode === 'create' && (
           <button
             type="button"
-            onClick={() => setSection('tasks')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
-            title={i18nService.currentLanguage === 'zh'
-              ? (currentPlatform === 'video' ? '返回视频创作' : '返回我的涨粉任务')
-              : 'Back'}
+            onClick={() => onSwitchToManage?.()}
+            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
           >
-            <span>←</span>
-            <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
+            <span>📋</span>
+            <span>{i18nService.currentLanguage === 'zh' ? '查看已有的涨粉任务' : 'My Tasks'}</span>
           </button>
           )}
-          <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2">
-            ✨ {i18nService.currentLanguage === 'zh'
-              ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
-              : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
-          </h2>
         </div>
       )}
 

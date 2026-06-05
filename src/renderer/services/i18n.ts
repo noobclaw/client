@@ -659,7 +659,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     useSystemProxyDescription: '开启后网络请求将跟随系统代理（保存后生效）',
 
     // Scheduled tasks
-    scheduledTasks: '自建定时任务',
+    scheduledTasks: 'AI定时任务',
     scheduledTasksTitle: '自建定时任务',
     scheduledTasksNewTask: '新建任务',
     scheduledTasksEmptyState: '暂无定时任务',
@@ -1952,7 +1952,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     useSystemProxyDescription: 'When enabled, network requests follow system proxy settings (applies after Save)',
 
     // Scheduled Tasks
-    scheduledTasks: 'Scheduled Tasks',
+    scheduledTasks: 'AI Scheduled Tasks',
     scheduledTasksTitle: 'Scheduled Tasks',
     scheduledTasksNewTask: 'New Task',
     scheduledTasksEmptyState: 'No scheduled tasks',
@@ -2938,7 +2938,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     aiAssistantAvatar: 'AI 助理頭像', aiAssistantAvatarDesc: '自訂 AI 助理頭像，圖片不超過 2MB', aiAssistantAvatarChange: '更換頭像', aiAssistantAvatarReset: '恢復預設', aiAssistantAvatarTooLarge: '圖片大小不能超過 2MB', aiAssistantSection: 'AI 助理個性化',
     useSystemProxy: '使用系統代理', useSystemProxyDescription: '開啟後網路請求將跟隨系統代理（儲存後生效）',
     // Scheduled tasks
-    scheduledTasks: '自建定時任務', scheduledTasksTitle: '自建定時任務',
+    scheduledTasks: 'AI定時任務', scheduledTasksTitle: '自建定時任務',
     scheduledTasksNewTask: '新建任務', scheduledTasksEmptyState: '暫無定時任務',
     scheduledTasksEmptyHint: '建立定時任務，讓 AI 按計劃自動執行',
     scheduledTasksListColTitle: '標題', scheduledTasksListColSchedule: '計劃於',

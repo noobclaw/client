@@ -53,10 +53,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const sessions = useSelector((state: RootState) => state.cowork.sessions);
   const currentSessionId = useSelector((state: RootState) => state.cowork.currentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  // v6.x:「AI对话」二级折叠组(新建对话 / web3连接 / 行业热点)。默认展开;
+  // v6.x:「AI对话」二级折叠组(新建对话 / web3连接 / 行业热点)。默认收起;
   //   当组内某子项激活时强制展开,避免高亮项被折叠藏起来。
-  const [aiChatOpen, setAiChatOpen] = useState(true);
-  const aiChildActive = activeView === 'cowork' || activeView === 'mcp' || activeView === 'web3news';
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const aiChildActive = activeView === 'cowork' || activeView === 'mcp' || activeView === 'web3news' || activeView === 'scheduledTasks';
   useEffect(() => { if (aiChildActive) setAiChatOpen(true); }, [aiChildActive]);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -228,6 +228,20 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {i18nService.t('newChat')}
               </button>
 
+              {/* AI定时任务 — 原顶级"自建定时任务",收进 AI对话组,排在新建对话下面 */}
+              <button
+                type="button"
+                onClick={() => { setIsSearchOpen(false); onShowScheduledTasks(); }}
+                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  activeView === 'scheduledTasks'
+                    ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                <span className="text-sm">{'⏰'}</span>
+                {i18nService.t('scheduledTasks')}
+              </button>
+
               {/* web3连接 */}
               <button
                 type="button"
@@ -273,23 +287,6 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <span className="text-sm">🧩</span>
             {i18nService.t('skills')}
-          </button>
-
-          {/* 5. Scheduled Tasks */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowScheduledTasks();
-            }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'scheduledTasks'
-                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-            }`}
-          >
-            <span className="text-sm">⏰</span>
-            {i18nService.t('scheduledTasks')}
           </button>
 
           {/* My Wallet */}

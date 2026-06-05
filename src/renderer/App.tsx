@@ -987,6 +987,7 @@ const App: React.FC = () => {
             ) : mainView === 'scenarioCreate' ? (
               <ScenarioView
                 mode="create"
+                onSwitchToManage={() => handleShowQuickUse()}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
