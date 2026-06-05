@@ -47,6 +47,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     german: 'Deutsch',
     // Sidebar custom menu
     quickUse: '一键涨粉',
+    aiChat: 'AI对话',
+    myFanTasks: '我的涨粉任务',
     myWallet: '我的充值',
     inviteFriends: '邀请返佣',
     hotTopics: '行业热点',
@@ -1338,6 +1340,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     french: 'French',
     german: 'German',
     quickUse: 'Quick Use',
+    aiChat: 'AI Chat',
+    myFanTasks: 'My Tasks',
     myWallet: 'Top Up',
     inviteFriends: 'Invite Rebate',
     hotTopics: 'Hot Topics',

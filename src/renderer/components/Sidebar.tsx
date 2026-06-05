@@ -13,7 +13,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'web3news' | 'partners' | 'personality';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'web3news' | 'partners' | 'personality';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -21,6 +21,7 @@ interface SidebarProps {
   onShowWallet: () => void;
   onShowInvite: () => void;
   onShowQuickUse: () => void;
+  onShowScenarioCreate: () => void;
   onShowWeb3News: () => void;
   onShowPersonality: () => void;
   onShowPartners: () => void;
@@ -40,6 +41,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowWallet,
   onShowInvite,
   onShowQuickUse,
+  onShowScenarioCreate,
   onShowWeb3News,
   onShowPersonality,
   onShowPartners,
@@ -51,6 +53,11 @@ const Sidebar: React.FC<SidebarProps> = ({
   const sessions = useSelector((state: RootState) => state.cowork.sessions);
   const currentSessionId = useSelector((state: RootState) => state.cowork.currentSessionId);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // v6.x:「AI对话」二级折叠组(新建对话 / web3连接 / 行业热点)。默认展开;
+  //   当组内某子项激活时强制展开,避免高亮项被折叠藏起来。
+  const [aiChatOpen, setAiChatOpen] = useState(true);
+  const aiChildActive = activeView === 'cowork' || activeView === 'mcp' || activeView === 'web3news';
+  useEffect(() => { if (aiChildActive) setAiChatOpen(true); }, [aiChildActive]);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showBatchDeleteConfirm, setShowBatchDeleteConfirm] = useState(false);
@@ -160,25 +167,21 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
         <div className="mt-3 space-y-1 px-3">
-          {/* New Chat - prominent only in cowork view; dimmed when another
-              menu is active so the bright green doesn't compete visually with
-              the highlighted menu item (per user feedback 2026-05-18). */}
+          {/* 1. 一键涨粉 — 原"新建涨粉任务"页提升为一级菜单 (create 模式) */}
           <button
             type="button"
-            onClick={onNewChat}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm transition-colors ${
-              activeView === 'cowork'
-                ? 'font-semibold bg-claude-accent text-white hover:bg-claude-accentHover'
-                : 'font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            onClick={() => { setIsSearchOpen(false); onShowScenarioCreate(); }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'scenarioCreate'
+                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
             }`}
           >
-            <ComposeIcon className="h-4 w-4" />
-            + {i18nService.t('newChat')}
+            <span className="text-sm">{'⚡'}</span>
+            {i18nService.t('quickUse')}
           </button>
 
-          <div className="pt-1"></div>
-
-          {/* Quick Use */}
+          {/* 2. 我的涨粉任务 — 原"一键涨粉" (manage 模式) */}
           <button
             type="button"
             onClick={() => { setIsSearchOpen(false); onShowQuickUse(); }}
@@ -188,59 +191,74 @@ const Sidebar: React.FC<SidebarProps> = ({
                 : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
             }`}
           >
-            <span className="text-sm">⚡</span>
-            {i18nService.t('quickUse')}
+            <span className="text-sm">{'📋'}</span>
+            {i18nService.t('myFanTasks')}
           </button>
 
-          {/* Scheduled Tasks */}
+          {/* 3. AI对话 — 折叠二级菜单：新建对话 / web3连接 / 行业热点 */}
           <button
             type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowScheduledTasks();
-            }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'scheduledTasks'
+            onClick={() => setAiChatOpen(o => !o)}
+            className={`w-full inline-flex items-center justify-between rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              aiChildActive && !aiChatOpen
                 ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
                 : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
             }`}
           >
-            <span className="text-sm">⏰</span>
-            {i18nService.t('scheduledTasks')}
+            <span className="inline-flex items-center gap-2">
+              <span className="text-sm">{'💬'}</span>
+              {i18nService.t('aiChat')}
+            </span>
+            <span className={`text-xs transition-transform ${aiChatOpen ? 'rotate-90' : ''}`}>{'▸'}</span>
           </button>
 
-          {/* Web3 Connection */}
-          <button
-            type="button"
-            onClick={() => {
-              setIsSearchOpen(false);
-              onShowMcp();
-            }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'mcp'
-                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-            }`}
-          >
-            <span className="text-sm">🌐</span>
-            {i18nService.t('mcpServers')}
-          </button>
+          {aiChatOpen && (
+            <div className="space-y-1 pl-3">
+              {/* 新建对话 */}
+              <button
+                type="button"
+                onClick={() => { setIsSearchOpen(false); onNewChat(); }}
+                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  activeView === 'cowork'
+                    ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                <ComposeIcon className="h-4 w-4" />
+                {i18nService.t('newChat')}
+              </button>
 
-          {/* Hot Topics */}
-          <button
-            type="button"
-            onClick={() => { setIsSearchOpen(false); onShowWeb3News(); }}
-            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
-              activeView === 'web3news'
-                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
-                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
-            }`}
-          >
-            <span className="text-sm">{'\uD83D\uDD25'}</span>
-            {i18nService.t('hotTopics')}
-          </button>
+              {/* web3连接 */}
+              <button
+                type="button"
+                onClick={() => { setIsSearchOpen(false); onShowMcp(); }}
+                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  activeView === 'mcp'
+                    ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                <span className="text-sm">{'🌐'}</span>
+                {i18nService.t('mcpServers')}
+              </button>
 
-          {/* Skill Store */}
+              {/* 行业热点 */}
+              <button
+                type="button"
+                onClick={() => { setIsSearchOpen(false); onShowWeb3News(); }}
+                className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                  activeView === 'web3news'
+                    ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                <span className="text-sm">{'🔥'}</span>
+                {i18nService.t('hotTopics')}
+              </button>
+            </div>
+          )}
+
+          {/* 4. Skill Store */}
           <button
             type="button"
             onClick={() => {
@@ -255,6 +273,23 @@ const Sidebar: React.FC<SidebarProps> = ({
           >
             <span className="text-sm">🧩</span>
             {i18nService.t('skills')}
+          </button>
+
+          {/* 5. Scheduled Tasks */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsSearchOpen(false);
+              onShowScheduledTasks();
+            }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'scheduledTasks'
+                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <span className="text-sm">⏰</span>
+            {i18nService.t('scheduledTasks')}
           </button>
 
           {/* My Wallet */}

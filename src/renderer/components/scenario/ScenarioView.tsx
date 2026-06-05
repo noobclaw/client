@@ -62,6 +62,14 @@ interface ScenarioViewProps {
   initialPlatform?: PlatformId;
   /** v1.x: 顶栏右上角"分享给好友"按钮点击 → 跳邀请返佣页 */
   onShowInvite?: () => void;
+  /** v6.x: 左侧菜单拆分 —— 同一个 ScenarioView 现在被两个顶级菜单复用:
+   *   'create'  = 「一键涨粉」新建页(只显示平台 tab + 新建内容,隐藏 L1 段 tab)。
+   *   'manage'  = 「我的涨粉任务」(L1 段 tab:我的涨粉任务 / 运行记录)。
+   *  两者是独立的顶级菜单实例(App 里 ErrorBoundary key={mainView} 切换时重挂载)。 */
+  mode?: 'create' | 'manage';
+  /** manage 模式下任何「新建涨粉任务」入口 → 切到「一键涨粉」create 菜单(干净拆分,
+   *  避免两个菜单内容重叠)。由 App 注入,内部切 mainView='scenarioCreate'。 */
+  onSwitchToCreate?: (platform?: PlatformId) => void;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -96,11 +104,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   updateBadge,
   initialPlatform,
   onShowInvite,
+  mode = 'manage',
+  onSwitchToCreate,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  // Default landing section is now 'tasks' (was 'create'). Users open
-  // the page to manage their tasks; creation is a one-click CTA away.
-  const [view, setView] = useState<ViewState>({ kind: 'main', section: 'tasks', platform: initialPlatform || 'binance' });
+  // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
+  //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
+  const baseSection: SectionId = mode === 'create' ? 'create' : 'tasks';
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'binance' });
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
   // every WorkflowsPage are clickable from first paint, not greyed out
@@ -261,8 +272,18 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 不足"提示框,点充值跳钱包页),通过才真正切到 create。两个入口(落地页占位框 /
   // 右上 CTA)都走这里,保证门槛一致。
   const goVideoCreate = () => {
+    // manage 模式不自带新建页 —— 切到「一键涨粉」create 菜单(视频 tab)。
+    if (mode !== 'create') { onSwitchToCreate?.('video'); return; }
     if (!noobClawAuth.hasEnoughBalanceForTask()) return;
     setView({ kind: 'main', section: 'create', platform: 'video' });
+  };
+
+  /** 进入某平台的新建流。create 模式留在本实例切 create 段;manage 模式切到
+   *  「一键涨粉」create 菜单(干净拆分)。两条路都先过积分门槛。 */
+  const goCreatePlatform = (platform: PlatformId) => {
+    if (!noobClawAuth.hasEnoughBalanceForTask()) return;
+    if (mode === 'create') { setView({ kind: 'main', section: 'create', platform }); return; }
+    onSwitchToCreate?.(platform);
   };
 
   const openTask = (task_id: string, fromOverride?: SectionId) => {
@@ -296,7 +317,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     } else if (view.kind === 'record_detail') {
       setView({ kind: 'main', section: 'history', platform: view.from_platform, filterTaskId: view.filterTaskId });
     } else {
-      setView({ kind: 'main', section: 'tasks', platform: currentPlatform });
+      setView({ kind: 'main', section: baseSection, platform: currentPlatform });
     }
   };
 
@@ -381,7 +402,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
     // "task deleted" empty state for a split second).
     await refreshAll();
     if (landingTaskId) {
-      setView({ kind: 'task_detail', task_id: landingTaskId, from: 'tasks' });
+      setView({ kind: 'task_detail', task_id: landingTaskId, from: baseSection });
       if (createdLinkRewrite) {
         // 异步触发,不阻塞跳转
         scenarioService.runTaskNow(landingTaskId).catch(e => {
@@ -433,11 +454,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         // so the user was stuck and had to click L1 nav manually. Now
         // we offer one-click jumps to the create page for either platform.
         const isZh = i18nService.currentLanguage === 'zh';
-        const goCreate = (platform: PlatformId) => {
-          // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
-          if (!noobClawAuth.hasEnoughBalanceForTask()) return;
-          setView({ kind: 'main', section: 'create', platform });
-        };
+        // 余额门槛 + create/manage 分流统一走 goCreatePlatform。
+        const goCreate = (platform: PlatformId) => goCreatePlatform(platform);
         return (
           <div className="p-10 max-w-xl mx-auto">
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
@@ -498,7 +516,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <VideoWorkflowsPage
           section={currentSection === 'create' ? 'create' : currentSection === 'history' ? 'history' : 'tasks'}
           onGoCreate={goVideoCreate}
-          onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
+          onBack={() => setView({ kind: 'main', section: baseSection, platform: 'video' })}
           onDetailChange={setVideoInDetail}
         />
       );
@@ -527,11 +545,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           platformId={currentPlatform === 'x' ? 'x' : currentPlatform === 'binance' ? 'binance' : 'xhs'}
           onOpenTask={openTask}
           onRefresh={refreshAll}
-          onGoCreate={() => {
-            // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
-            if (!noobClawAuth.hasEnoughBalanceForTask()) return;
-            setView({ kind: 'main', section: 'create', platform: currentPlatform });
-          }}
+          onGoCreate={() => goCreatePlatform(currentPlatform)}
         />
       );
     }
@@ -677,7 +691,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">
-            {i18nService.t('quickUse')}
+            {mode === 'create' ? i18nService.t('quickUse') : i18nService.t('myFanTasks')}
           </h1>
           {/* v1.x: 钱包余额 + 充值入口紧跟标题,跟 CoworkView 顶栏一致 */}
           <div className="non-draggable">
@@ -759,9 +773,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             type="button"
             onClick={() => {
               if (isVideo) { goVideoCreate(); return; }
-              // 余额 < 10000 时弹"积分不足"提示框,点击充值跳钱包页;否则进入创建流程
-              if (!noobClawAuth.hasEnoughBalanceForTask()) return;
-              setSection('create');
+              goCreatePlatform(currentPlatform);
             }}
             className={`shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap active:scale-95 text-white ${
               isVideo
@@ -778,12 +790,12 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         );
       })()}
 
-      {/* Create-mode header: shows a back arrow that returns the user
-          to the My Tasks list. We deliberately do NOT keep the L1 tabs
-          here so the page reads as a pushed sub-page, not a sibling
-          of My Tasks / Run History. */}
+      {/* Create-mode header. v6.x: 'create' 模式是顶级菜单(「一键涨粉」),没有
+          上一页可回 —— 隐藏返回按钮,只留段标题。仅 manage 模式(已不会进 create
+          段)才保留返回按钮,但实际上 manage 不再渲染本块。 */}
       {view.kind === 'main' && currentSection === 'create' && (
         <div className="flex items-center gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          {mode !== 'create' && (
           <button
             type="button"
             onClick={() => setSection('tasks')}
@@ -795,6 +807,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             <span>←</span>
             <span>{i18nService.currentLanguage === 'zh' ? '返回' : 'Back'}</span>
           </button>
+          )}
           <h2 className="text-base font-bold dark:text-white text-gray-900 ml-2">
             ✨ {i18nService.currentLanguage === 'zh'
               ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
