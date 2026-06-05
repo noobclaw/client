@@ -71,6 +71,11 @@ export interface VideoCreationInput {
   maxClipSeconds?: number;
   /** 一次出片数量(1~5)。复用脚本/配音,每条不同画面组合。默认 1。 */
   videoCount?: number;
+  /** v6.x: 所属视频任务 id —— 主进程据此把成片输出到「按任务」的文件夹
+   *  (视频创作/<id前8位>_<任务名>),而非按日期的共享桶。 */
+  taskId?: string;
+  /** v6.x: 任务标题,派生输出文件夹名用(配合 taskId)。 */
+  taskTitle?: string;
 }
 
 export interface VideoCreationProgressStep {

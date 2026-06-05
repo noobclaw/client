@@ -6,7 +6,8 @@
  *   2. 每句 edge-tts 配音(拿到每镜真实时长)
  *   3. 凑画面:参考图优先 → Pexels/Pixabay 素材图补 → 都没有上纯色文字卡
  *   4. ffmpeg 逐镜 Ken Burns + 烧字幕,concat 成竖屏 mp4
- *   5. 输出到 ~/Documents/NoobClaw/视频创作/<日期>/
+ *   5. 输出到 ~/Documents/NoobClaw/视频创作/<任务ID前8位>_<任务名>/
+ *      (无任务上下文的老调用退回按日期 视频创作/<日期>/)
  *
  * 全程 emit 进度(steps 数组)给渲染端 UI。
  */
@@ -106,6 +107,15 @@ export interface VideoCreationInput {
    * 只对每条做不同的素材片段组合,平台费按条数 ×N。默认 1。
    */
   videoCount?: number;
+  /**
+   * v6.x: 所属视频任务 id。传入时,成片输出到【按任务】的文件夹
+   * (视频创作/<id前8位>_<任务名>/),让详情页顶部「输出目录」稳定指向
+   * 这个任务的总目录(对齐涨粉任务 getTaskDirPath 的按任务分目录)。
+   * 缺省(无任务上下文的老调用)退回按日期分桶。
+   */
+  taskId?: string;
+  /** v6.x: 任务标题,派生输出文件夹名用(配合 taskId)。 */
+  taskTitle?: string;
 }
 
 export interface ProgressStep {
@@ -254,18 +264,40 @@ export function splitScript(script: string): string[] {
   return merged.slice(0, 40); // 安全上限
 }
 
-function outputDir(): string {
+/** 文件夹名清洗:剔除路径非法字符 + 折叠空白,限长(中文标题照样可用)。 */
+function sanitizeFolderName(s: string): string {
+  return (s || '')
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 40);
+}
+
+/**
+ * 成片输出目录。
+ *   · 有 taskId(正常从视频任务发起)→ 视频创作/<id前8位>_<任务名>/,
+ *     该任务所有运行的成片都落在这一个文件夹 = 详情页顶部「输出目录」指向的总目录。
+ *   · 无 taskId(无任务上下文的老调用)→ 退回按日期分桶 视频创作/<年-月-日>/。
+ */
+function outputDir(input?: { taskId?: string; taskTitle?: string }): string {
   let docs: string;
   try {
     docs = require('electron').app.getPath('documents');
   } catch {
     docs = path.join(getHomePath(), 'Documents');
   }
-  const date = new Date();
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const dir = path.join(docs, 'NoobClaw', '视频创作', `${y}-${m}-${d}`);
+  const root = path.join(docs, 'NoobClaw', '视频创作');
+  let dir: string;
+  if (input?.taskId) {
+    const folder = sanitizeFolderName(`${input.taskId.slice(0, 8)}_${input.taskTitle || ''}`) || input.taskId.slice(0, 8);
+    dir = path.join(root, folder);
+  } else {
+    const date = new Date();
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    dir = path.join(root, `${y}-${m}-${d}`);
+  }
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
@@ -357,7 +389,8 @@ async function runVideoPipeline(
   const assetDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-vid-assets-'));
 
   // 出片目录开跑即确定,emit 一次让详情页顶部立刻能显示「输出目录」。
-  const destDir = outputDir();
+  // 有 taskId 时按任务分目录(详情页顶部指向任务总目录),否则按日期分桶。
+  const destDir = outputDir(input);
   tracker.setOutputDir(destDir);
 
   try {

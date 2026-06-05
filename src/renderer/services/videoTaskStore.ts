@@ -413,9 +413,11 @@ class VideoTaskStore {
       });
     };
 
-    // fire-and-forget;store 单例持有 promise,组件卸载不影响
+    // fire-and-forget;store 单例持有 promise,组件卸载不影响。
+    // 带上 taskId/taskTitle,让主进程把成片输出到「按任务」的总目录
+    // (视频创作/<id前8位>_<任务名>),详情页顶部「输出目录」据此稳定指向本任务目录。
     void videoCreationService
-      .generate(task.input, onProgress)
+      .generate({ ...task.input, taskId: task.id, taskTitle: task.title }, onProgress)
       .then((res) => {
         this.patchRun(runId, (r) => {
           if (res.ok && res.outputPath) {
