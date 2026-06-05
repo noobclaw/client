@@ -1496,6 +1496,15 @@ const SUB_STROKE_OPTIONS: { v: string; zh: string; en: string }[] = [
   { v: '#3A0CA3', zh: '紫', en: 'Purple' },
 ];
 
+// 字幕字体:value = resources/fonts/ 下的字体文件名(空 = 默认思源黑体)。
+// 全部 SIL OFL / 可商用 + CJK 全覆盖,随包 bundle;新增字体在此加一行 + 把文件丢进 fonts/。
+const SUB_FONT_OPTIONS: { v: string; zh: string; en: string }[] = [
+  { v: '', zh: '思源黑体（默认）', en: 'Source Han Sans' },
+  { v: 'SourceHanSerifSC-Bold.otf', zh: '思源宋体', en: 'Source Han Serif' },
+  { v: 'SmileySans-Oblique.ttf', zh: '得意黑', en: 'Smiley Sans' },
+  { v: 'LXGWWenKai-Regular.ttf', zh: '霞鹜文楷', en: 'LXGW WenKai' },
+];
+
 // 一次出片条数(抄 MPT video_count):1~5 条,复用脚本/配音、每条不同画面组合。
 const VIDEO_COUNT_OPTIONS = [1, 2, 3, 4, 5];
 
@@ -1624,6 +1633,8 @@ const VideoConfigModal: React.FC<{
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(editTask?.input.subtitleStrokeColor ?? '');
+  // 字幕字体:空 = 默认思源黑体;其余为 resources/fonts/ 下的字体文件名。
+  const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。
   const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 1);
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
@@ -1770,6 +1781,7 @@ const VideoConfigModal: React.FC<{
     subtitlePosition,
     subtitleColor: subtitleColor || undefined,
     subtitleStrokeColor: subtitleStrokeColor || undefined,
+    subtitleFont: subtitleFont || undefined,
     maxClipSeconds,
     videoCount,
   });
@@ -1861,6 +1873,7 @@ const VideoConfigModal: React.FC<{
                     onClick={() => setMode('stock')}
                     title={isZh ? 'AI 分镜口播视频' : 'AI scene voice-over'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
+                    cost={isZh ? '单次最多 5 条 · 满批总价约 $0.5~1（配音/字幕/合成免费）' : 'Up to 5 per run · ~$0.5–1 total (TTS/subs/compose free)'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -1893,20 +1906,22 @@ const VideoConfigModal: React.FC<{
               </Field>
 
               <Field label={isZh ? '人设' : 'Persona'} hint={isZh ? '你是谁、对谁说话、什么口吻' : 'who you are and your tone'}>
-                <input
+                <textarea
                   value={persona}
                   onChange={(e) => setPersona(e.target.value)}
+                  rows={3}
                   placeholder={isZh ? '选赛道后自动带出，可修改' : 'auto-filled after picking a track'}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y leading-relaxed"
                 />
               </Field>
 
               <Field label={isZh ? '关键词' : 'Keywords'} hint={isZh ? '空格分隔，用于搜画面素材' : 'space-separated, used to search stock'}>
-                <input
+                <textarea
                   value={keywords}
                   onChange={(e) => setKeywords(e.target.value)}
+                  rows={3}
                   placeholder={isZh ? '选赛道后自动带出，可修改' : 'auto-filled after picking a track'}
-                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50 resize-y leading-relaxed"
                 />
               </Field>
             </>
@@ -2312,6 +2327,20 @@ const VideoConfigModal: React.FC<{
                           </button>
                         ))}
                       </div>
+                    </div>
+
+                    {/* 字体选择 */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 w-12 shrink-0">{isZh ? '字体' : 'Font'}</span>
+                      <select
+                        value={subtitleFont}
+                        onChange={(e) => setSubtitleFont(e.target.value)}
+                        className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
+                      >
+                        {SUB_FONT_OPTIONS.map((f) => (
+                          <option key={f.v || 'default'} value={f.v}>{isZh ? f.zh : f.en}</option>
+                        ))}
+                      </select>
                     </div>
 
                     {/* 文字颜色调色板 */}
