@@ -1500,7 +1500,6 @@ const SUB_STROKE_OPTIONS: { v: string; zh: string; en: string }[] = [
 // 全部 SIL OFL / 可商用 + CJK 全覆盖,随包 bundle;新增字体在此加一行 + 把文件丢进 fonts/。
 const SUB_FONT_OPTIONS: { v: string; zh: string; en: string }[] = [
   { v: '', zh: '思源黑体（默认）', en: 'Source Han Sans' },
-  { v: 'SourceHanSerifSC-Bold.otf', zh: '思源宋体', en: 'Source Han Serif' },
   { v: 'SmileySans-Oblique.ttf', zh: '得意黑', en: 'Smiley Sans' },
 ];
 
