@@ -233,11 +233,12 @@ function initProgress(taskId: string, scenarioId?: string): void {
       'AI 生成内容图，保存到本地',
       '发表到视频号助手（存草稿 / 发布）。请勿切换浏览器标签页。',
     ],
-    // 头条号「微头条」= 3 步(无 AI 生图)。
+    // 头条号「微头条」= 4 步(v1.1.0 起接 AI 生图 + 上传):创作→改写→生图→发布。
     toutiao_image_text: [
       'AI 根据灵感段创作微头条。请勿切换浏览器标签页。',
       'AI 改写为微头条正文，保存到本地',
-      '发布到头条号（微头条，存草稿 / 发布）。请勿切换浏览器标签页。',
+      'AI 生成内容图，保存到本地',
+      '发布到头条号（微头条，上传图 + 正文，存草稿 / 发布）。请勿切换浏览器标签页。',
     ],
   };
   const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [

@@ -400,16 +400,18 @@ const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_EN = [
   'AI generates content images, saved locally',
   'Publish to WeChat Channels assistant (draft / publish). Do not switch browser tabs.',
 ];
-// 头条号「微头条」= 3 步(无 AI 生图,发纯文字微头条 → mp.toutiao.com)。
+// 头条号「微头条」= 4 步(v1.1.0 起接了 AI 生图 + 上传):创作→改写→生图→发布 → mp.toutiao.com。
 const STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH = [
   'AI 根据灵感段创作微头条。请勿切换浏览器标签页。',
   'AI 改写为微头条正文，保存到本地',
-  '发布到头条号（微头条，存草稿 / 发布）。请勿切换浏览器标签页。',
+  'AI 生成内容图，保存到本地',
+  '发布到头条号（微头条，上传图 + 正文，存草稿 / 发布）。请勿切换浏览器标签页。',
 ];
 const STEP_NAMES_TOUTIAO_IMAGE_TEXT_EN = [
   'AI composes a Toutiao weitoutiao post from inspiration. Do not switch browser tabs.',
   'AI rewrite saved locally as Toutiao weitoutiao body',
-  'Publish to Toutiao (weitoutiao, draft / publish). Do not switch browser tabs.',
+  'AI generates content images, saved locally',
+  'Publish to Toutiao (weitoutiao: upload images + body, draft / publish). Do not switch browser tabs.',
 ];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
