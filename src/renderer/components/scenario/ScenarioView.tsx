@@ -66,11 +66,13 @@ interface ScenarioViewProps {
   initialPlatform?: PlatformId;
   /** v1.x: 顶栏右上角"分享给好友"按钮点击 → 跳邀请返佣页 */
   onShowInvite?: () => void;
-  /** v6.x: 左侧菜单拆分 —— 同一个 ScenarioView 现在被两个顶级菜单复用:
-   *   'create'  = 「一键涨粉」新建页(只显示平台 tab + 新建内容,隐藏 L1 段 tab)。
-   *   'manage'  = 「我的涨粉任务」(L1 段 tab:我的涨粉任务 / 运行记录)。
-   *  两者是独立的顶级菜单实例(App 里 ErrorBoundary key={mainView} 切换时重挂载)。 */
-  mode?: 'create' | 'manage';
+  /** v6.x: 左侧菜单拆分 —— 同一个 ScenarioView 现在被三个顶级菜单复用:
+   *   'create'  = 「✨ 新建涨粉任务」新建页(只显示平台 tab + 新建内容,隐藏段标题)。
+   *   'manage'  = 「📋 我的涨粉任务」(段标题 + 平台 tab + 任务列表)。
+   *   'runs'    = 「📊 涨粉运行记录」(段标题 + 平台 tab + 运行记录列表)。
+   *  三者是独立的顶级菜单实例(App 里 ErrorBoundary key={mainView} 切换时重挂载)。
+   *  原 manage 内的「我的涨粉任务 / 运行记录」L1 段 tab 已拆成两个独立菜单,不再内切。 */
+  mode?: 'create' | 'manage' | 'runs';
   /** manage 模式下任何「新建涨粉任务」入口 → 切到「一键涨粉」create 菜单(干净拆分,
    *  避免两个菜单内容重叠)。由 App 注入,内部切 mainView='scenarioCreate'。 */
   onSwitchToCreate?: (platform?: PlatformId) => void;
@@ -95,20 +97,8 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
 ];
 
-// L1 tabs are now PURELY for "switch view": My Tasks vs Run History.
-// "Create new task" used to live here too, which made users confuse
-// "已有的涨粉任务" with "创建新的涨粉任务" — the strings overlap on
-// "涨粉任务" so a quick scan looked the same.
-//
-// Creation is now a top-right CTA button (matching the convention
-// every other web app uses for primary actions), plus an inline
-// "+ 新建涨粉任务" card injected at the bottom of the My Tasks list
-// when the user has fewer than the per-platform task cap (5). Both
-// entry points fire the same setSection('create') flow.
-const SECTION_TABS: Array<{ id: SectionId; zh: string; en: string; icon: string }> = [
-  { id: 'tasks',   zh: '我的涨粉任务',  en: 'My Tasks',    icon: '📋' },
-  { id: 'history', zh: '运行记录',      en: 'Run History', icon: '📊' },
-];
+// v6.x: 原 SECTION_TABS(我的涨粉任务 / 运行记录 两个 L1 段 tab)已移除 —
+// 两段拆成两个独立左侧菜单(manage / runs),头部改为静态段标题,不再内切。
 
 export const ScenarioView: React.FC<ScenarioViewProps> = ({
   isSidebarCollapsed,
@@ -123,7 +113,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
   //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
-  const baseSection: SectionId = mode === 'create' ? 'create' : 'tasks';
+  const baseSection: SectionId = mode === 'create' ? 'create' : mode === 'runs' ? 'history' : 'tasks';
   const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'binance' });
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
@@ -770,7 +760,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">
-            {mode === 'create' ? i18nService.t('quickUse') : i18nService.t('myFanTasks')}
+            {mode === 'create'
+              ? i18nService.t('quickUse')
+              : mode === 'runs'
+                ? (i18nService.currentLanguage === 'zh' ? '涨粉运行记录' : 'Run History')
+                : i18nService.t('myFanTasks')}
           </h1>
           {/* v1.x: 钱包余额 + 充值入口紧跟标题,跟 CoworkView 顶栏一致 */}
           <div className="non-draggable">
@@ -815,39 +809,41 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             of "task vs view" actions. */}
       {view.kind === 'main' && currentSection !== 'create' && !(currentPlatform === 'video' && videoInDetail) && (() => {
         const isVideo = currentPlatform === 'video';
+        const isZh = i18nService.currentLanguage === 'zh';
+        const isHistory = currentSection === 'history';
+        // v6.x: 原「我的涨粉任务 / 运行记录」两个 L1 段 tab 已拆成两个独立左侧菜单,
+        // 这里改成只展示【当前菜单】的段标题(样式对齐「✨ 新建涨粉任务」头部)。
+        //   manage 菜单 → 📋 我的涨粉任务(视频实例叫「我的视频任务」)
+        //   runs   菜单 → 📊 涨粉运行记录
+        // 仅当从【我的涨粉任务】里某任务详情下钻到该任务的运行记录(manage 内部
+        // section 临时切到 history)时,补一个「← 返回」回到任务列表,避免没了 L1
+        // tab 之后无路可退。
+        const sectionTitle = isHistory
+          ? (isZh ? '📊 涨粉运行记录' : '📊 Run History')
+          : isVideo ? (isZh ? '🎬 我的视频任务' : '🎬 My Videos')
+                    : (isZh ? '📋 我的涨粉任务' : '📋 My Tasks');
         return (
         <div className="flex items-center justify-between gap-2 px-4 pt-4 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          <div className="flex items-center gap-2 overflow-x-auto">
-            {SECTION_TABS.map(tab => {
-              const active = currentSection === tab.id;
-              const isZh = i18nService.currentLanguage === 'zh';
-              // 视频是本地工具,L1「我的涨粉任务」对它来说叫「我的视频任务」。
-              const zhLabel = isVideo && tab.id === 'tasks' ? '我的视频任务' : tab.zh;
-              const enLabel = isVideo && tab.id === 'tasks' ? 'My Videos' : tab.en;
-              const activeCls = isVideo
-                ? 'bg-rose-500/15 text-rose-500 border border-rose-500/50 shadow-sm shadow-rose-500/20'
-                : 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20';
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => setSection(tab.id)}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-                    active
-                      ? activeCls
-                      : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
-                  }`}
-                >
-                  <span>{tab.icon}</span>
-                  <span>{isZh ? zhLabel : enLabel}</span>
-                </button>
-              );
-            })}
+          <div className="flex items-center gap-2 min-w-0">
+            {mode === 'manage' && isHistory && (
+              <button
+                type="button"
+                onClick={() => setSection('tasks')}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
+                title={isZh ? '返回我的涨粉任务' : 'Back to My Tasks'}
+              >
+                <span>←</span>
+                <span>{isZh ? '返回' : 'Back'}</span>
+              </button>
+            )}
+            <h2 className="text-base font-bold dark:text-white text-gray-900 whitespace-nowrap">
+              {sectionTitle}
+            </h2>
           </div>
-          {/* Right-aligned CTA — primary "create new task" entry point.
-              Always clickable; per-platform task-cap (>= 5) check happens
-              inside the create page's scenario cards, not here.
-              Video tab is local-only (no balance gate) and uses rose tint. */}
+          {/* Right-aligned CTA — 只在「我的涨粉任务」(tasks)展示;运行记录页无需新建入口。
+              Always clickable; per-platform task-cap (>= 5) check happens inside the
+              create page's scenario cards. Video tab is local-only (rose tint). */}
+          {currentSection === 'tasks' && (
           <button
             type="button"
             onClick={() => {
@@ -861,10 +857,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             }`}
           >
             <span>✨</span>
-            <span>{i18nService.currentLanguage === 'zh'
+            <span>{isZh
               ? (isVideo ? '新建视频创作任务' : '新建涨粉任务')
               : (isVideo ? 'New Video Task' : 'New Task')}</span>
           </button>
+          )}
         </div>
         );
       })()}

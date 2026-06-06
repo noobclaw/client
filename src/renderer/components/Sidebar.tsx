@@ -13,7 +13,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'web3news' | 'partners' | 'personality';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'partners' | 'personality';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -21,6 +21,7 @@ interface SidebarProps {
   onShowWallet: () => void;
   onShowInvite: () => void;
   onShowQuickUse: () => void;
+  onShowScenarioRuns: () => void;
   onShowScenarioCreate: () => void;
   onShowWeb3News: () => void;
   onShowPersonality: () => void;
@@ -41,6 +42,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowWallet,
   onShowInvite,
   onShowQuickUse,
+  onShowScenarioRuns,
   onShowScenarioCreate,
   onShowWeb3News,
   onShowPersonality,
@@ -195,7 +197,21 @@ const Sidebar: React.FC<SidebarProps> = ({
             {i18nService.t('myFanTasks')}
           </button>
 
-          {/* 3. AI对话 — 折叠二级菜单：新建对话 / web3连接 / 行业热点 */}
+          {/* 3. 涨粉运行记录 — 原 manage 内「运行记录」L1 段拆成独立菜单 (runs 模式) */}
+          <button
+            type="button"
+            onClick={() => { setIsSearchOpen(false); onShowScenarioRuns(); }}
+            className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+              activeView === 'scenarioRuns'
+                ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+            }`}
+          >
+            <span className="text-sm">{'📊'}</span>
+            {i18nService.t('fanRunHistory')}
+          </button>
+
+          {/* 4. AI对话 — 折叠二级菜单：新建对话 / web3连接 / 行业热点 */}
           <button
             type="button"
             onClick={() => setAiChatOpen(o => !o)}
@@ -272,7 +288,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          {/* 4. Skill Store */}
+          {/* 5. Skill Store */}
           <button
             type="button"
             onClick={() => {
