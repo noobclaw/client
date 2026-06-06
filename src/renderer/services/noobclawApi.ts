@@ -342,7 +342,17 @@ class NoobClawApiService {
   // Backend route prefix: /api/me/* (see backend/src/routes/rebate.ts).
   // All four require auth headers — they're scoped to req.walletAddress.
 
-  async getUsdtRebateSummary(): Promise<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null> {
+  async getUsdtRebateSummary(): Promise<{
+    total_earned: string; total_sent: string; total_inflight: string; total_pending: string;
+    // v6.x: backend also returns CNY-side fields for the cn-site flow;
+    // client now reads them too to render a 「¥CNY 总返佣」 stat card
+    // next to the existing USDT one. All optional — old backend without
+    // CNY would just return undefined and the card renders ¥0.00.
+    cny_total_earned?: string;
+    cny_total_sent?: string;
+    cny_total_inflight?: string;
+    cny_total_pending?: string;
+  } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/summary`, {
         headers: this.getAuthHeaders(),

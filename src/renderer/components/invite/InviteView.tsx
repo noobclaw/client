@@ -79,7 +79,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [purchaseMin, setPurchaseMin] = useState(50);
   const [purchaseMax, setPurchaseMax] = useState(150);
   // v5.x+ USDT rebate state — populated when usdt_rebate tab is opened.
-  const [usdtSummary, setUsdtSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null>(null);
+  const [usdtSummary, setUsdtSummary] = useState<{
+    total_earned: string; total_sent: string; total_inflight: string; total_pending: string;
+    cny_total_earned?: string; cny_total_sent?: string; cny_total_inflight?: string; cny_total_pending?: string;
+  } | null>(null);
   // v6.x: usdtBreakdown 状态保留 — dashboard endpoint 仍然返回 levels 字段,
   //   data.breakdown.levels 拿到后存进来供未来 reuse;UI 上"来源拆解"strip 已
   //   下线(用户反馈表头列已涵盖 level 信息),但 setter 保留避免 dashboard 调用
@@ -364,6 +367,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const animDirect  = useCountUp(profile?.directReferrals || 0);
   const animNetwork = useCountUp(profile?.totalNetwork || profile?.totalReferrals || 0);
   const animUsdt    = useCountUp(parseFloat(usdtSummary?.total_earned || '0'));
+  // v6.x: 同 endpoint 返回的 CNY 累计返佣(cn 站卡密充值的 6 级 cascade 落到这里)。
+  //   显示在 USDT card 右边,点击跳官网 cn 站提现 modal(client 不内嵌提现 UI,
+  //   把上传二维码 / 历史等都甩给 web 浏览器,electron 主进程零文件层逻辑)。
+  const animCny     = useCountUp(parseFloat(usdtSummary?.cny_total_earned || '0'));
   // v6.x: 顶部 $Noob 卡只统计 邀请奖励 (rewardList.totalEarned),不再混入用户
   //   总 NOOB 余额(profile.totalNoob)。totalEarned 在 mount 时通过
   //   loadRewards(1) 顺手预热,user 进 noob tab 时该值已经在,切 tab 不再卡;
@@ -786,7 +793,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 USDT total comes from /api/me/rebate/summary (prefetched on
                 mount), NOOB total comes from profile.totalNoob (already
                 served by /api/user/referral). */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animDirect)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteDirectReferrals')}</div>
@@ -798,6 +805,24 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
+              </div>
+              {/* v6.x: CNY 总返佣 stat card — 卡密充值的人民币 6 级 cascade 累积。
+                  点击 → 调用 electron shell.openExternal 打开 cn 站 ?withdraw=open hash,
+                  让 cn 站 ucOpenCnyWithdraw 自动弹提现 modal(三数字+申请+历史)。
+                  client 本身不内嵌提现 UI:① 上传二维码要 multipart,electron renderer
+                  里搞文件输入不如浏览器原生 ② 不同地区/网络下二维码加载/截图都有差异,
+                  浏览器路径已经验证过最稳 ③ 提现是低频高金额操作,跳 web 让用户多看一眼
+                  规则反而是好事(防止误操作)。 */}
+              <div
+                className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center cursor-pointer hover:border-primary transition-colors"
+                onClick={() => {
+                  try { (window as any).electronAPI?.openExternal?.('https://noobclaw.com/cn/#cny-withdraw'); }
+                  catch { window.open('https://noobclaw.com/cn/#cny-withdraw', '_blank'); }
+                }}
+                title={i18nService.t('inviteCnyTotalHint')}
+              >
+                <div className="text-xl font-bold text-primary tabular-nums">¥{animCny.toFixed(2)}</div>
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteCnyTotal')}</div>
               </div>
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
