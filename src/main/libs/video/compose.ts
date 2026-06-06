@@ -305,7 +305,7 @@ async function renderColorBg(out: string, dur: number, W: number, H: number): Pr
  * 合成单镜【无声背景】→ scene_bg_NNN.mp4。
  *
  * 抄 MPT 的「坏素材不拖垮整片」容错(combine_videos 里每段 clip 都 try/except 继续):
- *   1. 先 ffprobe 过滤掉【探不到时长】的坏 clip(下载损坏 / 非视频),只留可解码的;
+ *   1. 先用 probeDuration(ffmpeg -i)过滤掉【探不到时长】的坏 clip(下载损坏 / 非视频),只留可解码的;
  *   2. 视频分支失败 → 降级到图片 Ken Burns;
  *   3. 图片分支失败 → 降级到纯色文字卡;
  *   4. 只有连纯色卡都失败(ffmpeg 本身坏)才真的 throw。

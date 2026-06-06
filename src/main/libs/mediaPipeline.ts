@@ -168,12 +168,19 @@ export function convertAudio(inputPath: string, outputFormat: 'mp3' | 'wav' | 'o
 }
 
 export function getAudioDuration(inputPath: string): number | null {
+  // `ffmpeg -i <file>`(无输出文件)总以非 0 退出并抛错,但 Duration 已打在
+  // stderr 上(err.stderr)。改用 ffmpeg 解析,省掉对 ffprobe 的依赖。
   try {
-    const out = execSync(`ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${inputPath}"`, {
-      encoding: 'utf8', timeout: 10000,
-    });
-    const dur = parseFloat(out.trim());
-    return isNaN(dur) ? null : dur;
+    let stderr = '';
+    try {
+      execSync(`ffmpeg -hide_banner -i "${inputPath}"`, { encoding: 'utf8', timeout: 10000 });
+    } catch (e: any) {
+      stderr = e && e.stderr ? String(e.stderr) : '';
+    }
+    const m = stderr.match(/Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/);
+    if (!m) return null;
+    const dur = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3]);
+    return Number.isFinite(dur) && dur > 0 ? dur : null;
   } catch {
     return null;
   }
@@ -195,7 +202,7 @@ export function extractVideoFrame(inputPath: string, timeSeconds: number = 0): s
 }
 
 export function getVideoDuration(inputPath: string): number | null {
-  return getAudioDuration(inputPath); // Same ffprobe command works
+  return getAudioDuration(inputPath); // 同一条 ffmpeg -i 命令既出音频也出视频时长
 }
 
 // ── Download helper ──

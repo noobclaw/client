@@ -1,14 +1,19 @@
 /**
- * ffmpegRuntime — 解析并运行 ffmpeg / ffprobe。
+ * ffmpegRuntime — 解析并运行 ffmpeg。
  *
  * 解析顺序(第一个能跑通的胜出):
- *   1. 环境变量 NOOBCLAW_FFMPEG_PATH / NOOBCLAW_FFPROBE_PATH(显式覆盖)
+ *   1. 环境变量 NOOBCLAW_FFMPEG_PATH(显式覆盖)
  *   2. 打包后的 bundled 目录(resources/ffmpeg-<platform>/bin/…)—— M0 里塞进来
  *   3. userData/runtimes/ffmpeg-<platform>/bin/…(从 bundled 同步出来的)
- *   4. 系统 PATH 上的 ffmpeg / ffprobe(开发机直接用)
+ *   4. 系统 PATH 上的 ffmpeg(开发机直接用)
  *
  * 一期(开发/自测)走第 4 条:本机 choco 装的 ffmpeg 8.1。打包分发再补 M0 的
  * 资源内置(参考 pythonRuntime 的 bundle → 同步 → resolve 套路)。
+ *
+ * NOTE: 不再打包 ffprobe(单独一个二进制就近 100MB)。它原本只用来读
+ * 时长 / 宽高 这类元数据,而 `ffmpeg -i <file>` 在 stderr 里同样会打印
+ * `Duration:` 和视频流的 `WxH`,所以 probeDuration / probeImageSize 改成
+ * 解析 ffmpeg 的 stderr,省掉了 ffprobe 这份冗余体积。
  */
 
 import { spawn, spawnSync } from 'child_process';
@@ -76,10 +81,9 @@ function probeOnPath(cmd: string): boolean {
 }
 
 let _ffmpegPath: string | null = null;
-let _ffprobePath: string | null = null;
 
 function resolveBinary(
-  name: 'ffmpeg' | 'ffprobe',
+  name: 'ffmpeg',
   envVar: string,
 ): string {
   const envOverride = process.env[envVar];
@@ -114,11 +118,6 @@ function resolveBinary(
 export function getFfmpegPath(): string {
   if (!_ffmpegPath) _ffmpegPath = resolveBinary('ffmpeg', 'NOOBCLAW_FFMPEG_PATH');
   return _ffmpegPath;
-}
-
-export function getFfprobePath(): string {
-  if (!_ffprobePath) _ffprobePath = resolveBinary('ffprobe', 'NOOBCLAW_FFPROBE_PATH');
-  return _ffprobePath;
 }
 
 /** ffmpeg 是否可用(spawn 能跑通 -version)。UI 不可用时给友好提示。 */
@@ -202,46 +201,59 @@ function runProcess(bin: string, args: string[], opts: RunFfmpegOptions): Promis
   });
 }
 
-/** ffprobe 出图片/视频首个视频流的宽高。失败返回 {width:0,height:0}。 */
-export function probeImageSize(filePath: string): Promise<{ width: number; height: number }> {
+// `ffmpeg -i <file>`(不给输出)会以非 0 退出,但 stderr 里照样打印容器/流
+// 元数据:`Duration: HH:MM:SS.ss` 和每条流的 `Video: …, WxH`。probeDuration /
+// probeImageSize 解析这份 stderr,代替原来的 ffprobe(省掉一个 ~100MB 二进制)。
+//
+// stockProvider 对同一个下载文件会连着调 probeDuration + probeImageSize,所以
+// 按 (path, mtime) 缓存一次 `ffmpeg -i` 的 stderr,避免重复起进程。mtime 变了
+// 自动失效(文件被覆盖/重下时重新探)。
+const _probeCache = new Map<string, { mtimeMs: number; stderr: string }>();
+
+function runProbe(filePath: string): Promise<string> {
   return new Promise((resolve) => {
-    const bin = getFfprobePath();
-    const args = [
-      '-v', 'error',
-      '-select_streams', 'v:0',
-      '-show_entries', 'stream=width,height',
-      '-of', 'csv=s=x:p=0',
-      filePath,
-    ];
-    const child = spawn(bin, args, { windowsHide: true });
-    let out = '';
-    child.stdout?.on('data', (b: Buffer) => { out += b.toString(); });
-    child.on('error', () => resolve({ width: 0, height: 0 }));
+    let mtimeMs = -1;
+    try { mtimeMs = fs.statSync(filePath).mtimeMs; } catch {}
+    if (mtimeMs >= 0) {
+      const cached = _probeCache.get(filePath);
+      if (cached && cached.mtimeMs === mtimeMs) return resolve(cached.stderr);
+    }
+    const child = spawn(getFfmpegPath(), ['-hide_banner', '-i', filePath], { windowsHide: true });
+    let err = '';
+    child.stderr?.on('data', (b: Buffer) => { err += b.toString(); });
+    child.on('error', () => resolve(''));
     child.on('close', () => {
-      const m = out.trim().match(/^(\d+)x(\d+)/);
-      if (!m) return resolve({ width: 0, height: 0 });
-      resolve({ width: parseInt(m[1], 10) || 0, height: parseInt(m[2], 10) || 0 });
+      if (mtimeMs >= 0) {
+        _probeCache.set(filePath, { mtimeMs, stderr: err });
+        // 粗暴限大小:超 256 条删最老的(Map 保留插入序)。
+        if (_probeCache.size > 256) {
+          const oldest = _probeCache.keys().next().value;
+          if (oldest !== undefined) _probeCache.delete(oldest);
+        }
+      }
+      resolve(err);
     });
   });
 }
 
-/** ffprobe 出媒体时长(秒)。失败返回 0。 */
-export function probeDuration(filePath: string): Promise<number> {
-  return new Promise((resolve) => {
-    const bin = getFfprobePath();
-    const args = [
-      '-v', 'error',
-      '-show_entries', 'format=duration',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
-      filePath,
-    ];
-    const child = spawn(bin, args, { windowsHide: true });
-    let out = '';
-    child.stdout?.on('data', (b: Buffer) => { out += b.toString(); });
-    child.on('error', () => resolve(0));
-    child.on('close', () => {
-      const v = parseFloat(out.trim());
-      resolve(Number.isFinite(v) && v > 0 ? v : 0);
-    });
-  });
+/** 出图片/视频首个视频流的宽高(解析 ffmpeg -i stderr)。失败返回 {width:0,height:0}。 */
+export async function probeImageSize(filePath: string): Promise<{ width: number; height: number }> {
+  const err = await runProbe(filePath);
+  for (const line of err.split(/\r?\n/)) {
+    if (!line.includes('Video:')) continue;
+    // 形如 `… , 1920x1080 [SAR 1:1 DAR 16:9], …`;SAR/DAR 用冒号,不会误配 WxH。
+    const m = line.match(/\b(\d{2,5})x(\d{2,5})\b/);
+    if (m) return { width: parseInt(m[1], 10) || 0, height: parseInt(m[2], 10) || 0 };
+  }
+  return { width: 0, height: 0 };
+}
+
+/** 出媒体时长(秒)(解析 ffmpeg -i stderr 的 `Duration:`)。失败返回 0。 */
+export async function probeDuration(filePath: string): Promise<number> {
+  const err = await runProbe(filePath);
+  // `Duration: N/A` 时正则不匹配 → 0(坏 clip / 非媒体,正是要过滤的)。
+  const m = err.match(/Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/);
+  if (!m) return 0;
+  const sec = parseInt(m[1], 10) * 3600 + parseInt(m[2], 10) * 60 + parseFloat(m[3]);
+  return Number.isFinite(sec) && sec > 0 ? sec : 0;
 }

@@ -1,10 +1,15 @@
 /**
- * fetch-ffmpeg — download static ffmpeg/ffprobe into resources/ for bundling.
+ * fetch-ffmpeg — download the static ffmpeg binary into resources/ for bundling.
  *
- * Runs at BUILD time (CI or local), NOT at runtime. The downloaded binaries
- * land in `client/resources/ffmpeg-<platform>/bin/`; prepare-tauri-resources.js
- * then copies them into `src-tauri/resources/ffmpeg-<platform>/bin/` so Tauri
- * bundles them. At runtime ffmpegRuntime.ts resolves them via getResourcesPath().
+ * Runs at BUILD time (CI or local), NOT at runtime. The downloaded binary
+ * lands in `client/resources/ffmpeg-<platform>/bin/`; prepare-tauri-resources.js
+ * then copies it into `src-tauri/resources/ffmpeg-<platform>/bin/` so Tauri
+ * bundles it. At runtime ffmpegRuntime.ts resolves it via getResourcesPath().
+ *
+ * ffprobe is intentionally NOT downloaded — it was a separate ~100MB binary
+ * used only to read duration / WxH metadata, which ffmpegRuntime.ts now parses
+ * from `ffmpeg -i` stderr instead. Dropping it roughly halves the bundled
+ * ffmpeg footprint.
  *
  * Platform sources:
  *   - Windows x64: gyan.dev "essentials" static build (bundles libx264).
@@ -89,10 +94,9 @@ function makeScratchDir() {
 function fetchWindows() {
   const destBin = path.join(ROOT, 'resources', 'ffmpeg-win', 'bin');
   const ffmpegOut = path.join(destBin, 'ffmpeg.exe');
-  const ffprobeOut = path.join(destBin, 'ffprobe.exe');
 
-  if (fs.existsSync(ffmpegOut) && fs.existsSync(ffprobeOut)) {
-    console.log(`[fetch-ffmpeg] Windows binaries already present in ${destBin}, skipping.`);
+  if (fs.existsSync(ffmpegOut)) {
+    console.log(`[fetch-ffmpeg] Windows ffmpeg already present in ${destBin}, skipping.`);
     return;
   }
 
@@ -114,17 +118,15 @@ function fetchWindows() {
     );
 
     const ffmpegSrc = findFile(extractDir, 'ffmpeg.exe');
-    const ffprobeSrc = findFile(extractDir, 'ffprobe.exe');
-    if (!ffmpegSrc || !ffprobeSrc) {
-      throw new Error('ffmpeg.exe / ffprobe.exe not found in the downloaded archive');
+    if (!ffmpegSrc) {
+      throw new Error('ffmpeg.exe not found in the downloaded archive');
     }
 
     fs.mkdirSync(destBin, { recursive: true });
     fs.copyFileSync(ffmpegSrc, ffmpegOut);
-    fs.copyFileSync(ffprobeSrc, ffprobeOut);
 
     const mb = (p) => Math.round(fs.statSync(p).size / 1024 / 1024);
-    console.log(`[fetch-ffmpeg] ✓ ffmpeg.exe (${mb(ffmpegOut)}MB) + ffprobe.exe (${mb(ffprobeOut)}MB) → ${destBin}`);
+    console.log(`[fetch-ffmpeg] ✓ ffmpeg.exe (${mb(ffmpegOut)}MB) → ${destBin}`);
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   }
@@ -133,10 +135,9 @@ function fetchWindows() {
 function fetchMac(triple) {
   const destBin = path.join(ROOT, 'resources', 'ffmpeg-mac', 'bin');
   const ffmpegOut = path.join(destBin, 'ffmpeg');
-  const ffprobeOut = path.join(destBin, 'ffprobe');
 
-  if (fs.existsSync(ffmpegOut) && fs.existsSync(ffprobeOut)) {
-    console.log(`[fetch-ffmpeg] macOS binaries already present in ${destBin}, skipping.`);
+  if (fs.existsSync(ffmpegOut)) {
+    console.log(`[fetch-ffmpeg] macOS ffmpeg already present in ${destBin}, skipping.`);
     return;
   }
 
@@ -146,34 +147,31 @@ function fetchMac(triple) {
   try {
     fs.mkdirSync(destBin, { recursive: true });
 
-    // ffmpeg and ffprobe ship as separate zips on this host.
-    for (const name of ['ffmpeg', 'ffprobe']) {
-      const url = `${MAC_FFMPEG_BASE}/${arch}/release/${name}.zip`;
-      const zipPath = path.join(tmp, `${name}.zip`);
-      const extractDir = path.join(tmp, `${name}-extracted`);
-      fs.mkdirSync(extractDir, { recursive: true });
+    // ffmpeg ships as its own zip on this host (ffprobe no longer fetched).
+    const url = `${MAC_FFMPEG_BASE}/${arch}/release/ffmpeg.zip`;
+    const zipPath = path.join(tmp, 'ffmpeg.zip');
+    const extractDir = path.join(tmp, 'ffmpeg-extracted');
+    fs.mkdirSync(extractDir, { recursive: true });
 
-      console.log(`[fetch-ffmpeg] Downloading ${url}`);
-      // -L follows the redirect/latest -> versioned download URL.
-      execSync(`curl -L --fail --retry 3 -o "${zipPath}" "${url}"`, { stdio: 'inherit' });
+    console.log(`[fetch-ffmpeg] Downloading ${url}`);
+    // -L follows the redirect/latest -> versioned download URL.
+    execSync(`curl -L --fail --retry 3 -o "${zipPath}" "${url}"`, { stdio: 'inherit' });
 
-      console.log(`[fetch-ffmpeg] Extracting ${name}…`);
-      // `unzip` is preinstalled on macOS runners (and dev Macs).
-      execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'inherit' });
+    console.log('[fetch-ffmpeg] Extracting ffmpeg…');
+    // `unzip` is preinstalled on macOS runners (and dev Macs).
+    execSync(`unzip -o "${zipPath}" -d "${extractDir}"`, { stdio: 'inherit' });
 
-      const src = findFile(extractDir, name);
-      if (!src) {
-        throw new Error(`${name} not found in the downloaded archive (${url})`);
-      }
-      const out = path.join(destBin, name);
-      fs.copyFileSync(src, out);
-      fs.chmodSync(out, 0o755); // ensure the bundled binary stays executable
+    const src = findFile(extractDir, 'ffmpeg');
+    if (!src) {
+      throw new Error(`ffmpeg not found in the downloaded archive (${url})`);
     }
+    fs.copyFileSync(src, ffmpegOut);
+    fs.chmodSync(ffmpegOut, 0o755); // ensure the bundled binary stays executable
 
     const mb = (p) => Math.round(fs.statSync(p).size / 1024 / 1024);
     console.log(
-      `[fetch-ffmpeg] ✓ ffmpeg (${mb(ffmpegOut)}MB) + ffprobe (${mb(ffprobeOut)}MB) → ${destBin} ` +
-      `(macos/${arch}). NOTE: build-tauri.yml re-signs these with our Developer ID before bundling.`,
+      `[fetch-ffmpeg] ✓ ffmpeg (${mb(ffmpegOut)}MB) → ${destBin} ` +
+      `(macos/${arch}). NOTE: build-tauri.yml re-signs this with our Developer ID before bundling.`,
     );
   } finally {
     try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}

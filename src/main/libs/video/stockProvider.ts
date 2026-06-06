@@ -196,7 +196,7 @@ async function searchVideosViaServer(
 }
 
 /**
- * 下载一个视频文件并【ffprobe 验真伪 + 卡分辨率】(抄 MPT save_video 的完整性校验思路)。
+ * 下载一个视频文件并【探时长验真伪 + 卡分辨率】(probe 走 ffmpeg -i,抄 MPT save_video 的完整性校验思路)。
  * 返回真实宽高 / 时长;任何一关不过就删文件返 null:
  *   · 时长探不到(probeDuration<=0)→ 下到的是错误页/损坏文件,删。这是关键:坏 clip
  *     若放进合成会让 ffmpeg 在 renderSceneBg 阶段报错拖垮整条视频。

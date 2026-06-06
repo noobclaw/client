@@ -221,26 +221,21 @@ jobs:
           fi
 
       - name: Pre-sign bundled ffmpeg (macOS)
-        # Same reasoning as the native addon above: ffmpeg/ffprobe are Mach-O
-        # binaries nested under Contents/Resources/resources/ffmpeg-mac/bin/,
-        # which Tauri's deep sign reaches but the notary still rejects unless
-        # each carries a secure timestamp under OUR Developer ID. Martin-Riedl
-        # ships them notarized under HIS identity; re-signing with --force
-        # replaces that with ours (--timestamp --options runtime). Skipped
-        # silently if ffmpeg wasn't bundled for this target.
+        # Same reasoning as the native addon above: ffmpeg is a Mach-O binary
+        # nested under Contents/Resources/resources/ffmpeg-mac/bin/, which
+        # Tauri's deep sign reaches but the notary still rejects unless it
+        # carries a secure timestamp under OUR Developer ID. Martin-Riedl ships
+        # it notarized under HIS identity; re-signing with --force replaces that
+        # with ours (--timestamp --options runtime). Skipped silently if ffmpeg
+        # wasn't bundled for this target. (ffprobe is no longer bundled — see
+        # scripts/fetch-ffmpeg.js.)
         if: runner.os == 'macOS'
         run: |
           FF_DIR=src-tauri/resources/ffmpeg-mac/bin
-          if [ -d "$FF_DIR" ]; then
-            for BIN in ffmpeg ffprobe; do
-              if [ -f "$FF_DIR/$BIN" ]; then
-                codesign --force --timestamp --options runtime \
-                  --sign "$APPLE_SIGNING_IDENTITY" "$FF_DIR/$BIN"
-                codesign -dvv "$FF_DIR/$BIN" || true
-              else
-                echo "WARN: $FF_DIR/$BIN not found — skipping"
-              fi
-            done
+          if [ -f "$FF_DIR/ffmpeg" ]; then
+            codesign --force --timestamp --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" "$FF_DIR/ffmpeg"
+            codesign -dvv "$FF_DIR/ffmpeg" || true
           else
             echo "No bundled ffmpeg-mac for ${{ matrix.target }} — skipping pre-sign."
           fi
