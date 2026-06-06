@@ -320,7 +320,7 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md' }> = ({ isZh, siz
         🎬 {isZh ? '视频创作' : 'Video'}
       </span>
       <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30`}>
-        🎬 {isZh ? '单次成片' : 'One-shot'}
+        🎬 {isZh ? 'AI自动成片' : 'AI Auto-Video'}
       </span>
     </>
   );
@@ -1293,7 +1293,7 @@ const VideoRunRecordDetail: React.FC<{
   );
 };
 
-// ── 创建流:先选创作方式,选「单次成片」弹出配置弹窗 ─────────────────────
+// ── 创建流:先选创作方式,选「AI自动成片」弹出配置弹窗 ─────────────────────
 
 const VideoCreateFlow: React.FC<{
   isZh: boolean;
@@ -1319,7 +1319,7 @@ const VideoCreateFlow: React.FC<{
   );
 };
 
-// ── 卡片 1:原创短视频 · 单次成片 ───────────────────────────────────
+// ── 卡片 1:原创短视频 · AI自动成片 ───────────────────────────────────
 
 const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> = ({ isZh, onStart }) => (
   <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
@@ -1327,10 +1327,10 @@ const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> =
     <div className="relative flex flex-col flex-1">
       <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
         <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-        {isZh ? '单次成片' : 'One-shot'}
+        {isZh ? 'AI自动成片' : 'AI Auto-Video'}
       </div>
       <h3 className="text-base font-bold dark:text-white mb-1.5">
-        🎬 {isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot'}
+        🎬 {isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video'}
       </h3>
       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
         {isZh
@@ -1606,7 +1606,7 @@ const BGM_VOLUME_OPTIONS: { v: number; zh: string; en: string }[] = [
 ];
 
 // 画面来源:在线素材库自动搜 vs 用户上传本地视频素材拼接。
-type MaterialSource = 'stock' | 'local';
+type MaterialSource = 'stock' | 'local' | 'ai';
 const MAX_LOCAL_VIDEOS = 20;
 
 // 模式一(AI 分镜 + 在线素材)生成前的余额门槛:积分 > 此值才放行。门槛权威值由服务端
@@ -1669,9 +1669,14 @@ const VideoConfigModal: React.FC<{
 
   // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
   const [materialSource, setMaterialSource] = useState<MaterialSource>(
-    (editTask?.input.localVideos && editTask.input.localVideos.length > 0) ? 'local' : 'stock',
+    editTask?.input.engine === 'ai' ? 'ai'
+      : (editTask?.input.localVideos && editTask.input.localVideos.length > 0) ? 'local'
+      : 'stock',
   );
   const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
+  // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 分辨率档(成本敏感)。
+  const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
+  const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '720p');
   const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
@@ -1718,8 +1723,9 @@ const VideoConfigModal: React.FC<{
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(editTask?.input.subtitleStrokeColor ?? '');
   // 字幕字体:空 = 默认思源黑体;其余为 resources/fonts/ 下的字体文件名。
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
-  // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。
-  const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 2);
+  // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。默认 1(只跑一次),
+  // 用户想批量再手动往上调。
+  const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 1);
   // 定时运行(参照抖音):'once' 仅手动;其余自动重复。daily 才用 dailyTime。
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
   // 视频任务已去掉「每日定时」选项,dailyTime 仅作占位默认值(不再可编辑)。
@@ -1746,6 +1752,15 @@ const VideoConfigModal: React.FC<{
     if (paths.length) setLocalVideos((prev) => [...prev, ...paths].slice(0, MAX_LOCAL_VIDEOS));
   };
   const removeLocalVideo = (idx: number) => setLocalVideos((prev) => prev.filter((_, i) => i !== idx));
+
+  // AI 自动成片:参考图(≤2),做风格/人设统一。可选,不传也能纯文生视频。
+  const pickReferenceImages = async () => {
+    const remaining = 2 - referenceImages.length;
+    if (remaining <= 0) return;
+    const paths = await videoCreationService.pickReferenceImages(remaining);
+    if (paths.length) setReferenceImages((prev) => [...prev, ...paths].slice(0, 2));
+  };
+  const removeReferenceImage = (idx: number) => setReferenceImages((prev) => prev.filter((_, i) => i !== idx));
 
   // 背景音乐:选一首本地音频;再点一次「移除」清空。
   const pickBgm = async () => {
@@ -1832,7 +1847,8 @@ const VideoConfigModal: React.FC<{
   // 文案步:只校验文案本身。
   const scriptStepValid = scriptValid;
   // 画面:选了本地上传却没传素材时挡一下
-  const visualStepValid = materialSource === 'stock' || localVideos.length > 0;
+  // AI 自动成片:参考图可选,无硬性必填;在线:无必填;本地:至少 1 个上传。
+  const visualStepValid = materialSource === 'stock' || materialSource === 'ai' || localVideos.length > 0;
 
   const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
     || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
@@ -1851,13 +1867,16 @@ const VideoConfigModal: React.FC<{
     keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
     scriptMode,
-    referenceImages: [], // 参考图已弃用,保留字段向后兼容
-    // 素材来源二选一,不混拼:仅本地来源才带 localVideos,在线来源一律不带(避免混入)。
+    // AI 自动成片(Seedance)用参考图(≤2)统一风格;其余来源不传(字段向后兼容)。
+    engine: materialSource === 'ai' ? 'ai' : 'stock',
+    seedanceResolution: materialSource === 'ai' ? seedanceResolution : undefined,
+    referenceImages: materialSource === 'ai' ? referenceImages.slice(0, 2) : [],
+    // 素材来源二选一,不混拼:仅本地来源才带 localVideos,在线/AI 来源一律不带。
     localVideos: materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
     targetSeconds,
-    // 在线来源 = 搜在线素材库(收平台费);本地来源 = 只用上传的视频拼接(不搜在线、免平台费)。
+    // 在线来源 = 搜在线素材库(收平台费);本地/AI = 不搜在线。AI 的钱在服务端逐片段扣。
     useStockVideo: materialSource === 'stock',
     voice,
     voiceRate,
@@ -1935,7 +1954,7 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
-              🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · 单次成片' : 'Original Short · One-shot')}
+              🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '模式' : 'Mode'} />
@@ -2108,8 +2127,14 @@ const VideoConfigModal: React.FC<{
             <>
               {/* 素材来源:二选一,不混拼(对齐 MoneyPrinterTurbo)。
                   stock=全部在线素材库;local=全部用上传的本地视频拼接。 */}
-              <Field label={isZh ? '素材来源（二选一）' : 'Footage source'} hint={isZh ? '要么全部在线，要么全部本地，不混拼' : 'all online OR all local, no mixing'}>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <Field label={isZh ? '画面来源（三选一）' : 'Footage source'} hint={isZh ? 'AI 自动成片 / 在线素材库 / 本地上传，三选一不混拼' : 'AI-generated / online stock / local upload — pick one'}>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <ModeOption
+                    active={materialSource === 'ai'}
+                    onClick={() => setMaterialSource('ai')}
+                    title={isZh ? '✨ AI 自动成片' : '✨ AI Auto-Video'}
+                    desc={isZh ? '逐镜用 AI(Seedance)生成画面，参考图统一风格' : 'AI (Seedance) generates each shot; reference images unify style'}
+                  />
                   <ModeOption
                     active={materialSource === 'stock'}
                     onClick={() => setMaterialSource('stock')}
@@ -2124,6 +2149,63 @@ const VideoConfigModal: React.FC<{
                   />
                 </div>
               </Field>
+
+              {/* AI 自动成片:分辨率档(成本敏感)+ 参考图(≤2,风格统一,可选)。 */}
+              {materialSource === 'ai' && (
+              <>
+                <Field
+                  label={isZh ? '清晰度（越高越贵）' : 'Resolution (higher = pricier)'}
+                  hint={isZh ? 'AI 按「时长 × 分辨率」逐镜计费；日更建议 720p' : 'billed by duration × resolution per shot; 720p for daily posting'}
+                >
+                  <div className="flex gap-2">
+                    {(['480p', '720p', '1080p'] as const).map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => setSeedanceResolution(r)}
+                        className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
+                          seedanceResolution === r
+                            ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                        }`}
+                      >
+                        {r}{r === '720p' ? (isZh ? '（推荐）' : ' (rec.)') : ''}
+                      </button>
+                    ))}
+                  </div>
+                </Field>
+
+                <Field
+                  label={isZh ? '参考图（可选，最多 2 张）' : 'Reference images (optional, max 2)'}
+                  hint={isZh ? '统一画风/人设；不传则纯按文案生成画面' : 'unify style/persona; omit for pure text-to-video'}
+                >
+                  <div className="space-y-1.5">
+                    {referenceImages.map((p, i) => (
+                      <div key={i} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-1.5">
+                        <span className="text-sm">🖼️</span>
+                        <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{p.split(/[\\/]/).pop()}</span>
+                        <button
+                          type="button"
+                          onClick={() => removeReferenceImage(i)}
+                          className="w-5 h-5 rounded-full bg-gray-300 dark:bg-gray-600 text-white text-xs flex items-center justify-center hover:bg-red-500 shrink-0"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    {referenceImages.length < 2 && (
+                      <button
+                        type="button"
+                        onClick={pickReferenceImages}
+                        className="w-full py-2 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-700 text-sm text-gray-500 hover:border-rose-400 hover:text-rose-400 transition-colors"
+                      >
+                        ＋ {isZh ? '添加参考图' : 'Add reference image'}
+                      </button>
+                    )}
+                  </div>
+                </Field>
+              </>
+              )}
 
               {/* 本地视频素材:仅本地来源显示,且必填(至少 1 个)。 */}
               {materialSource === 'local' && (

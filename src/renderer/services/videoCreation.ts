@@ -32,7 +32,14 @@ export interface VideoCreationInput {
    * 缺省兼容老任务:有 script → strict,无 → ai(主进程同款回退)。
    */
   scriptMode?: 'strict' | 'ai';
-  /** 用户上传的参考图本地绝对路径(0-3 张,优先用于画面)。已弃用,保留向后兼容。 */
+  /**
+   * 画面引擎:'stock'(默认,AI 分镜 + 在线素材库) | 'ai'(Seedance AI 自动成片,
+   * 逐镜生成视频片段,参考图统一风格,走服务端代理逐片段计费)。
+   */
+  engine?: 'stock' | 'ai';
+  /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
+  seedanceResolution?: '480p' | '720p' | '1080p';
+  /** 用户上传的参考图本地绝对路径(AI 引擎用作风格/人设统一,≤2 张)。 */
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传 时用)。

@@ -25,6 +25,7 @@ import { generateScript, generateSearchTerms, detectLang } from './scriptWriter'
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
+import { generateSeedanceClips, type SeedanceClipResult } from './seedanceProvider';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -50,6 +51,35 @@ function aspectToOrientation(aspect: VideoAspect): StockOrientation {
   }
 }
 
+/** aspect → Seedance ratio 字段。 */
+function aspectToSeedanceRatio(aspect: VideoAspect): '9:16' | '16:9' | '1:1' {
+  if (aspect === '16:9') return '16:9';
+  if (aspect === '1:1') return '1:1';
+  return '9:16';
+}
+
+/**
+ * 给一句口播稿构造 Seedance 画面 prompt:取该句内容当画面方向,叠加赛道/人设做风格统一,
+ * 明确"空镜、无文字/字幕/水印"(文字由我们后期烧字幕,画面只要视觉)。
+ * (v1 直接用口播句;后续可改成复用 generateSearchTerms 的可视化描述提质量。)
+ */
+function buildSeedancePrompt(sentence: string, input: { track?: string; persona?: string }): string {
+  const styleBits = [input.track, input.persona].filter(Boolean).join('，');
+  const style = styleBits ? `整体风格:${styleBits}。` : '';
+  return `电影感竖屏空镜,画面具体可拍、与这句内容相关,不要任何文字/字幕/水印/logo:「${sentence}」。${style}镜头平稳,真实质感,光影自然。`;
+}
+
+/** 失败镜降级:借最近(左右就近)一个成功生成的片段路径;都没有返回 null。 */
+function findNearestClip(results: SeedanceClipResult[], i: number): string | null {
+  for (let d = 1; d < results.length; d++) {
+    const a = results[i - d];
+    if (a && a.path) return a.path;
+    const b = results[i + d];
+    if (b && b.path) return b.path;
+  }
+  return null;
+}
+
 export interface VideoCreationInput {
   persona: string;
   track: string;
@@ -65,6 +95,16 @@ export interface VideoCreationInput {
    * 缺省时按老逻辑兼容:有 script → strict,无 → ai。
    */
   scriptMode?: 'strict' | 'ai';
+  /**
+   * 画面引擎(成片方式):
+   *   · 'stock'(默认) → AI 分镜 + 在线素材库空镜(+可选本地上传混拼)。
+   *   · 'ai'           → Seedance AI 自动成片:逐镜用 Seedance 生成视频片段,
+   *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
+   *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
+   */
+  engine?: 'stock' | 'ai';
+  /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
+  seedanceResolution?: '480p' | '720p' | '1080p';
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -412,7 +452,9 @@ async function runVideoPipeline(
   // (服务端 /charge 按 videoCount + aiCostUsd 算):平台费向上限靠拢 + AI 费按条数线性叠加,
   // 在下面 compose 阶段开跑前【一次性】预扣这笔(含全部条数)总费。chargeId/refundOnExit
   // 跟踪这笔在途预扣,供「全部条目失败 / 异常」时 finally 兜底整笔退回。
-  const isMode1 = input.useStockVideo !== false;
+  // engine==='ai'(Seedance 自动成片)的钱在服务端【逐片段】扣(/seedance/create,
+  // 含 markup),且失败自动退款 —— 不再走这里的"平台基础费"预扣,避免重复收费。
+  const isMode1 = input.engine !== 'ai' && input.useStockVideo !== false;
   let chargeId: string | undefined;
   let refundOnExit = false;
 
@@ -527,7 +569,10 @@ async function runVideoPipeline(
     const usesStock = input.useStockVideo !== false;
     const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
     // 一次出片条数(1~5)。抄 MPT:脚本/配音/素材池只做一次,每条只换片段组合。
-    const videoCount = Math.max(1, Math.min(5, Math.round(input.videoCount ?? 1)));
+    // AI 自动成片(Seedance)逐片段真金白银生成,批量没意义且翻倍烧钱 → 强制单条。
+    const videoCount = input.engine === 'ai'
+      ? 1
+      : Math.max(1, Math.min(5, Math.round(input.videoCount ?? 1)));
 
     // Fisher–Yates 洗牌(不改原数组),用于批量出片时让每条的片段组合各不相同。
     const shuffled = <T,>(arr: T[]): T[] => {
@@ -543,7 +588,49 @@ async function runVideoPipeline(
     // 第 0 条按原顺序;后续条把素材池打乱再分配 → 同脚本/配音、不同画面。
     let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[]; imageByScene?: Map<number, string> };
 
-    if (!usesStock && localVideos.length > 0) {
+    if (input.engine === 'ai') {
+      // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
+      // 服务端逐片段计费(时长×分辨率)+ 失败自动退款。失败镜降级:就近复用成功片段,
+      // 再不行用参考图静帧;一条都没成则整任务失败(钱已被服务端退回)。
+      const refImagesAi = (input.referenceImages || []).filter((p) => p && fs.existsSync(p)).slice(0, 2);
+      const resolution = input.seedanceResolution || '720p';
+      const aiScenes = sentences.map((s, i) => ({
+        prompt: buildSeedancePrompt(s, input),
+        durationSec: Math.max(4, Math.ceil(audios[i].durationSec)),
+      }));
+      tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段(${resolution}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''})…`);
+      const clipResults = await generateSeedanceClips({
+        scenes: aiScenes,
+        referenceImages: refImagesAi,
+        resolution,
+        ratio: aspectToSeedanceRatio(input.aspect),
+        destDir: assetDir,
+        onProgress: (m) => tracker.progress(m),
+      });
+      const okCount = clipResults.filter((r) => r.path).length;
+      if (okCount === 0) {
+        const sample = clipResults.find((r) => r.error)?.error || '';
+        const err = `AI 自动成片失败:所有片段都没生成成功${sample ? `(${sample})` : '(余额不足或 Seedance 暂不可用)'}。已生成的片段费用服务端会自动退回。`;
+        tracker.fail('visuals', err);
+        return { ok: false, error: err };
+      }
+      assignVisuals = () => {
+        const sceneClips = clipResults.map((r, i) => {
+          if (r.path) return [r.path];
+          const near = findNearestClip(clipResults, i);
+          return near ? [near] : [];
+        });
+        // 既无本镜片段又借不到邻镜的(极端)→ 用参考图静帧兜底。
+        const imageByScene = new Map<number, string>();
+        if (refImagesAi.length > 0) {
+          clipResults.forEach((r, i) => {
+            if (!r.path && !findNearestClip(clipResults, i)) imageByScene.set(i, refImagesAi[i % refImagesAi.length]);
+          });
+        }
+        return { sceneClips, imagePool: refImagesAi, imageByScene };
+      };
+      tracker.done('visuals', `AI 成片就绪(${okCount}/${aiScenes.length} 镜 Seedance 生成${okCount < aiScenes.length ? ',其余就近降级' : ''})`);
+    } else if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
       tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);
       assignVisuals = (videoIdx: number) => {
