@@ -853,6 +853,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if ((scenario?.platform as any) === 'douyin') return { icon: '🎵', label: isZh ? '抖音' : 'Douyin' };
     if ((scenario?.platform as any) === 'kuaishou') return { icon: '⚡', label: isZh ? '快手' : 'Kuaishou' };
     if ((scenario?.platform as any) === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
+    if ((scenario?.platform as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
+    if ((scenario?.platform as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -864,6 +866,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
   const isDouyinTask = (scenario?.platform as any) === 'douyin' || task.scenario_id?.startsWith('douyin_');
   const isKuaishouTask = (scenario?.platform as any) === 'kuaishou' || task.scenario_id?.startsWith('kuaishou_');
   const isBilibiliTask = (scenario?.platform as any) === 'bilibili' || task.scenario_id?.startsWith('bilibili_');
+  const isShipinhaoTask = (scenario?.platform as any) === 'shipinhao' || task.scenario_id?.startsWith('shipinhao_');
+  const isToutiaoTask = (scenario?.platform as any) === 'toutiao' || task.scenario_id?.startsWith('toutiao_');
   const typeBadge = (() => {
     const sid = task.scenario_id;
     if (sid === 'x_auto_engage')                  return { icon: '🐦', label: isZh ? '推特 · 互动涨粉' : 'Twitter Engage & Grow', color: 'text-emerald-500 bg-emerald-500/10 border-emerald-500/30' };
@@ -892,7 +896,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'bilibili_auto_engage')           return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (sid === 'bilibili_video_download')        return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'bilibili_reply_fans_comment')    return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask && !isKuaishouTask && !isBilibiliTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
+    if (sid === 'shipinhao_image_text')           return { icon: '📝', label: isZh ? '视频号 · 图文创作' : 'WeChat Channels Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'shipinhao_reply_fans_comment')   return { icon: '💬', label: isZh ? '视频号 · 自动回复粉丝' : 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'toutiao_image_text')             return { icon: '📝', label: isZh ? '头条号 · 图文创作' : 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+    if (sid === 'toutiao_reply_fans_comment')     return { icon: '💬', label: isZh ? '头条号 · 自动回复粉丝' : 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (isLinkModeForBadge && !isXTask && !isBinanceTask && !isYoutubeTask && !isTiktokTask && !isDouyinTask && !isKuaishouTask && !isBilibiliTask && !isShipinhaoTask && !isToutiaoTask) return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
     // workflow_type fallback — guard by platform so Binance / YouTube / TikTok
     // / Douyin auto_reply don't get mis-labeled as XHS auto_reply.
     if ((scenario?.workflow_type as any) === 'auto_reply') {
@@ -911,6 +919,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (isDouyinTask)  return { icon: '🎵', label: isZh ? '抖音创作' : 'Douyin Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
     if (isKuaishouTask) return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (isBilibiliTask) return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+    if (isShipinhaoTask) return { icon: '📱', label: isZh ? '视频号任务' : 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+    if (isToutiaoTask) return { icon: '📰', label: isZh ? '头条号任务' : 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
     return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
   })();
 

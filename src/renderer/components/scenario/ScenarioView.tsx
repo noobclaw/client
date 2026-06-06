@@ -122,7 +122,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onShowInvite,
   mode = 'manage',
   onSwitchToCreate,
-  onSwitchToManage,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
@@ -910,17 +909,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </button>
             )}
           </div>
-          {/* v6.x: create 模式右上角「查看已有的涨粉任务」→ 切到 manage 菜单。 */}
-          {mode === 'create' && (
-          <button
-            type="button"
-            onClick={() => onSwitchToManage?.()}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500 transition-colors whitespace-nowrap"
-          >
-            <span>📋</span>
-            <span>{i18nService.currentLanguage === 'zh' ? '查看已有的涨粉任务' : 'My Tasks'}</span>
-          </button>
-          )}
+          {/* v6.x: 原右上角「查看已有的涨粉任务」按钮已移除 — 改为每张卡片
+              「开始 …」按钮右侧的「查看已有任务 »」文字入口(见各 WorkflowsPage)。 */}
         </div>
       )}
 

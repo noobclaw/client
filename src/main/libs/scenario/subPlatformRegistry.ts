@@ -213,7 +213,11 @@ export function getStandardBounds(
   sub_platform: string,
   account_id: string = 'default',
 ): { left: number; top: number; width: number; height: number } {
-  const slot = Math.max(0, _SUB_PLATFORM_ORDER.indexOf(sub_platform));
+  // v6.x: 平台数已超过 8 个,靠后的 sub_platform(kuaishou/bilibili/shipinhao/
+  // toutiao …)如果按原始下标级联,窗口会被推出屏幕 → 触发扩展端
+  // "Bounds must be at least 50% within visible screen space" 开窗失败。
+  // 对 8 取模回绕(作者注释:8 个 cascade slot 适配 1080p),保证始终在屏内。
+  const slot = Math.max(0, _SUB_PLATFORM_ORDER.indexOf(sub_platform)) % 8;
   const accountOffset = account_id === 'default' ? 0 : 30;
   return {
     left: 20 + slot * 60 + accountOffset,
