@@ -426,6 +426,22 @@ const STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_EN = [
   'Resolve & download watermark-free videos locally, one by one',
 ];
 
+// 快手 / 哔哩哔哩 与抖音流程同构,仅平台名 / 动作集不同。早期为省事直接复用抖音的步骤名
+// 常量,把「抖音」字样串台到快手/B站的任务详情页(用户实拍)。改用工厂按各自平台名生成纯
+// 展示步骤名(scenario.id 仍各自独立)。
+const engageStepNames = (isZh: boolean, homeZh: string, homeEn: string, actsZh: string, actsEn: string): string[] =>
+  isZh
+    ? [`打开${homeZh}首页 → 搜索关键词 → 采集候选视频`, `逐个进视频执行${actsZh}`, '保存本次报告到本地']
+    : [`Open ${homeEn} home → search keyword → collect candidate videos`, `Open each video, execute ${actsEn}`, 'Save this run report to disk'];
+const replyStepNames = (isZh: boolean, centerZh: string, centerEn: string): string[] =>
+  isZh
+    ? [`进入${centerZh}评论管理，选择作品`, '逐条回复粉丝评论（只回粉丝，绝不评论作品本身）', '保存本次报告']
+    : [`Enter ${centerEn} comment management, pick a work`, 'Reply fan comments (fans only, never the video itself)', 'Save run report'];
+const videoDownloadStepNames = (isZh: boolean, nameZh: string, nameEn: string): string[] =>
+  isZh
+    ? [`打开${nameZh}并校验登录`, '逐个解析并下载无水印视频到本地']
+    : [`Open ${nameEn} & verify login`, 'Resolve & download watermark-free videos locally, one by one'];
+
 interface Props {
   task: Task;
   scenario: Scenario | null;
@@ -511,10 +527,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_video_download') return isZh ? STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH : STEP_NAMES_XHS_VIDEO_DOWNLOAD_EN;
     if (sid === 'douyin_video_download') return isZh ? STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH : STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_EN;
     if (sid === 'tiktok_video_download') return isZh ? STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_ZH : STEP_NAMES_TIKTOK_VIDEO_DOWNLOAD_EN;
-    // 快手 / 哔哩哔哩 流程镜像抖音,复用抖音的步骤名常量(纯展示,各自 scenario.id 独立)。
-    if (sid === 'kuaishou_auto_engage' || sid === 'bilibili_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
-    if (sid === 'kuaishou_reply_fans_comment' || sid === 'bilibili_reply_fans_comment') return isZh ? STEP_NAMES_DOUYIN_REPLY_FANS_ZH : STEP_NAMES_DOUYIN_REPLY_FANS_EN;
-    if (sid === 'kuaishou_video_download' || sid === 'bilibili_video_download') return isZh ? STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_ZH : STEP_NAMES_DOUYIN_VIDEO_DOWNLOAD_EN;
+    // 快手 / 哔哩哔哩 流程镜像抖音,但步骤名按各自平台名生成(纯展示,scenario.id 独立),
+    // 不再复用抖音常量,避免「抖音」字样串台到别的平台页。
+    if (sid === 'kuaishou_auto_engage') return engageStepNames(isZh, '快手', 'Kuaishou', '点赞 / 关注 / 评论', 'like / follow / comment');
+    if (sid === 'bilibili_auto_engage') return engageStepNames(isZh, '哔哩哔哩', 'Bilibili', '点赞 / 投币 / 关注 / 评论', 'like / coin / follow / comment');
+    if (sid === 'kuaishou_reply_fans_comment') return replyStepNames(isZh, '快手创作者中心', 'Kuaishou Creator Center');
+    if (sid === 'bilibili_reply_fans_comment') return replyStepNames(isZh, '哔哩哔哩创作中心', 'Bilibili Creator Center');
+    if (sid === 'kuaishou_video_download') return videoDownloadStepNames(isZh, '快手', 'Kuaishou');
+    if (sid === 'bilibili_video_download') return videoDownloadStepNames(isZh, '哔哩哔哩', 'Bilibili');
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
