@@ -533,6 +533,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'bilibili_auto_engage') return engageStepNames(isZh, '哔哩哔哩', 'Bilibili', '点赞 / 投币 / 关注 / 评论', 'like / coin / follow / comment');
     if (sid === 'kuaishou_reply_fans_comment') return replyStepNames(isZh, '快手创作者中心', 'Kuaishou Creator Center');
     if (sid === 'bilibili_reply_fans_comment') return replyStepNames(isZh, '哔哩哔哩创作中心', 'Bilibili Creator Center');
+    if (sid === 'shipinhao_reply_fans_comment') return replyStepNames(isZh, '视频号助手', 'WeChat Channels Assistant');
+    if (sid === 'toutiao_reply_fans_comment') return replyStepNames(isZh, '头条号创作者中心', 'Toutiao Creator Center');
     if (sid === 'kuaishou_video_download') return videoDownloadStepNames(isZh, '快手', 'Kuaishou');
     if (sid === 'bilibili_video_download') return videoDownloadStepNames(isZh, '哔哩哔哩', 'Bilibili');
     return isAutoReplyTask
