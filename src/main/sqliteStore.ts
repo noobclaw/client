@@ -265,6 +265,15 @@ export class SqliteStore {
       CREATE INDEX IF NOT EXISTS idx_engage_history_lookup
       ON engage_history(wallet_address, platform, action, used_at DESC);
     `);
+    // Prune engage_history rows older than the retention window so the table —
+    // and every full-file save() that rewrites the whole db — stays bounded.
+    // Re-engaging a >90-day-old target is acceptable. Runs once per startup;
+    // persisted by the init-end save(), plus a guarded save() if it deleted any.
+    try {
+      const ENGAGE_RETENTION_MS = 90 * 24 * 60 * 60 * 1000;
+      this.db.run('DELETE FROM engage_history WHERE used_at < ?', [Date.now() - ENGAGE_RETENTION_MS]);
+      if (typeof (this.db as any).getRowsModified === 'function' && this.db.getRowsModified() > 0) this.save();
+    } catch { /* prune is best-effort */ }
 
     // Create scheduled tasks tables
     this.db.run(`
@@ -493,6 +502,22 @@ export class SqliteStore {
     fs.writeFileSync(this.dbPath, buffer);
   }
 
+  // Debounced/coalesced save — sql.js save() rewrites the ENTIRE db file, so a
+  // high-frequency writer (engage_history marks dozens of targets per run) must
+  // not call save() per row, or each write gets slower as the db grows. Schedule
+  // one flush ~2s out and coalesce intervening marks; the row is already in the
+  // in-memory db, only disk persistence is deferred. Any other synchronous save()
+  // also flushes pending engage rows. Worst case (process killed within the 2s
+  // window) re-engages a few targets next run — which engageHistory tolerates.
+  private _saveSoonTimer: ReturnType<typeof setTimeout> | null = null;
+  private saveSoon(): void {
+    if (this._saveSoonTimer) return;
+    this._saveSoonTimer = setTimeout(() => {
+      this._saveSoonTimer = null;
+      try { this.save(); } catch { /* a later write will retry */ }
+    }, 2000);
+  }
+
   onDidChange<T = unknown>(key: string, callback: (newValue: T | undefined, oldValue: T | undefined) => void) {
     const handler = (payload: ChangePayload<T>) => {
       if (payload.key !== key) return;
@@ -591,7 +616,7 @@ export class SqliteStore {
        VALUES (?, ?, ?, ?, ?)`,
       [walletAddress, platform, action, targetId, Date.now()],
     );
-    this.save();
+    this.saveSoon(); // coalesced flush — avoid a full-file rewrite per marked target
   }
 
   // Expose database for cowork operations
