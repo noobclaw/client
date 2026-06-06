@@ -1038,6 +1038,7 @@ const VideoTaskDetail: React.FC<{
           {/* 左:扁平配置文字行 + 创建时间 + 输出目录(与币安详情同款,无嵌套框) */}
           <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 space-y-1">
             <ConfigRows isZh={isZh} input={task.input} />
+            <div>⏰ {isZh ? '运行频率' : 'Frequency'}：{intervalLabel(task, isZh) || (isZh ? '不重复（手动触发）' : 'Once (manual)')}</div>
             <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
             {outDir && (
               <div className="flex items-center gap-2 flex-wrap">
@@ -1559,7 +1560,6 @@ const SUB_FONT_OPTIONS: { v: string; zh: string; en: string }[] = [
 ];
 
 // 一次出片条数(抄 MPT video_count):1~5 条,复用脚本/配音、每条不同画面组合。
-const VIDEO_COUNT_OPTIONS = [1, 2, 3, 4, 5];
 
 // 换镜节奏:每段素材最长秒数,越小切得越快。
 const PACE_OPTIONS: { v: number; zh: string; en: string }[] = [
@@ -1616,7 +1616,7 @@ const VideoConfigModal: React.FC<{
   onSaved?: () => void;
 }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
 
   // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
   const initialTrackId = (() => {
@@ -1692,7 +1692,8 @@ const VideoConfigModal: React.FC<{
   const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 2);
   // 定时运行(参照抖音):'once' 仅手动;其余自动重复。daily 才用 dailyTime。
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
-  const [dailyTime, setDailyTime] = useState<string>(editTask?.dailyTime || '08:00');
+  // 视频任务已去掉「每日定时」选项,dailyTime 仅作占位默认值(不再可编辑)。
+  const [dailyTime] = useState<string>(editTask?.dailyTime || '08:00');
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
@@ -1917,7 +1918,9 @@ const VideoConfigModal: React.FC<{
               <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '音频' : 'Audio'} />
               <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={6} active={step === 6} done={false} label={isZh ? '字幕·出片' : 'Output'} />
+              <StepDot n={6} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
+              <div className={`h-px w-6 ${step > 6 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={7} active={step === 7} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -2463,25 +2466,26 @@ const VideoConfigModal: React.FC<{
                   </div>
                 )}
               </Field>
+            </>
+          )}
 
-              {/* 生成数量(1~5):复用脚本/配音,每条不同画面组合,平台费按条数计。 */}
+          {/* ── 步骤 7:出片(生成数量 + 定时运行 + 出片后处理)── */}
+          {step === 7 && (
+            <>
+              {/* 生成数量:拖拽滑块 1-10(默认 2)。复用脚本/配音,每条画面组合不同,平台费按条计。 */}
               <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh ? '复用同一脚本与配音，每条画面组合不同' : 'reuse script & voice, vary clips'}>
-                <div className="flex gap-2">
-                  {VIDEO_COUNT_OPTIONS.map((n) => (
-                    <button
-                      key={n}
-                      type="button"
-                      onClick={() => setVideoCount(n)}
-                      className={`flex-1 px-3 py-1.5 rounded-lg text-sm border transition-colors ${
-                        videoCount === n
-                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                      }`}
-                    >
-                      {n}
-                    </button>
-                  ))}
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range" min={1} max={10} step={1}
+                    value={videoCount}
+                    onChange={(e) => setVideoCount(Number(e.target.value) || 1)}
+                    className="flex-1 accent-rose-500"
+                  />
+                  <span className="w-16 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">
+                    {videoCount} {isZh ? '条' : ''}
+                  </span>
                 </div>
+                <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条按条计费' : '1-10 per run · billed per clip'}</div>
               </Field>
 
               {/* 定时运行(参照抖音):选「不重复」就是手动单次;选周期则到点自动重跑,
@@ -2495,7 +2499,6 @@ const VideoConfigModal: React.FC<{
                     { v: 'once', zh: '不重复', en: 'Once' },
                     { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
                     { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
-                    { v: 'daily', zh: '每日定时', en: 'Daily at…' },
                     { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
                   ] as { v: VideoRunInterval; zh: string; en: string }[]).map((o) => (
                     <button
@@ -2512,17 +2515,15 @@ const VideoConfigModal: React.FC<{
                     </button>
                   ))}
                 </div>
-                {runInterval === 'daily' && (
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '每天' : 'Each day at'}</span>
-                    <input
-                      type="time"
-                      value={dailyTime}
-                      onChange={(e) => setDailyTime(e.target.value || '08:00')}
-                      className="px-2 py-1 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
-                    />
-                    <span className="text-[11px] text-gray-400">{isZh ? '前后 ±15 分钟随机抖动' : '±15 min jitter'}</span>
-                  </div>
+                {(runInterval === '3h' || runInterval === '6h') && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    {isZh ? '⚠️ 到点后再加 1-45 分钟随机延迟,避免精准卡点（出片很重,不提供更短间隔）' : '⚠️ +1-45min jitter after threshold (video gen is heavy, no shorter cadence).'}
+                  </p>
+                )}
+                {runInterval === 'daily_random' && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                    {isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Recommended — once daily at a random time, most human-like'}
+                  </p>
                 )}
                 {runInterval !== 'once' && (
                   <div className="mt-2 text-[11px] text-amber-500">
@@ -2576,12 +2577,12 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           <button
             type="button"
-            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5 | 6))}
+            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7))}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 6 ? (
+          {step < 7 ? (
             <button
               type="button"
               onClick={() => {
@@ -2599,7 +2600,7 @@ const VideoConfigModal: React.FC<{
                   return;
                 }
                 setSubmitError(null);
-                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5 | 6);
+                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7);
               }}
               disabled={(step === 2 && !trackStepValid) || (step === 3 && !scriptStepValid) || (step === 4 && !visualStepValid)}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"

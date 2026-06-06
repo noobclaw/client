@@ -247,6 +247,8 @@ export const DouyinConfigWizard: React.FC<Props> = ({
   const intervalLabel = useMemo(() => {
     const m: Record<string, string> = {
       'once': isZh ? '不重复（手动触发）' : 'Once (manual only)',
+      '30min': isZh ? '每 30 分钟' : 'Every 30min',
+      '1h': isZh ? '每小时' : 'Hourly',
       '3h': isZh ? '每 3 小时' : 'Every 3h',
       '6h': isZh ? '每 6 小时' : 'Every 6h',
       'daily_random': isZh ? '每日随机时间一次' : 'Once daily (random time)',
@@ -370,12 +372,17 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 <label className="text-sm font-medium dark:text-gray-200 mb-2 block">
                   {isZh ? '⏰ 运行间隔' : '⏰ Run Interval'}
                 </label>
+                {/* 运行频率对齐币安互动款:6 选项 + 固定间隔的随机抖动说明。
+                   调度内核 computeNextPlannedRun 已对各间隔加真随机(30min/1h →+0-10分,
+                   3h/6h →+0-45分,每日随机 →全天随机),这里把它显示出来。 */}
                 <div className="flex gap-2 flex-wrap">
                   {[
                     { value: 'once',         label: isZh ? '不重复（手动触发）' : 'Once (manual only)' },
+                    { value: '30min',        label: isZh ? '每 30 分钟' : 'Every 30min' },
+                    { value: '1h',           label: isZh ? '每小时' : 'Hourly' },
                     { value: '3h',           label: isZh ? '每 3 小时' : 'Every 3h' },
                     { value: '6h',           label: isZh ? '每 6 小时' : 'Every 6h' },
-                    { value: 'daily_random', label: isZh ? '每日随机时间一次' : 'Once daily (random time)' },
+                    { value: 'daily_random', label: isZh ? '每日随机时间' : 'Daily (random time)' },
                   ].map(opt => (
                     <button
                       key={opt.value} type="button"
@@ -391,8 +398,19 @@ export const DouyinConfigWizard: React.FC<Props> = ({
                 {runInterval === 'daily_random' && (
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                     {isZh
-                      ? '⚠️ 互动类任务为避免被风控判定为机器人,禁止固定每日时间,每天会在随机时间点触发一次。'
-                      : '⚠️ Engagement tasks must not run at the same hour daily — that pattern flags as bot. Triggers once per day at a randomized time.'}
+                      ? '✨ 推荐 — 每天在随机时间触发一次,比固定钟点更像真人,也最不容易被风控判机器人。'
+                      : '✨ Recommended — fires once daily at a randomized time; more human-like and least likely to be flagged.'}
+                  </p>
+                )}
+                {(runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h') && (
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+                    {(() => {
+                      const isLong = runInterval === '3h' || runInterval === '6h';
+                      const range = isLong ? '1-45' : '1-10';
+                      return isZh
+                        ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点`
+                        : `⚠️ +${range}min jitter after threshold (anti-detection).`;
+                    })()}
                   </p>
                 )}
               </div>
