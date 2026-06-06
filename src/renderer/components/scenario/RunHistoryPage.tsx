@@ -93,6 +93,10 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (sid === 'bilibili_auto_engage')        return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
   if (sid === 'bilibili_video_download')     return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
   if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'shipinhao_image_text')         return { icon: '📝', label: isZh ? '视频号 · 图文创作' : 'WeChat Channels Image-Text', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+  if (sid === 'shipinhao_reply_fans_comment') return { icon: '💬', label: isZh ? '视频号 · 自动回复粉丝' : 'WeChat Channels Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'toutiao_image_text')           return { icon: '📝', label: isZh ? '头条号 · 图文创作' : 'Toutiao Image-Text', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
+  if (sid === 'toutiao_reply_fans_comment')   return { icon: '💬', label: isZh ? '头条号 · 自动回复粉丝' : 'Toutiao Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   if (isXhsLinkMode)             return { icon: '🔗', label: isZh ? '小红书 · 指定链接爆款仿写' : 'XHS Rewrite (URL)', color: 'text-purple-500 bg-purple-500/10 border-purple-500/30' };
   // workflow_type fallback — check platform first so Binance auto_reply
   // doesn't get mis-labeled as XHS auto_reply. (Douyin/YT/TT are now
@@ -109,6 +113,8 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (plat === 'douyin')  return { icon: '🎵', label: isZh ? '抖音任务' : 'Douyin Task', color: 'text-rose-500 bg-rose-500/10 border-rose-500/30' };
   if (plat === 'kuaishou') return { icon: '⚡', label: isZh ? '快手任务' : 'Kuaishou Task', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   if (plat === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩任务' : 'Bilibili Task', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
+  if ((plat as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号任务' : 'WeChat Channels Task', color: 'text-green-500 bg-green-500/10 border-green-500/30' };
+  if ((plat as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号任务' : 'Toutiao Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
   if (plat === 'youtube') return { icon: '📺', label: isZh ? 'YouTube 任务' : 'YouTube Task', color: 'text-red-500 bg-red-500/10 border-red-500/30' };
   if (plat === 'tiktok')  return { icon: '🎬', label: isZh ? 'TikTok 任务' : 'TikTok Task', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
   return { icon: '🔥', label: isZh ? '小红书 · 爆款批量仿写' : 'XHS Batch Viral', color: 'text-green-500 bg-green-500/10 border-green-500/30' };

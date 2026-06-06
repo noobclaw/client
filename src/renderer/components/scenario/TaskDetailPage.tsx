@@ -482,7 +482,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               ? (isZh ? '快手' : 'Kuaishou')
               : (scenario?.platform as any) === 'bilibili'
                 ? (isZh ? '哔哩哔哩' : 'Bilibili')
-                : (isZh ? '小红书' : 'Xiaohongshu');
+                : (scenario?.platform as any) === 'shipinhao'
+                  ? (isZh ? '视频号' : 'WeChat Channels')
+                  : (scenario?.platform as any) === 'toutiao'
+                    ? (isZh ? '头条号' : 'Toutiao')
+                    : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
@@ -1719,7 +1723,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
         // race 下原版三元表达式 fallthrough 到 'xhs',导致币安/抖音任务的
         // 运行前检查 modal 显示"小红书"字样。改成 scenario.platform 优先,
         // 缺失时按 task.scenario_id 前缀兜底推断。顺带把 'douyin' 补上。
-        type LP = 'x' | 'xhs' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili';
+        type LP = 'x' | 'xhs' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao';
         const sid = String(task.scenario_id || '');
         const inferFromId: LP = sid.startsWith('binance_') ? 'binance'
           : sid.startsWith('x_') ? 'x'
@@ -1728,11 +1732,14 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           : sid.startsWith('douyin_') ? 'douyin'
           : sid.startsWith('kuaishou_') ? 'kuaishou'
           : sid.startsWith('bilibili_') ? 'bilibili'
+          : sid.startsWith('shipinhao_') ? 'shipinhao'
+          : sid.startsWith('toutiao_') ? 'toutiao'
           : 'xhs';
         const sp = scenario?.platform;
         const platform: LP = (sp === 'x' || sp === 'xhs' || sp === 'binance'
           || sp === 'tiktok' || sp === 'youtube' || sp === 'douyin'
-          || sp === 'kuaishou' || sp === 'bilibili')
+          || sp === 'kuaishou' || sp === 'bilibili'
+          || sp === 'shipinhao' || sp === 'toutiao')
           ? sp
           : inferFromId;
         return (

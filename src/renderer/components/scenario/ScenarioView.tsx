@@ -80,18 +80,23 @@ interface ScenarioViewProps {
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
+  // 第一行: 视频创作 + 海外/全球平台
   { id: 'video', labelKey: 'scenarioPlatformVideo', icon: '🎬', enabled: true },
   { id: 'binance', labelKey: 'scenarioPlatformBinance', icon: '🔶', enabled: true },
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
-  { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
   { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
   { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
+  // 第二行: 国内 6 平台(PLATFORM_TABS_ROW2_START 之后强制换行)
+  { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
   { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎶', enabled: true },
-  { id: 'shipinhao', labelKey: 'scenarioPlatformShipinhao', icon: '📱', enabled: true },
-  { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
   { id: 'kuaishou', labelKey: 'scenarioPlatformKuaishou', icon: '⚡', enabled: true },
+  { id: 'shipinhao', labelKey: 'scenarioPlatformShipinhao', icon: '📱', enabled: true },
   { id: 'bilibili', labelKey: 'scenarioPlatformBilibili', icon: '📺', enabled: true },
+  { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
 ];
+// 第二行从这个下标开始(xhs),渲染时在它前面插一个 basis-full 强制换行,
+// 保证国内 6 平台(小红书/抖音/快手/视频号/哔哩哔哩/头条)单独占第二行。
+const PLATFORM_TABS_ROW2_START = 5;
 
 // L1 tabs are now PURELY for "switch view": My Tasks vs Run History.
 // "Create new task" used to live here too, which made users confuse
@@ -928,28 +933,30 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           + green border + slight glow shadow, matching the L1 section tabs'
           active treatment. */}
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
-        <div className="flex items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0 overflow-x-auto">
-          {PLATFORM_TABS.map(tab => {
+        <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
+          {PLATFORM_TABS.map((tab, idx) => {
             const active = currentPlatform === tab.id;
             return (
-              <button
-                key={tab.id}
-                type="button"
-                onClick={() => setPlatform(tab.id)}
-                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-                  active
-                    ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
-                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
-                }`}
-              >
-                <span className="text-base">{tab.icon}</span>
-                <span>{i18nService.t(tab.labelKey)}</span>
-                {!tab.enabled && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
-                    {i18nService.t('scenarioPlatformSoon')}
-                  </span>
-                )}
-              </button>
+              <React.Fragment key={tab.id}>
+                {idx === PLATFORM_TABS_ROW2_START && <div className="basis-full h-0" aria-hidden="true" />}
+                <button
+                  type="button"
+                  onClick={() => setPlatform(tab.id)}
+                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                    active
+                      ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                      : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
+                  }`}
+                >
+                  <span className="text-base">{tab.icon}</span>
+                  <span>{i18nService.t(tab.labelKey)}</span>
+                  {!tab.enabled && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
+                      {i18nService.t('scenarioPlatformSoon')}
+                    </span>
+                  )}
+                </button>
+              </React.Fragment>
             );
           })}
         </div>
