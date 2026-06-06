@@ -129,6 +129,10 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (p === 'bilibili') return isZh ? '哔哩哔哩创作中心 (member.bilibili.com)' : 'Bilibili Creator Center (member.bilibili.com)';
     return platformLabelOf(p);
   }
+  // 使用须知里「模拟你本人在 X 的行为 / 不要退出 X 登录」用的域名:creatorOnly 场景
+  // (reply_fans 等全程只在创作者子域操作,如快手 cp.kuaishou.com)要指向创作者中心域名,
+  // 跟 ② 的 row 一致,而不是主站(否则会出现 ② 说 cp.kuaishou.com、③ 却说 kuaishou.com)。
+  const usageLabel = creatorOnly ? creatorLabelOf(platform) : platformLabel;
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   // creatorOnly 时主站 tab 不参与放行 → 初始即 'pass',避免任何残留引用卡住。
   const [xhsTabStatus, setXhsTabStatus] = useState<StepStatus>(creatorOnly ? 'pass' : 'checking');
@@ -702,9 +706,9 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
           }`}>
             <div className="text-sm font-medium dark:text-white mb-2">{isZh ? '③ 使用须知' : '③ Usage Notes'}</div>
             <ul className="text-xs text-gray-600 dark:text-gray-300 space-y-1.5 leading-relaxed">
-              <li>🤖 {isZh ? `所有操作模拟你本人在 ${platformLabel} 上的行为` : `All actions simulate your own behavior on ${platformLabel}`}</li>
+              <li>🤖 {isZh ? `所有操作模拟你本人在 ${usageLabel} 上的行为` : `All actions simulate your own behavior on ${usageLabel}`}</li>
               <li>🌐 {isZh ? <>运行期间请<strong>不要切换浏览器标签页</strong></> : <><strong>Do not switch browser tabs</strong> during a run</>}</li>
-              <li>🔐 {isZh ? <>请<strong>不要退出 {platformLabel} 登录</strong></> : <><strong>Do not log out</strong> of {platformLabel}</>}</li>
+              <li>🔐 {isZh ? <>请<strong>不要退出 {usageLabel} 登录</strong></> : <><strong>Do not log out</strong> of {usageLabel}</>}</li>
               <li>⏰ {isZh ? '可以正常使用电脑，保持浏览器打开即可' : 'You can use your computer normally, just keep the browser open'}</li>
               {(isX || isBinance || isTiktok || isYoutube) && (() => {
                 // 跨 tab 任务时两个站点合并成一句,免得连出两条 ⚠️ 警告占屏。
