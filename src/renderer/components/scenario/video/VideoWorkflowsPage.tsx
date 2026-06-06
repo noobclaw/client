@@ -705,6 +705,29 @@ const StepList: React.FC<{ steps: VideoCreationProgressStep[] }> = ({ steps }) =
   );
 };
 
+/** 把日志里的 NoobClaw 路径(输出目录 / 成片文件)变成可点按钮 —— 点一下用
+ *  Finder/资源管理器打开。用户反馈:日志只给一段文字路径,没法直接打开。 */
+function renderVideoLog(message: string): React.ReactNode {
+  const m = message.match(/([/\\][^\s:：]*NoobClaw[/\\][^\s]*|[A-Za-z]:[\\/][^\s]*NoobClaw[\\/][^\s]*)/);
+  if (!m) return message;
+  const p = m[1];
+  const idx = message.indexOf(p);
+  return (
+    <>
+      {message.slice(0, idx)}
+      <button
+        type="button"
+        className="text-blue-400 hover:underline cursor-pointer break-all"
+        title={p}
+        onClick={() => { try { (window as any).electron?.shell?.openPath?.(p); } catch { /* ignore */ } }}
+      >
+        {p}
+      </button>
+      {message.slice(idx + p.length)}
+    </>
+  );
+}
+
 /** 一段流式日志行(终端风格,自动滚到底)。供每步内联日志框 / 合并日志框共用。 */
 const LogLines: React.FC<{ logs: VideoTaskLog[]; active?: boolean }> = ({ logs, active }) => {
   const ref = useRef<HTMLDivElement>(null);
@@ -720,7 +743,7 @@ const LogLines: React.FC<{ logs: VideoTaskLog[]; active?: boolean }> = ({ logs, 
       {logs.map((l, i) => (
         <div key={i} className="flex gap-2">
           <span className="text-gray-400 shrink-0">{l.time}</span>
-          <span className="break-words whitespace-pre-wrap">{l.message}</span>
+          <span className="break-words whitespace-pre-wrap">{renderVideoLog(l.message)}</span>
         </div>
       ))}
       {active && <span className="text-green-500 noobclaw-blink text-sm font-bold">▋</span>}
@@ -891,10 +914,17 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
           {run.logs.map((l, i) => (
             <div key={i} className="flex gap-2">
               <span className="text-gray-500 shrink-0">{l.time}</span>
-              <span className="break-words whitespace-pre-wrap">{l.message}</span>
+              <span className="break-words whitespace-pre-wrap">{renderVideoLog(l.message)}</span>
             </div>
           ))}
-          {isRunning && <span className="text-green-400 noobclaw-blink text-sm font-bold">▋</span>}
+          {isRunning && (
+            <div className="mt-1 text-[11px] text-gray-400 leading-relaxed">
+              <span className="text-green-400 noobclaw-blink text-sm font-bold">▋</span>{' '}
+              {isZh
+                ? `⏳ 运行中 · 已用时 ${elapsedLabel}。合成/导出大视频这段可能几十秒没有新日志(正在编码),属正常,完成后会显示可点击的输出目录。`
+                : `⏳ Running · ${elapsedLabel} elapsed. Encoding the final video may show no new logs for a while — this is normal; the clickable output folder appears when done.`}
+            </div>
+          )}
         </div>
       </div>
 
