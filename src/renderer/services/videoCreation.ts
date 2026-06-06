@@ -39,6 +39,8 @@ export interface VideoCreationInput {
   engine?: 'stock' | 'ai';
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
+  /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
+  seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
   /** 用户上传的参考图本地绝对路径(AI 引擎用作风格/人设统一,≤2 张)。 */
   referenceImages: string[];
   /**

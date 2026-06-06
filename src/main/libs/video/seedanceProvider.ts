@@ -27,6 +27,8 @@ function apiBase(): string {
 
 export type SeedanceResolution = '480p' | '720p' | '1080p';
 export type SeedanceRatio = '9:16' | '16:9' | '1:1' | 'adaptive';
+/** 模型档位:lite(1.0 Lite) | pro(1.0 Pro) | pro15(1.5 Pro,默认) | v2(2.0)。服务端映射真实模型 ID + 价格。 */
+export type SeedanceTier = 'lite' | 'pro' | 'pro15' | 'v2';
 
 export interface SeedanceSceneSpec {
   /** 该镜的画面 prompt(英文/中文均可,Seedance 双语)。 */
@@ -47,6 +49,8 @@ export interface GenerateSeedanceOptions {
   /** 参考图本地绝对路径(≤2),做风格/人设统一。会读成 data URL 发给服务端。 */
   referenceImages?: string[];
   resolution?: SeedanceResolution;
+  /** 模型档位(默认 pro15 = 1.5 Pro)。 */
+  tier?: SeedanceTier;
   ratio?: SeedanceRatio;
   /** 片段下载落地目录(临时素材目录)。 */
   destDir: string;
@@ -85,7 +89,7 @@ interface CreateResult { taskId: string; chargeId: string; chargedTokens: number
 
 /** 提交一个 Seedance 片段任务。返回 taskId+chargeId,或抛错(含 402 余额不足)。 */
 async function createClip(
-  prompt: string, imageUrls: string[], duration: number, ratio: string, resolution: string,
+  prompt: string, imageUrls: string[], duration: number, ratio: string, resolution: string, tier: string,
 ): Promise<CreateResult> {
   const headers = authHeaders();
   if (!headers) throw new Error('未登录 NoobClaw');
@@ -95,7 +99,7 @@ async function createClip(
     const resp = await fetch(`${apiBase()}/api/video/seedance/create`, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ prompt, imageUrls, duration, ratio, resolution }),
+      body: JSON.stringify({ prompt, imageUrls, duration, ratio, resolution, tier }),
       signal: ctrl.signal,
     });
     if (resp.status === 402) throw new Error('余额不足');
@@ -151,12 +155,12 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 生成单镜:create → 轮询 → 下载。失败返回 {path:null,error}(不抛,交给上层降级)。 */
 async function generateOne(
   idx: number, scene: SeedanceSceneSpec, imageUrls: string[],
-  ratio: string, resolution: string, destDir: string, timeoutSec: number,
+  ratio: string, resolution: string, tier: string, destDir: string, timeoutSec: number,
   onProgress?: (m: string) => void,
 ): Promise<SeedanceClipResult> {
   const duration = Math.max(4, Math.min(12, Math.round(scene.durationSec || 5)));
   try {
-    const { taskId, chargeId } = await createClip(scene.prompt, imageUrls, duration, ratio, resolution);
+    const { taskId, chargeId } = await createClip(scene.prompt, imageUrls, duration, ratio, resolution, tier);
     onProgress?.(`🎬 第 ${idx + 1} 镜 AI 生成中…`);
     const deadline = Date.now() + timeoutSec * 1000;
     while (Date.now() < deadline) {
@@ -184,6 +188,7 @@ async function generateOne(
 export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Promise<SeedanceClipResult[]> {
   const { scenes, destDir } = opts;
   const resolution = opts.resolution || '720p';
+  const tier = opts.tier || 'pro15';
   const ratio = opts.ratio || '9:16';
   const concurrency = Math.max(1, Math.min(4, opts.concurrency ?? 2));
   const timeoutSec = Math.max(60, Math.min(600, opts.perClipTimeoutSec ?? 240));
@@ -199,7 +204,7 @@ export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Prom
   const worker = async (): Promise<void> => {
     while (next < scenes.length) {
       const i = next++;
-      results[i] = await generateOne(i, scenes[i], imageUrls, ratio, resolution, destDir, timeoutSec, opts.onProgress);
+      results[i] = await generateOne(i, scenes[i], imageUrls, ratio, resolution, tier, destDir, timeoutSec, opts.onProgress);
     }
   };
   const n = Math.max(1, Math.min(concurrency, scenes.length));

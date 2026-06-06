@@ -105,6 +105,8 @@ export interface VideoCreationInput {
   engine?: 'stock' | 'ai';
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
+  /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
+  seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -603,6 +605,7 @@ async function runVideoPipeline(
         scenes: aiScenes,
         referenceImages: refImagesAi,
         resolution,
+        tier: input.seedanceModel || 'pro15',
         ratio: aspectToSeedanceRatio(input.aspect),
         destDir: assetDir,
         onProgress: (m) => tracker.progress(m),
