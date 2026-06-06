@@ -163,12 +163,14 @@ export const ToutiaoWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={imageText}
           onConfigure={() => handleConfigure(imageText)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
         <ToutiaoReplyFansCard
           loading={loading}
           scenario={replyFans}
           onConfigure={() => handleConfigure(replyFans)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
       </section>
@@ -256,11 +258,36 @@ type CardProps = {
   loading: boolean;
   scenario: Scenario | null;
   onConfigure: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
 };
 
+// 卡片底部操作行:左「开始」按钮(~70%)+ 右「查看已有任务 »」文字入口(~30%)。
+const CardActionRow: React.FC<{
+  loading: boolean; onConfigure: () => void; onGoToMyTasks?: () => void;
+  isZh: boolean; label: string; btnClass: string;
+}> = ({ loading, onConfigure, onGoToMyTasks, isZh, label, btnClass }) => (
+  <div className="flex items-stretch gap-2">
+    <button
+      type="button"
+      onClick={onConfigure}
+      disabled={loading}
+      className={`flex-[7] px-4 py-2.5 text-sm font-bold rounded-xl disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all active:scale-95 ${btnClass}`}
+    >
+      {label}
+    </button>
+    <button
+      type="button"
+      onClick={() => onGoToMyTasks?.()}
+      className="flex-[3] px-2 py-2.5 text-xs font-medium rounded-xl text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-300 dark:border-gray-600 transition-colors whitespace-nowrap"
+    >
+      {isZh ? '查看已有任务' : 'My tasks'} »
+    </button>
+  </div>
+);
+
 // ── 头条号图文创作 card —— fuchsia 主色,跟抖音图文卡同源。
-const ToutiaoImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const ToutiaoImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
@@ -277,21 +304,21 @@ const ToutiaoImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenari
             ? '你填 3 段灵感来源(经历 / 想法 / 笔记都行),每次运行 AI 随机抽一段,按你的人设改写成头条号图文文章,配一张封面图 + 一张内容图,自动发布到头条号(也可选存草稿/仅本地)。'
             : 'Fill 3 source snippets (notes / experiences). Each run picks one at random, rewrites in your persona, generates 1 cover + 1 content image, then auto-publishes (or draft / local).'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
-        >
-          📝 {isZh ? '开始创作' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '📝 开始创作 →' : '📝 Start →'}
+          btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+        />
       </div>
     </div>
   );
 };
 
 // ── 头条号自动回复粉丝 card —— cyan 主色区分于图文(fuchsia)。
-const ToutiaoReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const ToutiaoReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
@@ -308,14 +335,14 @@ const ToutiaoReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenari
             ? '在头条号后台「评论管理」逐条回复粉丝评论,AI 按评论内容写回应,可选按概率加引流尾巴。已回复过的、自己留的自动跳过,只回粉丝、绝不评论作品本身,真人节奏间隔。'
             : 'Replies to fan comments in Toutiao Backend comment management. AI-tailored replies with optional funnel tail. Skips already-replied / your own; only replies to fans, never the article itself.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
-        >
-          💬 {isZh ? '开始回复' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '💬 开始回复 →' : '💬 Start →'}
+          btnClass="bg-cyan-500 hover:bg-cyan-600 shadow-lg shadow-cyan-500/25"
+        />
       </div>
     </div>
   );
