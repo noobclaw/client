@@ -359,10 +359,9 @@ const VideoLanding: React.FC<{
         <section className="mt-6">
           <div className="flex flex-wrap gap-2 justify-center">
             {[
-              { icon: '💻', zh: '本地合成 · 零服务器成本', en: 'Local synthesis · zero server cost' },
               { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕', en: 'AI script + voiceover + subtitles' },
               { icon: '🎞️', zh: '在线视频素材 + 你的参考图', en: 'Stock video + your images' },
-              { icon: '🚀', zh: '一键发抖音/小红书/币安', en: 'One-click to Douyin / XHS / Binance' },
+              { icon: '🚀', zh: '一键发抖音/小红书/币安多家平台', en: 'One-click to Douyin / XHS / Binance & more' },
             ].map((p, i) => (
               <span
                 key={i}
