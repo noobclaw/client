@@ -76,7 +76,11 @@ export function computeNextVideoRun(
       const d = new Date(fromTs);
       const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, 0, 0);
       if (target.getTime() <= fromTs) target.setDate(target.getDate() + 1);
-      return target.getTime() + (jitter(30 * MIN) - 15 * MIN); // ±15min
+      let planned = target.getTime() + (jitter(30 * MIN) - 15 * MIN); // ±15min
+      // ±15min 抖动可能把时间往前拨到 fromTs 之前(当 now 落在目标时刻前 15min 内创建/
+      // 保存任务时)→ 顺延一天,避免「设每天 08:00 却在 07:50 保存后立刻触发」。
+      if (planned <= fromTs) planned += 24 * HOUR;
+      return planned;
     }
     case 'daily_random': {
       const d = new Date(fromTs);
