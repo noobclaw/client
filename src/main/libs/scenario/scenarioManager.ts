@@ -226,6 +226,19 @@ function initProgress(taskId: string, scenarioId?: string): void {
       'AI 生成封面图 + 内容图',
       '上传到抖音创作者中心并发布。请勿切换浏览器标签页。',
     ],
+    // 视频号图文 = 4 步,落地视频号助手(channels.weixin.qq.com)。
+    shipinhao_image_text: [
+      'AI 根据灵感段创作视频号图文。请勿切换浏览器标签页。',
+      'AI 改写为视频号图文，保存到本地',
+      'AI 生成内容图，保存到本地',
+      '发表到视频号助手（存草稿 / 发布）。请勿切换浏览器标签页。',
+    ],
+    // 头条号「微头条」= 3 步(无 AI 生图)。
+    toutiao_image_text: [
+      'AI 根据灵感段创作微头条。请勿切换浏览器标签页。',
+      'AI 改写为微头条正文，保存到本地',
+      '发布到头条号（微头条，存草稿 / 发布）。请勿切换浏览器标签页。',
+    ],
   };
   const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [
     '采集爆款文章。请勿切换浏览器标签页。',

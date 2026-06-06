@@ -386,6 +386,31 @@ const STEP_NAMES_DOUYIN_IMAGE_TEXT_EN = [
   'AI generates cover + content images',
   'Upload to Douyin creator center & publish. Do not switch browser tabs.',
 ];
+// 视频号图文 = 4 步,镜像抖音结构但落地视频号助手(channels.weixin.qq.com),
+// 平台名独立、绝不串台「抖音/小红书」字样。
+const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH = [
+  'AI 根据灵感段创作视频号图文。请勿切换浏览器标签页。',
+  'AI 改写为视频号图文，保存到本地',
+  'AI 生成内容图，保存到本地',
+  '发表到视频号助手（存草稿 / 发布）。请勿切换浏览器标签页。',
+];
+const STEP_NAMES_SHIPINHAO_IMAGE_TEXT_EN = [
+  'AI composes WeChat Channels image-text from inspiration. Do not switch browser tabs.',
+  'AI rewrite saved locally as WeChat Channels image-text',
+  'AI generates content images, saved locally',
+  'Publish to WeChat Channels assistant (draft / publish). Do not switch browser tabs.',
+];
+// 头条号「微头条」= 3 步(无 AI 生图,发纯文字微头条 → mp.toutiao.com)。
+const STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH = [
+  'AI 根据灵感段创作微头条。请勿切换浏览器标签页。',
+  'AI 改写为微头条正文，保存到本地',
+  '发布到头条号（微头条，存草稿 / 发布）。请勿切换浏览器标签页。',
+];
+const STEP_NAMES_TOUTIAO_IMAGE_TEXT_EN = [
+  'AI composes a Toutiao weitoutiao post from inspiration. Do not switch browser tabs.',
+  'AI rewrite saved locally as Toutiao weitoutiao body',
+  'Publish to Toutiao (weitoutiao, draft / publish). Do not switch browser tabs.',
+];
 const STEP_NAMES_BINANCE_FROM_X_LINK_ZH = [
   '校验双平台 + 打开链接读取原推',
   'AI 改写为币安风格 + 下载原图/视频',
@@ -522,6 +547,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'tiktok_auto_engage') return isZh ? STEP_NAMES_TIKTOK_AUTO_ENGAGE_ZH : STEP_NAMES_TIKTOK_AUTO_ENGAGE_EN;
     if (sid === 'douyin_auto_engage') return isZh ? STEP_NAMES_DOUYIN_AUTO_ENGAGE_ZH : STEP_NAMES_DOUYIN_AUTO_ENGAGE_EN;
     if (sid === 'douyin_image_text') return isZh ? STEP_NAMES_DOUYIN_IMAGE_TEXT_ZH : STEP_NAMES_DOUYIN_IMAGE_TEXT_EN;
+    if (sid === 'shipinhao_image_text') return isZh ? STEP_NAMES_SHIPINHAO_IMAGE_TEXT_ZH : STEP_NAMES_SHIPINHAO_IMAGE_TEXT_EN;
+    if (sid === 'toutiao_image_text') return isZh ? STEP_NAMES_TOUTIAO_IMAGE_TEXT_ZH : STEP_NAMES_TOUTIAO_IMAGE_TEXT_EN;
     if (sid === 'xhs_reply_fans_comment') return isZh ? STEP_NAMES_XHS_REPLY_FANS_ZH : STEP_NAMES_XHS_REPLY_FANS_EN;
     if (sid === 'douyin_reply_fans_comment') return isZh ? STEP_NAMES_DOUYIN_REPLY_FANS_ZH : STEP_NAMES_DOUYIN_REPLY_FANS_EN;
     if (sid === 'xhs_video_download') return isZh ? STEP_NAMES_XHS_VIDEO_DOWNLOAD_ZH : STEP_NAMES_XHS_VIDEO_DOWNLOAD_EN;

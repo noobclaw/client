@@ -2061,6 +2061,21 @@ function buildContext(
       }
     },
 
+    // 视频下载「派生输出」:对刚下到本地的视频,按 opts 额外导出 无声视频 / 音轨(.m4a) /
+    // 字幕(.srt 或 .txt,走 ffmpeg + ASR)。三者各自独立、单个失败不影响其它,返回
+    // { mutePath?, audioPath?, subtitlePath?, errors[] }。字幕会调 ASR(联网/付费)。
+    deriveVideoExtras: async (
+      videoFilePath: string,
+      opts?: { mute?: boolean; audio?: boolean; subtitle?: boolean; language?: string },
+    ) => {
+      try {
+        const { deriveVideoExtras } = require('../video/deriveExtras');
+        return await deriveVideoExtras(videoFilePath, opts || {});
+      } catch (err: any) {
+        return { errors: ['deriveVideoExtras 调用失败: ' + String(err?.message || err).slice(0, 120)] };
+      }
+    },
+
     // v4.25.6 Phase 2: 推特 compose 视频上传 — 比币安简单,
     // [data-testid="fileInput"] 同时接图和视频(mp4 直接传)。
     //

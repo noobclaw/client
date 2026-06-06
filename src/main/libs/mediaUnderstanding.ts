@@ -62,7 +62,7 @@ export async function describeImage(imagePath: string, prompt?: string): Promise
 
 // ── Audio transcription (via Whisper API or local) ──
 
-export async function transcribeAudio(audioPath: string, language?: string): Promise<string> {
+export async function transcribeAudio(audioPath: string, language?: string, format: 'text' | 'srt' = 'text'): Promise<string> {
   if (!fs.existsSync(audioPath)) return `Audio not found: ${audioPath}`;
 
   // Try OpenAI Whisper API first
@@ -71,7 +71,7 @@ export async function transcribeAudio(audioPath: string, language?: string): Pro
 
   if (providerName === 'openai' && apiConfig?.apiKey) {
     try {
-      return await transcribeViaWhisperAPI(audioPath, apiConfig.apiKey, apiConfig.baseURL, language);
+      return await transcribeViaWhisperAPI(audioPath, apiConfig.apiKey, apiConfig.baseURL, language, format);
     } catch (e) {
       coworkLog('WARN', 'mediaUnderstanding', `Whisper API failed, trying local: ${e}`);
     }
@@ -79,13 +79,13 @@ export async function transcribeAudio(audioPath: string, language?: string): Pro
 
   // Fallback: local whisper CLI
   try {
-    return transcribeViaLocalWhisper(audioPath, language);
+    return transcribeViaLocalWhisper(audioPath, language, format);
   } catch {
     return 'Transcription not available (no Whisper API key or local whisper)';
   }
 }
 
-async function transcribeViaWhisperAPI(audioPath: string, apiKey: string, baseUrl?: string, language?: string): Promise<string> {
+async function transcribeViaWhisperAPI(audioPath: string, apiKey: string, baseUrl?: string, language?: string, format: 'text' | 'srt' = 'text'): Promise<string> {
   const url = `${baseUrl || 'https://api.openai.com'}/v1/audio/transcriptions`;
   const fileData = fs.readFileSync(audioPath);
   const ext = path.extname(audioPath).slice(1);
@@ -107,6 +107,13 @@ async function transcribeViaWhisperAPI(audioPath: string, apiKey: string, baseUr
     parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="language"\r\n\r\n${language}\r\n`));
   }
 
+  // response_format part — 'srt' makes the API return ready-to-use SubRip text
+  // (with timestamps) directly as the body, instead of JSON {text}. Used for the
+  // 视频下载「字幕」派生输出。Default (text) keeps the original JSON path.
+  if (format === 'srt') {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="response_format"\r\n\r\nsrt\r\n`));
+  }
+
   parts.push(Buffer.from(`--${boundary}--\r\n`));
   const body = Buffer.concat(parts);
 
@@ -120,21 +127,24 @@ async function transcribeViaWhisperAPI(audioPath: string, apiKey: string, baseUr
   });
 
   if (!response.ok) throw new Error(`Whisper API: ${response.status}`);
+  // srt 模式下响应体本身就是 SubRip 文本(非 JSON),直接返回。
+  if (format === 'srt') return (await response.text()).trim();
   const data = await response.json();
   return data.text || '';
 }
 
-function transcribeViaLocalWhisper(audioPath: string, language?: string): string {
+function transcribeViaLocalWhisper(audioPath: string, language?: string, format: 'text' | 'srt' = 'text'): string {
   const langArg = language ? `--language ${language}` : '';
-  const result = execSync(`whisper "${audioPath}" ${langArg} --output_format txt --output_dir /tmp`, {
+  const ext = format === 'srt' ? 'srt' : 'txt';
+  const result = execSync(`whisper "${audioPath}" ${langArg} --output_format ${ext} --output_dir /tmp`, {
     encoding: 'utf8', timeout: 120000, stdio: ['ignore', 'pipe', 'ignore'],
   });
-  // Read the output txt file
+  // Read the output file (.srt or .txt)
   const baseName = path.basename(audioPath, path.extname(audioPath));
-  const txtPath = `/tmp/${baseName}.txt`;
-  if (fs.existsSync(txtPath)) {
-    const text = fs.readFileSync(txtPath, 'utf8').trim();
-    try { fs.unlinkSync(txtPath); } catch {}
+  const outPath = `/tmp/${baseName}.${ext}`;
+  if (fs.existsSync(outPath)) {
+    const text = fs.readFileSync(outPath, 'utf8').trim();
+    try { fs.unlinkSync(outPath); } catch {}
     return text;
   }
   return result.trim();

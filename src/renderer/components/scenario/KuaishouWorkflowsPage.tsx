@@ -170,6 +170,9 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
   const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
   const [videoDlLinksText, setVideoDlLinksText] = useState('');
   const [videoDlSubmitting, setVideoDlSubmitting] = useState(false);
+  // 下载产物二选一:false = 仅原视频;true = 全套(原视频 + 无声无字幕视频 + 音轨 +
+  // 字幕.srt + 字幕文本.txt),全套额外计费 3000~8000 积分。
+  const [dlBundle, setDlBundle] = useState(false);
 
   // 快手链接校验:kuaishou.com / v.kuaishou.com / chenzhongtech.com,1-20 个。
   const validateLinks = (text: string): { ok: string[]; err: string | null } => {
@@ -205,6 +208,7 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
         track: 'video_download',
         keywords: [],
         urls: ok,
+        derive: { bundle: dlBundle },
         persona: '',
         daily_count: ok.length,
         variants_per_post: 1,
@@ -325,6 +329,32 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
               className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono dark:text-white focus:outline-none focus:ring-2 focus:ring-orange-500/50 resize-y min-h-[200px] break-all"
               disabled={videoDlSubmitting}
             />
+
+            {/* 下载产物二选一:仅原视频 / 全套(原视频 + 无声无字幕视频 + 音轨 + 字幕 + 字幕文本)。
+                全套里无声/音轨是本地 ffmpeg(免费),字幕走 ASR 语音转写(联网) → 整套额外计费。 */}
+            <div className="mt-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2">
+              <div className="text-sm font-medium dark:text-gray-200">
+                {isZh ? '下载产物' : 'Download outputs'}
+              </div>
+              <label className={`flex items-start gap-2 cursor-pointer rounded-lg border p-2.5 ${!dlBundle ? 'border-orange-500 bg-orange-500/5' : 'border-gray-200 dark:border-gray-700'}`}>
+                <input type="radio" name="dlBundle" checked={!dlBundle} onChange={() => setDlBundle(false)} disabled={videoDlSubmitting} className="mt-0.5 accent-orange-500" />
+                <span className="text-sm dark:text-gray-200">
+                  {isZh ? '仅原视频' : 'Original video only'}
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">{isZh ? '下载无水印原片，按常规下载计费' : 'watermark-free original, standard download fee'}</span>
+                </span>
+              </label>
+              <label className={`flex items-start gap-2 cursor-pointer rounded-lg border p-2.5 ${dlBundle ? 'border-orange-500 bg-orange-500/5' : 'border-gray-200 dark:border-gray-700'}`}>
+                <input type="radio" name="dlBundle" checked={dlBundle} onChange={() => setDlBundle(true)} disabled={videoDlSubmitting} className="mt-0.5 accent-orange-500" />
+                <span className="text-sm dark:text-gray-200">
+                  {isZh ? '全套（二创素材）' : 'Full bundle (for re-creation)'}
+                  <span className="block text-xs text-gray-500 dark:text-gray-400">
+                    {isZh ? '原视频 + 🔇无声无字幕视频 + 🎵音轨 + 📝字幕(.srt) + 📄字幕文本(.txt)' : 'original + muted video + audio + subtitle (.srt) + transcript (.txt)'}
+                  </span>
+                  <span className="block text-xs text-amber-500 mt-0.5">{isZh ? '· 全套额外计费约 3000~8000 积分/条（含字幕 ASR 转写）' : '· extra ~3000–8000 credits/video (incl. subtitle ASR)'}</span>
+                </span>
+              </label>
+            </div>
+
             <div className="flex gap-2 mt-4">
               <button
                 type="button"
