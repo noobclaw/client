@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { CardActionRow } from './CardActionRow';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // web3 KOL track preset table — task list moved to MyTasksPage so this is
@@ -230,6 +231,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(autoEngage)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           ctaZh="开始互动"
           ctaEn="Start"
@@ -249,6 +251,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(postCreator)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           ctaZh="开始发推"
           ctaEn="Start"
@@ -268,6 +271,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           runningTaskIds={runningTaskIds}
           onOpenTask={onOpenTask}
           onConfigure={() => handleConfigure(linkRewrite)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           ctaZh="粘贴链接开始"
           ctaEn="Paste links to start"
@@ -484,12 +488,13 @@ type ScenarioCardProps = {
   runningTaskIds: Set<string>;
   onOpenTask: (id: string) => void;
   onConfigure: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
 };
 
 const ScenarioCard: React.FC<ScenarioCardProps> = ({
   color, emoji, badge, titleZh, titleEn, descZh, descEn, ctaZh, ctaEn,
-  loading, scenario: _scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask: _onOpenTask, onConfigure,
+  loading, scenario: _scenario, existingTasks, runningTaskIds: _runningTaskIds, onOpenTask: _onOpenTask, onConfigure, onGoToMyTasks,
   isZh,
 }) => {
   const palette: Record<typeof color, { border: string; bg: string; text: string; btn: string; shadow: string }> = {
@@ -541,14 +546,14 @@ const ScenarioCard: React.FC<ScenarioCardProps> = ({
             link was redundant — users find their tasks under the "我的任务"
             section now. Card stays purely a template / launcher.) */}
 
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className={`w-full px-4 py-2.5 text-sm font-bold rounded-xl ${c.btn} disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg ${c.shadow} transition-all active:scale-95`}
-        >
-          {emoji} {isZh ? ctaZh : ctaEn} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={`${emoji} ${isZh ? ctaZh : ctaEn} →`}
+          btnClass={`${c.btn} shadow-lg ${c.shadow}`}
+        />
       </div>
     </div>
   );

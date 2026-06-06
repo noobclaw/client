@@ -384,6 +384,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
             }
             setSourcePickerOpen(true);
           }}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
@@ -406,6 +407,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={autoEngage}
           onStart={() => autoEngage && handleStart(autoEngage)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
@@ -428,6 +430,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={postCreator}
           onStart={() => handleStart(postCreator)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
@@ -450,6 +453,7 @@ export const BinanceWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={fromXLink}
           onStart={() => handleStart(fromXLink)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
           binanceGold={binanceGold}
           binanceGoldLight={binanceGoldLight}
@@ -577,6 +581,7 @@ interface BinanceCardProps {
   loading: boolean;
   scenario: Scenario | null;
   onStart: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
   binanceGold: string;
   binanceGoldLight: string;
@@ -585,7 +590,7 @@ interface BinanceCardProps {
 
 const BinanceCard: React.FC<BinanceCardProps> = ({
   emoji, badgeZh, badgeEn, titleZh, titleEn, descZh, descEn, tagsLine,
-  ctaZh, ctaEn, enabled, loading, scenario: _scenario, onStart, isZh,
+  ctaZh, ctaEn, enabled, loading, scenario: _scenario, onStart, onGoToMyTasks, isZh,
   binanceGold, binanceGoldLight, binanceDark,
 }) => {
   const dim = !enabled;
@@ -616,22 +621,31 @@ const BinanceCard: React.FC<BinanceCardProps> = ({
         <div className="text-xs font-mono mb-4" style={{ color: binanceGold }}>
           {tagsLine}
         </div>
-        <button
-          type="button"
-          onClick={onStart}
-          disabled={!enabled || loading}
-          className="w-full text-sm font-semibold px-4 py-2.5 rounded-xl transition-all hover:brightness-110 active:brightness-95 shadow-md disabled:cursor-not-allowed disabled:hover:brightness-100"
-          style={enabled
-            ? {
-                background: `linear-gradient(135deg, ${binanceGold} 0%, ${binanceGoldLight} 100%)`,
-                color: binanceDark,
-              }
-            : {
-                background: '#2B3139',
-                color: '#6B7280',
-              }}>
-          {emoji} {isZh ? ctaZh : ctaEn} {enabled ? '→' : ''}
-        </button>
+        <div className="flex items-stretch gap-2">
+          <button
+            type="button"
+            onClick={onStart}
+            disabled={!enabled || loading}
+            className="flex-[7] text-sm font-semibold px-4 py-2.5 rounded-xl transition-all hover:brightness-110 active:brightness-95 shadow-md disabled:cursor-not-allowed disabled:hover:brightness-100"
+            style={enabled
+              ? {
+                  background: `linear-gradient(135deg, ${binanceGold} 0%, ${binanceGoldLight} 100%)`,
+                  color: binanceDark,
+                }
+              : {
+                  background: '#2B3139',
+                  color: '#6B7280',
+                }}>
+            {emoji} {isZh ? ctaZh : ctaEn} {enabled ? '→' : ''}
+          </button>
+          <button
+            type="button"
+            onClick={() => onGoToMyTasks?.()}
+            className="flex-[3] px-2 py-2.5 text-xs font-medium rounded-xl text-gray-300 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors whitespace-nowrap"
+          >
+            {isZh ? '查看已有任务' : 'My tasks'} »
+          </button>
+        </div>
       </div>
     </div>
   );
