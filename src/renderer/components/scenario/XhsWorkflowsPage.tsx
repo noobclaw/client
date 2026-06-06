@@ -214,17 +214,17 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   };
   const replyFansScenario = scenarios.find(s => s.id === 'xhs_reply_fans_comment') || REPLY_FANS_FALLBACK;
 
-  // 视频无水印下载 fallback —— 一次性工具任务,粘贴 1-20 个小红书视频链接逐个
+  // 视频原画下载 fallback —— 一次性工具任务,粘贴 1-20 个小红书视频链接逐个
   // 下载到本地。fallback id 必须 match backend scenario folder,scenarios 列表
   // 还没拉到时也能点开。
   const VIDEO_DL_FALLBACK: Scenario = {
     ...FALLBACK_SCENARIO,
     id: 'xhs_video_download',
     workflow_type: 'xhs_video_download' as any,
-    name_zh: '小红书 · 视频无水印下载',
-    name_en: 'Xiaohongshu · Watermark-free Video Download',
-    description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出无水印原视频并下载到本地。',
-    description_en: 'Paste 1-20 Xiaohongshu video links; opens each locally, resolves the watermark-free source video and downloads it. One-time task, only needs main-site login.',
+    name_zh: '小红书 · 视频原画下载',
+    name_en: 'Xiaohongshu · Raw Video Download',
+    description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出原视频并下载到本地。',
+    description_en: 'Paste 1-20 Xiaohongshu video links; opens each locally, resolves the source video and downloads it. One-time task, only needs main-site login.',
     icon: '⬇️',
     required_login_url: 'https://www.xiaohongshu.com',
     default_config: {
@@ -257,7 +257,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
   const [linkSubmitting, setLinkSubmitting] = useState(false);
   const [linkAutoUpload, setLinkAutoUpload] = useState(true);
 
-  // 视频无水印下载 state(复用 link-mode 的链接校验,但走独立 scenario + 独立 modal)
+  // 视频原画下载 state(复用 link-mode 的链接校验,但走独立 scenario + 独立 modal)
   const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
   const [videoDlLinksText, setVideoDlLinksText] = useState('');
   const [videoDlSubmitting, setVideoDlSubmitting] = useState(false);
@@ -546,22 +546,22 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* 视频无水印下载 —— 放在「图文创作」前面。一次性工具:粘 1-20 个小红书
-            视频链接,本地浏览器逐个解析无水印原视频并下载到本地。 */}
+        {/* 视频原画下载 —— 放在「图文创作」前面。一次性工具:粘 1-20 个小红书
+            视频链接,本地浏览器逐个解析原视频并下载到本地。 */}
         <div className="relative rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent p-6 overflow-hidden">
           <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
           <div className="relative flex flex-col h-full">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-500 mb-2">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '无水印下载' : 'Watermark-free'}
+              {i18nService.currentLanguage === 'zh' ? '原画下载' : 'Raw'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频原画下载' : 'XHS Raw Video Download'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
-                ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出无水印原视频，依次下载到本地。非视频笔记、非小红书链接自动跳过。'
-                : 'Paste 1-20 Xiaohongshu video links; opens each in your local browser, resolves the watermark-free source video and downloads it. One-time task — only needs main-site login. Non-video notes and non-XHS links are skipped.'}
+                ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出原视频，依次下载到本地。非视频笔记、非小红书链接自动跳过。'
+                : 'Paste 1-20 Xiaohongshu video links; opens each in your local browser, resolves the source video and downloads it. One-time task — only needs main-site login. Non-video notes and non-XHS links are skipped.'}
             </p>
             <CardActionRow
               onConfigure={handleVideoDownloadClick}
@@ -746,12 +746,12 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         </div>
       )}
 
-      {/* 视频无水印下载 modal —— 粘 1-20 个小红书视频链接。背景点击不关闭(链接长易误触)。 */}
+      {/* 视频原画下载 modal —— 粘 1-20 个小红书视频链接。背景点击不关闭(链接长易误触)。 */}
       {videoDlModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
             <h3 className="text-lg font-bold dark:text-white mb-2">
-              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频原画下载' : 'XHS Raw Video Download'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {i18nService.currentLanguage === 'zh'

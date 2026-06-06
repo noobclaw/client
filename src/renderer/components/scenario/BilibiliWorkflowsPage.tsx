@@ -3,7 +3,7 @@
  *
  * 已挂 scenarios（3 个独立任务体系，互不影响）:
  *   bilibili_auto_engage         — 自动浏览推荐流，按用户配置做点赞 / 关注 / 评论
- *   bilibili_video_download      — 粘 1-20 个 B 站视频链接逐个无水印下载到本地
+ *   bilibili_video_download      — 粘 1-20 个 B 站视频链接逐个原画下载到本地
  *   bilibili_reply_fans_comment  — 在 B 站创作中心「评论管理」逐条回复粉丝
  *
  * 结构跟 DouyinWorkflowsPage 对齐，主色 pink/blue（B 站品牌色）。
@@ -102,15 +102,15 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
 
   const autoEngage = findById('bilibili_auto_engage') || FALLBACK_AUTO_ENGAGE;
 
-  // ── 视频无水印下载 fallback —— 一次性工具任务,粘 1-20 个 B 站视频链接逐个下到本地。
+  // ── 视频原画下载 fallback —— 一次性工具任务,粘 1-20 个 B 站视频链接逐个下到本地。
   const FALLBACK_VIDEO_DL: Scenario = {
     id: 'bilibili_video_download',
     version: '1.0.0',
     platform: 'bilibili' as any,
     workflow_type: 'bilibili_video_download' as any,
     category: 'tool',
-    name_zh: '哔哩哔哩 · 视频无水印下载',
-    name_en: 'Bilibili · Watermark-free Video Download',
+    name_zh: '哔哩哔哩 · 视频原画下载',
+    name_en: 'Bilibili · Raw Video Download',
     description_zh: '粘贴 1-20 个 B 站视频链接，依次在本地浏览器打开，借 B 站页面自身签名解析出原视频并下载到本地。一次性任务，只需登录 B 站主站。',
     description_en: 'Paste 1-20 Bilibili video links; opens each locally, resolves the source video and downloads it. One-time task, only needs main-site login.',
     icon: '⬇️',
@@ -166,7 +166,7 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
 
   const replyFans = findById('bilibili_reply_fans_comment') || FALLBACK_REPLY_FANS;
 
-  // 视频无水印下载 modal state
+  // 视频原画下载 modal state
   const [videoDlModalOpen, setVideoDlModalOpen] = useState(false);
   const [videoDlLinksText, setVideoDlLinksText] = useState('');
   const [videoDlSubmitting, setVideoDlSubmitting] = useState(false);
@@ -258,7 +258,7 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {/* Scenario cards — 互动涨粉 + 视频无水印下载 + 自动回复粉丝。 */}
+      {/* Scenario cards — 互动涨粉 + 视频原画下载 + 自动回复粉丝。 */}
       <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         <BilibiliEngageCard
           loading={loading}
@@ -302,12 +302,12 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
         </div>
       </section>
 
-      {/* 视频无水印下载 modal —— 粘 1-20 个 B 站视频链接。背景点击不关闭。 */}
+      {/* 视频原画下载 modal —— 粘 1-20 个 B 站视频链接。背景点击不关闭。 */}
       {videoDlModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
             <h3 className="text-lg font-bold dark:text-white mb-2">
-              ⬇️ {isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Watermark-free Video Download'}
+              ⬇️ {isZh ? '哔哩哔哩 · 视频原画下载' : 'Bilibili Raw Video Download'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh
