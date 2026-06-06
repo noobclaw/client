@@ -1252,8 +1252,8 @@ const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> =
       </h3>
       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
         {isZh
-          ? '选赛道自动带出人设和关键词,文案可自己写、也可让 AI 按目标时长写。AI 自动拆分镜、配音、配字幕,用在线视频素材 + 你的参考图凑画面,本地合成短视频(竖屏/横屏/方屏按画幅自选)。'
-          : 'Pick a track to auto-fill persona & keywords. Write your own script or let AI write one for a target length. AI splits scenes, narrates, subtitles, and fills visuals from stock video + your images, composing a short video locally (portrait / landscape / square).'}
+          ? '低成本批量日更的利器:不用露脸、不用剪辑。给个主题,AI 自动写口播稿 + 配音 + 字幕,在线素材库一键凑齐画面,本地一次出最多 5 条不同画面的成片(竖屏/横屏/方屏自选)。知识科普 / 资讯解说 / 好物种草都能批量产,配音字幕合成全免费。'
+          : 'Batch-publish on a budget — no face, no editing. Give a topic and AI writes the voice-over script, narrates, subtitles, and pulls visuals from the stock library, producing up to 5 differently-cut videos per run (portrait / landscape / square). Great for explainers, news recaps and product picks; TTS, subtitles and compositing are free.'}
       </p>
       <button
         type="button"
@@ -1873,7 +1873,7 @@ const VideoConfigModal: React.FC<{
                   <ModeOption
                     active={mode === 'stock'}
                     onClick={() => setMode('stock')}
-                    title={isZh ? 'AI 分镜口播视频' : 'AI scene voice-over'}
+                    title={isZh ? 'AI 口播稿 + 在线素材' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
                     cost={isZh ? '单次最多 5 条 · 满批总价约 $0.5~1（配音/字幕/合成免费）' : 'Up to 5 per run · ~$0.5–1 total (TTS/subs/compose free)'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}

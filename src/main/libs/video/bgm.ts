@@ -68,10 +68,18 @@ function bundledBgmDirs(): string[] {
 function resolveBuiltin(id: string): string | undefined {
   const safeId = path.basename(id.trim()); // 挡路径穿越
   if (!safeId) return undefined;
-  for (const dir of bundledBgmDirs()) {
+  const probed = bundledBgmDirs();
+  for (const dir of probed) {
     const p = path.join(dir, `${safeId}.mp3`);
     if (fs.existsSync(p)) return p;
   }
+  // 诊断:内置 BGM 找不到(试听失败:未取到音频)时,打出探测过的目录 + 运行时
+  // 路径锚点,方便定位 Tauri sidecar 进程里资源的真实落点。
+  try {
+    console.warn('[bgm] builtin "' + safeId + '.mp3" not found. packaged=' + isPackaged()
+      + ' execPath=' + process.execPath + ' resources=' + getResourcesPath()
+      + ' probed=' + JSON.stringify(probed.map((d) => d + (fs.existsSync(d) ? ' [dir✓]' : ''))));
+  } catch { /* ignore */ }
   return undefined;
 }
 
