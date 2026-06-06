@@ -46,7 +46,10 @@ import { noobClawSSE } from './services/noobclawSSE';
 const App: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [settingsOptions, setSettingsOptions] = useState<SettingsOpenOptions>({});
-  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'web3news' | 'partners' | 'personality'>('cowork');
+  // 启动默认落到「一键涨粉」(scenarioCreate),而不是 AI 对话(cowork)。副作用:Sidebar 的
+  // 「AI对话」二级折叠组只在其子项(cowork/mcp/web3news/scheduledTasks)激活时才强制展开,
+  // 默认页非该组子项 → 该组保持收起(aiChatOpen 初始 false),正好满足「AI对话菜单默认收起」。
+  const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'web3news' | 'partners' | 'personality'>('scenarioCreate');
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
   const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video' | undefined>(undefined);
   const [isInitialized, setIsInitialized] = useState(false);
