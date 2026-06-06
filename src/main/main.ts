@@ -10,6 +10,7 @@ import { SkillManager } from './skillManager';
 import type { PermissionResult } from './libs/toolSystem';
 import { getCurrentApiConfig, resolveCurrentApiConfig, setStoreGetter, setNoobClawAuthToken } from './libs/claudeSettings';
 import { setStoreGetter as setNewsUsageStoreGetter } from './libs/scenario/newsUsageStore';
+import { setStoreGetter as setEngageHistoryStoreGetter } from './libs/scenario/engageHistoryStore';
 import { saveCoworkApiConfig } from './libs/coworkConfigStore';
 import { generateSessionTitle, probeCoworkModelReadiness } from './libs/coworkUtil';
 import { classifyIntent } from './libs/intentClassifier';
@@ -3349,6 +3350,10 @@ if (!gotTheLock) {
     // v2.x: same getter for news_usage dedup (used by binance / x writing
     // scenarios to avoid posting on the same web3_news article twice).
     setNewsUsageStoreGetter(() => store);
+    // v6.x: same getter for engage_history dedup (used by auto_engage /
+    // reply_fans_comment scenarios to avoid commenting on the same video
+    // or replying to the same fan comment twice across runs).
+    setEngageHistoryStoreGetter(() => store);
     console.log('[Main] initApp: setStoreGetter done');
     const manager = getSkillManager();
     console.log('[Main] initApp: getSkillManager done');

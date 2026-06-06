@@ -167,7 +167,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
         <div className="mt-3 space-y-1 px-3">
-          {/* 1. 一键涨粉 — 原"新建涨粉任务"页提升为一级菜单 (create 模式) */}
+          {/* 1. 新建涨粉任务 — 新建页提升为一级菜单 (create 模式) */}
           <button
             type="button"
             onClick={() => { setIsSearchOpen(false); onShowScenarioCreate(); }}
@@ -177,7 +177,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
             }`}
           >
-            <span className="text-sm">{'⚡'}</span>
+            <span className="text-sm">{'✨'}</span>
             {i18nService.t('quickUse')}
           </button>
 

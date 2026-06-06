@@ -46,7 +46,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     french: 'Français',
     german: 'Deutsch',
     // Sidebar custom menu
-    quickUse: '一键涨粉',
+    quickUse: '新建涨粉任务',
     aiChat: 'AI对话',
     myFanTasks: '我的涨粉任务',
     myWallet: '我的充值',
@@ -1343,7 +1343,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     russian: 'Russian',
     french: 'French',
     german: 'German',
-    quickUse: 'Quick Use',
+    quickUse: 'New Task',
     aiChat: 'AI Chat',
     myFanTasks: 'My Tasks',
     myWallet: 'Top Up',
@@ -2603,7 +2603,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     testMode: '測試模式',
     theme: '主題', appearance: '外觀', language: '語言', light: '淺色', dark: '深色', system: '跟隨系統',
     chinese: '简体中文', english: 'English', zhTW: '繁體中文', korean: '한국어', japanese: '日本語', russian: 'Русский', french: 'Français', german: 'Deutsch',
-    quickUse: '一鍵漲粉', myWallet: '我的充值', inviteFriends: '邀請返佣',
+    quickUse: '新建漲粉任務', myWallet: '我的充值', inviteFriends: '邀請返佣',
     hotTopics: '行業熱點', personalityTests: '人格測試', personalityTabHome: '首頁', personalityReload: '重新載入', personalityOpenExternal: '在瀏覽器中開啟', eventsPartners: '活動與合作',
     // API settings
     apiKey: 'API Key', apiKeyPlaceholder: '輸入你的 API Key',

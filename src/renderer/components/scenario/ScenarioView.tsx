@@ -86,7 +86,7 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'x', labelKey: 'scenarioPlatformX', icon: '🐦', enabled: true },
   { id: 'youtube', labelKey: 'scenarioPlatformYoutube', icon: '📺', enabled: true },
   { id: 'tiktok', labelKey: 'scenarioPlatformTiktok', icon: '🎵', enabled: true },
-  // 第二行: 国内 6 平台(PLATFORM_TABS_ROW2_START 之后强制换行)
+  // 国内平台:接在后面同一行排,放不下由容器(flex-wrap)自然换行,不再写死断行。
   { id: 'xhs', labelKey: 'scenarioPlatformXhs', icon: '📕', enabled: true },
   { id: 'douyin', labelKey: 'scenarioPlatformDouyin', icon: '🎶', enabled: true },
   { id: 'kuaishou', labelKey: 'scenarioPlatformKuaishou', icon: '⚡', enabled: true },
@@ -94,9 +94,6 @@ const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; ena
   { id: 'bilibili', labelKey: 'scenarioPlatformBilibili', icon: '📺', enabled: true },
   { id: 'toutiao', labelKey: 'scenarioPlatformToutiao', icon: '📰', enabled: true },
 ];
-// 第二行从这个下标开始(xhs),渲染时在它前面插一个 basis-full 强制换行,
-// 保证国内 6 平台(小红书/抖音/快手/视频号/哔哩哔哩/头条)单独占第二行。
-const PLATFORM_TABS_ROW2_START = 5;
 
 // L1 tabs are now PURELY for "switch view": My Tasks vs Run History.
 // "Create new task" used to live here too, which made users confuse
@@ -896,21 +893,28 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
                 ? (currentPlatform === 'video' ? '新建视频创作任务' : '新建涨粉任务')
                 : (currentPlatform === 'video' ? 'New Video Task' : 'New Task')}
             </h2>
-            {/* v6.x: 标题后跟一个「涨粉教程」入口 → 外部浏览器打开文档站。 */}
-            {mode === 'create' && (
-            <button
-              type="button"
-              onClick={() => { try { window.electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* sandbox/无 xdg-open 时静默 */ } }}
-              className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 hover:underline whitespace-nowrap"
-              title={i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Tutorial'}
-            >
-              <span>📖</span>
-              <span>{i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Tutorial'}</span>
-            </button>
-            )}
           </div>
-          {/* v6.x: 原右上角「查看已有的涨粉任务」按钮已移除 — 改为每张卡片
-              「开始 …」按钮右侧的「查看已有任务 »」文字入口(见各 WorkflowsPage)。 */}
+          {/* v6.x: 「涨粉教程」入口 → 外部浏览器打开文档站。样式与「我的涨粉任务」
+              页一致(琥珀渐变胶囊按钮),靠 justify-between 顶到头部右侧。 */}
+          {mode === 'create' && (
+          <button
+            type="button"
+            onClick={() => { try { window.electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* sandbox/无 xdg-open 时静默 */ } }}
+            className="group relative shrink-0 inline-flex items-center gap-1.5 text-xs font-medium
+                       px-3.5 py-1.5 rounded-full
+                       bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15
+                       hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25
+                       text-amber-700 dark:text-amber-300
+                       border border-amber-500/30 hover:border-amber-500/60
+                       shadow-sm hover:shadow-md hover:shadow-amber-500/20
+                       transition-all duration-200 hover:-translate-y-0.5"
+            title={i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Growth Tutorial'}
+          >
+            <span className="text-sm leading-none">📖</span>
+            <span>{i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Growth Tutorial'}</span>
+            <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
+          </button>
+          )}
         </div>
       )}
 
@@ -924,29 +928,27 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           active treatment. */}
       {view.kind === 'main' && !(currentPlatform === 'video' && videoInDetail) && (
         <div className="flex flex-wrap items-center gap-2 px-4 pt-3 pb-2 border-b dark:border-claude-darkBorder border-claude-border shrink-0">
-          {PLATFORM_TABS.map((tab, idx) => {
+          {PLATFORM_TABS.map((tab) => {
             const active = currentPlatform === tab.id;
             return (
-              <React.Fragment key={tab.id}>
-                {idx === PLATFORM_TABS_ROW2_START && <div className="basis-full h-0" aria-hidden="true" />}
-                <button
-                  type="button"
-                  onClick={() => setPlatform(tab.id)}
-                  className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
-                    active
-                      ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
-                      : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
-                  }`}
-                >
-                  <span className="text-base">{tab.icon}</span>
-                  <span>{i18nService.t(tab.labelKey)}</span>
-                  {!tab.enabled && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
-                      {i18nService.t('scenarioPlatformSoon')}
-                    </span>
-                  )}
-                </button>
-              </React.Fragment>
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setPlatform(tab.id)}
+                className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-colors whitespace-nowrap ${
+                  active
+                    ? 'bg-green-500/15 text-green-500 border border-green-500/50 shadow-sm shadow-green-500/20'
+                    : 'text-gray-700 dark:text-gray-200 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-400 dark:border-gray-500'
+                }`}
+              >
+                <span className="text-base">{tab.icon}</span>
+                <span>{i18nService.t(tab.labelKey)}</span>
+                {!tab.enabled && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
+                    {i18nService.t('scenarioPlatformSoon')}
+                  </span>
+                )}
+              </button>
             );
           })}
         </div>

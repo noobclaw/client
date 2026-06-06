@@ -21,6 +21,7 @@ import * as localExtractor from './localExtractor';
 import { parseJsonSafe } from './localExtractor';
 import { getNoobClawAuthToken } from '../claudeSettings';
 import * as newsUsageStore from './newsUsageStore';
+import * as engageHistoryStore from './engageHistoryStore';
 import * as fs from 'fs';
 import * as path from 'path';
 import { writeTaskArtifacts, getTaskOutputDir } from './artifactWriter';
@@ -1232,6 +1233,36 @@ function buildContext(
       },
     },
 
+    // v6.x: engage_history local dedup for engage / reply scenarios.
+    //   ctx.engageHistory.has(action, targetId)      → bool
+    //   ctx.engageHistory.remember(action, targetId) → void
+    //
+    // platform is auto-bound from manifest.platform inside the helper —
+    // orchestrator only passes (action, targetId). Wallet is scoped via
+    // JWT inside engageHistoryStore (matrix accounts don't share dedup).
+    //
+    // Conventions:
+    //   action = 'comment'  → auto_engage: target = BV / aweme / photoId
+    //   action = 'reply'    → reply_fans:  target = md5(name + content)
+    //   action = 'like' / 'follow' currently unused but reserved
+    //
+    // Fails open everywhere: missing wallet / missing store / DB error →
+    // has() returns false, remember() no-ops. A duplicate comment is
+    // worse than the dedup not catching it, but blocking the whole task
+    // because sqlite hiccuped is worse than both.
+    engageHistory: {
+      has: (action: string, targetId: string): boolean => {
+        const platform = String((manifest as any)?.platform || '');
+        if (!platform) return false;
+        return engageHistoryStore.isEngaged(platform, action, targetId);
+      },
+      remember: (action: string, targetId: string): void => {
+        const platform = String((manifest as any)?.platform || '');
+        if (!platform) return;
+        engageHistoryStore.markEngaged(platform, action, targetId);
+      },
+    },
+
     // Generic file-write into the task's output dir. Used by scenarios
     // that produce a free-form report (e.g. auto_reply's run summary)
     // instead of structured drafts. Returns the absolute path so the
@@ -2061,12 +2092,12 @@ function buildContext(
       }
     },
 
-    // 视频下载「派生输出」:对刚下到本地的视频,按 opts 额外导出 无声视频 / 音轨(.m4a) /
-    // 字幕(.srt 或 .txt,走 ffmpeg + ASR)。三者各自独立、单个失败不影响其它,返回
-    // { mutePath?, audioPath?, subtitlePath?, errors[] }。字幕会调 ASR(联网/付费)。
+    // 视频下载「派生输出」:对刚下到本地的视频,按 opts 额外导出 无声视频 / 音轨(.m4a)。
+    // 纯本地 ffmpeg、零成本,各自独立、单个失败不影响其它,返回 { mutePath?, audioPath?, errors[] }。
+    // (字幕/语音转写是独立项,不在此能力内。)
     deriveVideoExtras: async (
       videoFilePath: string,
-      opts?: { mute?: boolean; audio?: boolean; subtitle?: boolean; language?: string },
+      opts?: { mute?: boolean; audio?: boolean },
     ) => {
       try {
         const { deriveVideoExtras } = require('../video/deriveExtras');

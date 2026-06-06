@@ -241,6 +241,31 @@ export class SqliteStore {
       ON news_usage(wallet_address, scenario_id, used_at DESC);
     `);
 
+    // v6.x: per-wallet engagement history for engage / reply scenarios.
+    //   auto_engage     (bilibili/douyin/kuaishou)  → action='comment',
+    //                                                 target_id=BV/aweme/photoId
+    //   reply_fans      (bili/dy/ks/shipinhao/toutiao) → action='reply',
+    //                                                 target_id=md5(fan_name+content)
+    // Local-only — backend stays stateless. Orchestrators call
+    // ctx.engageHistory.has(action, targetId) before processing a candidate,
+    // and ctx.engageHistory.remember(action, targetId) after a successful
+    // action. Scoped per-wallet so matrix accounts don't share state.
+    // Platform is auto-bound from manifest.platform inside phaseRunner.
+    this.db.run(`
+      CREATE TABLE IF NOT EXISTS engage_history (
+        wallet_address TEXT NOT NULL,
+        platform       TEXT NOT NULL,
+        action         TEXT NOT NULL,
+        target_id      TEXT NOT NULL,
+        used_at        INTEGER NOT NULL,
+        PRIMARY KEY (wallet_address, platform, action, target_id)
+      );
+    `);
+    this.db.run(`
+      CREATE INDEX IF NOT EXISTS idx_engage_history_lookup
+      ON engage_history(wallet_address, platform, action, used_at DESC);
+    `);
+
     // Create scheduled tasks tables
     this.db.run(`
       CREATE TABLE IF NOT EXISTS scheduled_tasks (
@@ -536,6 +561,35 @@ export class SqliteStore {
       `INSERT OR IGNORE INTO news_usage (wallet_address, scenario_id, title_hash, used_at)
        VALUES (?, ?, ?, ?)`,
       [walletAddress, scenarioId, titleHash, Date.now()],
+    );
+    this.save();
+  }
+
+  // ── engage_history (auto_engage / reply_fans dedup) ─────────────────
+  //
+  // Returns true if THIS wallet has already performed THIS action on THIS
+  // target on THIS platform. Used by auto_engage scenarios (skip videos I
+  // already commented on) and reply_fans_comment scenarios (skip fan
+  // comments I already replied to — esp. B站 where the editor list ALSO
+  // shows my own past replies as fresh rows and we used to reply-to-self).
+  // target_id is a caller-owned opaque string (BV id / aweme id / md5 of
+  // name+content) — store doesn't care about its shape.
+  isEngaged(walletAddress: string, platform: string, action: string, targetId: string): boolean {
+    if (!walletAddress || !platform || !action || !targetId) return false;
+    const result = this.db.exec(
+      'SELECT 1 FROM engage_history WHERE wallet_address = ? AND platform = ? AND action = ? AND target_id = ? LIMIT 1',
+      [walletAddress, platform, action, targetId],
+    );
+    return !!result[0]?.values?.length;
+  }
+
+  // Idempotent upsert — orchestrator retries don't double-mark.
+  markEngaged(walletAddress: string, platform: string, action: string, targetId: string): void {
+    if (!walletAddress || !platform || !action || !targetId) return;
+    this.db.run(
+      `INSERT OR IGNORE INTO engage_history (wallet_address, platform, action, target_id, used_at)
+       VALUES (?, ?, ?, ?, ?)`,
+      [walletAddress, platform, action, targetId, Date.now()],
     );
     this.save();
   }

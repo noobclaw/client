@@ -206,6 +206,12 @@ async function getRunner() {
     // Wire up claudeSettings store getter so API config resolution works
     const { setStoreGetter } = await import('./libs/claudeSettings');
     setStoreGetter(() => sqliteStore);
+    // v6.x: also wire engage_history dedup so headless sidecar runs (CI /
+    // automated agents) benefit from the same dedup as the desktop app.
+    // news_usage is not wired here because the writing scenarios that use
+    // it currently never run sidecar-side.
+    const { setStoreGetter: setEngageHistoryStoreGetter } = await import('./libs/scenario/engageHistoryStore');
+    setEngageHistoryStoreGetter(() => sqliteStore);
 
     runnerInstance = new CoworkRunner(store);
     // Expose sqliteStore for KV operations (store:get/set)

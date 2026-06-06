@@ -346,11 +346,11 @@ export const KuaishouWorkflowsPage: React.FC<Props> = ({
               <label className={`flex items-start gap-2 cursor-pointer rounded-lg border p-2.5 ${dlBundle ? 'border-orange-500 bg-orange-500/5' : 'border-gray-200 dark:border-gray-700'}`}>
                 <input type="radio" name="dlBundle" checked={dlBundle} onChange={() => setDlBundle(true)} disabled={videoDlSubmitting} className="mt-0.5 accent-orange-500" />
                 <span className="text-sm dark:text-gray-200">
-                  {isZh ? '全套（二创素材）' : 'Full bundle (for re-creation)'}
+                  {isZh ? '原视频 + 无声视频 + 音轨' : 'Original + muted video + audio'}
                   <span className="block text-xs text-gray-500 dark:text-gray-400">
-                    {isZh ? '原视频 + 🔇无声无字幕视频 + 🎵音轨 + 📝字幕(.srt) + 📄字幕文本(.txt)' : 'original + muted video + audio + subtitle (.srt) + transcript (.txt)'}
+                    {isZh ? '🔇 无声无字幕视频 + 🎵 音轨(.m4a)，适合二创重配音' : 'muted video + audio (.m4a), for re-creation'}
                   </span>
-                  <span className="block text-xs text-amber-500 mt-0.5">{isZh ? '· 全套额外计费约 3000~8000 积分/条（含字幕 ASR 转写）' : '· extra ~3000–8000 credits/video (incl. subtitle ASR)'}</span>
+                  <span className="block text-xs text-gray-400 mt-0.5">{isZh ? '· 本地生成 · 免费（字幕功能稍后单独上线）' : '· generated locally · free (subtitles coming later)'}</span>
                 </span>
               </label>
             </div>
