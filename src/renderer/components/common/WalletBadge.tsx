@@ -67,7 +67,7 @@ export const WalletBadge: React.FC<Props> = ({ size = 'normal' }) => {
       <button
         type="button"
         onClick={() => window.dispatchEvent(new CustomEvent('noobclaw:show-wallet'))}
-        className={`non-draggable px-2.5 py-0.5 rounded ${txt} font-bold transition-colors shadow-sm ${
+        className={`non-draggable px-3 py-1 rounded text-sm font-bold transition-colors shadow-sm ${
           low
             ? 'bg-yellow-500 text-white hover:bg-yellow-600 shadow-yellow-500/30'
             : 'bg-green-500 text-white hover:bg-green-600 shadow-green-500/30'
