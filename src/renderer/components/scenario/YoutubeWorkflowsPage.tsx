@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { CardActionRow } from './CardActionRow';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 interface Props {
@@ -98,6 +99,7 @@ export const YoutubeWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={autoEngage}
           onConfigure={() => handleConfigure(autoEngage)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
       </section>
@@ -182,10 +184,11 @@ type CardProps = {
   loading: boolean;
   scenario: Scenario | null;
   onConfigure: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
 };
 
-const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-indigo-500/30 bg-gradient-to-br from-indigo-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col md:col-span-2">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-indigo-500/10 blur-3xl pointer-events-none" />
@@ -202,14 +205,14 @@ const YoutubeScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario
             ? '每次运行按你配置的"随机区间"决定本轮点赞 / 订阅 / 评论各做几次,然后按你的赛道关键词搜索 YouTube 视频自动按配额完成。评论由 AI 按视频上下文 + 关键词自动生成,行为间隔随机模拟真人。'
             : 'Each run rolls per-action counts from your random ranges, then searches YouTube with your track keywords and works through the quota. Comments are AI-generated from video context + keyword.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-indigo-500 hover:bg-indigo-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-indigo-500/25 transition-all active:scale-95"
-        >
-          📺 {isZh ? '开始互动' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '📺 开始互动 →' : '📺 Start →'}
+          btnClass="bg-indigo-500 hover:bg-indigo-600 shadow-lg shadow-indigo-500/25"
+        />
       </div>
     </div>
   );

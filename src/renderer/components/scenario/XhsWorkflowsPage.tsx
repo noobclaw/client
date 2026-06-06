@@ -19,6 +19,7 @@ import React, { useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { CardActionRow } from './CardActionRow';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 // Lightweight track lookup for task card display (full presets live in ConfigWizard)
@@ -483,13 +484,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                 ? '按你的赛道关键词智能挖近一周高互动爆文，AI 一次写出「走心评论 + 子楼层回复」组合拳，全程模拟真人节奏随机抖动安全互动。可选顺手关注高潜作者，被动涨粉不留痕。'
                 : 'Mines this week\'s viral notes in your niche, AI crafts heartfelt replies plus per-comment responses, paced like a real human to stay under the radar. Optionally auto-follow promising authors — hands-free growth, no fingerprints.'}
             </p>
-            <button
-              type="button"
-              onClick={handleAutoReplyClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-cyan-500 text-white hover:bg-cyan-600 shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
-            >
-              💬 {i18nService.currentLanguage === 'zh' ? '开始互动' : 'Start'} →
-            </button>
+            <CardActionRow
+              onConfigure={handleAutoReplyClick}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={i18nService.currentLanguage === 'zh' ? '💬 开始互动 →' : '💬 Start →'}
+              btnClass="bg-cyan-500 hover:bg-cyan-600 shadow-lg shadow-cyan-500/25"
+            />
           </div>
         </div>
 
@@ -507,15 +508,15 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.t('scenarioQuickStartDesc')}
             </p>
-            <button
-              type="button"
-              onClick={handleQuickStart}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-green-500 text-white hover:bg-green-600 shadow-lg shadow-green-500/25 transition-all active:scale-95"
-            >
-              {primaryTask
+            <CardActionRow
+              onConfigure={handleQuickStart}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={primaryTask
                 ? '📋 ' + i18nService.t('scenarioQuickStartContinueBtn') + ' →'
                 : '🚀 ' + i18nService.t('scenarioQuickStartBtn') + ' →'}
-            </button>
+              btnClass="bg-green-500 hover:bg-green-600 shadow-lg shadow-green-500/25"
+            />
           </div>
         </div>
 
@@ -535,13 +536,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                 ? '自动打开创作者中心,逐篇笔记进去,AI 一条条回复粉丝评论。可填核心引流语,按你设的概率自然衔接到回复尾巴。已回复过的、自己留的评论自动跳过,真人节奏间隔,稳维护粉丝。'
                 : 'Auto-walks your Creator Center, replies to each fan comment via AI. Optional funnel phrase woven into reply tail by your set probability. Skips already-replied / self comments, human-paced.'}
             </p>
-            <button
-              type="button"
-              onClick={handleReplyFansClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-fuchsia-500 text-white hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
-            >
-              💌 {i18nService.currentLanguage === 'zh' ? '开始回复' : 'Start Replying'} →
-            </button>
+            <CardActionRow
+              onConfigure={handleReplyFansClick}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={i18nService.currentLanguage === 'zh' ? '💌 开始回复 →' : '💌 Start Replying →'}
+              btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+            />
           </div>
         </div>
 
@@ -562,13 +563,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                 ? '粘贴 1-20 个小红书视频链接，本地浏览器逐个打开解析出无水印原视频，依次下载到本地。非视频笔记、非小红书链接自动跳过。'
                 : 'Paste 1-20 Xiaohongshu video links; opens each in your local browser, resolves the watermark-free source video and downloads it. One-time task — only needs main-site login. Non-video notes and non-XHS links are skipped.'}
             </p>
-            <button
-              type="button"
-              onClick={handleVideoDownloadClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-blue-500 text-white hover:bg-blue-600 shadow-lg shadow-blue-500/25 transition-all active:scale-95"
-            >
-              ⬇️ {i18nService.currentLanguage === 'zh' ? '开始下载' : 'Start Download'} →
-            </button>
+            <CardActionRow
+              onConfigure={handleVideoDownloadClick}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={i18nService.currentLanguage === 'zh' ? '⬇️ 开始下载 →' : '⬇️ Start Download →'}
+              btnClass="bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/25"
+            />
           </div>
         </div>
 
@@ -588,13 +589,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
                 ? '填 3 段灵感来源，AI 改写成小红书笔记。配图二选一：AI 生图 或 关键词去小红书抓网络图（2-6 张可调）。整完上传到草稿箱手动审核发布。'
                 : 'Fill 3 source snippets; AI rewrites into a XHS note. Image source: AI-generated OR scrape real photos by keyword (2-6 configurable). Uploads to drafts for manual review.'}
             </p>
-            <button
-              type="button"
-              onClick={handleImageTextClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-rose-500 text-white hover:bg-rose-600 shadow-lg shadow-rose-500/25 transition-all active:scale-95"
-            >
-              📝 {i18nService.currentLanguage === 'zh' ? '开始创作' : 'Start Creating'} →
-            </button>
+            <CardActionRow
+              onConfigure={handleImageTextClick}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={i18nService.currentLanguage === 'zh' ? '📝 开始创作 →' : '📝 Start Creating →'}
+              btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
+            />
           </div>
         </div>
 
@@ -612,13 +613,13 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.t('scenarioLinkModeDesc')}
             </p>
-            <button
-              type="button"
-              onClick={handleLinkModeClick}
-              className="w-full px-6 py-3 text-sm font-bold rounded-xl bg-purple-500 text-white hover:bg-purple-600 shadow-lg shadow-purple-500/25 transition-all active:scale-95"
-            >
-              🔗 {i18nService.t('scenarioLinkModeBtn')} →
-            </button>
+            <CardActionRow
+              onConfigure={handleLinkModeClick}
+              onGoToMyTasks={onGoToMyTasks}
+              isZh={i18nService.currentLanguage === 'zh'}
+              label={'🔗 ' + i18nService.t('scenarioLinkModeBtn') + ' →'}
+              btnClass="bg-purple-500 hover:bg-purple-600 shadow-lg shadow-purple-500/25"
+            />
           </div>
         </div>
 

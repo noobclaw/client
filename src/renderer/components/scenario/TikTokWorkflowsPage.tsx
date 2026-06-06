@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { CardActionRow } from './CardActionRow';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 interface Props {
@@ -225,12 +226,14 @@ export const TikTokWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={autoEngage}
           onConfigure={() => handleConfigure(autoEngage)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
         <TikTokVideoDownloadCard
           loading={loading}
           scenario={videoDownload}
           onConfigure={handleVideoDownloadClick}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
       </section>
@@ -362,10 +365,11 @@ type CardProps = {
   loading: boolean;
   scenario: Scenario | null;
   onConfigure: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
 };
 
-const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-blue-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
@@ -382,21 +386,21 @@ const TikTokScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
             ? '每次运行按你配置的"随机区间"决定本轮点赞 / 关注 / 评论各做几次,然后按你的赛道关键词搜索 TikTok 视频自动按配额完成。评论由 AI 按视频文案 + 置顶评论自动匹配语言生成,行为间隔随机模拟真人。'
             : 'Each run rolls per-action counts from your random ranges, then searches TikTok with your track keywords and works through the quota. Comments are AI-generated, auto-matched to the video language.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
-        >
-          🎵 {isZh ? '开始互动' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '🎵 开始互动 →' : '🎵 Start →'}
+          btnClass="bg-cyan-500 hover:bg-cyan-600 shadow-lg shadow-cyan-500/25"
+        />
       </div>
     </div>
   );
 };
 
 // ── TikTok 视频无水印下载 card —— 一次性工具,蓝色区分于互动卡。
-const TikTokVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const TikTokVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
@@ -413,14 +417,14 @@ const TikTokVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scen
             ? '粘贴 1-20 个 TikTok 视频链接（支持 vm./vt.tiktok.com 短链），本地浏览器逐个打开，借浏览器自身网络栈解析并下载无水印原视频到本地。一次性任务，只需登录 TikTok 主站（大陆用户需开 VPN）；图集等非视频、非 TikTok 链接自动跳过。'
             : 'Paste 1-20 TikTok video links (vm./vt.tiktok.com short links OK); opens each locally and downloads the watermark-free source video via the browser network stack. One-time task — only needs main-site login. Photo posts and non-TikTok links are skipped.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-500/25 transition-all active:scale-95"
-        >
-          ⬇️ {isZh ? '开始下载' : 'Start Download'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '⬇️ 开始下载 →' : '⬇️ Start Download →'}
+          btnClass="bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/25"
+        />
       </div>
     </div>
   );
