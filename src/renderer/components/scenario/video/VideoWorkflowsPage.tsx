@@ -1638,7 +1638,7 @@ const VideoConfigModal: React.FC<{
   // 字幕字体:空 = 默认思源黑体;其余为 resources/fonts/ 下的字体文件名。
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。
-  const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 1);
+  const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 2);
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
@@ -1875,7 +1875,7 @@ const VideoConfigModal: React.FC<{
                     onClick={() => setMode('stock')}
                     title={isZh ? 'AI 口播稿 + 在线素材' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
-                    cost={isZh ? '单次最多 5 条 · 满批总价约 $0.5~1（配音/字幕/合成免费）' : 'Up to 5 per run · ~$0.5–1 total (TTS/subs/compose free)'}
+                    cost={isZh ? '按条计费 · 单条约 $0.08~$0.1（配音/字幕/合成免费，AI 写稿另计）' : 'Per clip · ~$0.08–0.1 each (TTS/subs/compose free; AI script extra)'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
