@@ -39,6 +39,56 @@ const MAX_LOGS = 600;       // 每条运行记录的日志条数上限
 
 export type VideoRunStatus = 'running' | 'done' | 'error';
 
+/** 视频任务的定时间隔(对齐 scenario 的 run_interval,但去掉 30min/1h —— 本地出片很吃
+ *  资源且按条计费,最短给到每 3 小时)。'once' = 仅手动,不自动重复。 */
+export type VideoRunInterval = 'once' | '3h' | '6h' | 'daily' | 'daily_random';
+
+/** 任务级定时配置(向导「出片」步收集,存到 VideoTask 上)。 */
+export interface VideoSchedule {
+  runInterval: VideoRunInterval;
+  /** runInterval==='daily' 时的触发时刻 "HH:MM"(本地时区)。 */
+  dailyTime?: string;
+}
+
+/**
+ * 计算下一次定时运行的时间戳(语义对齐 scenarioManager.computeNextPlannedRun):
+ *   - 'once'         → Infinity(永不自动触发;调用方应改存 undefined)
+ *   - '3h' / '6h'    → fromTs + 间隔 + [0,10min) 抖动
+ *   - 'daily'        → 下一个 HH:MM(今天已过则次日)± 15min 抖动
+ *   - 'daily_random' → 次日 0 点起 [0,24h) 随机一次
+ * fromTs 一般传「上次运行结束时间」(首次排程传 now)。
+ */
+export function computeNextVideoRun(
+  interval: VideoRunInterval,
+  dailyTime: string | undefined,
+  fromTs: number,
+): number {
+  const MIN = 60 * 1000;
+  const HOUR = 60 * MIN;
+  const jitter = (maxMs: number) => Math.floor(Math.random() * maxMs);
+  switch (interval) {
+    case '3h': return fromTs + 3 * HOUR + jitter(10 * MIN);
+    case '6h': return fromTs + 6 * HOUR + jitter(10 * MIN);
+    case 'daily': {
+      const [hhRaw, mmRaw] = (dailyTime || '08:00').split(':');
+      const hh = Math.min(23, Math.max(0, parseInt(hhRaw, 10) || 0));
+      const mm = Math.min(59, Math.max(0, parseInt(mmRaw, 10) || 0));
+      const d = new Date(fromTs);
+      const target = new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, 0, 0);
+      if (target.getTime() <= fromTs) target.setDate(target.getDate() + 1);
+      return target.getTime() + (jitter(30 * MIN) - 15 * MIN); // ±15min
+    }
+    case 'daily_random': {
+      const d = new Date(fromTs);
+      const nextMidnight = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0).getTime();
+      return nextMidnight + jitter(24 * HOUR);
+    }
+    case 'once':
+    default:
+      return Infinity;
+  }
+}
+
 export interface VideoTaskLog {
   /** "HH:MM:SS" */
   time: string;
@@ -71,6 +121,15 @@ export interface VideoTask {
   cumulativeTokens: number;
   /** 该任务历次运行累计 USD 成本(服务端权威 costUsd 之和);老任务为 0。 */
   cumulativeCostUsd: number;
+  // ── 定时运行(可选;缺省 = 'once' 仅手动,跟老任务向后兼容) ──
+  /** 定时间隔;缺省 / 'once' = 不自动重复。 */
+  runInterval?: VideoRunInterval;
+  /** runInterval==='daily' 时的触发时刻 "HH:MM"。 */
+  dailyTime?: string;
+  /** 定时开关(详情页可暂停 / 恢复;缺省按 runInterval!=='once' 推定)。 */
+  scheduleEnabled?: boolean;
+  /** 下一次计划运行时间戳(调度器算出并持久化,卡片 / 详情页展示用)。 */
+  nextPlannedRunAt?: number;
 }
 
 /** 每次运行产生一条【运行记录】= 进度 + 日志 + 成片 + 消耗。 */
@@ -136,9 +195,61 @@ class VideoTaskStore {
   private runs: VideoRunRecord[] = [];
   private listeners = new Set<Listener>();
   private running = false;
+  private schedulerTimer: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.load();
+    this.startScheduler();
+  }
+
+  // ── 定时调度(渲染端轻量轮询) ───────────────────────────
+  /**
+   * 视频创作是纯本地流水线、任务态全在本 store(renderer/localStorage),所以定时也放
+   * 在渲染端跑一个每分钟的轮询,而不是接进主进程 scenarioManager(那套是为浏览器自动化
+   * 设计的,塞视频任务进去要改一大堆主进程代码)。代价:只在 app 窗口开着时才会触发
+   * —— 这对「本地出片」恰好合理(出片本来就要 app 在前台)。单任务串行,跟手动跑互斥。
+   */
+  private startScheduler() {
+    if (typeof setInterval === 'undefined' || this.schedulerTimer) return;
+    // setInterval 首跳在 60s 后 —— 顺带给 app 启动留出缓冲,不在刚打开就突然开跑。
+    this.schedulerTimer = setInterval(() => {
+      try { this.schedulerTick(); } catch { /* 单次 tick 抛错不影响后续 */ }
+    }, 60 * 1000);
+  }
+
+  private schedulerTick() {
+    const now = Date.now();
+    // 1) 补算:开了定时但还没算下次运行的任务(老数据 / 刚开关过)。
+    let patched = false;
+    for (const t of this.tasks) {
+      if (t.scheduleEnabled && t.runInterval && t.runInterval !== 'once'
+        && typeof t.nextPlannedRunAt !== 'number') {
+        t.nextPlannedRunAt = computeNextVideoRun(t.runInterval, t.dailyTime, now);
+        t.updatedAt = now;
+        patched = true;
+      }
+    }
+    if (patched) this.emit();
+    // 2) 有任务在跑就让位,下一跳再说(本地出片单任务串行)。
+    if (this.running) return;
+    // 3) 选「到点且最早」的一个开跑。runTask 的 .finally 会重算它的 nextPlannedRunAt。
+    const due = this.tasks
+      .filter((t) => t.scheduleEnabled && t.runInterval && t.runInterval !== 'once'
+        && typeof t.nextPlannedRunAt === 'number' && now >= (t.nextPlannedRunAt as number))
+      .sort((a, b) => (a.nextPlannedRunAt as number) - (b.nextPlannedRunAt as number));
+    if (due.length === 0) return;
+    this.runTask(due[0].id);
+  }
+
+  /** 详情页暂停 / 恢复定时(不改 interval,只切开关并重算 / 清除下次运行)。 */
+  setScheduleEnabled(id: string, enabled: boolean): void {
+    this.patchTask(id, (t) => {
+      if (!t.runInterval || t.runInterval === 'once') return; // 没设过定时,开关无意义
+      t.scheduleEnabled = enabled;
+      t.nextPlannedRunAt = enabled
+        ? computeNextVideoRun(t.runInterval, t.dailyTime, Date.now())
+        : undefined;
+    });
   }
 
   // ── 持久化 ──────────────────────────────────────────────
@@ -311,9 +422,11 @@ class VideoTaskStore {
   }
 
   // ── 任务 CRUD ───────────────────────────────────────────
-  /** 仅创建任务(不立即跑),返回 taskId。 */
-  createTask(input: VideoCreationInput, title: string): string {
+  /** 仅创建任务(不立即跑),返回 taskId。schedule 缺省 = 'once' 仅手动。 */
+  createTask(input: VideoCreationInput, title: string, schedule?: VideoSchedule): string {
     const id = genId();
+    const interval = schedule?.runInterval || 'once';
+    const scheduled = interval !== 'once';
     const task: VideoTask = {
       id,
       title: title || '视频创作任务',
@@ -323,6 +436,10 @@ class VideoTaskStore {
       runCount: 0,
       cumulativeTokens: 0,
       cumulativeCostUsd: 0,
+      runInterval: interval,
+      dailyTime: schedule?.dailyTime,
+      scheduleEnabled: scheduled,
+      nextPlannedRunAt: scheduled ? computeNextVideoRun(interval, schedule?.dailyTime, Date.now()) : undefined,
     };
     this.tasks.unshift(task);
     if (this.tasks.length > MAX_TASKS) this.tasks = this.tasks.slice(0, MAX_TASKS);
@@ -330,13 +447,26 @@ class VideoTaskStore {
     return id;
   }
 
-  /** 编辑任务配置 / 标题(运行中不允许改)。 */
-  updateTask(id: string, input: VideoCreationInput, title: string): boolean {
+  /** 编辑任务配置 / 标题 / 定时(运行中不允许改)。schedule 缺省则不动原定时设置。 */
+  updateTask(id: string, input: VideoCreationInput, title: string, schedule?: VideoSchedule): boolean {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return false;
     if (t.lastStatus === 'running') return false;
     t.input = input;
     t.title = title || t.title;
+    if (schedule) {
+      const interval = schedule.runInterval || 'once';
+      const scheduled = interval !== 'once';
+      const changed = t.runInterval !== interval || t.dailyTime !== schedule.dailyTime;
+      t.runInterval = interval;
+      t.dailyTime = schedule.dailyTime;
+      t.scheduleEnabled = scheduled;
+      // 关掉 → 清下次;间隔/时刻变了或还没算过 → 重算。
+      if (!scheduled) t.nextPlannedRunAt = undefined;
+      else if (changed || typeof t.nextPlannedRunAt !== 'number') {
+        t.nextPlannedRunAt = computeNextVideoRun(interval, schedule.dailyTime, Date.now());
+      }
+    }
     t.updatedAt = Date.now();
     this.emit();
     return true;
@@ -461,6 +591,10 @@ class VideoTaskStore {
           t.lastRunAt = run2.finishedAt || Date.now();
           t.cumulativeTokens += run2.tokensUsed || 0;
           t.cumulativeCostUsd = (t.cumulativeCostUsd || 0) + (run2.costUsd || 0);
+          // 定时任务:本次跑完即排下一次(从现在算起,避免出片耗时累积漂移)。
+          if (t.scheduleEnabled && t.runInterval && t.runInterval !== 'once') {
+            t.nextPlannedRunAt = computeNextVideoRun(t.runInterval, t.dailyTime, Date.now());
+          }
         });
       });
 
@@ -471,9 +605,9 @@ class VideoTaskStore {
    * 便捷方法:创建任务并立即跑。返回 taskId;已有任务在跑则返回 null。
    * 给「新建视频创作任务」一步到位用。
    */
-  createAndRun(input: VideoCreationInput, title: string): string | null {
+  createAndRun(input: VideoCreationInput, title: string, schedule?: VideoSchedule): string | null {
     if (this.running) return null;
-    const taskId = this.createTask(input, title);
+    const taskId = this.createTask(input, title, schedule);
     const runId = this.runTask(taskId);
     if (!runId) {
       // 理论上不会到这(刚 createTask 完且 running=false),兜底回滚。

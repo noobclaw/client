@@ -31,6 +31,8 @@ import {
   type VideoRunRecord,
   type VideoRunStatus,
   type VideoTaskLog,
+  type VideoRunInterval,
+  type VideoSchedule,
 } from '../../../services/videoTaskStore';
 
 // 订阅 store 的 React hook:任意视图都能拿到最新任务列表 + 运行记录并自动重渲染。
@@ -171,6 +173,34 @@ function fmtRelative(ts: number | null | undefined, isZh: boolean): string {
   const hrs = Math.round(mins / 60);
   if (hrs < 24) return isZh ? `${hrs} 小时前` : `${hrs} hr ago`;
   return isZh ? `${Math.round(hrs / 24)} 天前` : `${Math.round(hrs / 24)} d ago`;
+}
+
+/** 定时间隔的中/英文短标签(卡片 / 详情页胶囊用);未设定时返回 null。 */
+function intervalLabel(task: VideoTask, isZh: boolean): string | null {
+  const iv = task.runInterval;
+  if (!iv || iv === 'once') return null;
+  if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
+  switch (iv) {
+    case '3h': return isZh ? '每 3 小时' : 'Every 3h';
+    case '6h': return isZh ? '每 6 小时' : 'Every 6h';
+    case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}` : `Daily ${task.dailyTime || '08:00'}`;
+    case 'daily_random': return isZh ? '每日随机' : 'Daily random';
+    default: return null;
+  }
+}
+
+/** 下一次计划运行的绝对时刻短文案:今天/明天 HH:MM,更远给 MM-DD HH:MM。 */
+function fmtNextRun(ts: number | null | undefined, isZh: boolean): string {
+  if (!ts || !isFinite(ts)) return '—';
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const hm = `${p(d.getHours())}:${p(d.getMinutes())}`;
+  const now = new Date();
+  const startOfDay = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const dayDiff = Math.round((startOfDay(d) - startOfDay(now)) / 86400000);
+  if (dayDiff <= 0) return isZh ? `今天 ${hm}` : `Today ${hm}`;
+  if (dayDiff === 1) return isZh ? `明天 ${hm}` : `Tomorrow ${hm}`;
+  return `${p(d.getMonth() + 1)}-${p(d.getDate())} ${hm}`;
 }
 
 /** 统计卡(对齐 scenario 详情页 StatCard:小标题 + 大值,可选点击跳转)。 */
@@ -438,11 +468,17 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         </div>
       </div>
 
-      {/* footer — 只展示「已生成 N 个视频」 */}
-      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs">
+      {/* footer — 「已生成 N 个视频」+ 定时胶囊(设了定时才显) */}
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between gap-2">
         <span className="text-gray-500 dark:text-gray-400">
           {isZh ? '已生成' : 'Made'}：🎬 <strong className="dark:text-white">{made}</strong> {isZh ? '个视频' : made === 1 ? 'video' : 'videos'}
         </span>
+        {intervalLabel(task, isZh) && (
+          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+            ⏰ {intervalLabel(task, isZh)}
+            {task.scheduleEnabled && task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
+          </span>
+        )}
       </div>
     </button>
   );
@@ -1124,6 +1160,23 @@ const VideoTaskDetail: React.FC<{
           onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
           actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
         />
+        {/* 定时任务才显「下次运行」;点卡片暂停 / 恢复定时(不改间隔)。 */}
+        {task.runInterval && task.runInterval !== 'once' && (
+          <VStatCard
+            label={isZh ? '下次运行' : 'Next Run'}
+            value={
+              task.scheduleEnabled
+                ? `⏰ ${fmtNextRun(task.nextPlannedRunAt, isZh)}`
+                : (isZh ? '⏸ 已暂停' : '⏸ Paused')
+            }
+            onClick={() => videoTaskStore.setScheduleEnabled(task.id, !task.scheduleEnabled)}
+            actionLabel={
+              task.scheduleEnabled
+                ? `${intervalLabel(task, isZh)} · ${isZh ? '点击暂停定时' : 'Click to pause'}`
+                : (isZh ? '点击恢复定时 →' : 'Click to resume →')
+            }
+          />
+        )}
       </div>
 
       {/* 当前运行明细 —— 每步一个标题 + 内联流式日志框(对齐币安任务详情的
@@ -1639,6 +1692,9 @@ const VideoConfigModal: React.FC<{
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。
   const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 2);
+  // 定时运行(参照抖音):'once' 仅手动;其余自动重复。daily 才用 dailyTime。
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
+  const [dailyTime, setDailyTime] = useState<string>(editTask?.dailyTime || '08:00');
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
 
@@ -1792,9 +1848,14 @@ const VideoConfigModal: React.FC<{
 
   const handleSubmit = async () => {
     const input = buildInput();
+    // daily 才带 dailyTime,其余间隔不需要(避免存无意义的时刻)。
+    const schedule: VideoSchedule = {
+      runInterval,
+      dailyTime: runInterval === 'daily' ? dailyTime : undefined,
+    };
     if (isEdit && editTask) {
-      // 编辑:保存配置,不立即跑(用户回详情页再点重跑)。
-      const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle());
+      // 编辑:保存配置 + 定时,不立即跑(用户回详情页再点重跑)。
+      const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle(), schedule);
       if (!ok) {
         setSubmitError(isZh ? '任务正在运行,无法编辑。' : 'Task is running, cannot edit.');
         return;
@@ -1824,7 +1885,7 @@ const VideoConfigModal: React.FC<{
         return;
       }
     }
-    const id = videoTaskStore.createAndRun(input, buildTitle());
+    const id = videoTaskStore.createAndRun(input, buildTitle(), schedule);
     if (!id) {
       setSubmitError(isZh ? '已有任务在生成中,请等它完成后再新建。' : 'A task is already running. Please wait.');
       return;
@@ -2423,6 +2484,55 @@ const VideoConfigModal: React.FC<{
                     </button>
                   ))}
                 </div>
+              </Field>
+
+              {/* 定时运行(参照抖音):选「不重复」就是手动单次;选周期则到点自动重跑,
+                  每次跑都按条计费。app 需保持开启才会触发(本地出片本就要 app 在前台)。 */}
+              <Field
+                label={isZh ? '定时运行' : 'Scheduled runs'}
+                hint={isZh ? '到点自动按上面的配置重跑（每次按条计费）' : 'auto-rerun on schedule (billed per clip each time)'}
+              >
+                <div className="grid grid-cols-3 gap-2">
+                  {([
+                    { v: 'once', zh: '不重复', en: 'Once' },
+                    { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
+                    { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
+                    { v: 'daily', zh: '每日定时', en: 'Daily at…' },
+                    { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
+                  ] as { v: VideoRunInterval; zh: string; en: string }[]).map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => setRunInterval(o.v)}
+                      className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${
+                        runInterval === o.v
+                          ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
+                          : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
+                      }`}
+                    >
+                      {isZh ? o.zh : o.en}
+                    </button>
+                  ))}
+                </div>
+                {runInterval === 'daily' && (
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '每天' : 'Each day at'}</span>
+                    <input
+                      type="time"
+                      value={dailyTime}
+                      onChange={(e) => setDailyTime(e.target.value || '08:00')}
+                      className="px-2 py-1 rounded-lg text-sm border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+                    />
+                    <span className="text-[11px] text-gray-400">{isZh ? '前后 ±15 分钟随机抖动' : '±15 min jitter'}</span>
+                  </div>
+                )}
+                {runInterval !== 'once' && (
+                  <div className="mt-2 text-[11px] text-amber-500">
+                    {isZh
+                      ? '⚠️ 定时任务会在到点时自动出片并按条扣费，请确保账户余额充足；应用需保持开启。'
+                      : '⚠️ Scheduled runs auto-generate and bill per clip — keep enough balance and keep the app running.'}
+                  </div>
+                )}
               </Field>
 
               <Field label={isZh ? '出片后' : 'After generation'}>
