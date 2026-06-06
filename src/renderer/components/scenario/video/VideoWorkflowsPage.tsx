@@ -905,14 +905,9 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
             ✅ {isZh ? '合成完成 · 成片已保存' : 'Done · video saved'}
           </div>
           <div className="text-[11px] text-gray-500 dark:text-gray-400 break-all mb-3">{run.outputPath}</div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => videoCreationService.openFile(run.outputPath!)}
-              className="px-4 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 transition-colors"
-            >
-              ▶ {isZh ? '预览成片' : 'Preview'}
-            </button>
+          {/* 「预览成片」直开文件在 Tauri sidecar 下不稳(openFile 经常没反应),
+             改为只给「打开目录」,用户进文件夹自己双击成片播放 —— 稳。 */}
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => openFolder(dirOf(run.outputPath))}
@@ -920,6 +915,9 @@ const RunBody: React.FC<{ isZh: boolean; run: VideoRunRecord | undefined; showPr
             >
               📂 {isZh ? '打开输出目录' : 'Open folder'}
             </button>
+            <span className="text-[11px] text-gray-500 dark:text-gray-400">
+              {isZh ? '在文件夹里双击成片即可播放' : 'Double-click the file in the folder to play'}
+            </span>
           </div>
         </div>
       )}
