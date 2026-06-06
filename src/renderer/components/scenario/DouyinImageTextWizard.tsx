@@ -305,10 +305,10 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                     {
                       mode: true,
                       icon: '📷',
-                      titleZh: `网络图片（从${platZh}抓现成的）`,
-                      titleEn: `Web images (from ${platEn})`,
-                      descZh: `按你填的关键词去${platZh}抓相关图片,成本较低。`,
-                      descEn: `Grabs relevant images from ${platEn} by your keywords. Lower cost.`,
+                      titleZh: '网络图片（去抖音抓现成的）',
+                      titleEn: 'Web images (grabbed from Douyin)',
+                      descZh: '按你填的关键词去抖音搜相关真实图片下载,不调 AI 生图。',
+                      descEn: 'Searches Douyin by your keywords and downloads real images — no AI generation.',
                     },
                   ]).map((opt) => {
                     const active = useRealPhotos === opt.mode;
@@ -432,8 +432,8 @@ export const DouyinImageTextWizard: React.FC<Props> = ({
                       不用 UI 点;按本篇张数逐张独立抽 1 个关键词,每次取 1 张。 */}
                   <div className="mt-2 rounded-md bg-gray-100 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
                     {isZh
-                      ? `ℹ️ 抓图规则: 按本篇所需张数, 逐张从你填的关键词里随机抽 1 个去搜${platZh}相关图片, 每搜一次只取 1 张图 — 关键词填得越多, 本篇配图越多样。`
-                      : `ℹ️ Scrape rule: For each image needed, randomly pick 1 keyword from your list to search ${platEn}, take 1 image per search. More keywords = more variety per post.`}
+                      ? `ℹ️ 抓图规则: 按本篇所需张数, 逐张从你填的关键词里随机抽 1 个去搜【抖音】相关真实图片(图文·半年内), 每搜一次只取 1 张图 — 关键词填得越多, 本篇配图越多样。`
+                      : `ℹ️ Scrape rule: For each image needed, randomly pick 1 keyword from your list to search Douyin (image-posts, last 6 months), take 1 image per search. More keywords = more variety per post.`}
                   </div>
                 </div>
               )}
