@@ -221,8 +221,8 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
     ...FALLBACK_SCENARIO,
     id: 'xhs_video_download',
     workflow_type: 'xhs_video_download' as any,
-    name_zh: '小红书 · 视频原画下载',
-    name_en: 'Xiaohongshu · Raw Video Download',
+    name_zh: '小红书 · 视频无水印下载',
+    name_en: 'Xiaohongshu · Watermark-free Video Download',
     description_zh: '粘贴 1-20 个小红书视频链接，依次在本地浏览器打开解析出原视频并下载到本地。',
     description_en: 'Paste 1-20 Xiaohongshu video links; opens each locally, resolves the source video and downloads it. One-time task, only needs main-site login.',
     icon: '⬇️',
@@ -553,10 +553,10 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
           <div className="relative flex flex-col h-full">
             <div className="inline-flex items-center gap-1.5 text-xs font-medium text-blue-500 mb-2">
               <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              {i18nService.currentLanguage === 'zh' ? '原画下载' : 'Raw'}
+              {i18nService.currentLanguage === 'zh' ? '无水印下载' : 'No watermark'}
             </div>
             <h2 className="text-lg sm:text-xl font-bold dark:text-white mb-1.5">
-              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频原画下载' : 'XHS Raw Video Download'}
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
             </h2>
             <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed mb-4 flex-1">
               {i18nService.currentLanguage === 'zh'
@@ -751,7 +751,7 @@ export const XhsWorkflowsPage: React.FC<Props> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
             <h3 className="text-lg font-bold dark:text-white mb-2">
-              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频原画下载' : 'XHS Raw Video Download'}
+              ⬇️ {i18nService.currentLanguage === 'zh' ? '小红书 · 视频无水印下载' : 'XHS Watermark-free Video Download'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {i18nService.currentLanguage === 'zh'

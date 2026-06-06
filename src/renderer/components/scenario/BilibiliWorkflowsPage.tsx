@@ -109,8 +109,8 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
     platform: 'bilibili' as any,
     workflow_type: 'bilibili_video_download' as any,
     category: 'tool',
-    name_zh: '哔哩哔哩 · 视频原画下载',
-    name_en: 'Bilibili · Raw Video Download',
+    name_zh: '哔哩哔哩 · 视频无水印下载',
+    name_en: 'Bilibili · Watermark-free Video Download',
     description_zh: '粘贴 1-20 个 B 站视频链接，依次在本地浏览器打开，借 B 站页面自身签名解析出原视频并下载到本地。一次性任务，只需登录 B 站主站。',
     description_en: 'Paste 1-20 Bilibili video links; opens each locally, resolves the source video and downloads it. One-time task, only needs main-site login.',
     icon: '⬇️',
@@ -307,7 +307,7 @@ export const BilibiliWorkflowsPage: React.FC<Props> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
             <h3 className="text-lg font-bold dark:text-white mb-2">
-              ⬇️ {isZh ? '哔哩哔哩 · 视频原画下载' : 'Bilibili Raw Video Download'}
+              ⬇️ {isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Watermark-free Video Download'}
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               {isZh
