@@ -13,6 +13,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { i18nService } from '../../services/i18n';
 import { scenarioService, type Scenario, type Task, type Draft } from '../../services/scenario';
 import { LoginRequiredModal } from './LoginRequiredModal';
+import { CardActionRow } from './CardActionRow';
 import { noobClawAuth } from '../../services/noobclawAuth';
 
 interface Props {
@@ -309,24 +310,28 @@ export const DouyinWorkflowsPage: React.FC<Props> = ({
           loading={loading}
           scenario={autoEngage}
           onConfigure={() => handleConfigure(autoEngage)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
         <DouyinVideoDownloadCard
           loading={loading}
           scenario={videoDownload}
           onConfigure={handleVideoDownloadClick}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
         <DouyinImageTextCard
           loading={loading}
           scenario={imageText}
           onConfigure={() => handleConfigure(imageText)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
         <DouyinReplyFansCard
           loading={loading}
           scenario={replyFans}
           onConfigure={() => handleConfigure(replyFans)}
+          onGoToMyTasks={onGoToMyTasks}
           isZh={isZh}
         />
       </section>
@@ -468,10 +473,11 @@ type CardProps = {
   loading: boolean;
   scenario: Scenario | null;
   onConfigure: () => void;
+  onGoToMyTasks?: () => void;
   isZh: boolean;
 };
 
-const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-violet-500/10 blur-3xl pointer-events-none" />
@@ -488,14 +494,14 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
             ? '每次运行按你配置的"随机区间"决定本轮点赞 / 关注 / 评论各做几次,然后按你的赛道关键词搜索抖音视频自动按配额完成。评论由 AI 按视频文案 + 置顶评论自动生成,行为间隔随机模拟真人。'
             : 'Each run rolls per-action counts from your random ranges, then searches Douyin with your track keywords and works through the quota. Comments are AI-generated from video caption + top comments.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-violet-500 hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-violet-500/25 transition-all active:scale-95"
-        >
-          🎶 {isZh ? '开始互动' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '🎶 开始互动 →' : '🎶 Start →'}
+          btnClass="bg-violet-500 hover:bg-violet-600 shadow-lg shadow-violet-500/25"
+        />
       </div>
     </div>
   );
@@ -503,7 +509,7 @@ const DouyinScenarioCard: React.FC<CardProps> = ({ loading, scenario: _scenario,
 
 // ── 抖音自动回复粉丝 card —— cyan 主色区分于互动涨粉(violet)/图文(fuchsia)。
 //    强调"评论管理集中回复 + 只回粉丝不评论作品本身"。
-const DouyinReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const DouyinReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-cyan-500/30 bg-gradient-to-br from-cyan-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none" />
@@ -520,14 +526,14 @@ const DouyinReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario
             ? '在抖音创作者中心「评论管理」逐条回复粉丝评论,AI 按评论内容写回应,可选按概率加引流尾巴。已回复过的、自己留的自动跳过,只回粉丝、绝不评论作品本身,真人节奏间隔。'
             : 'Replies to fan comments in Douyin Creator Center comment management. AI-tailored replies with optional funnel tail. Skips already-replied / your own; only replies to fans, never the video itself.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-cyan-500 hover:bg-cyan-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-cyan-500/25 transition-all active:scale-95"
-        >
-          💬 {isZh ? '开始回复' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '💬 开始回复 →' : '💬 Start →'}
+          btnClass="bg-cyan-500 hover:bg-cyan-600 shadow-lg shadow-cyan-500/25"
+        />
       </div>
     </div>
   );
@@ -535,7 +541,7 @@ const DouyinReplyFansCard: React.FC<CardProps> = ({ loading, scenario: _scenario
 
 // ── 抖音图文创作 card —— 跟 XHS 爆款仿写视觉同源,主色沿用抖音页 violet 保持
 //    平台一致性。文案突出"3 段灵感来源 + AI 改写 + 内容图 + 自动暂存"四步。
-const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-pink-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
@@ -552,21 +558,21 @@ const DouyinImageTextCard: React.FC<CardProps> = ({ loading, scenario: _scenario
             ? '你填 3 段灵感来源(经历 / 想法 / 笔记都行),每次运行 AI 随机抽一段,按你的人设改写成抖音图文笔记,配一张封面图 + 一张内容图,自动发布到抖音(也可选存草稿/仅本地)。'
             : 'Fill 3 source snippets (notes / experiences). Each run picks one at random, rewrites in your persona, generates 1 cover + 1 content image, then auto-publishes (or draft / local).'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
-        >
-          📝 {isZh ? '开始创作' : 'Start'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '📝 开始创作 →' : '📝 Start →'}
+          btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+        />
       </div>
     </div>
   );
 };
 
 // ── 抖音视频无水印下载 card —— 一次性工具,蓝色区分于互动/创作两张卡。
-const DouyinVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, isZh }) => {
+const DouyinVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scenario, onConfigure, onGoToMyTasks, isZh }) => {
   return (
     <div className="relative rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-500/10 via-sky-500/5 to-transparent p-5 overflow-hidden flex flex-col">
       <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-blue-500/10 blur-3xl pointer-events-none" />
@@ -583,14 +589,14 @@ const DouyinVideoDownloadCard: React.FC<CardProps> = ({ loading, scenario: _scen
             ? '粘贴 1-20 个抖音视频链接（支持 v.douyin.com 短链），本地浏览器逐个打开，借抖音页面自身签名解析出无水印原视频依次下载到本地。一次性任务，只需登录抖音主站；图文/合集等非视频、非抖音链接自动跳过。'
             : 'Paste 1-20 Douyin video links (v.douyin.com short links OK); opens each locally and downloads the watermark-free source video. One-time task — only needs main-site login. Image posts and non-Douyin links are skipped.'}
         </p>
-        <button
-          type="button"
-          onClick={onConfigure}
-          disabled={loading}
-          className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-blue-500 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white shadow-lg shadow-blue-500/25 transition-all active:scale-95"
-        >
-          ⬇️ {isZh ? '开始下载' : 'Start Download'} →
-        </button>
+        <CardActionRow
+          loading={loading}
+          onConfigure={onConfigure}
+          onGoToMyTasks={onGoToMyTasks}
+          isZh={isZh}
+          label={isZh ? '⬇️ 开始下载 →' : '⬇️ Start Download →'}
+          btnClass="bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/25"
+        />
       </div>
     </div>
   );
