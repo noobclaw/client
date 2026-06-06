@@ -643,7 +643,7 @@ const BinanceCard: React.FC<BinanceCardProps> = ({
             onClick={() => onGoToMyTasks?.()}
             className="flex-[3] px-2 py-2.5 text-xs font-medium rounded-xl text-gray-300 bg-white/5 hover:bg-white/10 border border-white/10 transition-colors whitespace-nowrap"
           >
-            {isZh ? '查看已有任务' : 'My tasks'} »
+            {isZh ? '已有任务' : 'My tasks'} »
           </button>
         </div>
       </div>

@@ -281,7 +281,7 @@ const CardActionRow: React.FC<{
       onClick={() => onGoToMyTasks?.()}
       className="flex-[3] px-2 py-2.5 text-xs font-medium rounded-xl text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/60 hover:bg-gray-200 dark:hover:bg-gray-700/80 border border-gray-300 dark:border-gray-600 transition-colors whitespace-nowrap"
     >
-      {isZh ? '查看已有任务' : 'My tasks'} »
+      {isZh ? '已有任务' : 'My tasks'} »
     </button>
   </div>
 );

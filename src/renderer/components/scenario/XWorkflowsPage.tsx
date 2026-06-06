@@ -215,7 +215,7 @@ export const XWorkflowsPage: React.FC<Props> = ({
           no platform hero / intro paragraph / mainland-VPN warning above.
           The three Twitter scenarios speak for themselves; the bottom
           features row covers what was previously in the hero pills. */}
-      <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+      <section className="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* 1. Auto engage */}
         <ScenarioCard
           color="emerald"
