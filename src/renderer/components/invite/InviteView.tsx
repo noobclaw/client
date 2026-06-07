@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { CnyWithdrawModal } from '../wallet/CnyWithdrawModal';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi } from '../../services/noobclawApi';
 import { i18nService } from '../../services/i18n';
@@ -66,7 +67,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   // the NoobCoin reward stream. Older states used a flat 3-tab list — this
   // pair of states preserves the same content via composition.
   const [detailTab, setDetailTab] = useState<'records' | 'rebate'>('records');
-  const [rebateSubTab, setRebateSubTab] = useState<'usdt' | 'noob'>('usdt');
+  const [rebateSubTab, setRebateSubTab] = useState<'usdt' | 'noob' | 'cny'>('usdt');
   // v5.x+: list now spans 6 levels (was only L1). Each row carries the level
   // (1..6) so we can render an L1/L2.../L6 chip identical to the rewards tab.
   const [inviteList, setInviteList] = useState<Array<{ wallet: string; createdAt: string; level?: number }>>([]);
@@ -104,6 +105,18 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
   const [usdtEarningsPage, setUsdtEarningsPage] = useState(1);
   const [usdtEarningsTotal, setUsdtEarningsTotal] = useState(0);
   const [usdtLoading, setUsdtLoading] = useState(false);
+  // v6.x: CNY 返佣明细(卡密充值的人民币 6 级 cascade)。镜像 usdtEarnings,
+  //   但金额是 amount_cny、无链上 tx(CNY 是手动提现)。
+  const [cnyEarnings, setCnyEarnings] = useState<Array<{
+    id: string; level: number | null; contributor_wallet: string | null;
+    amount_cny: string; reason: string; source_asset: string; order_id: string | null;
+    earned_at: string; status: 'sent' | 'pending';
+  }>>([]);
+  const [cnyEarningsPage, setCnyEarningsPage] = useState(1);
+  const [cnyEarningsTotal, setCnyEarningsTotal] = useState(0);
+  const [cnyLoading, setCnyLoading] = useState(false);
+  // CNY 提现弹窗开关 — v6.x 改为客户端内嵌 modal(原来是跳 cn 网页)。
+  const [showCnyWithdraw, setShowCnyWithdraw] = useState(false);
   const PAGE_SIZE = 10;
 
   useEffect(() => {
@@ -285,10 +298,24 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
     }
   };
 
-  const switchRebateSub = (sub: 'usdt' | 'noob') => {
+  const loadCnyRebate = async (page = 1) => {
+    setCnyLoading(true);
+    try {
+      const data = await noobClawApi.getCnyRebateEarnings(page, PAGE_SIZE);
+      setCnyEarnings(data.items || []);
+      setCnyEarningsTotal(data.total || 0);
+      setCnyEarningsPage(page);
+    } finally {
+      setCnyLoading(false);
+    }
+  };
+
+  const switchRebateSub = (sub: 'usdt' | 'noob' | 'cny') => {
     setRebateSubTab(sub);
     if (sub === 'usdt') {
       loadUsdtRebate(1);
+    } else if (sub === 'cny') {
+      loadCnyRebate(1);
     } else {
       loadRewards(1);
     }
@@ -807,18 +834,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
               </div>
               {/* v6.x: CNY 总返佣 stat card — 卡密充值的人民币 6 级 cascade 累积。
-                  点击 → 调用 electron shell.openExternal 打开 cn 站 ?withdraw=open hash,
-                  让 cn 站 ucOpenCnyWithdraw 自动弹提现 modal(三数字+申请+历史)。
-                  client 本身不内嵌提现 UI:① 上传二维码要 multipart,electron renderer
-                  里搞文件输入不如浏览器原生 ② 不同地区/网络下二维码加载/截图都有差异,
-                  浏览器路径已经验证过最稳 ③ 提现是低频高金额操作,跳 web 让用户多看一眼
-                  规则反而是好事(防止误操作)。 */}
+                  点击 → 内嵌 CnyWithdrawModal(三数字 + 上传收款码 + 申请 + 历史)。
+                  早期版本曾跳 cn 网页提现(顾虑 multipart 上传),但客户端头像上传已证明
+                  multipart 在 renderer 可用,故 v6.x 改为客户端内嵌,体验更顺。 */}
               <div
                 className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center cursor-pointer hover:border-primary transition-colors"
-                onClick={() => {
-                  try { (window as any).electronAPI?.openExternal?.('https://noobclaw.com/cn/#cny-withdraw'); }
-                  catch { window.open('https://noobclaw.com/cn/#cny-withdraw', '_blank'); }
-                }}
+                onClick={() => setShowCnyWithdraw(true)}
                 title={i18nService.t('inviteCnyTotalHint')}
               >
                 <div className="text-xl font-bold text-primary tabular-nums">¥{animCny.toFixed(2)}</div>
@@ -872,6 +893,16 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 }`}
               >
                 {i18nService.t('inviteRebateUsdtSub')}
+              </button>
+              <button
+                onClick={() => switchRebateSub('cny')}
+                className={`flex-1 py-1 text-xs font-medium rounded-md transition-colors ${
+                  rebateSubTab === 'cny'
+                    ? 'bg-primary/10 text-primary'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+                }`}
+              >
+                {i18nService.currentLanguage === 'zh' ? 'CNY 返佣' : 'CNY Rebate'}
               </button>
               <button
                 onClick={() => switchRebateSub('noob')}
@@ -986,6 +1017,62 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   </div>
                 </div>
               )
+            ) : detailTab === 'rebate' && rebateSubTab === 'cny' ? (
+              // v6.x CNY 返佣明细 — 卡密充值的人民币 6 级 cascade。CNY 是手动提现,
+              // 无链上 tx;顶部放「去提现」按钮(内嵌 modal)。
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowCnyWithdraw(true)}
+                  className="w-full mb-2 py-1.5 rounded-lg text-xs font-semibold bg-green-500/10 text-green-600 dark:text-green-400 hover:bg-green-500/20 transition-colors"
+                >
+                  💴 {i18nService.currentLanguage === 'zh' ? '去提现 CNY →' : 'Withdraw CNY →'}
+                </button>
+                {cnyLoading ? (
+                  <div className="flex items-center justify-center py-12 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">Loading...</div>
+                ) : cnyEarnings.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                    <p className="text-xs">{i18nService.currentLanguage === 'zh' ? '还没有 CNY 返佣记录' : 'No CNY rebate records yet'}</p>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="grid grid-cols-4 gap-1 px-2 py-1.5 text-xs font-medium dark:text-claude-darkTextSecondary text-claude-textSecondary border-b dark:border-claude-darkBorder border-claude-border mb-1">
+                      <span>{i18nService.currentLanguage === 'zh' ? '金额' : 'Amount'}</span>
+                      <span>{i18nService.currentLanguage === 'zh' ? '来源' : 'From'}</span>
+                      <span>{i18nService.currentLanguage === 'zh' ? '状态' : 'Status'}</span>
+                      <span>{i18nService.currentLanguage === 'zh' ? '时间' : 'Time'}</span>
+                    </div>
+                    <div className="space-y-1">
+                      {cnyEarnings.map((row) => {
+                        const sent = row.status === 'sent';
+                        return (
+                          <div key={row.id} className="grid grid-cols-4 gap-1 items-center px-2 py-1.5 rounded-lg dark:bg-claude-darkSurfaceInset bg-gray-50 text-xs">
+                            <span className="font-semibold text-green-500">+¥{parseFloat(row.amount_cny).toFixed(2)}</span>
+                            <span className="flex items-center gap-1 min-w-0">
+                              <span className="font-mono dark:text-claude-darkText text-claude-text text-[10px]">
+                                {row.contributor_wallet ? maskWallet(row.contributor_wallet) : '-'}
+                              </span>
+                              {row.level && (
+                                <span className={`inline-flex items-center justify-center px-1 py-0.5 rounded text-[9px] font-medium flex-shrink-0 ${
+                                  row.level === 1 ? 'bg-primary/10 text-primary' : 'bg-gray-500/10 dark:text-claude-darkTextSecondary text-claude-textSecondary'
+                                }`}>
+                                  L{row.level}
+                                </span>
+                              )}
+                            </span>
+                            <span className={`inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium ${sent ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
+                              {sent ? (i18nService.currentLanguage === 'zh' ? '✓ 已入账' : '✓ Credited') : (i18nService.currentLanguage === 'zh' ? '⏳ 待入账' : '⏳ Pending')}
+                            </span>
+                            <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate text-[10px]">
+                              {formatDate(row.earned_at)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : detailTab === 'records' ? (
               inviteList.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-6 dark:text-claude-darkTextSecondary text-claude-textSecondary">
@@ -1100,6 +1187,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               curPage = usdtEarningsPage;
               totalPages = Math.max(1, Math.ceil(usdtEarningsTotal / PAGE_SIZE));
               loader = loadUsdtRebate;
+            } else if (detailTab === 'rebate' && rebateSubTab === 'cny') {
+              curPage = cnyEarningsPage;
+              totalPages = Math.max(1, Math.ceil(cnyEarningsTotal / PAGE_SIZE));
+              loader = loadCnyRebate;
             }
             if (!loader) return null;
             return (
@@ -1124,6 +1215,13 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               </div>
             );
           })()}
+          {showCnyWithdraw && (
+            <CnyWithdrawModal
+              isZh={i18nService.currentLanguage === 'zh'}
+              onClose={() => setShowCnyWithdraw(false)}
+              onSuccess={() => { if (rebateSubTab === 'cny') loadCnyRebate(cnyEarningsPage); }}
+            />
+          )}
         </div>
           </div>
 

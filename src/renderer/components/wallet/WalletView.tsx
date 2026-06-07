@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo, RedeemPackagesResponse } from '../../services/noobclawApi';
+import { CnyWithdrawModal } from './CnyWithdrawModal';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
 import { readCachedPaymentInfo, writeCachedPaymentInfo } from '../../services/paymentInfoCache';
 import { i18nService } from '../../services/i18n';
@@ -172,7 +173,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   //   /api/me/rebate/summary。跟 InviteView 同一份 endpoint(那边也 prefetch
   //   同 endpoint 给顶部 USDT 总返佣 stat card 用),WalletView 自己单独 fetch
   //   保持组件解耦,不依赖 InviteView 是否已经挂载过。失败 fallback 显示 0。
-  const [usdtRebateSummary, setUsdtRebateSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string } | null>(null);
+  // v6.x: 同一 /api/me/rebate/summary 同时返 cny_* 字段,用来渲染「收到返佣 (CNY)」stat。
+  const [usdtRebateSummary, setUsdtRebateSummary] = useState<{ total_earned: string; total_sent: string; total_inflight: string; total_pending: string; cny_total_earned?: string; cny_total_sent?: string; cny_total_inflight?: string; cny_total_pending?: string } | null>(null);
+  // CNY 提现弹窗开关(stat 旁「提现」按钮触发;共享 CnyWithdrawModal)。
+  const [showCnyWithdraw, setShowCnyWithdraw] = useState(false);
+  const isZh = i18nService.currentLanguage === 'zh';
 
   // Credit detail state
   const [creditRecords, setCreditRecords] = useState<any[]>([]);
@@ -1430,7 +1435,31 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
+            {/* CNY Rebate - 收到返佣(¥),带提现入口(v6.x CNY 返佣) */}
+            <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
+              <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{isZh ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</p>
+              <div className="flex items-center gap-2">
+                <span className="text-xl font-bold text-green-500">
+                  ¥{parseFloat(usdtRebateSummary?.cny_total_earned || '0').toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowCnyWithdraw(true)}
+                  className="text-xs text-green-500 hover:underline flex items-center gap-0.5"
+                >
+                  {isZh ? '提现' : 'Withdraw'}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+            </div>
           </div>
+          {showCnyWithdraw && (
+            <CnyWithdrawModal
+              isZh={isZh}
+              onClose={() => setShowCnyWithdraw(false)}
+              onSuccess={() => { noobClawApi.getUsdtRebateSummary().then(s => { if (s) setUsdtRebateSummary(s); }).catch(() => {}); }}
+            />
+          )}
           {balance < 100000 && (
             <div className="mt-3 p-2.5 rounded-lg bg-yellow-500/5 border border-yellow-500/20 text-xs text-yellow-500">
               {i18nService.t('walletLowBalance')}

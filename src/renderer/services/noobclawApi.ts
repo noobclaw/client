@@ -459,6 +459,101 @@ class NoobClawApiService {
     } catch { return empty; }
   }
 
+  // ─── CNY 返佣明细(走同一 earnings 接口的 ?currency=CNY 分支)───
+  // 后端按 cny_amount 出行,字段名为 amount_cny;CNY 返佣是手动提现,无 tx_hash。
+  async getCnyRebateEarnings(page = 1, pageSize = 20): Promise<{
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+    total_earned: string;
+    total_sent: string;
+    total_pending: string;
+    items: Array<{
+      id: string;
+      level: number | null;
+      contributor_wallet: string | null;
+      amount_cny: string;
+      reason: string;
+      source_asset: string;
+      order_id: string | null;
+      earned_at: string;
+      status: 'sent' | 'pending';
+    }>;
+  }> {
+    const empty = { page, pageSize, total: 0, totalPages: 1, total_earned: '0', total_sent: '0', total_pending: '0', items: [] };
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/rebate/earnings?currency=CNY&page=${page}&pageSize=${pageSize}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return empty;
+      return res.json();
+    } catch { return empty; }
+  }
+
+  // ─── CNY 提现(后端 routes/withdrawCny.ts)───
+  // 额度三数字 + 规则(¥50 起、上限、fee_pct)。
+  async getCnyWithdrawSummary(): Promise<{
+    total_earned: string; total_paid: string; total_pending: string;
+    withdrawable: string; has_pending: boolean;
+    min_amount: number; max_amount: number; fee_pct: number;
+  } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/summary`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch { return null; }
+  }
+
+  // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
+  async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
+    try {
+      const formData = new FormData();
+      formData.append('qr', file);
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(), // 不要手动设 Content-Type,交给浏览器带 multipart boundary
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || 'upload_failed' };
+      return { ok: true, url: data.url };
+    } catch { return { error: 'network_error' }; }
+  }
+
+  // 创建提现申请。qrKind: 'alipay' | 'wechat'。
+  async createCnyWithdraw(amount: number, qrImageUrl: string, qrKind: 'alipay' | 'wechat'): Promise<{
+    ok?: boolean; id?: string; amount_cny?: string; amount_paid_cny?: string;
+    status?: string; message?: string; error?: string; withdrawable?: string; min?: number; max?: number;
+  }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount, qr_image_url: qrImageUrl, qr_kind: qrKind }),
+      });
+      const data = await res.json();
+      if (!res.ok) return { error: data.error || 'create_failed', ...data };
+      return data;
+    } catch { return { error: 'network_error' }; }
+  }
+
+  async getCnyWithdrawHistory(limit = 50): Promise<{ items: Array<{
+    id: string; amount_cny: string; fee_pct: number; amount_paid_cny: string;
+    qr_kind: string; status: 'pending' | 'paid' | 'canceled';
+    created_at: string; paid_at: string | null; paid_note: string | null; external_ref: string | null;
+  }> }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/history?limit=${limit}`, {
+        headers: this.getAuthHeaders(),
+      });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    } catch { return { items: [] }; }
+  }
+
   // ─── Generic notification endpoints (initially seeded with rebate_received) ───
   // The Modal/Banner/RedDot UI components poll these on launch + reactively.
 
