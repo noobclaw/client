@@ -42,6 +42,8 @@ export interface SeedanceClipResult {
   path: string | null;
   /** 失败原因(供日志)。 */
   error?: string;
+  /** 该镜实扣积分(服务端 create 时扣;失败镜服务端已退,不计入总额)。 */
+  chargedTokens?: number;
 }
 
 export interface GenerateSeedanceOptions {
@@ -160,19 +162,24 @@ async function generateOne(
 ): Promise<SeedanceClipResult> {
   const duration = Math.max(4, Math.min(12, Math.round(scene.durationSec || 5)));
   try {
-    const { taskId, chargeId } = await createClip(scene.prompt, imageUrls, duration, ratio, resolution, tier);
-    onProgress?.(`🎬 第 ${idx + 1} 镜 AI 生成中…`);
+    const { taskId, chargeId, chargedTokens } = await createClip(scene.prompt, imageUrls, duration, ratio, resolution, tier);
+    // 每镜【先扣费再生成】(服务端 /seedance/create 原子扣费),把这笔扣费显出来 ——
+    // 否则用户只看到"生成中"、看不到扣费,会以为没收钱(失败镜服务端会自动退)。
+    onProgress?.(chargedTokens > 0
+      ? `💎 第 ${idx + 1} 镜 已扣 ${chargedTokens.toLocaleString()} 积分 · AI 生成中…`
+      : `🎬 第 ${idx + 1} 镜 AI 生成中…`);
     const deadline = Date.now() + timeoutSec * 1000;
     while (Date.now() < deadline) {
       await sleep(5000);
       const st = await pollClipOnce(taskId, chargeId);
       if (st.status === 'succeeded') {
-        if (!st.videoUrl) return { path: null, error: '成片无 video_url' };
+        if (!st.videoUrl) return { path: null, error: '成片无 video_url', chargedTokens };
         const outPath = path.join(destDir, `seedance_${idx + 1}_${taskId.slice(-8)}.mp4`);
         await downloadVideo(st.videoUrl, outPath);
         onProgress?.(`✅ 第 ${idx + 1} 镜 AI 片段就绪`);
-        return { path: outPath };
+        return { path: outPath, chargedTokens };
       }
+      // 失败镜:服务端按 chargeId 自动退款,不计入实扣总额。
       if (st.status === 'failed') return { path: null, error: st.error || 'Ark 任务失败' };
     }
     return { path: null, error: '生成超时' };
@@ -209,5 +216,12 @@ export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Prom
   };
   const n = Math.max(1, Math.min(concurrency, scenes.length));
   await Promise.all(Array.from({ length: n }, () => worker()));
+
+  // 结尾汇总实扣积分(只计成功镜;失败镜服务端已退)。
+  const okResults = results.filter((r) => r && r.path);
+  const totalCharged = okResults.reduce((s, r) => s + (r.chargedTokens || 0), 0);
+  if (totalCharged > 0) {
+    opts.onProgress?.(`💎 AI 成片共扣 ${totalCharged.toLocaleString()} 积分(${okResults.length} 镜成功${okResults.length < scenes.length ? `,${scenes.length - okResults.length} 镜失败已退` : ''})`);
+  }
   return results;
 }
