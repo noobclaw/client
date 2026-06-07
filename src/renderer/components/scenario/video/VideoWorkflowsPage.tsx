@@ -1676,9 +1676,9 @@ const VideoConfigModal: React.FC<{
   const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
   // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 分辨率档(成本敏感)。
   const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
-  // 默认降到最省档:Lite + 480p(成本约是 1.5Pro/720p 的 1/4~1/5),要质量再手动升。
-  const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '480p');
-  const [seedanceModel, setSeedanceModel] = useState<'lite' | 'pro' | 'pro15' | 'v2'>(editTask?.input.seedanceModel || 'lite');
+  // 锁定省钱档:Lite + 480p(成本约是 1.5Pro/720p 的 1/4~1/5)。选择器已移除,只读这俩值。
+  const [seedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '480p');
+  const [seedanceModel] = useState<'lite' | 'pro' | 'pro15' | 'v2'>(editTask?.input.seedanceModel || 'lite');
   const [mode, setMode] = useState<GenMode>(editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
@@ -1852,7 +1852,9 @@ const VideoConfigModal: React.FC<{
     localVideos: materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
-    targetSeconds,
+    // AI 自动成片每秒都真烧钱 → 给 AI 写稿时长封顶 30s(防 AI 写超长稿把成本拉爆);
+    // 其它模式(在线素材/本地)免费拼接,不限。
+    targetSeconds: materialSource === 'ai' ? Math.min(targetSeconds, 30) : targetSeconds,
     // 在线来源 = 搜在线素材库(收平台费);本地/AI = 不搜在线。AI 的钱在服务端逐片段扣。
     useStockVideo: materialSource === 'stock',
     voice,
@@ -2141,61 +2143,14 @@ const VideoConfigModal: React.FC<{
               </Field>
               )}
 
-              {/* 纯 AI(Seedance):模型档位 + 分辨率档(成本敏感)+ 参考图(≤2,风格统一,可选)。 */}
+              {/* 纯 AI(Seedance):锁定省钱档(1.0 Lite + 480p,不让用户选,避免烧钱)+ 参考图(≤2)。 */}
               {materialSource === 'ai' && (
               <>
-                <Field
-                  label={isZh ? 'AI 模型（质量越高越贵）' : 'AI model (higher quality = pricier)'}
-                  hint={isZh ? '价格为大致参考(¥/秒@720p)，以实际扣费为准' : 'rough price ref (¥/sec @720p); actual billing may vary'}
-                >
-                  <div className="grid grid-cols-2 gap-2">
-                    {([
-                      { v: 'lite', zh: '1.0 Lite', en: '1.0 Lite', price: '≈¥0.2/s', tag: isZh ? '默认·最省' : 'default·cheapest' },
-                      { v: 'pro', zh: '1.0 Pro', en: '1.0 Pro', price: '≈¥0.4/s', tag: '' },
-                      { v: 'pro15', zh: '1.5 Pro', en: '1.5 Pro', price: '≈¥0.45/s', tag: isZh ? '均衡' : 'balanced' },
-                      { v: 'v2', zh: '2.0', en: '2.0', price: '≈¥0.9/s', tag: isZh ? '最强·最贵' : 'best' },
-                    ] as const).map((m) => (
-                      <button
-                        key={m.v}
-                        type="button"
-                        onClick={() => setSeedanceModel(m.v)}
-                        className={`px-3 py-2 rounded-lg text-sm border text-left transition-colors ${
-                          seedanceModel === m.v
-                            ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-1">
-                          <span>{isZh ? m.zh : m.en}</span>
-                          {m.tag && <span className="text-[10px] opacity-70">{m.tag}</span>}
-                        </div>
-                        <div className="text-[11px] text-gray-400 font-mono">{m.price}</div>
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-
-                <Field
-                  label={isZh ? '清晰度（越高越贵）' : 'Resolution (higher = pricier)'}
-                  hint={isZh ? 'AI 按「时长 × 分辨率」逐镜计费；日更建议 720p' : 'billed by duration × resolution per shot; 720p for daily posting'}
-                >
-                  <div className="flex gap-2">
-                    {(['480p', '720p', '1080p'] as const).map((r) => (
-                      <button
-                        key={r}
-                        type="button"
-                        onClick={() => setSeedanceResolution(r)}
-                        className={`flex-1 px-3 py-2 rounded-lg text-sm border transition-colors ${
-                          seedanceResolution === r
-                            ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium'
-                            : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
-                        }`}
-                      >
-                        {r}{r === '480p' ? (isZh ? '（默认·最省）' : ' (default)') : ''}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
+                  {isZh
+                    ? '🪙 已锁定省钱档:1.0 Lite · 480p(成本最低)。画质/分辨率升级后续开放。'
+                    : '🪙 Locked to budget tier: 1.0 Lite · 480p (lowest cost). Higher tiers coming later.'}
+                </div>
 
                 <Field
                   label={isZh ? '参考图（可选，最多 2 张）' : 'Reference images (optional, max 2)'}
