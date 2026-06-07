@@ -240,7 +240,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     cowork: 'NoobClaw',
     coworkSandbox: '沙箱',
     coworkSettings: 'NoobClaw 设置',
-    coworkHistory: '所有对话',
+    coworkHistory: '所有AI对话',
     coworkNoSessions: '暂无任务记录',
     coworkPinSession: '置顶任务',
     coworkUnpinSession: '取消置顶',
@@ -2708,7 +2708,7 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     apiKeyNotConfigured: 'API 金鑰未配置。請在設定中設定您的 API 金鑰。',
     // NoobClaw
     cowork: 'NoobClaw', coworkSandbox: '沙箱', coworkSettings: 'NoobClaw 設定',
-    coworkHistory: '所有對話', coworkNoSessions: '暫無任務記錄',
+    coworkHistory: '所有AI對話', coworkNoSessions: '暫無任務記錄',
     coworkPinSession: '置頂任務', coworkUnpinSession: '取消置頂',
     coworkSessionActions: '更多操作',
     coworkPlaceholder: '讓我為您執行任務、工作流，或提問任何問題',
