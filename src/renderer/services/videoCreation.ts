@@ -64,6 +64,12 @@ export interface VideoCreationInput {
   voice?: string;
   /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
   voiceRate?: number;
+  /**
+   * 是否生成口播旁白 + 字幕。默认 true。
+   * 仅 pure_ai(Seedance)模式可设 false = 纯画面片:跳过 TTS、不烧字幕,
+   * 镜头时长按分镜稿字数估算,音频只用 BGM(没选则静音)。
+   */
+  narrationEnabled?: boolean;
   /** 是否烧字幕。默认 true。 */
   subtitleEnabled?: boolean;
   /** 字幕字号(成片原始分辨率下像素)。默认 52。 */
@@ -176,8 +182,8 @@ class VideoCreationService {
   }
 
   /**
-   * 把 BGM token(builtin:/remote:/绝对路径)还原成本地绝对路径,供「打开文件夹」用。
-   * 云端曲目首次会下载并缓存。返回 ''=失败/未挂。
+   * 「打开文件夹」用:返回该 BGM 所在【目录】(主进程 resolveBgmFolder;不下载、不要求
+   * 文件已存在)。内置→随包 bgm 目录;云端→缓存目录;上传→文件目录。返回 ''=失败/未挂。
    */
   async resolveBgmPath(token: string): Promise<string> {
     if (!this.api?.resolveBgmPath) return '';
