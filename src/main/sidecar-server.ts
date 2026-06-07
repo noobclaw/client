@@ -1085,29 +1085,6 @@ const server = http.createServer(async (req, res) => {
             } catch {}
             return writeJSON(res, 200, true);
           }
-          case 'video:revealInFolder': {
-            // 之前走 openExternal(dirname) 在 Tauri sidecar 下"没反应":openExternal
-            // 对目录的处理在各平台不稳(尤其想"选中文件"时)。这里直接派发各 OS 的
-            // 原生定位命令,既打开文件夹又高亮成片:
-            //   win  → explorer /select,<file>(explorer 成功也返回非 0,忽略 err)
-            //   mac  → open -R <file>
-            //   linux→ xdg-open <dir>(无 select 语义,退而打开目录)
-            try {
-              const path = await import('path');
-              const { execFile } = await import('child_process');
-              const target = String(args[0] || '');
-              const dir = path.dirname(target);
-              if (process.platform === 'win32') {
-                execFile('explorer.exe', [`/select,${target}`], { windowsHide: false }, () => {});
-              } else if (process.platform === 'darwin') {
-                execFile('open', ['-R', target], () => {});
-              } else {
-                execFile('xdg-open', [dir], () => {});
-              }
-            } catch {}
-            return writeJSON(res, 200, true);
-          }
-
           // ── User slash commands ──
           // Composer autocomplete reads this list when the user types
           // "/" at the start of the input; body is NOT returned (too

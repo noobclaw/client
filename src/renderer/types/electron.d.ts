@@ -528,7 +528,6 @@ interface IElectronAPI {
     pickAudio: () => Promise<string>;
     resolveBgmPath: (token: string) => Promise<string>;
     openFile: (filePath: string) => Promise<unknown>;
-    revealInFolder: (filePath: string) => Promise<unknown>;
     onProgress: (handler: (p: unknown) => void) => () => void;
   };
   appInfo: {

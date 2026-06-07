@@ -108,8 +108,6 @@ contextBridge.exposeInMainWorld('electron', {
     resolveBgmPath: (token: string) => ipcRenderer.invoke('video:resolveBgmPath', token),
     /** Open a produced file with the OS default player. */
     openFile: (filePath: string) => ipcRenderer.invoke('video:openFile', filePath),
-    /** Reveal a produced file in the OS file manager. */
-    revealInFolder: (filePath: string) => ipcRenderer.invoke('video:revealInFolder', filePath),
     /** Subscribe to per-job progress events. Returns an unsubscribe fn. */
     onProgress: (callback: (progress: unknown) => void) => {
       const handler = (_event: unknown, progress: unknown) => callback(progress);

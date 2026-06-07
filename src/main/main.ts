@@ -2968,11 +2968,6 @@ if (!gotTheLock) {
       return true;
     });
 
-    ipcMain.handle('video:revealInFolder', (_e, filePath: string) => {
-      try { shell.showItemInFolder(filePath); } catch {}
-      return true;
-    });
-
     ipcMain.handle('video:generate', async (_e, input: unknown) => {
       const { generateVideo } = require('./libs/video/pipeline');
       const emit = (progress: unknown) => {

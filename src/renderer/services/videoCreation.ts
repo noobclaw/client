@@ -195,13 +195,6 @@ class VideoCreationService {
     }
   }
 
-  /** 在系统文件管理器里定位某个文件。 */
-  async revealInFolder(path: string): Promise<void> {
-    try {
-      await this.api?.revealInFolder?.(path);
-    } catch {}
-  }
-
   /** 用系统默认播放器打开成片。 */
   async openFile(path: string): Promise<void> {
     try {
