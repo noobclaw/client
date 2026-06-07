@@ -582,6 +582,18 @@ async function runVideoPipeline(
     // 在 TTS 之前合并,音频/字幕(词边界 cue)自然按合并后的段走,不破坏。
     if (input.engine === 'ai') {
       sentences = mergeSentencesForAi(sentences);
+      // 硬上限 45s:targetSeconds 只是给 AI 的提示,AI 可能写超 → 这里按字数估时长(CJK ~4.5
+      // 字/秒、拉丁 ~2.2)累加截断,保证纯 AI 成片【实际】不超 45s,杜绝写超长稿烧钱。
+      const AI_MAX_SEC = 45;
+      const cps = /[぀-ヿ㐀-鿿가-힯]/.test(sentences.join('')) ? 4.5 : 2.2;
+      const maxChars = Math.round(AI_MAX_SEC * cps);
+      let acc = 0;
+      const capped: string[] = [];
+      for (const s of sentences) { if (acc >= maxChars) break; capped.push(s); acc += s.length; }
+      if (capped.length > 0 && capped.length < sentences.length) {
+        tracker.progress(`✂️ 纯 AI 成片时长上限 ${AI_MAX_SEC}s:超出部分已截断(保留 ${capped.length} 段)`);
+        sentences = capped;
+      }
       tracker.progress(`🎬 AI 大分镜:合并为 ${sentences.length} 段(每段约 8–12 秒,更连贯)`);
     }
 
