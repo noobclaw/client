@@ -90,6 +90,7 @@ function typeLabelForRecord(rec: RunRecord, isZh: boolean): { icon: string; labe
   if (sid === 'kuaishou_auto_engage')        return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
   if (sid === 'kuaishou_video_download')     return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
   if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+  if (sid === 'video_repost_remix')          return { icon: '🎬', label: isZh ? '视频搬运 · 二创' : 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
   if (sid === 'bilibili_auto_engage')        return { icon: '📺', label: isZh ? '哔哩哔哩 · 互动涨粉' : 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
   if (sid === 'bilibili_video_download')     return { icon: '⬇️', label: isZh ? '哔哩哔哩 · 视频无水印下载' : 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
   if (sid === 'bilibili_reply_fans_comment') return { icon: '💬', label: isZh ? '哔哩哔哩 · 自动回复粉丝' : 'Bilibili Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

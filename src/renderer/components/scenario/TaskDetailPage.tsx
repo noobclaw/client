@@ -529,7 +529,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                   ? (isZh ? '视频号' : 'WeChat Channels')
                   : (scenario?.platform as any) === 'toutiao'
                     ? (isZh ? '头条号' : 'Toutiao')
-                    : (isZh ? '小红书' : 'Xiaohongshu');
+                    : (scenario?.platform as any) === 'video'
+                      ? (isZh ? '视频搬运·二创' : 'Video Remix')
+                      : (isZh ? '小红书' : 'Xiaohongshu');
   const STEP_LABELS = isZh ? STEP_LABELS_ZH : STEP_LABELS_EN;
   // Pick step names by scenario id first (Twitter has 3 distinct flavors),
   // then fall back to the legacy isAutoReply branch for XHS.
@@ -566,6 +568,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'toutiao_reply_fans_comment') return replyStepNames(isZh, '头条号创作者中心', 'Toutiao Creator Center');
     if (sid === 'kuaishou_video_download') return videoDownloadStepNames(isZh, '快手', 'Kuaishou');
     if (sid === 'bilibili_video_download') return videoDownloadStepNames(isZh, '哔哩哔哩', 'Bilibili');
+    if (sid === 'video_repost_remix') return isZh
+      ? ['选品 / 收集链接', '逐条:下载源 → 本地转写 → 翻译 → 遮字幕+二创合成,存本地']
+      : ['Pick / collect links', 'Per video: download → transcribe → translate → cover-subs + remix compose, save'];
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -906,6 +911,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if ((scenario?.platform as any) === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
     if ((scenario?.platform as any) === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
     if ((scenario?.platform as any) === 'toutiao') return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
+    if ((scenario?.platform as any) === 'video') return { icon: '🎬', label: isZh ? '视频搬运·二创' : 'Video Remix' };
     return { icon: '🤖', label: scenario?.platform || '' };
   })();
   const isLinkModeForBadge = task.track === 'link_mode' || (Array.isArray((task as any).urls) && (task as any).urls.length > 0);
@@ -941,6 +947,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_video_download')             return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
+    if (sid === 'video_repost_remix')             return { icon: '🎬', label: isZh ? '视频搬运 · 二创' : 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

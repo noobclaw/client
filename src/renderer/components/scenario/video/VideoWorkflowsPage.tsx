@@ -16,6 +16,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { noobClawAuth } from '../../../services/noobclawAuth';
+import { scenarioService } from '../../../services/scenario';
 import { getBackendApiUrl } from '../../../services/endpoints';
 import {
   videoCreationService,
@@ -71,6 +72,8 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
   const { tasks, runs } = useVideoStore();
   const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
+  // 「视频搬运·二创」是后端 scenario(非本地一键成片),自带配置 modal,提交直接建 scenario 任务。
+  const [remixOpen, setRemixOpen] = useState(false);
   // 创建完跳详情时,section 会从 create 变 tasks;别让下面的 effect 把 detail 清掉。
   const justCreatedRef = useRef(false);
 
@@ -138,7 +141,20 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
     return <VideoRunHistory isZh={isZh} runs={runs} tasks={tasks} onOpenRecord={(rid) => setDetail({ kind: 'record', recordId: rid })} />;
   }
 
-  return <VideoLanding isZh={isZh} tasks={tasks} onGoCreate={onGoCreate} onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })} />;
+  return (
+    <>
+      <VideoLanding
+        isZh={isZh}
+        tasks={tasks}
+        onGoCreate={onGoCreate}
+        onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })}
+        onOpenRemix={() => setRemixOpen(true)}
+      />
+      {remixOpen && (
+        <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)} />
+      )}
+    </>
+  );
 };
 
 // ── 小工具 ──────────────────────────────────────────────────────────
@@ -363,10 +379,12 @@ const VideoLanding: React.FC<{
   tasks: VideoTask[];
   onGoCreate: () => void;
   onOpenTask: (id: string) => void;
-}> = ({ isZh, tasks, onGoCreate, onOpenTask }) => {
+  onOpenRemix: () => void;
+}> = ({ isZh, tasks, onGoCreate, onOpenTask, onOpenRemix }) => {
   if (tasks.length === 0) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
+        <RemixEntryCard isZh={isZh} onOpen={onOpenRemix} />
         <button
           type="button"
           onClick={onGoCreate}
@@ -408,6 +426,7 @@ const VideoLanding: React.FC<{
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      <RemixEntryCard isZh={isZh} onOpen={onOpenRemix} />
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold dark:text-white">
           📋 {isZh ? '我的视频任务' : 'My Videos'}
@@ -2880,3 +2899,243 @@ const PlatformCheck: React.FC<{
     {label}
   </button>
 );
+
+// ════════════════════════════════════════════════════════════════════
+//  视频搬运 · 二创(后端 scenario `video_repost_remix`)
+//  入口卡 + 自带配置 modal。提交直接走 scenarioService 建任务并触发首跑,
+//  任务落到「我的任务」列表(已有徽章/步骤名)。不复用本地一键成片体系。
+// ════════════════════════════════════════════════════════════════════
+const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void }> = ({ isZh, onOpen }) => (
+  <button
+    type="button"
+    onClick={onOpen}
+    className="w-full text-left mb-5 relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden hover:border-fuchsia-500/60 transition-colors group"
+  >
+    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+    <div className="relative flex items-start gap-4">
+      <div className="text-3xl">🎬</div>
+      <div className="flex-1 min-w-0">
+        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+          {isZh ? '搬运 / 二创' : 'Repost / Remix'}
+        </div>
+        <h3 className="text-base font-bold dark:text-white mb-1">
+          {isZh ? '视频搬运 · 二创' : 'Video Repost · Remix'}
+        </h3>
+        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
+          {isZh
+            ? '自动选品(按赛道+关键词去抖音/快手/B站/小红书/TikTok 找视频)或手动贴链接 → 取无水印源 → 本地 whisper 转写识别语言 → 按需翻译字幕/配音 → 遮原字幕+覆盖新字幕 → 原创度增强 → 合成存本地。可定时持续产出。'
+            : 'Auto-discover by track+keywords across platforms (or paste links) -> grab watermark-free source -> local whisper transcribe -> optional translate/dub -> cover old subs + overlay new -> boost originality -> compose locally. Schedulable.'}
+        </p>
+      </div>
+      <span className="shrink-0 self-center inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-fuchsia-500 group-hover:bg-fuchsia-600 text-white text-sm font-bold shadow-lg shadow-fuchsia-500/25 transition-colors">
+        {isZh ? '配置' : 'Configure'} →
+      </span>
+    </div>
+  </button>
+);
+
+const REMIX_PLATFORMS: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'douyin', zh: '抖音', en: 'Douyin' },
+  { id: 'kuaishou', zh: '快手', en: 'Kuaishou' },
+  { id: 'bilibili', zh: 'B站', en: 'Bilibili' },
+  { id: 'xhs', zh: '小红书', en: 'XHS' },
+  { id: 'tiktok', zh: 'TikTok', en: 'TikTok' },
+];
+const REMIX_LANGS: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'zh', zh: '中文', en: 'Chinese' },
+  { id: 'en', zh: '英文', en: 'English' },
+  { id: 'ja', zh: '日语', en: 'Japanese' },
+  { id: 'ko', zh: '韩语', en: 'Korean' },
+  { id: 'es', zh: '西班牙语', en: 'Spanish' },
+  { id: 'vi', zh: '越南语', en: 'Vietnamese' },
+  { id: 'th', zh: '泰语', en: 'Thai' },
+];
+const REMIX_TRANSLATE_MODES: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'auto', zh: '自动(同语不译,异语加字幕)', en: 'Auto (skip if same lang, else subtitle)' },
+  { id: 'none', zh: '不翻译(保留原片)', en: 'No translate (keep original)' },
+  { id: 'sub', zh: '翻译字幕', en: 'Translate subtitles' },
+  { id: 'sub_dub', zh: '翻译字幕 + 配音(基础版)', en: 'Translate subtitles + dub (basic)' },
+];
+const REMIX_INTERVALS: Array<{ id: string; zh: string; en: string }> = [
+  { id: 'once', zh: '只跑一次', en: 'Once' },
+  { id: '1h', zh: '每小时(随机)', en: 'Hourly (jittered)' },
+  { id: '3h', zh: '每 3 小时(随机)', en: 'Every 3h (jittered)' },
+  { id: '6h', zh: '每 6 小时(随机)', en: 'Every 6h (jittered)' },
+  { id: 'daily_random', zh: '每天随机时段', en: 'Daily random' },
+];
+
+const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ isZh, onClose }) => {
+  const [sourceMode, setSourceMode] = useState<'auto' | 'manual'>('auto');
+  const [platforms, setPlatforms] = useState<string[]>(['douyin', 'bilibili']);
+  const [track, setTrack] = useState('');
+  const [keywordsText, setKeywordsText] = useState('');
+  const [urlsText, setUrlsText] = useState('');
+  const [targetPlatform, setTargetPlatform] = useState('douyin');
+  const [targetLang, setTargetLang] = useState('zh');
+  const [translateMode, setTranslateMode] = useState('auto');
+  const [originality, setOriginality] = useState(true);
+  const [saturation, setSaturation] = useState(true);
+  const [minPlay, setMinPlay] = useState(10000);
+  const [count, setCount] = useState(3);
+  const [runInterval, setRunInterval] = useState('1h');
+  const [submitting, setSubmitting] = useState(false);
+
+  const togglePlatform = (id: string) =>
+    setPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+
+  const handleSubmit = async () => {
+    if (submitting) return;
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    const keywords = keywordsText.split(/[\n,，、]+/).map((s) => s.trim()).filter(Boolean);
+    const urls = urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
+    if (sourceMode === 'auto') {
+      if (!platforms.length) { alert(isZh ? '请至少选一个源平台' : 'Pick at least one source platform'); return; }
+      if (!keywords.length) { alert(isZh ? '自动选品需要至少一个关键词' : 'Auto mode needs at least one keyword'); return; }
+    } else {
+      if (!urls.length) { alert(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
+    }
+    setSubmitting(true);
+    try {
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2, '0');
+      const mm = String(now.getMinutes()).padStart(2, '0');
+      const task = await scenarioService.createTask({
+        scenario_id: 'video_repost_remix',
+        track: track || 'video_remix',
+        keywords,
+        urls,
+        source_mode: sourceMode,
+        source_platforms: platforms,
+        target_platform: targetPlatform,
+        target_lang: targetLang,
+        translate_mode: translateMode,
+        originality_enhance: originality,
+        saturation_check: saturation,
+        whisper_model: 'small',
+        min_play: minPlay,
+        persona: '',
+        daily_count: sourceMode === 'manual' ? Math.max(1, urls.length) : count,
+        variants_per_post: 1,
+        daily_time: `${hh}:${mm}`,
+        run_interval: runInterval,
+        enabled: true,
+        active: true,
+      } as any);
+      try { await scenarioService.runTaskNow(task.id); } catch (e) { console.error('[VideoRepostRemix] runTaskNow failed:', e); }
+      onClose();
+      alert(isZh ? '✅ 任务已创建并开始运行,可到「我的任务」查看进度与成片。' : '✅ Task created & started. Check My Tasks for progress and output.');
+    } catch (e) {
+      alert((isZh ? '创建失败:' : 'Create failed: ') + String(e).slice(0, 140));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50';
+  const lbl = 'text-sm font-medium dark:text-gray-200 mb-1.5 block';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
+        <h3 className="text-lg font-bold dark:text-white mb-1">🎬 {isZh ? '视频搬运 · 二创' : 'Video Repost · Remix'}</h3>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          {isZh ? '全程本地 ffmpeg + whisper,成片先存本地。首次运行会下载语音模型(约 480MB),请耐心等待。' : 'Local ffmpeg + whisper; output saved locally. First run downloads the speech model (~480MB).'}
+        </p>
+
+        <label className={lbl}>{isZh ? '视频来源' : 'Video source'}</label>
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <button type="button" onClick={() => setSourceMode('auto')}
+            className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'auto' ? 'border-fuchsia-500 bg-fuchsia-500/5 text-fuchsia-600 dark:text-fuchsia-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
+            {isZh ? '🔎 自动选品(推荐)' : '🔎 Auto-discover'}<span className="block text-[11px] text-gray-500">{isZh ? '按赛道+关键词搜源站,每天持续产出' : 'search by track+keywords, continuous'}</span>
+          </button>
+          <button type="button" onClick={() => setSourceMode('manual')}
+            className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'manual' ? 'border-fuchsia-500 bg-fuchsia-500/5 text-fuchsia-600 dark:text-fuchsia-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
+            {isZh ? '📋 手动贴链接' : '📋 Paste links'}<span className="block text-[11px] text-gray-500">{isZh ? '自己粘贴要搬的视频链接' : 'paste the video links yourself'}</span>
+          </button>
+        </div>
+
+        {sourceMode === 'auto' ? (
+          <>
+            <label className={lbl}>{isZh ? '源平台(可多选)' : 'Source platforms'}</label>
+            <div className="flex flex-wrap gap-2 mb-3">
+              {REMIX_PLATFORMS.map((p) => (
+                <button key={p.id} type="button" onClick={() => togglePlatform(p.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border ${platforms.includes(p.id) ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                  {isZh ? p.zh : p.en}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={lbl}>{isZh ? '赛道(可选)' : 'Track (optional)'}</label>
+                <input className={inputCls} value={track} onChange={(e) => setTrack(e.target.value)} placeholder={isZh ? '如:萌宠 / 健身 / AI' : 'e.g. pets / fitness'} />
+              </div>
+              <div>
+                <label className={lbl}>{isZh ? '每次产出条数' : 'Outputs per run'}</label>
+                <input type="number" min={1} max={10} className={inputCls} value={count} onChange={(e) => setCount(Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1)))} />
+              </div>
+            </div>
+            <label className={lbl}>{isZh ? '关键词(逗号/换行分隔)' : 'Keywords (comma/newline)'}</label>
+            <textarea className={`${inputCls} resize-y min-h-[60px]`} value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)} placeholder={isZh ? '猫咪搞笑, 治愈, 萌宠日常' : 'funny cat, healing'} />
+            <label className={`${lbl} mt-3`}>{isZh ? '最低播放量过滤' : 'Min play count'}</label>
+            <input type="number" min={0} className={inputCls} value={minPlay} onChange={(e) => setMinPlay(Math.max(0, parseInt(e.target.value, 10) || 0))} />
+          </>
+        ) : (
+          <>
+            <label className={lbl}>{isZh ? '视频链接(每行一个)' : 'Video links (one per line)'}</label>
+            <textarea className={`${inputCls} font-mono resize-y min-h-[140px] break-all`} value={urlsText} onChange={(e) => setUrlsText(e.target.value)}
+              placeholder={'https://www.douyin.com/video/...\nhttps://www.bilibili.com/video/BV...'} />
+          </>
+        )}
+
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className={lbl}>{isZh ? '目标平台' : 'Target platform'}</label>
+            <select className={inputCls} value={targetPlatform} onChange={(e) => setTargetPlatform(e.target.value)}>
+              {REMIX_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{isZh ? p.zh : p.en}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className={lbl}>{isZh ? '目标语言' : 'Target language'}</label>
+            <select className={inputCls} value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
+              {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
+            </select>
+          </div>
+        </div>
+        <label className={`${lbl} mt-3`}>{isZh ? '翻译模式' : 'Translate mode'}</label>
+        <select className={inputCls} value={translateMode} onChange={(e) => setTranslateMode(e.target.value)}>
+          {REMIX_TRANSLATE_MODES.map((m) => <option key={m.id} value={m.id}>{isZh ? m.zh : m.en}</option>)}
+        </select>
+
+        <div className="mt-3 space-y-2">
+          <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+            <input type="checkbox" checked={originality} onChange={(e) => setOriginality(e.target.checked)} className="accent-fuchsia-500" />
+            {isZh ? '原创度增强(变速 / 裁剪 / 调色,降重)' : 'Originality boost (speed / crop / color)'}
+          </label>
+          <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+            <input type="checkbox" checked={saturation} onChange={(e) => setSaturation(e.target.checked)} className="accent-fuchsia-500" />
+            {isZh ? '发前查目标平台是否已被搬运' : 'Check target-platform saturation before publish'}
+          </label>
+        </div>
+
+        <label className={`${lbl} mt-4`}>{isZh ? '运行频率' : 'Run frequency'}</label>
+        <select className={inputCls} value={runInterval} onChange={(e) => setRunInterval(e.target.value)}>
+          {REMIX_INTERVALS.map((it) => <option key={it.id} value={it.id}>{isZh ? it.zh : it.en}</option>)}
+        </select>
+        <p className="text-[11px] text-gray-400 mt-1">{isZh ? '固定节奏内随机抖动,模拟真人;手动链接建议「只跑一次」。' : 'Jittered within a fixed cadence; use Once for manual links.'}</p>
+
+        <div className="flex gap-2 mt-5">
+          <button type="button" onClick={() => !submitting && onClose()} disabled={submitting}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+            {isZh ? '取消' : 'Cancel'}
+          </button>
+          <button type="button" onClick={handleSubmit} disabled={submitting}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
+            {submitting ? (isZh ? '创建中...' : 'Creating...') : '🎬 ' + (isZh ? '创建并开始' : 'Create & Start')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

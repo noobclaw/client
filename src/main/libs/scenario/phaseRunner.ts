@@ -2143,6 +2143,66 @@ function buildContext(
       }
     },
 
+    // ── 视频二创基建(薄原语):把现有 ffmpeg / edge-tts 暴露给 orchestrator ──
+    //   设计原则「能放 orchestrator 尽量放」:选品 / 翻译 / 滤镜串拼接 / 合成编排
+    //   全在 orchestrator(读盘热更新),这里只给 3 个非原生干不了的薄入口。
+    //   orchestrator 沙箱不能 require('path'),所以输出文件路径统一用 ctx.outPath 拼。
+    runFfmpeg: async (args: string[], opts?: { timeoutMs?: number; cwd?: string }) => {
+      try {
+        const { runFfmpeg } = require('../video/ffmpegRuntime');
+        const r = await runFfmpeg(Array.isArray(args) ? args : [], {
+          timeoutMs: opts?.timeoutMs || 300000,
+          cwd: opts?.cwd,
+          onStderr: () => {},
+        });
+        return { ok: !!(r && r.ok), code: (r && r.code != null) ? r.code : null, stderr: ((r && r.stderr) || '').slice(-2000) };
+      } catch (e: any) {
+        return { ok: false, code: null, stderr: 'runFfmpeg_exception:' + String(e?.message || e).slice(0, 200) };
+      }
+    },
+    tts: async (text: string, opts?: { voice?: string; rate?: number; fileName?: string; subdir?: string }) => {
+      try {
+        const ttsMod = require('../video/tts');
+        const dir = path.join(getTaskOutputDir(task, manifest.platform as any), opts?.subdir || '制作');
+        try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+        const outFile = path.join(dir, opts?.fileName || ('tts_' + Date.now() + '.mp3'));
+        const voice = opts?.voice || (ttsMod.getTtsVoice ? ttsMod.getTtsVoice() : undefined);
+        const r = await ttsMod.synthesize(String(text || ''), outFile, voice, opts?.rate);
+        return { ok: !!(r && r.ok), audioPath: (r && r.audioPath) || outFile, durationSec: (r && r.durationSec) || 0, synthesized: !!(r && r.synthesized), cues: (r && r.cues) || [] };
+      } catch (e: any) {
+        return { ok: false, reason: 'tts_exception:' + String(e?.message || e).slice(0, 200) };
+      }
+    },
+    // 取任务输出目录下的绝对路径(orchestrator 拼 ffmpeg 输出 / 中间文件名用)。
+    outPath: (name: string, subdir?: string) => {
+      const dir = path.join(getTaskOutputDir(task, manifest.platform as any), subdir || '制作');
+      try { fs.mkdirSync(dir, { recursive: true }); } catch {}
+      return path.join(dir, name || ('out_' + Date.now()));
+    },
+    // 写文本文件到绝对路径(orchestrator 生成 .srt / .txt 喂 ffmpeg 用)。路径建议用 ctx.outPath 取。
+    writeFile: (absPath: string, content: string) => {
+      try {
+        try { fs.mkdirSync(path.dirname(absPath), { recursive: true }); } catch {}
+        fs.writeFileSync(absPath, String(content == null ? '' : content), 'utf8');
+        return { ok: true, path: absPath };
+      } catch (e: any) {
+        return { ok: false, reason: 'writeFile_failed:' + String(e?.message || e).slice(0, 150) };
+      }
+    },
+    // 本地语音转写(faster-whisper,模型按需下)。视频/音频均可,返回 {ok,lang,segments,text}。
+    transcribe: async (mediaPath: string, opts?: { model?: string; language?: string }) => {
+      try {
+        const { transcribe } = require('../video/asr');
+        return await transcribe(mediaPath, {
+          model: opts?.model,
+          language: opts?.language,
+          onProgress: (m: string) => ctx.report(m),
+        });
+      } catch (e: any) {
+        return { ok: false, reason: 'transcribe_exception:' + String(e?.message || e).slice(0, 200) };
+      }
+    },
+
     // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
     // 下次同钱包不会再选中这篇。
     markViralUsed: async (viralId: string) => {

@@ -59,6 +59,7 @@ function platformMeta(platformId: string, isZh: boolean): { icon: string; label:
   if (platformId === 'bilibili') return { icon: '📺', label: isZh ? '哔哩哔哩' : 'Bilibili' };
   if (platformId === 'shipinhao') return { icon: '📱', label: isZh ? '视频号' : 'WeChat Channels' };
   if (platformId === 'toutiao')  return { icon: '📰', label: isZh ? '头条号' : 'Toutiao' };
+  if (platformId === 'video')    return { icon: '🎬', label: isZh ? '视频搬运·二创' : 'Video Remix' };
   return { icon: '🤖', label: platformId };
 }
 
@@ -427,6 +428,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                 if (sid === 'tiktok_video_download')        return { icon: '⬇️', zh: 'TikTok · 视频无水印下载', en: 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'kuaishou_auto_engage')         return { icon: '⚡', zh: '快手 · 互动涨粉', en: 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
                 if (sid === 'kuaishou_video_download')      return { icon: '⬇️', zh: '快手 · 视频无水印下载', en: 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
+                if (sid === 'video_repost_remix')           return { icon: '🎬', zh: '视频搬运 · 二创', en: 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
                 if (sid === 'kuaishou_reply_fans_comment') return { icon: '💬', zh: '快手 · 自动回复粉丝', en: 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
                 if (sid === 'bilibili_auto_engage')         return { icon: '📺', zh: '哔哩哔哩 · 互动涨粉', en: 'Bilibili Engage & Grow', color: 'text-pink-500 bg-pink-500/10 border-pink-500/30' };
                 if (sid === 'bilibili_video_download')      return { icon: '⬇️', zh: '哔哩哔哩 · 视频无水印下载', en: 'Bilibili Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };

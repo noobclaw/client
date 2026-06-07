@@ -7,7 +7,7 @@
  * components/scenario/.
  */
 
-export type ScenarioPlatform = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'tiktok' | 'youtube' | 'kuaishou' | 'bilibili';
+export type ScenarioPlatform = 'xhs' | 'x' | 'binance' | 'douyin' | 'shipinhao' | 'toutiao' | 'tiktok' | 'youtube' | 'kuaishou' | 'bilibili' | 'video';
 
 export type ScenarioWorkflowType =
   | 'viral_production'
@@ -27,7 +27,8 @@ export type ScenarioWorkflowType =
   | 'shipinhao_image_text_creation'
   | 'shipinhao_reply_fans_comment'
   | 'toutiao_image_text_creation'
-  | 'toutiao_reply_fans_comment';
+  | 'toutiao_reply_fans_comment'
+  | 'video_repost_remix';
 
 export interface ScenarioRiskCapsIPC {
   max_daily_runs: number;
