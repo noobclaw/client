@@ -1676,8 +1676,9 @@ const VideoConfigModal: React.FC<{
   const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
   // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 分辨率档(成本敏感)。
   const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
-  const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '720p');
-  const [seedanceModel, setSeedanceModel] = useState<'lite' | 'pro' | 'pro15' | 'v2'>(editTask?.input.seedanceModel || 'pro15');
+  // 默认降到最省档:Lite + 480p(成本约是 1.5Pro/720p 的 1/4~1/5),要质量再手动升。
+  const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '480p');
+  const [seedanceModel, setSeedanceModel] = useState<'lite' | 'pro' | 'pro15' | 'v2'>(editTask?.input.seedanceModel || 'lite');
   const [mode, setMode] = useState<GenMode>(editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
@@ -1769,25 +1770,24 @@ const VideoConfigModal: React.FC<{
     if (p) setBgmPath(p);
   };
 
-  // BGM「打开文件夹」:原来的内嵌试听在部分环境播放不稳(点了没反应/孤儿播放),改为
-  // 把当前选中曲目还原成本地文件(builtin: 随包;remote: 首次下载并缓存,顺带焐热出片
-  // 缓存;上传=原路径),在系统文件管理器里定位它,用户自己双击试听。复用成片同款
-  // revealInFolder(打开文件夹并高亮)。
+  // BGM「打开文件夹」:原内嵌试听在部分环境播放不稳,改为直接打开该 BGM 所在【目录】,
+  // 用户自己进去双击试听。后端返回的是目录(不下载、不要求文件已存在),比定位单文件健壮:
+  // 内置 → 打开随包 bgm 目录(8 首都在);云端 → 打开缓存目录(已下载的在);上传 → 文件目录。
   const [bgmOpening, setBgmOpening] = useState(false);
   const [previewError, setPreviewError] = useState('');
   const openBgmFolder = async (token: string) => {
     if (!token || bgmOpening) return;
     setBgmOpening(true);
     try {
-      const p = await videoCreationService.resolveBgmPath(token);
-      if (p) {
-        await videoCreationService.revealInFolder(p);
+      const dir = await videoCreationService.resolveBgmPath(token); // 现在返回目录
+      if (dir) {
+        try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ }
         setPreviewError('');
       } else {
-        setPreviewError(isZh ? '打开失败：未取到音频文件(内置缺失或云端下载失败)' : 'Failed: no audio file (built-in missing or cloud download failed)');
+        setPreviewError(isZh ? '打开失败：找不到 BGM 目录' : 'Failed: BGM folder not found');
       }
     } catch {
-      setPreviewError(isZh ? '打开失败：无法定位音频文件' : 'Failed to locate the audio file');
+      setPreviewError(isZh ? '打开失败：无法打开 BGM 目录' : 'Failed to open the BGM folder');
     } finally {
       setBgmOpening(false);
     }
@@ -2150,9 +2150,9 @@ const VideoConfigModal: React.FC<{
                 >
                   <div className="grid grid-cols-2 gap-2">
                     {([
-                      { v: 'lite', zh: '1.0 Lite', en: '1.0 Lite', price: '≈¥0.2/s', tag: isZh ? '最便宜' : 'cheapest' },
+                      { v: 'lite', zh: '1.0 Lite', en: '1.0 Lite', price: '≈¥0.2/s', tag: isZh ? '默认·最省' : 'default·cheapest' },
                       { v: 'pro', zh: '1.0 Pro', en: '1.0 Pro', price: '≈¥0.4/s', tag: '' },
-                      { v: 'pro15', zh: '1.5 Pro', en: '1.5 Pro', price: '≈¥0.45/s', tag: isZh ? '默认·均衡' : 'default' },
+                      { v: 'pro15', zh: '1.5 Pro', en: '1.5 Pro', price: '≈¥0.45/s', tag: isZh ? '均衡' : 'balanced' },
                       { v: 'v2', zh: '2.0', en: '2.0', price: '≈¥0.9/s', tag: isZh ? '最强·最贵' : 'best' },
                     ] as const).map((m) => (
                       <button
@@ -2191,7 +2191,7 @@ const VideoConfigModal: React.FC<{
                             : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'
                         }`}
                       >
-                        {r}{r === '720p' ? (isZh ? '（推荐）' : ' (rec.)') : ''}
+                        {r}{r === '480p' ? (isZh ? '（默认·最省）' : ' (default)') : ''}
                       </button>
                     ))}
                   </div>
