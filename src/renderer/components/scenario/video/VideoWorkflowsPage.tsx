@@ -1983,7 +1983,7 @@ const VideoConfigModal: React.FC<{
                       setMode('pure_ai'); setMaterialSource('ai');
                       // AI 自动成片默认字幕:大号(64)+ 黄字 + 白描边(短视频常见、画面上更醒目)。
                       // 仅新建任务套默认;编辑已有任务保留用户原设置。
-                      if (!editTask) { setSubtitleFontSize(64); setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#FFFFFF'); }
+                      if (!editTask) { setSubtitleFontSize(64); setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#000000'); }
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step'}
