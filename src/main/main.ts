@@ -2926,14 +2926,14 @@ if (!gotTheLock) {
       }
     });
 
-    // resolveBgmPath: 把 BGM token 还原成本地绝对路径(remote: 首次会下载并缓存),供
-    // 「打开文件夹」用 —— 前端拿到路径后调 revealInFolder 在文件管理器里定位该 mp3。
+    // resolveBgmPath(「打开文件夹」用):返回该 BGM 所在【目录】——不下载、不要求文件已存在,
+    // 直接打开目录让用户自己双击试听。builtin→内置 bgm 目录;remote→缓存目录;上传→文件目录。
     ipcMain.handle('video:resolveBgmPath', async (_e, token: string) => {
       try {
         const fs = require('fs');
-        const { resolveBgmPath } = require('./libs/video/bgm');
-        const resolved: string | undefined = await resolveBgmPath(token);
-        return resolved && fs.existsSync(resolved) ? resolved : '';
+        const { resolveBgmFolder } = require('./libs/video/bgm');
+        const dir: string | undefined = resolveBgmFolder(token);
+        return dir && fs.existsSync(dir) ? dir : '';
       } catch {
         return '';
       }

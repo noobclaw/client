@@ -1020,13 +1020,13 @@ const server = http.createServer(async (req, res) => {
             }
           }
           case 'video:resolveBgmPath': {
-            // 把 BGM token 还原成本地绝对路径(remote: 首次下载并缓存),供「打开文件夹」
-            // 用;前端拿到路径后走 video:revealInFolder 在文件管理器里定位。失败返回 ''。
+            // 返回该 BGM 所在【目录】(不下载、不要求文件已存在),供「打开文件夹」直接打开,
+            // 让用户自己进去双击试听。builtin→内置目录;remote→缓存目录;上传→文件目录。
             try {
               const fs = await import('fs');
-              const { resolveBgmPath } = await import('./libs/video/bgm');
-              const resolved = await resolveBgmPath(args[0]);
-              return writeJSON(res, 200, resolved && fs.existsSync(resolved) ? resolved : '');
+              const { resolveBgmFolder } = await import('./libs/video/bgm');
+              const dir = resolveBgmFolder(args[0]);
+              return writeJSON(res, 200, dir && fs.existsSync(dir) ? dir : '');
             } catch {
               return writeJSON(res, 200, '');
             }

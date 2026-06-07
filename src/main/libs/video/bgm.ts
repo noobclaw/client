@@ -147,3 +147,25 @@ export async function resolveBgmPath(
   // 用户上传的绝对路径,原样返回(pipeline 再 existsSync 兜底)。
   return bgmPath;
 }
+
+/**
+ * 解析「该 BGM 应该打开的目录」——给 UI「打开文件夹」用:不下载、不要求文件已存在,
+ * 比 resolveBgmPath 健壮(后者 remote 必须先下载成功才有路径,网络/CDN 出问题就拿不到)。
+ *   · builtin: → 内置 bgm 目录(bundledBgmDirs 第一个存在的;都不在则返回第一个候选)
+ *   · remote:  → 云端缓存目录 bgm-cache(确保已建好便于打开;没下载过的曲目自然不在里面)
+ *   · 上传绝对路径 → 该文件所在目录
+ */
+export function resolveBgmFolder(bgmPath?: string): string | undefined {
+  if (!bgmPath) return undefined;
+  if (bgmPath.startsWith(BUILTIN_BGM_PREFIX)) {
+    const dirs = bundledBgmDirs();
+    for (const d of dirs) { if (fs.existsSync(d)) return d; }
+    return dirs[0];
+  }
+  if (bgmPath.startsWith(REMOTE_BGM_PREFIX)) {
+    const dir = bgmCacheDir();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { /* ignore */ }
+    return dir;
+  }
+  return path.dirname(bgmPath);
+}
