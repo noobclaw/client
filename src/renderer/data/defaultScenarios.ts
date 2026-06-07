@@ -18,6 +18,72 @@ import type { Scenario } from '../services/scenario';
 
 export const DEFAULT_SCENARIOS: Scenario[] = ([
   {
+    "id": "ai_commentary_remix",
+    "version": "1.0.0",
+    "platform": "video",
+    "platforms": [
+      "bilibili_main",
+      "douyin_main",
+      "kuaishou_main",
+      "xhs_main",
+      "tiktok_main"
+    ],
+    "workflow_type": "ai_commentary_remix",
+    "category": "creation",
+    "name_zh": "AI 解说混剪",
+    "name_en": "AI Commentary Remix",
+    "description_zh": "粘贴影视/短剧/视频链接 → 取无水印源 → 本地 whisper 转写 → AI 写解说词并挑出要保留的精华片段 → edge-tts 配音 → ffmpeg 按片段裁切拼接、配音对齐、烧解说字幕 → 一条「N分钟看完」式解说成片,存本地。复用原画面,几乎零成本。",
+    "description_en": "Paste a film/drama/video link → grab the watermark-free source → local whisper transcription → AI writes commentary and picks the segments to keep → edge-tts voiceover → ffmpeg cuts/stitches the kept clips, aligns narration, burns commentary subtitles → a 'recap'-style commentary video, saved locally. Reuses source footage, near-zero cost.",
+    "icon": "🎙️",
+    "default_config": {
+      "source_mode": "manual",
+      "keywords": [],
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-23:00",
+      "persona": "幽默犀利的影视解说博主,口语化、有梗、有节奏",
+      "target_lang": "zh",
+      "max_clips": 12,
+      "keep_original_audio": false,
+      "subtitle": true,
+      "whisper_model": "small",
+      "output": "local"
+    },
+    "risk_caps": {
+      "max_daily_runs": 20,
+      "max_scroll_per_run": 10,
+      "min_scroll_delay_ms": 800,
+      "max_scroll_delay_ms": 2000,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 5400000,
+      "min_interval_hours": 0,
+      "weekly_rest_days": 0,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 20
+    },
+    "required_login_url": "https://www.bilibili.com",
+    "tab_url_pattern": "^https?://",
+    "anchor_url": "https://www.bilibili.com",
+    "entry_urls": {
+      "bilibili": "https://www.bilibili.com",
+      "douyin": "https://www.douyin.com",
+      "kuaishou": "https://www.kuaishou.com",
+      "xhs": "https://www.xiaohongshu.com",
+      "tiktok": "https://www.tiktok.com"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "narration_writer": "prompts/narration_writer.txt"
+      },
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
     "id": "bilibili_auto_engage",
     "version": "1.0.0",
     "platform": "bilibili",
@@ -2524,6 +2590,74 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "skills": {
       "scripts": {},
       "prompts": {},
+      "config": "config.json",
+      "orchestrator": "orchestrator.js"
+    }
+  },
+  {
+    "id": "long_to_short",
+    "version": "1.0.0",
+    "platform": "video",
+    "platforms": [
+      "bilibili_main",
+      "douyin_main",
+      "kuaishou_main",
+      "xhs_main",
+      "tiktok_main"
+    ],
+    "workflow_type": "long_to_short",
+    "category": "creation",
+    "name_zh": "长视频转爆款短片",
+    "name_en": "Long Video to Viral Shorts",
+    "description_zh": "粘贴长视频/直播回放链接 → 本地浏览器取无水印源 → 本地 whisper 转写 → AI 选出 N 个高光片段并打分 → ffmpeg 切片转竖屏、按片段烧字幕 → 一条长视频拆成多条爆款短片,存本地。全程本地 ffmpeg,复用原画面,几乎零成本。",
+    "description_en": "Paste a long video / livestream replay link → grab the watermark-free source locally → local whisper transcription → AI picks N scored highlight moments → ffmpeg cuts each to vertical with burned subtitles → one long video becomes several short clips, saved locally. Local ffmpeg, reuses source footage, near-zero cost.",
+    "icon": "✂️",
+    "default_config": {
+      "source_mode": "manual",
+      "keywords": [],
+      "daily_count": 1,
+      "variants_per_post": 1,
+      "schedule_window": "09:00-23:00",
+      "clip_count": 3,
+      "target_aspect": "9:16",
+      "min_clip_sec": 20,
+      "max_clip_sec": 60,
+      "target_lang": "zh",
+      "subtitle": true,
+      "whisper_model": "small",
+      "output": "local",
+      "persona": ""
+    },
+    "risk_caps": {
+      "max_daily_runs": 20,
+      "max_scroll_per_run": 10,
+      "min_scroll_delay_ms": 800,
+      "max_scroll_delay_ms": 2000,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 5400000,
+      "min_interval_hours": 0,
+      "weekly_rest_days": 0,
+      "cooldown_captcha_hours": 24,
+      "cooldown_rate_limit_hours": 48,
+      "cooldown_account_flag_hours": 72,
+      "daily_count_cap": 20
+    },
+    "required_login_url": "https://www.bilibili.com",
+    "tab_url_pattern": "^https?://",
+    "anchor_url": "https://www.bilibili.com",
+    "entry_urls": {
+      "bilibili": "https://www.bilibili.com",
+      "douyin": "https://www.douyin.com",
+      "kuaishou": "https://www.kuaishou.com",
+      "xhs": "https://www.xiaohongshu.com",
+      "tiktok": "https://www.tiktok.com"
+    },
+    "skills": {
+      "scripts": {},
+      "prompts": {
+        "highlight_picker": "prompts/highlight_picker.txt"
+      },
       "config": "config.json",
       "orchestrator": "orchestrator.js"
     }

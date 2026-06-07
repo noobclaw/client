@@ -571,6 +571,12 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'video_repost_remix') return isZh
       ? ['选品 / 收集链接', '逐条:下载源 → 本地转写 → 翻译 → 遮字幕+二创合成,存本地']
       : ['Pick / collect links', 'Per video: download → transcribe → translate → cover-subs + remix compose, save'];
+    if (sid === 'long_to_short') return isZh
+      ? ['收集长视频链接', '逐条:下载源 → 转写 → AI 选高光 → 切竖屏+烧字幕,存本地']
+      : ['Collect long-video links', 'Per video: download → transcribe → AI pick highlights → vertical clips + subs, save'];
+    if (sid === 'ai_commentary_remix') return isZh
+      ? ['收集源视频链接', '逐条:下载源 → 转写 → AI 写解说 → 配音切片拼接,存本地']
+      : ['Collect source links', 'Per video: download → transcribe → AI commentary → dub + cut + stitch, save'];
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -948,6 +954,8 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'video_repost_remix')             return { icon: '🎬', label: isZh ? '视频搬运 · 二创' : 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'long_to_short')                  return { icon: '✂️', label: isZh ? '长视频转爆款短片' : 'Long → Shorts', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
+    if (sid === 'ai_commentary_remix')            return { icon: '🎙️', label: isZh ? 'AI 解说混剪' : 'AI Commentary Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };

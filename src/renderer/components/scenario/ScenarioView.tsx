@@ -523,6 +523,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           onGoCreate={goVideoCreate}
           onBack={() => setView({ kind: 'main', section: baseSection, platform: 'video' })}
           onDetailChange={setVideoInDetail}
+          scenarioTasks={tasksForPlatform}
+          scenarios={scenarios}
+          onOpenScenarioTask={openTask}
+          onRefresh={refreshAll}
         />
       );
     }

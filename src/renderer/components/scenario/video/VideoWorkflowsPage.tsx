@@ -66,9 +66,16 @@ interface VideoWorkflowsPageProps {
   /** 进入/退出任务·运行记录详情时上报,供 ScenarioView 隐藏顶部 L1/L2 tab
    *  (对齐 scenario 详情页:详情态全屏,顶上不挂那么多 tab)。 */
   onDetailChange?: (inDetail: boolean) => void;
+  /** v6.x: video 平台下的【后端 scenario 任务】(搬运二创/长转短/解说混剪)。
+   *  这些不是本地一键成片,由 ScenarioView 过滤 platform==='video' 传入,
+   *  点开走 onOpenScenarioTask → scenario TaskDetailPage(运行/进度/历史)。 */
+  scenarioTasks?: any[];
+  scenarios?: Array<{ id: string; name_zh?: string; name_en?: string; icon?: string }>;
+  onOpenScenarioTask?: (taskId: string) => void;
+  onRefresh?: () => void | Promise<void>;
 }
 
-export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack, onDetailChange }) => {
+export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack, onDetailChange, scenarioTasks, scenarios, onOpenScenarioTask, onRefresh }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const { tasks, runs } = useVideoStore();
   const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
@@ -146,6 +153,10 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
       tasks={tasks}
       onGoCreate={onGoCreate}
       onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })}
+      scenarioTasks={scenarioTasks || []}
+      scenarios={scenarios || []}
+      onOpenScenarioTask={onOpenScenarioTask}
+      onRefresh={onRefresh}
     />
   );
 };
@@ -388,10 +399,45 @@ const VideoLanding: React.FC<{
   tasks: VideoTask[];
   onGoCreate: () => void;
   onOpenTask: (id: string) => void;
-}> = ({ isZh, tasks, onGoCreate, onOpenTask }) => {
+  scenarioTasks: any[];
+  scenarios: Array<{ id: string; name_zh?: string; name_en?: string; icon?: string }>;
+  onOpenScenarioTask?: (id: string) => void;
+  onRefresh?: () => void | Promise<void>;
+}> = ({ isZh, tasks, onGoCreate, onOpenTask, scenarioTasks, scenarios, onOpenScenarioTask, onRefresh }) => {
+  // 后端二创任务(搬运二创/长转短/解说混剪):点开进 scenario 详情页运行/看进度。
+  const scioMap = new Map(scenarios.map((s) => [s.id, s]));
+  const scenarioSection = scenarioTasks.length > 0 ? (
+    <section className="mb-5">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-bold dark:text-white">🎬 {isZh ? '我的二创任务' : 'My Remix Tasks'}</h2>
+        {onRefresh && (
+          <button type="button" onClick={() => onRefresh()} className="text-xs text-gray-500 hover:text-fuchsia-500">{isZh ? '刷新' : 'Refresh'}</button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {scenarioTasks.map((t) => {
+          const s = scioMap.get(t.scenario_id);
+          const name = (isZh ? s?.name_zh : s?.name_en) || s?.name_zh || t.scenario_id;
+          return (
+            <button key={t.id} type="button" onClick={() => onOpenScenarioTask?.(t.id)}
+              className="w-full text-left flex items-center justify-between rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 hover:bg-fuchsia-500/10 px-4 py-3 transition-colors">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="text-lg shrink-0">{s?.icon || '🎬'}</span>
+                <span className="text-sm font-medium dark:text-white truncate">{name}</span>
+                <span className="text-[10px] text-gray-500 shrink-0">#{String(t.id).slice(0, 8)}</span>
+              </span>
+              <span className="text-xs text-fuchsia-500 font-medium shrink-0">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  ) : null;
+
   if (tasks.length === 0) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
+        {scenarioSection}
         <button
           type="button"
           onClick={onGoCreate}
@@ -433,6 +479,7 @@ const VideoLanding: React.FC<{
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
+      {scenarioSection}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold dark:text-white">
           📋 {isZh ? '我的视频任务' : 'My Videos'}
