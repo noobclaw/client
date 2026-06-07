@@ -59,14 +59,38 @@ function aspectToSeedanceRatio(aspect: VideoAspect): '9:16' | '16:9' | '1:1' {
 }
 
 /**
- * 给一句口播稿构造 Seedance 画面 prompt:取该句内容当画面方向,叠加赛道/人设做风格统一,
- * 明确"空镜、无文字/字幕/水印"(文字由我们后期烧字幕,画面只要视觉)。
- * (v1 直接用口播句;后续可改成复用 generateSearchTerms 的可视化描述提质量。)
+ * 给一句口播稿构造 Seedance 画面 prompt —— 套 Seedance 官方 6 步公式(主体/动作 → 环境/光
+ * → 单一运镜 → 风格 → 本地化 → 负向约束),提质不加钱。要点(来自官方/社区最佳实践):
+ *   · 只给一个运镜(多运镜会抖);逐镜轮换不同运镜避免全片雷同。
+ *   · 物理光源 + 写实风格;ROI 最高。
+ *   · 负向约束:无文字/水印 + 避免抖动/肢体扭曲/闪烁。
+ *   · 图生视频(有参考图)时不复述图里已有内容,只描述运动/运镜(否则主体漂移)。
+ *   · 本地化:中文/日韩内容,人物按亚洲/对应国家、实景按当代城市风格;通用物体保持中性。
  */
-function buildSeedancePrompt(sentence: string, input: { track?: string; persona?: string }): string {
-  const styleBits = [input.track, input.persona].filter(Boolean).join('，');
-  const style = styleBits ? `整体风格:${styleBits}。` : '';
-  return `电影感竖屏空镜,画面具体可拍、与这句内容相关,不要任何文字/字幕/水印/logo:「${sentence}」。${style}镜头平稳,真实质感,光影自然。`;
+function buildSeedancePrompt(
+  sentence: string,
+  opts: { track?: string; persona?: string; lang?: string; isI2V?: boolean; shotIndex?: number },
+): string {
+  const REGION: Record<string, string> = { zh: '中国', ja: '日本', ko: '韩国' };
+  const region = REGION[(opts.lang || '').slice(0, 2).toLowerCase()];
+  const styleBits = [opts.track, opts.persona].filter(Boolean).join('、');
+  const CAMS = ['镜头缓慢推近', '镜头缓慢左移跟随', '镜头缓慢上摇', '固定机位、主体自然轻微动作', '镜头缓慢环绕'];
+  const cam = CAMS[(opts.shotIndex ?? 0) % CAMS.length];
+
+  const parts: string[] = [];
+  if (opts.isI2V) {
+    parts.push(`保持参考图的主体、构图与配色不变,只为画面添加自然、轻微的运动。`);
+  } else {
+    parts.push(`电影感竖屏空镜,画面贴合这句旁白(具体、可拍,有明确主体与单一动作):「${sentence}」。`);
+  }
+  parts.push(`环境真实、自然光、有空间层次与景深。`);
+  parts.push(`运镜:${cam}(全程只用这一种,平稳不抖)。`);
+  parts.push(`风格:电影感、纪实写实、画质清晰${styleBits ? `,贴合「${styleBits}」` : ''}。`);
+  if (region) {
+    parts.push(`本地化:若出现人物,为亚洲/${region}人面孔与气质;若为街景/室内/餐厅/商店/交通等实景,呈现当代${region}城市的环境与风格;通用物体、纯自然风景保持中性。`);
+  }
+  parts.push(`不要任何文字、字幕、水印、logo;避免画面抖动、肢体扭曲、时间闪烁。`);
+  return parts.join('');
 }
 
 /**
@@ -661,7 +685,10 @@ async function runVideoPipeline(
       const refImagesAi = (input.referenceImages || []).filter((p) => p && fs.existsSync(p)).slice(0, 2);
       const resolution = input.seedanceResolution || '720p';
       const aiScenes = sentences.map((s, i) => ({
-        prompt: buildSeedancePrompt(s, input),
+        prompt: buildSeedancePrompt(s, {
+          track: input.track, persona: input.persona,
+          lang: contentLang, isI2V: refImagesAi.length > 0, shotIndex: i,
+        }),
         // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
         durationSec: Math.max(4, Math.min(12, Math.ceil(sceneDurations[i]))),
       }));
