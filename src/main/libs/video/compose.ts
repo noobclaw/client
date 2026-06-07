@@ -221,8 +221,8 @@ export interface SceneSpec {
   videoPath?: string;
   /** 画面图片绝对路径;clips/videoPath 都空时用;再为空 = 纯色文字卡。 */
   imagePath?: string;
-  /** 该镜配音绝对路径(mp3)。 */
-  audioPath: string;
+  /** 该镜配音绝对路径(mp3)。纯画面模式(narration=false)可不传。 */
+  audioPath?: string;
   /** 时长(秒)。 */
   durationSec: number;
   /** 字幕文案(原句),用于无 Whisper 时估算 cue。 */
@@ -240,14 +240,19 @@ async function renderClipsBg(
 ): Promise<void> {
   const segCount = Math.max(1, Math.min(8, Math.ceil(dur / Math.max(1, maxClip))));
   const segDur = dur / segCount;
+  // 单片段(AI 自动成片每镜=一个≈该镜时长的片段)时:各段要从片段内【不同位置】往后截
+  // (0→segDur→2segDur…)连续播,而不是每段都从第 0 秒截 → 否则同一段前几秒被重复播
+  // (这就是"连着重复、不流畅"的根)。多片段(stock 一镜多素材)保持轮换、各段从 0 截。
+  const single = clips.length === 1;
   const args: string[] = ['-y'];
   const filters: string[] = [];
   for (let s = 0; s < segCount; s++) {
-    const clip = clips[s % clips.length];
-    // 每段单独一个输入,-stream_loop -1 保证够长
+    const clip = single ? clips[0] : clips[s % clips.length];
+    // -stream_loop -1 保证够长(片段比镜短时兜底);单片段够长时各段落在片段内不同区间,不重复。
     args.push('-stream_loop', '-1', '-i', clip);
+    const trimStart = single ? s * segDur : 0;
     filters.push(
-      `[${s}:v]trim=0:${segDur.toFixed(3)},setpts=PTS-STARTPTS,` +
+      `[${s}:v]trim=${trimStart.toFixed(3)}:${(trimStart + segDur).toFixed(3)},setpts=PTS-STARTPTS,` +
       `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},` +
       `fps=${FPS},setsar=1[v${s}]`,
     );
@@ -486,6 +491,12 @@ export interface ComposeOptions {
   leadInSeconds?: number;
   /** 片尾留白(秒):旁白结束后再留一拍,画面冻结尾帧撑住。默认 1.2,传 0 关闭。 */
   tailOutSeconds?: number;
+  /**
+   * 是否有口播旁白。默认 true(逐镜 concat 旁白音轨)。
+   * false = 纯画面模式(Seedance 关旁白):不拼旁白音轨、不烧字幕,
+   * 音频只用 BGM(没传 BGM 则补一条静音轨),scenes 不需要 audioPath。
+   */
+  narration?: boolean;
 }
 
 /**
@@ -561,8 +572,61 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
     const masterBg = path.join(workDir, 'master_bg.mp4');
     await concatVideos(workDir, bgPaths, masterBg);
 
+    // v6.x: 纯画面模式(Seedance 关旁白)— 无旁白音轨、无字幕,音频只用 BGM
+    //   (没传 BGM 则补一条静音 aac 轨,避免部分平台拒收无音轨视频)。完全不碰
+    //   下面的旁白合成路径。
+    if (opts.narration === false) {
+      const leadSec0 = opts.leadInSeconds !== undefined && opts.leadInSeconds >= 0 ? opts.leadInSeconds : DEFAULT_LEAD_IN_SEC;
+      const tailSec0 = opts.tailOutSeconds !== undefined && opts.tailOutSeconds >= 0 ? opts.tailOutSeconds : DEFAULT_TAIL_OUT_SEC;
+      const vPad0 = (leadSec0 > 0 || tailSec0 > 0)
+        ? `tpad=start_duration=${leadSec0.toFixed(2)}:start_mode=clone:stop_duration=${tailSec0.toFixed(2)}:stop_mode=clone,`
+        : '';
+      fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+      // 先把画面(可选首尾留白)定帧出一条无声视频。
+      const silentVid = path.join(workDir, 'silent.mp4');
+      const rv = await runFfmpeg([
+        '-y', '-i', masterBg,
+        '-vf', `${vPad0}format=yuv420p`,
+        '-an', '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+        '-r', String(FPS), '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+        silentVid,
+      ], { timeoutMs: 300_000, cwd: workDir });
+      if (!rv.ok || !fs.existsSync(silentVid)) {
+        throw new Error(`silent video build failed: ${rv.stderr.slice(-400)}`);
+      }
+      const wantBgm0 = !!(opts.bgmPath && fs.existsSync(opts.bgmPath));
+      if (wantBgm0) {
+        const vol = Math.min(1, Math.max(0, opts.bgmVolume ?? 0.18));
+        const rb = await runFfmpeg([
+          '-y', '-i', silentVid,
+          '-stream_loop', '-1', '-i', opts.bgmPath!,
+          '-filter_complex', `[1:a]volume=${vol}[a]`,
+          '-map', '0:v', '-map', '[a]',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+          '-shortest', '-movflags', '+faststart',
+          outputPath,
+        ], { timeoutMs: 180_000, cwd: workDir });
+        if (!rb.ok || !fs.existsSync(outputPath)) {
+          try { fs.copyFileSync(silentVid, outputPath); } catch {}
+        }
+      } else {
+        const rs = await runFfmpeg([
+          '-y', '-i', silentVid,
+          '-f', 'lavfi', '-i', 'anullsrc=channel_layout=stereo:sample_rate=44100',
+          '-map', '0:v', '-map', '1:a',
+          '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-ar', '44100',
+          '-shortest', '-movflags', '+faststart',
+          outputPath,
+        ], { timeoutMs: 120_000, cwd: workDir });
+        if (!rs.ok || !fs.existsSync(outputPath)) {
+          try { fs.copyFileSync(silentVid, outputPath); } catch {}
+        }
+      }
+      return outputPath;
+    }
+
     const masterAudio = path.join(workDir, 'master_audio.m4a');
-    await concatAudios(workDir, scenes.map((s) => s.audioPath), masterAudio);
+    await concatAudios(workDir, scenes.map((s) => s.audioPath!), masterAudio);
 
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
 
