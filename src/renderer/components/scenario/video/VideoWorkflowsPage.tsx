@@ -174,8 +174,9 @@ function compactNumber(n: number): string {
 
 /**
  * 消耗 = 积分(credits)+ 美元,对齐币安详情页 `💎 N ≈ $X`。
- * credits 用消耗的 DeepSeek token 数;costUsd 是服务端按 token_price_per_million
- * 算好的权威美元成本。老记录 / 老后端拿不到 costUsd 时只显 💎 token(不显 $)。
+ * credits = 服务端回传的「实扣积分」(_noobclaw.billableTokens,含 cache 折扣 +
+ * Pro 倍率),绝不是上游真实 token —— 真实 token 只给后端 / admin 看。
+ * costUsd 是服务端按 token_price_per_million 算好的权威美元。老后端拿不到时只显 💎(不显 $)。
  */
 function formatCreditsCost(credits: number, costUsd: number): string {
   if (!credits || credits <= 0) return '-';
@@ -1236,8 +1237,8 @@ const VideoTaskDetail: React.FC<{
       )}
 
       {/* 统计网格(对齐币安:累计完成/累计消耗/上次完成/上次消耗/上次运行)。
-          消耗换算成积分 + 美元(💎 N ≈ $X),跟币安同口径:credits=消耗 token,
-          $ = 服务端按 token_price_per_million 算好的权威成本。 */}
+          消耗换算成积分 + 美元(💎 N ≈ $X),跟币安同口径:credits=实扣积分(billable,
+          非上游真实 token),$ = 服务端按 token_price_per_million 算好的权威成本。 */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
         <VStatCard
           label={isZh ? '累计完成' : 'Total Done'}

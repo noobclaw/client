@@ -87,11 +87,15 @@ async function callDeepSeek(
     const json: any = await resp.json();
     const content = json?.choices?.[0]?.message?.content || '';
     if (!content) throw new Error('AI_EMPTY_RESPONSE — AI 返回空内容');
-    // usage.total_tokens 是服务端计费口径;没回 usage 时退化为 0(不影响出片)。
-    const tokens = Number(json?.usage?.total_tokens) || 0;
-    // _noobclaw.costUsd 是服务端按 token_price_per_million 算好的权威美元成本
-    // (跟 scenario phaseRunner aiCall 同源)。老后端不回该扩展时退化为 0。
+    // 对外只用「实扣积分」口径,绝不外露 usage.total_tokens(上游真实消耗,
+    // 暴露会让用户反推我们的成本/加价率 —— 真实 token 只给后端 / admin 看)。
+    // _noobclaw.billableTokens = 含 cache 折扣 + Pro 倍率后实际扣的积分;
+    // _noobclaw.costUsd = 按 token_price_per_million 算好的权威美元(同源 scenario)。
     const costUsd = Number(json?._noobclaw?.costUsd) || 0;
+    const price = Number(json?._noobclaw?.priceUsdPerMillion) || 0;
+    let tokens = Number(json?._noobclaw?.billableTokens) || 0;
+    // 老后端没回 billableTokens 时,用权威 costUsd 反推积分(仍不碰 raw token)。
+    if (!tokens && costUsd > 0 && price > 0) tokens = Math.round((costUsd / price) * 1_000_000);
     return { content, tokens, costUsd };
   } finally {
     clearTimeout(timer);
