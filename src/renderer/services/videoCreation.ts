@@ -176,15 +176,14 @@ class VideoCreationService {
   }
 
   /**
-   * 试听一首 BGM。token 可为 builtin:/remote:/绝对路径。
-   * 主进程用 resolveBgmPath 还原成本地文件:本地内置直接读;云端曲目首次会下载并
-   * 缓存(顺带焐热出片缓存,合成时不再重复下载)。返回 data: URL('' = 失败/未挂)。
+   * 把 BGM token(builtin:/remote:/绝对路径)还原成本地绝对路径,供「打开文件夹」用。
+   * 云端曲目首次会下载并缓存。返回 ''=失败/未挂。
    */
-  async previewBgm(token: string): Promise<string> {
-    if (!this.api?.previewBgm) return '';
+  async resolveBgmPath(token: string): Promise<string> {
+    if (!this.api?.resolveBgmPath) return '';
     try {
-      const url = await this.api.previewBgm(token);
-      return typeof url === 'string' ? url : '';
+      const p = await this.api.resolveBgmPath(token);
+      return typeof p === 'string' ? p : '';
     } catch {
       return '';
     }

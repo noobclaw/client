@@ -9,7 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
-/** 背景音乐上限:20MB。够 320kbps 整曲,且 ≤ previewBgm 的 25MB 试听上限(传得进必听得了)。 */
+/** 背景音乐上限:20MB。够 320kbps 整曲(合成时混音读取无压力)。 */
 export const BGM_MAX_BYTES = 20 * 1024 * 1024;
 /** 单个本地视频素材上限:200MB。 */
 export const VIDEO_MAX_BYTES = 200 * 1024 * 1024;

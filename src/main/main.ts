@@ -2926,27 +2926,14 @@ if (!gotTheLock) {
       }
     });
 
-    // Resolve a BGM token to a playable data: URL for in-wizard preview. builtin:
-    // → bundled mp3; remote: → download+cache (warms the compose cache so the
-    // produced video reuses it without a second download); abs path → user upload.
-    ipcMain.handle('video:previewBgm', async (_e, token: string) => {
+    // resolveBgmPath: 把 BGM token 还原成本地绝对路径(remote: 首次会下载并缓存),供
+    // 「打开文件夹」用 —— 前端拿到路径后调 revealInFolder 在文件管理器里定位该 mp3。
+    ipcMain.handle('video:resolveBgmPath', async (_e, token: string) => {
       try {
         const fs = require('fs');
-        const path = require('path');
         const { resolveBgmPath } = require('./libs/video/bgm');
         const resolved: string | undefined = await resolveBgmPath(token);
-        if (!resolved || !fs.existsSync(resolved)) return '';
-        const buf: Buffer = fs.readFileSync(resolved);
-        if (buf.length === 0 || buf.length > 25 * 1024 * 1024) return '';
-        const ext = path.extname(resolved).toLowerCase().replace('.', '');
-        const mime =
-          ext === 'wav' ? 'audio/wav'
-          : ext === 'ogg' ? 'audio/ogg'
-          : ext === 'flac' ? 'audio/flac'
-          : ext === 'aac' ? 'audio/aac'
-          : ext === 'm4a' ? 'audio/mp4'
-          : 'audio/mpeg';
-        return `data:${mime};base64,${buf.toString('base64')}`;
+        return resolved && fs.existsSync(resolved) ? resolved : '';
       } catch {
         return '';
       }

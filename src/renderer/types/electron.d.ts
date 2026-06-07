@@ -526,7 +526,7 @@ interface IElectronAPI {
     pickVideos: (max: number) => Promise<string[]>;
     readImageDataUrl: (filePath: string) => Promise<string>;
     pickAudio: () => Promise<string>;
-    previewBgm: (token: string) => Promise<string>;
+    resolveBgmPath: (token: string) => Promise<string>;
     openFile: (filePath: string) => Promise<unknown>;
     revealInFolder: (filePath: string) => Promise<unknown>;
     onProgress: (handler: (p: unknown) => void) => () => void;

@@ -477,7 +477,7 @@ export function createTauriElectronShim(): typeof window.electron {
         return valid[0] || '';
       },
       readImageDataUrl: (filePath: string) => ipcInvoke('video:readImageDataUrl', filePath).then((r: any) => r ?? ''),
-      previewBgm: (token: string) => ipcInvoke('video:previewBgm', token).then((r: any) => r ?? ''),
+      resolveBgmPath: (token: string) => ipcInvoke('video:resolveBgmPath', token).then((r: any) => r ?? ''),
       generate: (input: unknown) => ipcInvoke('video:generate', input).then((r: any) => r ?? { ok: false, error: 'ipc_error' }),
       openFile: (filePath: string) => ipcInvoke('video:openFile', filePath),
       revealInFolder: (filePath: string) => ipcInvoke('video:revealInFolder', filePath),

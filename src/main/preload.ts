@@ -104,8 +104,8 @@ contextBridge.exposeInMainWorld('electron', {
     readImageDataUrl: (filePath: string) => ipcRenderer.invoke('video:readImageDataUrl', filePath),
     /** Open the system file picker to choose one background-music file (returns abs path or ''). */
     pickAudio: () => ipcRenderer.invoke('video:pickAudio'),
-    /** Resolve a BGM token (builtin:/remote:/abs path) to a playable data: URL for preview; downloads+caches cloud tracks on first use. */
-    previewBgm: (token: string) => ipcRenderer.invoke('video:previewBgm', token),
+    /** Resolve a BGM token to its local absolute path (downloads cloud tracks on first use) so the renderer can reveal it in the file manager. */
+    resolveBgmPath: (token: string) => ipcRenderer.invoke('video:resolveBgmPath', token),
     /** Open a produced file with the OS default player. */
     openFile: (filePath: string) => ipcRenderer.invoke('video:openFile', filePath),
     /** Reveal a produced file in the OS file manager. */

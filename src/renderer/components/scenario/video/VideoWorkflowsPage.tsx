@@ -72,8 +72,6 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
   const { tasks, runs } = useVideoStore();
   const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
   const [editTaskId, setEditTaskId] = useState<string | null>(null);
-  // 「视频搬运·二创」是后端 scenario(非本地一键成片),自带配置 modal,提交直接建 scenario 任务。
-  const [remixOpen, setRemixOpen] = useState(false);
   // 创建完跳详情时,section 会从 create 变 tasks;别让下面的 effect 把 detail 清掉。
   const justCreatedRef = useRef(false);
 
@@ -142,18 +140,12 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
   }
 
   return (
-    <>
-      <VideoLanding
-        isZh={isZh}
-        tasks={tasks}
-        onGoCreate={onGoCreate}
-        onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })}
-        onOpenRemix={() => setRemixOpen(true)}
-      />
-      {remixOpen && (
-        <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)} />
-      )}
-    </>
+    <VideoLanding
+      isZh={isZh}
+      tasks={tasks}
+      onGoCreate={onGoCreate}
+      onOpenTask={(id) => setDetail({ kind: 'task', taskId: id })}
+    />
   );
 };
 
@@ -201,6 +193,22 @@ function intervalLabel(task: VideoTask, isZh: boolean): string | null {
     case '6h': return isZh ? '每 6 小时' : 'Every 6h';
     case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}` : `Daily ${task.dailyTime || '08:00'}`;
     case 'daily_random': return isZh ? '每日随机' : 'Daily random';
+    default: return null;
+  }
+}
+
+/** 详情页频率行用:在短标签上补真实随机延迟范围,让用户一眼看清是否随机(对齐币安
+ *  TaskDetailPage 的频率展示)。数字严格对齐 videoTaskStore.computeNextVideoRun:
+ *  3h/6h = +[0,10min) 抖动;daily = ±15min;daily_random = 全天随机一次。 */
+function intervalLabelDetailed(task: VideoTask, isZh: boolean): string | null {
+  const iv = task.runInterval;
+  if (!iv || iv === 'once') return null;
+  if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
+  switch (iv) {
+    case '3h': return isZh ? '每 3 小时(+0-10 分钟随机延迟)' : 'Every 3h (+0-10min jitter)';
+    case '6h': return isZh ? '每 6 小时(+0-10 分钟随机延迟)' : 'Every 6h (+0-10min jitter)';
+    case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}(±15 分钟随机)` : `Daily ${task.dailyTime || '08:00'} (±15min)`;
+    case 'daily_random': return isZh ? '每日随机时间一次' : 'Once daily (random time)';
     default: return null;
   }
 }
@@ -379,12 +387,10 @@ const VideoLanding: React.FC<{
   tasks: VideoTask[];
   onGoCreate: () => void;
   onOpenTask: (id: string) => void;
-  onOpenRemix: () => void;
-}> = ({ isZh, tasks, onGoCreate, onOpenTask, onOpenRemix }) => {
+}> = ({ isZh, tasks, onGoCreate, onOpenTask }) => {
   if (tasks.length === 0) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
-        <RemixEntryCard isZh={isZh} onOpen={onOpenRemix} />
         <button
           type="button"
           onClick={onGoCreate}
@@ -426,7 +432,6 @@ const VideoLanding: React.FC<{
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      <RemixEntryCard isZh={isZh} onOpen={onOpenRemix} />
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold dark:text-white">
           📋 {isZh ? '我的视频任务' : 'My Videos'}
@@ -1087,7 +1092,7 @@ const VideoTaskDetail: React.FC<{
           {/* 左:扁平配置文字行 + 创建时间 + 输出目录(与币安详情同款,无嵌套框) */}
           <div className="flex-1 min-w-0 text-xs text-gray-500 dark:text-gray-400 space-y-1">
             <ConfigRows isZh={isZh} input={task.input} />
-            <div>⏰ {isZh ? '运行频率' : 'Frequency'}：{intervalLabel(task, isZh) || (isZh ? '不重复（手动触发）' : 'Once (manual)')}</div>
+            <div>⏰ {isZh ? '运行频率' : 'Frequency'}：{intervalLabelDetailed(task, isZh) || (isZh ? '不重复（手动触发）' : 'Once (manual)')}</div>
             <div>{isZh ? '创建时间' : 'Created'}：{new Date(task.createdAt).toLocaleString(isZh ? 'zh-CN' : 'en-US')}</div>
             {outDir && (
               <div className="flex items-center gap-2 flex-wrap">
@@ -1319,12 +1324,14 @@ const VideoCreateFlow: React.FC<{
   onCreated: (taskId: string) => void;
 }> = ({ isZh, onCreated }) => {
   const [showConfig, setShowConfig] = useState(false);
+  // 「视频搬运·二创」是后端 scenario(非本地一键成片),自带配置 modal,提交直接建 scenario 任务。
+  const [remixOpen, setRemixOpen] = useState(false);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} />
-        <DailyHotVideoCard isZh={isZh} />
+        <RemixEntryCard isZh={isZh} onOpen={() => setRemixOpen(true)} />
       </section>
 
       {showConfig && (
@@ -1333,6 +1340,9 @@ const VideoCreateFlow: React.FC<{
           onClose={() => setShowConfig(false)}
           onCreated={onCreated}
         />
+      )}
+      {remixOpen && (
+        <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)} />
       )}
     </div>
   );
@@ -1367,36 +1377,7 @@ const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> =
   </div>
 );
 
-// ── 卡片 2:每日热点短视频 · 自动成片(占位,灰掉) ──────────────────
-
-const DailyHotVideoCard: React.FC<{ isZh: boolean }> = ({ isZh }) => (
-  <div className="relative rounded-2xl border border-gray-300/60 dark:border-gray-700/60 bg-gradient-to-br from-gray-500/5 to-transparent p-5 overflow-hidden flex flex-col opacity-70">
-    <div className="relative flex flex-col flex-1">
-      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-gray-400 mb-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-gray-400" />
-        {isZh ? '自动成片' : 'Auto'}
-        <span className="ml-1 text-[10px] px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-500">
-          {isZh ? '即将推出' : 'Coming Soon'}
-        </span>
-      </div>
-      <h3 className="text-base font-bold text-gray-500 dark:text-gray-400 mb-1.5">
-        🔥 {isZh ? '每日热点短视频 · 自动成片' : 'Daily Hot · Auto'}
-      </h3>
-      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed mb-3 flex-1">
-        {isZh
-          ? '每天自动抓取你赛道下的当下热点选题,自动写稿、配音、配画面,按计划批量出片并定时分发。无需人工选题,全自动运转。'
-          : 'Auto-fetches trending topics in your niche daily, writes / narrates / fills visuals, batch-produces and schedules distribution — fully hands-off.'}
-      </p>
-      <button
-        type="button"
-        disabled
-        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-gray-300 dark:bg-gray-700 text-gray-500 cursor-not-allowed"
-      >
-        {isZh ? '敬请期待' : 'Coming Soon'}
-      </button>
-    </div>
-  </div>
-);
+// ── 卡片 2(每日热点 · 自动成片)已移除:新建页改为「原创 + 视频搬运·二创」两张。 ──
 
 // ── 赛道预设库:选赛道自动带出人设 + 关键词(用户可改) ─────────────────
 
@@ -1788,56 +1769,31 @@ const VideoConfigModal: React.FC<{
     if (p) setBgmPath(p);
   };
 
-  // BGM 试听:点一下播、再点停;切歌 / 卸载自动停。token 可为 builtin:/remote:/绝对路径,
-  // 云端曲目首次试听时由主进程下载并缓存(resolveBgmPath),既能听又顺带焐热出片缓存。
-  const bgmAudioRef = useRef<HTMLAudioElement | null>(null);
-  // 每次 stop / 新请求都自增,用来作废「在途的 previewBgm」:云端下载可能耗时数秒,
-  // 期间若用户关向导或切歌,resolve 回来时 reqId 已变 → 丢弃,绝不再 new Audio 播放
-  // (否则会出现「关了向导音乐还在响」「切了歌却放旧曲」的孤儿播放)。
-  const previewReqRef = useRef(0);
-  const [previewToken, setPreviewToken] = useState('');
-  const [previewLoading, setPreviewLoading] = useState(false);
+  // BGM「打开文件夹」:原来的内嵌试听在部分环境播放不稳(点了没反应/孤儿播放),改为
+  // 把当前选中曲目还原成本地文件(builtin: 随包;remote: 首次下载并缓存,顺带焐热出片
+  // 缓存;上传=原路径),在系统文件管理器里定位它,用户自己双击试听。复用成片同款
+  // revealInFolder(打开文件夹并高亮)。
+  const [bgmOpening, setBgmOpening] = useState(false);
   const [previewError, setPreviewError] = useState('');
-  const stopPreview = () => {
-    previewReqRef.current++; // 作废任何在途的 previewBgm
-    const a = bgmAudioRef.current;
-    if (a) { try { a.pause(); } catch { /* noop */ } a.src = ''; }
-    bgmAudioRef.current = null;
-    setPreviewToken('');
-  };
-  const togglePreview = async (token: string) => {
-    if (!token) return;
-    if (previewToken === token) { stopPreview(); return; } // 正在播这首 → 停
-    stopPreview(); // 切到别的曲目 → 先停旧的(并自增 reqId)
-    const myReq = previewReqRef.current; // 取「停旧」之后的最新值作为本次请求号
-    setPreviewLoading(true);
+  const openBgmFolder = async (token: string) => {
+    if (!token || bgmOpening) return;
+    setBgmOpening(true);
     try {
-      const dataUrl = await videoCreationService.previewBgm(token);
-      // 在途期间被 stop(关向导 / 切歌 / 卸载)→ reqId 已变 → 丢弃,不播放。
-      if (previewReqRef.current !== myReq) return;
-      if (!dataUrl) {
-        // 主进程没还原出可播文件(内置缺失 / 云端下载失败)→ 给用户一个可见反馈,
-        // 而不是「点了没反应」。同时打日志便于定位是哪一步空了。
-        console.warn('[bgm preview] empty dataUrl for token:', token);
-        setPreviewError(isZh ? '试听失败：未取到音频(内置缺失或云端下载失败)' : 'Preview failed: no audio');
-        return;
+      const p = await videoCreationService.resolveBgmPath(token);
+      if (p) {
+        await videoCreationService.revealInFolder(p);
+        setPreviewError('');
+      } else {
+        setPreviewError(isZh ? '打开失败：未取到音频文件(内置缺失或云端下载失败)' : 'Failed: no audio file (built-in missing or cloud download failed)');
       }
-      setPreviewError('');
-      const audio = new Audio(dataUrl);
-      audio.onended = () => { if (bgmAudioRef.current === audio) stopPreview(); };
-      audio.onerror = () => { console.warn('[bgm preview] audio element error for token:', token); };
-      bgmAudioRef.current = audio;
-      setPreviewToken(token);
-      await audio.play().catch((e) => { console.warn('[bgm preview] play() rejected:', e); });
-    } catch (e) {
-      console.warn('[bgm preview] exception:', e);
+    } catch {
+      setPreviewError(isZh ? '打开失败：无法定位音频文件' : 'Failed to locate the audio file');
     } finally {
-      setPreviewLoading(false);
+      setBgmOpening(false);
     }
   };
-  // 切换曲目时停掉正在播的试听;组件卸载时也停。
-  useEffect(() => { stopPreview(); }, [bgmPath]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => () => stopPreview(), []); // eslint-disable-line react-hooks/exhaustive-deps
+  // 切换曲目时清掉上一首的「打开失败」红字,避免残留误导(选 A 失败 → 切 B 仍显红字)。
+  useEffect(() => { setPreviewError(''); }, [bgmPath]);
 
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
 
@@ -2403,8 +2359,8 @@ const VideoConfigModal: React.FC<{
                   </button>
                 </div>
 
-                {/* 曲库:一个下拉(内置 + 云端合并,分两组)+ 一个试听按钮(试听当前选中那首)。
-                    value = builtin:/remote: token;选哪首就试听哪首,云端首次试听由主进程下载并缓存。 */}
+                {/* 曲库:一个下拉(内置 + 云端合并,分两组)+ 一个「打开文件夹」按钮(定位当前选中那首)。
+                    value = builtin:/remote: token;云端首次打开由主进程下载并缓存,再在文件管理器里高亮。 */}
                 {bgmIsLibrary && (
                   <div className="space-y-1.5">
                     <div className="flex items-center gap-2">
@@ -2432,15 +2388,11 @@ const VideoConfigModal: React.FC<{
                       </select>
                       <button
                         type="button"
-                        onClick={() => togglePreview(bgmPath)}
-                        disabled={previewLoading && previewToken !== bgmPath}
-                        className={`shrink-0 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                          previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
-                        }`}
+                        onClick={() => openBgmFolder(bgmPath)}
+                        disabled={bgmOpening}
+                        className="shrink-0 px-4 py-2 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
                       >
-                        {previewLoading && previewToken !== bgmPath
-                          ? (isZh ? '⏳ 下载中…' : '⏳')
-                          : previewToken === bgmPath ? (isZh ? '⏹ 停止' : '⏹ Stop') : (isZh ? '▶ 试听' : '▶ Preview')}
+                        {bgmOpening ? (isZh ? '⏳ 打开中…' : '⏳') : (isZh ? '📂 打开文件夹' : '📂 Open folder')}
                       </button>
                     </div>
                     {previewError && (
@@ -2448,7 +2400,7 @@ const VideoConfigModal: React.FC<{
                     )}
                     {bgmIsRemote && (
                       <div className="text-[11px] text-gray-400">
-                        {isZh ? '☁️ 云端曲目首次试听/合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first preview/compose, then cached.'}
+                        {isZh ? '☁️ 云端曲目首次打开文件夹/合成时自动下载并缓存，之后复用不再下载。' : '☁️ Cloud track downloads on first open/compose, then cached.'}
                       </div>
                     )}
                   </div>
@@ -2463,21 +2415,15 @@ const VideoConfigModal: React.FC<{
                     <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
                   </div>
                 )}
-                {/* 上传曲目的试听(内置/云端各自在列表里已有试听按钮)。 */}
+                {/* 上传曲目的「打开文件夹」(内置/云端在上方列表已有同款按钮)。 */}
                 {bgmIsUpload && (
                   <button
                     type="button"
-                    onClick={() => togglePreview(bgmPath)}
-                    disabled={previewLoading}
-                    className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 ${
-                      previewToken === bgmPath ? 'bg-rose-600 hover:bg-rose-700' : 'bg-rose-500 hover:bg-rose-600'
-                    }`}
+                    onClick={() => openBgmFolder(bgmPath)}
+                    disabled={bgmOpening}
+                    className="mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-medium text-white transition-colors disabled:opacity-60 bg-rose-500 hover:bg-rose-600"
                   >
-                    {previewLoading && previewToken !== bgmPath
-                      ? (isZh ? '⏳ 加载中…' : 'Loading…')
-                      : previewToken === bgmPath
-                        ? (isZh ? '⏹ 停止试听' : '⏹ Stop')
-                        : (isZh ? '▶ 试听' : '▶ Preview')}
+                    {bgmOpening ? (isZh ? '⏳ 打开中…' : 'Opening…') : (isZh ? '📂 打开文件夹' : '📂 Open folder')}
                   </button>
                 )}
                 {bgmPath && (
@@ -2679,7 +2625,7 @@ const VideoConfigModal: React.FC<{
                 </div>
                 {(runInterval === '3h' || runInterval === '6h') && (
                   <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
-                    {isZh ? '⚠️ 到点后再加 1-45 分钟随机延迟,避免精准卡点（出片很重,不提供更短间隔）' : '⚠️ +1-45min jitter after threshold (video gen is heavy, no shorter cadence).'}
+                    {isZh ? '⚠️ 到点后再加 0-10 分钟随机延迟,避免精准卡点（出片很重,不提供更短间隔）' : '⚠️ +0-10min jitter after threshold (video gen is heavy, no shorter cadence).'}
                   </p>
                 )}
                 {runInterval === 'daily_random' && (
@@ -2904,33 +2850,30 @@ const PlatformCheck: React.FC<{
 //  任务落到「我的任务」列表(已有徽章/步骤名)。不复用本地一键成片体系。
 // ════════════════════════════════════════════════════════════════════
 const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void }> = ({ isZh, onOpen }) => (
-  <button
-    type="button"
-    onClick={onOpen}
-    className="w-full text-left mb-5 relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden hover:border-fuchsia-500/60 transition-colors group"
-  >
+  <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
-    <div className="relative flex items-start gap-4">
-      <div className="text-3xl">🎬</div>
-      <div className="flex-1 min-w-0">
-        <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-1">
-          <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
-          {isZh ? '搬运 / 二创' : 'Repost / Remix'}
-        </div>
-        <h3 className="text-base font-bold dark:text-white mb-1">
-          {isZh ? '视频搬运 · 二创' : 'Video Repost · Remix'}
-        </h3>
-        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed">
-          {isZh
-            ? '自动选品(按赛道+关键词去抖音/快手/B站/小红书/TikTok 找视频)或手动贴链接 → 取无水印源 → 本地 whisper 转写识别语言 → 按需翻译字幕/配音 → 遮原字幕+覆盖新字幕 → 原创度增强 → 合成存本地。可定时持续产出。'
-            : 'Auto-discover by track+keywords across platforms (or paste links) -> grab watermark-free source -> local whisper transcribe -> optional translate/dub -> cover old subs + overlay new -> boost originality -> compose locally. Schedulable.'}
-        </p>
+    <div className="relative flex flex-col flex-1">
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+        {isZh ? '搬运 / 二创' : 'Repost / Remix'}
       </div>
-      <span className="shrink-0 self-center inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-fuchsia-500 group-hover:bg-fuchsia-600 text-white text-sm font-bold shadow-lg shadow-fuchsia-500/25 transition-colors">
+      <h3 className="text-base font-bold dark:text-white mb-1.5">
+        🎬 {isZh ? '视频搬运 · 二创' : 'Video Repost · Remix'}
+      </h3>
+      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
+        {isZh
+          ? '自动选品(按赛道+关键词去抖音/快手/B站/小红书/TikTok 找视频)或手动贴链接 → 取无水印源 → 本地 whisper 转写识别语言 → 按需翻译字幕/配音 → 遮原字幕+覆盖新字幕 → 原创度增强 → 合成存本地。可定时持续产出。'
+          : 'Auto-discover by track+keywords across platforms (or paste links) -> grab watermark-free source -> local whisper transcribe -> optional translate/dub -> cover old subs + overlay new -> boost originality -> compose locally. Schedulable.'}
+      </p>
+      <button
+        type="button"
+        onClick={onOpen}
+        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
+      >
         {isZh ? '配置' : 'Configure'} →
-      </span>
+      </button>
     </div>
-  </button>
+  </div>
 );
 
 const REMIX_PLATFORMS: Array<{ id: string; zh: string; en: string }> = [
