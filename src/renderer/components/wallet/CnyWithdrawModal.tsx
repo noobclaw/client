@@ -21,7 +21,7 @@ type Summary = {
 };
 type HistItem = {
   id: string; amount_cny: string; fee_pct: number; amount_paid_cny: string;
-  qr_kind: string; status: 'pending' | 'paid' | 'canceled';
+  qr_kind: string; qr_image_url?: string | null; status: 'pending' | 'paid' | 'canceled';
   created_at: string; paid_at: string | null; paid_note: string | null; external_ref: string | null;
 };
 
@@ -42,16 +42,29 @@ export const CnyWithdrawModal: React.FC<{
   const [msg, setMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const refresh = async () => {
+  const refresh = async (): Promise<HistItem[]> => {
     const [s, h] = await Promise.all([
       noobClawApi.getCnyWithdrawSummary(),
       noobClawApi.getCnyWithdrawHistory(20),
     ]);
     if (s) setSummary(s);
-    setHistory(h.items || []);
+    const items: HistItem[] = h.items || [];
+    setHistory(items);
     setLoading(false);
+    return items;
   };
-  useEffect(() => { void refresh(); }, []);
+  // 打开时预填「上次传过的收款码」(取最近一笔提现的 qr),让用户不必每次重传;
+  // 之后可点「删除」清掉再重传。只在挂载时填一次,不覆盖用户当前的选择。
+  useEffect(() => {
+    void (async () => {
+      const items = await refresh();
+      const last = items.find((x) => x.qr_image_url);
+      if (last?.qr_image_url) {
+        setQrUrl((u) => u || last.qr_image_url || '');
+        setQrKind(last.qr_kind === 'wechat' ? 'wechat' : 'alipay');
+      }
+    })();
+  }, []);
 
   const handlePickQr = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -82,7 +95,7 @@ export const CnyWithdrawModal: React.FC<{
       const r = await noobClawApi.createCnyWithdraw(amt, qrUrl, qrKind);
       if (r.ok) {
         setMsg({ text: r.message || (isZh ? '✅ 申请已提交,运营会在 1-3 个工作日内转账' : '✅ Submitted, paid in 1-3 business days'), color: 'text-green-500' });
-        setAmount(''); setQrUrl('');
+        setAmount(''); // 保留 qrUrl —— 记住收款码,下次提现直接用,省得重传
         await refresh();
         onSuccess?.();
       } else {
@@ -150,14 +163,32 @@ export const CnyWithdrawModal: React.FC<{
               </div>
 
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{isZh ? '收款码' : 'Receive QR code'}</label>
-              <div className="flex items-center gap-3 mb-3">
-                <button type="button" onClick={() => fileRef.current?.click()} disabled={qrUploading}
-                  className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
-                  {qrUploading ? (isZh ? '上传中...' : 'Uploading...') : (qrUrl ? (isZh ? '重新上传' : 'Re-upload') : (isZh ? '上传收款码' : 'Upload QR'))}
-                </button>
-                {qrUrl && <img src={qrUrl} alt="qr" className="w-12 h-12 rounded border border-gray-200 dark:border-gray-700 object-cover" />}
-                <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handlePickQr} />
-              </div>
+              {qrUrl ? (
+                // 已有收款码(本次上传 或 记住的上次):展示大图 + 删除 / 重新上传
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="relative">
+                    <img src={qrUrl} alt="qr" className="w-24 h-24 rounded-lg border border-gray-200 dark:border-gray-700 object-cover bg-white" />
+                    <button type="button" title={isZh ? '删除' : 'Remove'} onClick={() => setQrUrl('')}
+                      className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs leading-none flex items-center justify-center shadow hover:bg-red-600">×</button>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] text-gray-400">{isZh ? '已上传(可删除后重传)' : 'Uploaded (remove to replace)'}</span>
+                    <button type="button" onClick={() => fileRef.current?.click()} disabled={qrUploading}
+                      className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 dark:border-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50 w-fit">
+                      {qrUploading ? (isZh ? '上传中...' : 'Uploading...') : (isZh ? '重新上传' : 'Re-upload')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3 mb-3">
+                  <button type="button" onClick={() => fileRef.current?.click()} disabled={qrUploading}
+                    className="px-3 py-2 rounded-lg text-sm border border-gray-300 dark:border-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+                    {qrUploading ? (isZh ? '上传中...' : 'Uploading...') : (isZh ? '上传收款码' : 'Upload QR')}
+                  </button>
+                  <span className="text-[11px] text-gray-400">{isZh ? '支付宝/微信「我的收款码」截图' : 'Your Alipay/WeChat receive-QR screenshot'}</span>
+                </div>
+              )}
+              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handlePickQr} />
 
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 {isZh ? '提现金额 (¥)' : 'Amount (¥)'}
