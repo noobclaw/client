@@ -44,6 +44,8 @@ export interface SeedanceClipResult {
   error?: string;
   /** 该镜实扣积分(服务端 create 时扣;失败镜服务端已退,不计入总额)。 */
   chargedTokens?: number;
+  /** 该镜 Seedance 火山真实消耗 token(服务端 /status succeeded 时回传 usage.total_tokens,成本对账用)。 */
+  usageTokens?: number;
 }
 
 export interface GenerateSeedanceOptions {
@@ -117,7 +119,7 @@ async function createClip(
   }
 }
 
-interface StatusResult { status: 'queued' | 'running' | 'succeeded' | 'failed'; videoUrl?: string | null; error?: string; }
+interface StatusResult { status: 'queued' | 'running' | 'succeeded' | 'failed'; videoUrl?: string | null; error?: string; usageTokens?: number; }
 
 /** 查一次任务状态。 */
 async function pollClipOnce(taskId: string, chargeId: string): Promise<StatusResult> {
@@ -131,7 +133,7 @@ async function pollClipOnce(taskId: string, chargeId: string): Promise<StatusRes
     const resp = await fetch(url, { headers, signal: ctrl.signal });
     if (!resp.ok) return { status: 'running' }; // 暂时性查询失败 → 当还在跑,下轮再试
     const json: any = await resp.json();
-    return { status: json?.status || 'running', videoUrl: json?.videoUrl, error: json?.error };
+    return { status: json?.status || 'running', videoUrl: json?.videoUrl, error: json?.error, usageTokens: Number(json?.usageTokens) || 0 };
   } finally {
     clearTimeout(timer);
   }
@@ -177,7 +179,7 @@ async function generateOne(
         const outPath = path.join(destDir, `seedance_${idx + 1}_${taskId.slice(-8)}.mp4`);
         await downloadVideo(st.videoUrl, outPath);
         onProgress?.(`✅ 第 ${idx + 1} 镜 AI 片段就绪`);
-        return { path: outPath, chargedTokens };
+        return { path: outPath, chargedTokens, usageTokens: st.usageTokens || 0 };
       }
       // 失败镜:服务端按 chargeId 自动退款,不计入实扣总额。
       if (st.status === 'failed') return { path: null, error: st.error || 'Ark 任务失败' };
@@ -224,6 +226,11 @@ export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Prom
   const totalCharged = okResults.reduce((s, r) => s + (r.chargedTokens || 0), 0);
   if (totalCharged > 0) {
     opts.onProgress?.(`💎 AI 成片共扣 ${totalCharged.toLocaleString()} 积分(${okResults.length} 镜成功${okResults.length < scenes.length ? `,${scenes.length - okResults.length} 镜失败已退` : ''})`);
+  }
+  // 火山真实 token 汇总(服务端已按真实用量「多退少补」结算,这里仅展示对账)。
+  const totalUsage = okResults.reduce((s, r) => s + (r.usageTokens || 0), 0);
+  if (totalUsage > 0) {
+    opts.onProgress?.(`🔢 本次 Seedance 火山 token 共 ${totalUsage.toLocaleString()}(成本对账用,已按真实用量多退少补)`);
   }
   return results;
 }
