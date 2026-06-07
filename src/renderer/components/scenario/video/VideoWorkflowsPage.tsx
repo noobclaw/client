@@ -1794,6 +1794,9 @@ const VideoConfigModal: React.FC<{
   // 在线素材/本地素材本身没有内嵌字幕,必须烧录才有字幕 → 默认开。pure_ai 以 engine==='ai' 判。
   // (修复:早先以 pure_ai 建过、残留 subtitleEnabled=false 的在线素材任务,编辑时字幕错误地默认关。)
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.engine === 'ai' ? false : true);
+  // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。默认关 = 纯画面片;用户可在「音频」步开启,
+  // 开启后跟普通模式一样:对分镜稿 TTS 配音 + 按字幕开关烧录(pipeline 早已支持 ai 模式配音)。
+  const [aiNarration, setAiNarration] = useState<boolean>(editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
@@ -1934,11 +1937,12 @@ const VideoConfigModal: React.FC<{
     useStockVideo: materialSource === 'stock',
     voice,
     voiceRate,
-    // Seedance(pure_ai)= 纯画面片:关旁白 + 不烧字幕,只 Seedance 画面 + 可选 BGM。
-    narrationEnabled: mode === 'pure_ai' ? false : undefined,
+    // Seedance(pure_ai):默认纯画面(关旁白 + 不烧字幕);用户在「音频」步开了「AI 配音」
+    //   → narrationEnabled=true,跟普通模式一样配音 + 按字幕开关烧录。
+    narrationEnabled: mode === 'pure_ai' ? (aiNarration ? true : false) : undefined,
     bgmPath: bgmPath || undefined,
     bgmVolume,
-    subtitleEnabled: mode === 'pure_ai' ? false : subtitleEnabled,
+    subtitleEnabled: mode === 'pure_ai' ? (aiNarration && subtitleEnabled) : subtitleEnabled,
     subtitleFontSize,
     subtitlePosition,
     subtitleColor: subtitleColor || undefined,
@@ -2047,9 +2051,9 @@ const VideoConfigModal: React.FC<{
               <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '画面' : 'Visuals'} />
               <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={step > 5} label={mode === 'pure_ai' ? (isZh ? '音乐' : 'Music') : (isZh ? '音频' : 'Audio')} />
-              {/* Seedance 纯画面无字幕步 → 隐藏「字幕」圆点 + 一段连接线 */}
-              {mode !== 'pure_ai' && (
+              <StepDot n={5} active={step === 5} done={step > 5} label={(mode === 'pure_ai' && !aiNarration) ? (isZh ? '音乐' : 'Music') : (isZh ? '音频' : 'Audio')} />
+              {/* Seedance 纯画面(未开 AI 配音)无字幕步 → 隐藏「字幕」圆点 + 一段连接线 */}
+              {!(mode === 'pure_ai' && !aiNarration) && (
                 <>
                   <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
                   <StepDot n={6} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
@@ -2086,7 +2090,8 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'pure_ai'}
                     onClick={() => {
                       setMode('pure_ai'); setMaterialSource('ai');
-                      // Seedance 纯画面片:默认不烧字幕(submit 也会对 pure_ai 强制关)。
+                      // 默认纯画面:关 AI 配音 + 不烧字幕(用户可在「音频」步开「AI 配音」)。
+                      setAiNarration(false);
                       setSubtitleEnabled(false);
                       // 纯 AI 成片时长上限 45s:目标时长超了就拉回(否则选择器无高亮 + 会被截)。
                       if (targetSeconds > AI_MAX_SECONDS) setTargetSeconds(30);
@@ -2095,7 +2100,7 @@ const VideoConfigModal: React.FC<{
                       if (!editTask) { setSubtitleFontSize(64); setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#000000'); }
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
-                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step'}
+                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认纯画面，「音频」步可选开 AI 配音 + 字幕' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Visual-only by default; optionally enable AI voice-over + subtitles in the Audio step'}
                     cost={isZh ? '按片段计费 · 约 ¥0.2~0.9/秒（按所选模型档位/清晰度，失败自动退）' : 'Per clip · ~¥0.2–0.9/sec (by tier/resolution; auto-refund on failure)'}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
@@ -2370,15 +2375,36 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 5:音频 ── */}
           {step === 5 && (
             <>
-              {/* Seedance 纯画面模式:无配音/字幕,只挑背景音乐 */}
+              {/* Seedance 模式:让用户选「纯画面」还是「加 AI 配音 + 字幕」 */}
               {mode === 'pure_ai' && (
-                <div className="text-sm text-gray-500 dark:text-gray-400 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-3">
-                  {isZh ? '🎬 纯 AI 生成(Seedance)= 纯画面片:不配音、不烧字幕,只需(选填)挑首背景音乐,下一步直接出片。' : '🎬 Pure AI (Seedance) = visual-only clip: no narration or subtitles. Optionally pick BGM, then output.'}
-                </div>
+                <Field label={isZh ? 'AI 配音' : 'AI voice-over'} hint={isZh ? '开启后对分镜稿配音并可烧字幕;关闭则纯画面' : 'narrate the script & allow subtitles; off = visual-only'}>
+                  <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
+                    <span className="text-sm text-gray-700 dark:text-gray-200">
+                      {aiNarration
+                        ? (isZh ? '🔊 加 AI 配音 + 字幕(同普通模式)' : '🔊 Add AI voice-over + subtitles')
+                        : (isZh ? '🎬 纯画面片(不配音、不烧字幕)' : '🎬 Visual-only (no narration/subtitles)')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAiNarration((v) => {
+                        const next = !v;
+                        // 开配音 → 字幕默认跟开(用户可在字幕步关);关配音 → 字幕一并失效。
+                        if (next) setSubtitleEnabled(true);
+                        return next;
+                      })}
+                      className={`relative w-11 h-6 rounded-full transition-colors ${aiNarration ? 'bg-rose-500' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white transition-transform ${aiNarration ? 'translate-x-5' : ''}`} />
+                    </button>
+                  </div>
+                  {!aiNarration && (
+                    <p className="mt-1.5 text-xs text-gray-400">{isZh ? '纯画面只需(选填)挑首背景音乐,下一步直接出片。' : 'Visual-only: optionally pick BGM, then output.'}</p>
+                  )}
+                </Field>
               )}
 
-              {/* 配音音色 + 语速 —— Seedance 纯画面模式隐藏(只配 BGM) */}
-              {mode !== 'pure_ai' && (
+              {/* 配音音色 + 语速 —— 普通模式恒显示;Seedance 仅在开了「AI 配音」时显示 */}
+              {(mode !== 'pure_ai' || aiNarration) && (
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
                 <select
                   value={voice}
@@ -2540,10 +2566,10 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 6:字幕 + 出片 ── */}
           {step === 6 && (
             <>
-              {mode === 'pure_ai' ? (
+              {(mode === 'pure_ai' && !aiNarration) ? (
                 <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '纯画面模式' : 'pure visual mode'}>
                   <div className="text-sm text-gray-500 dark:text-gray-400 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-4 text-center">
-                    {isZh ? '纯画面 AI 片不烧字幕（已关「口播旁白」）。直接点「下一步」出片即可。' : 'Pure visual AI clip — no subtitles (voice-over is off). Just continue to output.'}
+                    {isZh ? '纯画面 AI 片不烧字幕（未开「AI 配音」）。直接点「下一步」出片即可。' : 'Pure visual AI clip — no subtitles (voice-over off). Just continue to output.'}
                   </div>
                 </Field>
               ) : (
@@ -2785,8 +2811,8 @@ const VideoConfigModal: React.FC<{
             type="button"
             onClick={() => {
               if (step === 1) { onClose(); return; }
-              // Seedance(pure_ai)无字幕步:7 ← 5(跳过 6)
-              setStep((s) => ((mode === 'pure_ai' && s === 7 ? 5 : s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
+              // Seedance 纯画面(未开 AI 配音)无字幕步:7 ← 5(跳过 6)
+              setStep((s) => ((mode === 'pure_ai' && !aiNarration && s === 7 ? 5 : s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
             }}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
@@ -2810,8 +2836,8 @@ const VideoConfigModal: React.FC<{
                   return;
                 }
                 setSubmitError(null);
-                // Seedance(pure_ai)无字幕步:5 → 7(跳过 6)
-                setStep((s) => ((mode === 'pure_ai' && s === 5 ? 7 : s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
+                // Seedance 纯画面(未开 AI 配音)无字幕步:5 → 7(跳过 6)
+                setStep((s) => ((mode === 'pure_ai' && !aiNarration && s === 5 ? 7 : s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
               }}
               disabled={(step === 2 && !trackStepValid) || (step === 3 && !scriptStepValid) || (step === 4 && !visualStepValid)}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
