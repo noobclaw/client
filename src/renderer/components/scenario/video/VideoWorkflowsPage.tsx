@@ -1697,7 +1697,7 @@ const VideoConfigModal: React.FC<{
   const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
   const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p' | '1080p'>(editTask?.input.seedanceResolution || '720p');
   const [seedanceModel, setSeedanceModel] = useState<'lite' | 'pro' | 'pro15' | 'v2'>(editTask?.input.seedanceModel || 'pro15');
-  const [mode, setMode] = useState<GenMode>(editTask ? (editTask.input.useStockVideo === false ? 'pure_ai' : 'stock') : 'stock');
+  const [mode, setMode] = useState<GenMode>(editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
 
@@ -2004,19 +2004,19 @@ const VideoConfigModal: React.FC<{
                 <div className="grid grid-cols-1 gap-2">
                   <ModeOption
                     active={mode === 'stock'}
-                    onClick={() => setMode('stock')}
-                    title={isZh ? 'AI 口播稿 + 在线素材' : 'AI voice-over script + stock'}
+                    onClick={() => { setMode('stock'); if (materialSource === 'ai') setMaterialSource('stock'); }}
+                    title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
                     cost={isZh ? '按条计费 · 单条约 $0.08~$0.1（配音/字幕/合成免费，AI 写稿另计）' : 'Per clip · ~$0.08–0.1 each (TTS/subs/compose free; AI script extra)'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
                     active={mode === 'pure_ai'}
-                    disabled
-                    onClick={() => {}}
-                    title={isZh ? '纯 AI 生成' : 'Pure AI'}
-                    desc={isZh ? '适合各个场景，由 Seedance 支持' : 'any scene, powered by Seedance'}
-                    soon={isZh ? '即将推出' : 'Soon'}
+                    onClick={() => { setMode('pure_ai'); setMaterialSource('ai'); }}
+                    title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
+                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step'}
+                    cost={isZh ? '按片段计费 · 约 ¥0.2~0.9/秒（按所选模型档位/清晰度，失败自动退）' : 'Per clip · ~¥0.2–0.9/sec (by tier/resolution; auto-refund on failure)'}
+                    costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
                 </div>
               </Field>
@@ -2148,14 +2148,11 @@ const VideoConfigModal: React.FC<{
             <>
               {/* 素材来源:二选一,不混拼(对齐 MoneyPrinterTurbo)。
                   stock=全部在线素材库;local=全部用上传的本地视频拼接。 */}
-              <Field label={isZh ? '画面来源（三选一）' : 'Footage source'} hint={isZh ? 'AI 自动成片 / 在线素材库 / 本地上传，三选一不混拼' : 'AI-generated / online stock / local upload — pick one'}>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  <ModeOption
-                    active={materialSource === 'ai'}
-                    onClick={() => setMaterialSource('ai')}
-                    title={isZh ? '✨ AI 自动成片' : '✨ AI Auto-Video'}
-                    desc={isZh ? '逐镜用 AI(Seedance)生成画面，参考图统一风格' : 'AI (Seedance) generates each shot; reference images unify style'}
-                  />
+              {/* 画面来源:仅「AI 口播稿」模式给二选一(在线/本地);纯 AI(Seedance)模式
+                  在第 1 步已定,这里直接进 AI 面板,不再重复给来源选择。 */}
+              {mode !== 'pure_ai' && (
+              <Field label={isZh ? '画面来源（二选一）' : 'Footage source'} hint={isZh ? '要么全部在线，要么全部本地，不混拼' : 'all online OR all local, no mixing'}>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <ModeOption
                     active={materialSource === 'stock'}
                     onClick={() => setMaterialSource('stock')}
@@ -2170,8 +2167,9 @@ const VideoConfigModal: React.FC<{
                   />
                 </div>
               </Field>
+              )}
 
-              {/* AI 自动成片:模型档位 + 分辨率档(成本敏感)+ 参考图(≤2,风格统一,可选)。 */}
+              {/* 纯 AI(Seedance):模型档位 + 分辨率档(成本敏感)+ 参考图(≤2,风格统一,可选)。 */}
               {materialSource === 'ai' && (
               <>
                 <Field
