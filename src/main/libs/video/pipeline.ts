@@ -673,6 +673,7 @@ async function runVideoPipeline(
       persona: input.persona,
       track: input.track,
       keywords: input.keywords,
+      lang: contentLang,  // 让人物镜头按内容语言加地区人种倾向(中文→asian),免得搜出全是老外
     });
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
     aiCostUsd += termsResult.costUsd;

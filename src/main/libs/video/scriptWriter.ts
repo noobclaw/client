@@ -219,6 +219,10 @@ export interface SearchTermsContext {
   track?: string;
   /** 关键词。 */
   keywords?: string[];
+  /** 内容语言(zh/ja/ko/en…)。用来给【人物】镜头注入地区人种倾向 —— 否则中文内容
+   *  从 Pexels/Pixabay 搜出来的人物大多是西方面孔(库默认西方,locale 参数只管查询
+   *  语言不筛人种)。仅对人物镜头加 "asian",非人物镜头不加。 */
+  lang?: string;
 }
 
 /**
@@ -279,8 +283,26 @@ export async function generateSearchTerms(
     ? `Context for the WHOLE video (use it to disambiguate each line and keep every term on-topic):\n${ctxLines.join('\n')}\n\n`
     : '';
 
+  // 素材本地化:Pexels/Pixabay 默认西方内容,中文/日韩内容若不指定,人物全是老外、
+  // 场景全是国外街景。按内容语言【优先找本地素材】,但每类带通用兜底词(放后面),
+  // provider 按词序优先 → 有本地素材就用,搜不到自动回退通用,不会变纯色卡。
+  // 通用物品/风景/抽象不加(咖啡杯就是咖啡杯)。English(en)不加,保持原行为。
+  const REGION: Record<string, { label: string; country: string; city: string }> = {
+    zh: { label: 'Chinese', country: 'chinese', city: 'shanghai' },
+    ja: { label: 'Japanese', country: 'japanese', city: 'tokyo' },
+    ko: { label: 'Korean', country: 'korean', city: 'seoul' },
+  };
+  const r = REGION[String(ctx?.lang || '').slice(0, 2).toLowerCase()];
+  const regionBlock = r
+    ? `IMPORTANT — localize footage for a ${r.label} audience (spoken language is ${r.label}). Stock libraries default to Western faces/places, which mismatch this audience. Localize each line by TYPE:\n`
+      + `• PEOPLE shots: the term MUST start with "asian" (e.g. "asian man talking", "asian woman cooking", "asian students"). You may add ONE generic fallback term after it.\n`
+      + `• LOCATION / scene / cultural shots (street, city, office, school, restaurant, market, home, shopping, festival): put a ${r.label}-context term FIRST, then ONE generic fallback term so results never run dry — e.g. ["${r.country} street food","street food"], ["${r.city} city street","city street"], ["${r.country} office team","office team"].\n`
+      + `• GENERIC shots (single objects, abstract, nature, sky, textures, close-up food, animals): keep NEUTRAL — no ethnicity/country word.\n`
+      + `Always keep 1-3 terms per line, most-specific localized term FIRST.\n\n`
+    : '';
+
   const numbered = scenes.map((s, i) => `${i + 1}. ${s}`).join('\n');
-  const user = `${ctxBlock}Input lines (${scenes.length}):\n${numbered}\n\n`
+  const user = `${ctxBlock}${regionBlock}Input lines (${scenes.length}):\n${numbered}\n\n`
     + 'Return ONLY the raw JSON object now (no markdown fences, no explanation, no reasoning).';
 
   try {
