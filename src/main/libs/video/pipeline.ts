@@ -69,6 +69,27 @@ function buildSeedancePrompt(sentence: string, input: { track?: string; persona?
   return `电影感竖屏空镜,画面具体可拍、与这句内容相关,不要任何文字/字幕/水印/logo:「${sentence}」。${style}镜头平稳,真实质感,光影自然。`;
 }
 
+/**
+ * AI 大分镜:把逐句碎分镜合并成更长的段(每段旁白约 8–12s),减少切刀、更连贯,
+ * 也减少 Seedance"单镜最短时长"带来的浪费。按字数估时长(CJK ~4.5 字/秒):
+ * 累加到 ≥MIN 就出一段,超过 MAX 先把当前段收尾再起新段。Seedance(1.x/lite)单次
+ * 上限 12s,所以 MAX 字数对应 ≤~12s。
+ */
+function mergeSentencesForAi(sents: string[]): string[] {
+  const hasCJK = sents.some((s) => /[぀-ヿ㐀-鿿가-힯]/.test(s));
+  const MIN = hasCJK ? 36 : 90;   // ≈8s
+  const MAX = hasCJK ? 54 : 135;  // ≈12s(Seedance 单镜上限)
+  const out: string[] = [];
+  let buf = '';
+  for (const s of sents) {
+    if (buf && (buf.length + 1 + s.length) > MAX) { out.push(buf); buf = s; }
+    else buf = buf ? `${buf} ${s}` : s;
+    if (buf.length >= MIN) { out.push(buf); buf = ''; }
+  }
+  if (buf) out.push(buf);
+  return out.length ? out : sents;
+}
+
 /** 失败镜降级:借最近(左右就近)一个成功生成的片段路径;都没有返回 null。 */
 function findNearestClip(results: SeedanceClipResult[], i: number): string | null {
   for (let d = 1; d < results.length; d++) {
@@ -526,11 +547,18 @@ async function runVideoPipeline(
     }
 
     // 拆句(并入「脚本」步:本地纯文本切分,无 AI、瞬时完成)。
-    const sentences = splitScript(script);
+    let sentences = splitScript(script);
     if (sentences.length === 0) {
       const err = '文案为空或无法拆出有效分镜';
       tracker.fail('script', err);
       return { ok: false, error: err };
+    }
+    // AI 自动成片(Seedance):把碎句合并成更长的「大分镜」(每段 ~8–12s 旁白)再 TTS,
+    // 这样每段配一个 8–12s 的连续片段 → 切刀少、更流畅,且少踩 Seedance 单镜最短时长的浪费。
+    // 在 TTS 之前合并,音频/字幕(词边界 cue)自然按合并后的段走,不破坏。
+    if (input.engine === 'ai') {
+      sentences = mergeSentencesForAi(sentences);
+      tracker.progress(`🎬 AI 大分镜:合并为 ${sentences.length} 段(每段约 8–12 秒,更连贯)`);
     }
 
     // 文案本地留一份(txt):全文 + 分镜,放成片输出目录,方便用户复用/二改/存档。
@@ -634,7 +662,8 @@ async function runVideoPipeline(
       const resolution = input.seedanceResolution || '720p';
       const aiScenes = sentences.map((s, i) => ({
         prompt: buildSeedancePrompt(s, input),
-        durationSec: Math.max(4, Math.ceil(sceneDurations[i])),
+        // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
+        durationSec: Math.max(4, Math.min(12, Math.ceil(sceneDurations[i]))),
       }));
       tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段(${resolution}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''})…`);
       const clipResults = await generateSeedanceClips({
