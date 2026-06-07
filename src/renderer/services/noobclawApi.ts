@@ -507,6 +507,21 @@ class NoobClawApiService {
     } catch { return null; }
   }
 
+  // AI 自动成片(Seedance)开跑前估价 + 余额校验。totalSeconds=全片预估总时长。
+  async estimateSeedance(totalSeconds: number, resolution: string, tier: string): Promise<{
+    estTokens: number; estCny: number; balance: number; sufficient: boolean; configured: boolean;
+  } | null> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/video/seedance/estimate`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ totalSeconds, resolution, tier }),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } catch { return null; }
+  }
+
   // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {

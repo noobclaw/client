@@ -16,6 +16,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { noobClawAuth } from '../../../services/noobclawAuth';
+import { noobClawApi } from '../../../services/noobclawApi';
 import { scenarioService } from '../../../services/scenario';
 import { getBackendApiUrl } from '../../../services/endpoints';
 import {
@@ -1912,6 +1913,32 @@ const VideoConfigModal: React.FC<{
       if (!noobClawAuth.hasEnoughBalanceForTask(minBalance)) {
         onClose();
         return;
+      }
+    }
+    // AI 自动成片(Seedance)pre-flight:逐镜真烧钱 → 开跑前估价 + 校验余额 + 二次确认,
+    // 杜绝"不知情被逐镜扣到没钱"。估不出(后端老/网络差)就放行(逐镜 402 仍兜底)。
+    if (materialSource === 'ai') {
+      setSubmitting(true);
+      const estSec = Math.max(4, Math.min(30, scriptMode === 'strict'
+        ? Math.ceil(script.trim().length / 4.5)
+        : targetSeconds));
+      const est = await noobClawApi.estimateSeedance(estSec, seedanceResolution, seedanceModel);
+      setSubmitting(false);
+      if (est) {
+        if (!est.configured) {
+          setSubmitError(isZh ? 'AI 成片档位未在后台配置模型,暂不可用(请联系客服)。' : 'AI tier not configured. Contact support.');
+          return;
+        }
+        if (!est.sufficient) {
+          setSubmitError(isZh
+            ? `余额不足:本条 AI 成片约需 ${est.estTokens.toLocaleString()} 积分(≈¥${est.estCny}),你当前 ${est.balance.toLocaleString()} 积分,请充值后再试。`
+            : `Insufficient: needs ~${est.estTokens} credits (≈¥${est.estCny}), you have ${est.balance}.`);
+          return;
+        }
+        const ok = window.confirm(isZh
+          ? `本条 AI 自动成片预计约 ${est.estTokens.toLocaleString()} 积分(≈¥${est.estCny}),当前余额 ${est.balance.toLocaleString()}。\n失败的镜头会自动退款。确认生成?`
+          : `Est. ~${est.estTokens} credits (≈¥${est.estCny}); balance ${est.balance}. Failed shots auto-refund. Proceed?`);
+        if (!ok) return;
       }
     }
     const id = videoTaskStore.createAndRun(input, buildTitle(), schedule);
