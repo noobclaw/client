@@ -197,8 +197,10 @@ export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Prom
   const resolution = opts.resolution || '720p';
   const tier = opts.tier || 'pro15';
   const ratio = opts.ratio || '9:16';
-  const concurrency = Math.max(1, Math.min(4, opts.concurrency ?? 2));
-  const timeoutSec = Math.max(60, Math.min(600, opts.perClipTimeoutSec ?? 240));
+  // 并发 3 / 单镜超时 300s:失败或超时的镜会被 pipeline「就近复用」成重复画面,
+  // 所以宁可多等、并发高一点,尽量让每镜都真生成出来,减少重复片段。
+  const concurrency = Math.max(1, Math.min(4, opts.concurrency ?? 3));
+  const timeoutSec = Math.max(60, Math.min(600, opts.perClipTimeoutSec ?? 300));
 
   // 参考图读成 data URL(≤2),所有镜共用 → 风格统一。
   const imageUrls = (opts.referenceImages || [])
