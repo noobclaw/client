@@ -15,6 +15,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
+import { CardActionRow } from '../CardActionRow';
 import { noobClawAuth } from '../../../services/noobclawAuth';
 import { noobClawApi } from '../../../services/noobclawApi';
 import { scenarioService } from '../../../services/scenario';
@@ -139,6 +140,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
           onBack();                              // section → tasks(L1 高亮回任务)
           setDetail({ kind: 'task', taskId });   // 直接进新任务详情
         }}
+        onGoTasks={onBack}                       // 「已有任务」→ 回任务落地页(含我的二创任务)
       />
     );
   }
@@ -405,40 +407,14 @@ const VideoLanding: React.FC<{
   onOpenScenarioTask?: (id: string) => void;
   onRefresh?: () => void | Promise<void>;
 }> = ({ isZh, tasks, onGoCreate, onOpenTask, scenarioTasks, scenarios, onOpenScenarioTask, onRefresh }) => {
-  // 后端二创任务(搬运二创/长转短/解说混剪):点开进 scenario 详情页运行/看进度。
+  // 二创任务(后端 scenario)与一键成片(本地)统一进【我的视频任务】一个列表,
+  // 只用类型徽章区分(用户反馈:别拆两块,都是视频任务)。
   const scioMap = new Map(scenarios.map((s) => [s.id, s]));
-  const scenarioSection = scenarioTasks.length > 0 ? (
-    <section className="mb-5">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-bold dark:text-white">🎬 {isZh ? '我的二创任务' : 'My Remix Tasks'}</h2>
-        {onRefresh && (
-          <button type="button" onClick={() => onRefresh()} className="text-xs text-gray-500 hover:text-fuchsia-500">{isZh ? '刷新' : 'Refresh'}</button>
-        )}
-      </div>
-      <div className="space-y-2">
-        {scenarioTasks.map((t) => {
-          const s = scioMap.get(t.scenario_id);
-          const name = (isZh ? s?.name_zh : s?.name_en) || s?.name_zh || t.scenario_id;
-          return (
-            <button key={t.id} type="button" onClick={() => onOpenScenarioTask?.(t.id)}
-              className="w-full text-left flex items-center justify-between rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/5 hover:bg-fuchsia-500/10 px-4 py-3 transition-colors">
-              <span className="flex items-center gap-2 min-w-0">
-                <span className="text-lg shrink-0">{s?.icon || '🎬'}</span>
-                <span className="text-sm font-medium dark:text-white truncate">{name}</span>
-                <span className="text-[10px] text-gray-500 shrink-0">#{String(t.id).slice(0, 8)}</span>
-              </span>
-              <span className="text-xs text-fuchsia-500 font-medium shrink-0">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
-            </button>
-          );
-        })}
-      </div>
-    </section>
-  ) : null;
+  const hasAny = tasks.length > 0 || scenarioTasks.length > 0;
 
-  if (tasks.length === 0) {
+  if (!hasAny) {
     return (
       <div className="p-6 max-w-6xl mx-auto">
-        {scenarioSection}
         <button
           type="button"
           onClick={onGoCreate}
@@ -480,14 +456,34 @@ const VideoLanding: React.FC<{
 
   return (
     <div className="p-6 max-w-6xl mx-auto">
-      {scenarioSection}
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-lg font-bold dark:text-white">
           📋 {isZh ? '我的视频任务' : 'My Videos'}
         </h2>
-        <VideoTutorialButton isZh={isZh} />
+        <div className="flex items-center gap-3">
+          {onRefresh && (
+            <button type="button" onClick={() => onRefresh()} className="text-xs text-gray-500 hover:text-fuchsia-500">{isZh ? '刷新' : 'Refresh'}</button>
+          )}
+          <VideoTutorialButton isZh={isZh} />
+        </div>
       </div>
       <div className="space-y-3">
+        {/* 二创任务(后端 scenario)— 跟一键成片同列,类型徽章区分,点开进 scenario 详情页运行 */}
+        {scenarioTasks.map((t) => {
+          const s = scioMap.get(t.scenario_id);
+          const name = (isZh ? s?.name_zh : s?.name_en) || s?.name_zh || t.scenario_id;
+          return (
+            <button key={'sc-' + t.id} type="button" onClick={() => onOpenScenarioTask?.(t.id)}
+              className="w-full text-left flex items-center justify-between rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent hover:border-fuchsia-500/60 px-4 py-4 transition-colors">
+              <span className="flex items-center gap-2 min-w-0">
+                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/15 text-fuchsia-500 font-medium shrink-0">{s?.icon || '🎬'} {name}</span>
+                <span className="text-[10px] text-gray-500 shrink-0">#{String(t.id).slice(0, 8)}</span>
+              </span>
+              <span className="text-xs text-fuchsia-500 font-medium shrink-0">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
+            </button>
+          );
+        })}
+        {/* 本地一键成片任务 */}
         {tasks.map((t) => (
           <VideoTaskCard key={t.id} isZh={isZh} task={t} onClick={() => onOpenTask(t.id)} />
         ))}
@@ -1371,7 +1367,8 @@ const VideoRunRecordDetail: React.FC<{
 const VideoCreateFlow: React.FC<{
   isZh: boolean;
   onCreated: (taskId: string) => void;
-}> = ({ isZh, onCreated }) => {
+  onGoTasks?: () => void;
+}> = ({ isZh, onCreated, onGoTasks }) => {
   const [showConfig, setShowConfig] = useState(false);
   // 后端 scenario 卡(非本地一键成片),各自带配置 modal,提交直接建 scenario 任务。
   const [remixOpen, setRemixOpen] = useState(false);
@@ -1381,21 +1378,23 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-4xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} />
-        <RemixEntryCard isZh={isZh} onOpen={() => setRemixOpen(true)} />
+        <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} onGoTasks={onGoTasks} />
+        <RemixEntryCard isZh={isZh} onOpen={() => setRemixOpen(true)} onGoTasks={onGoTasks} />
         <VideoScenarioEntryCard
-          isZh={isZh} onOpen={() => setClipOpen(true)}
+          isZh={isZh} onOpen={() => setClipOpen(true)} onGoTasks={onGoTasks}
           icon="✂️" tagZh="长转短 · 切片" tagEn="Long → Shorts"
           titleZh="长视频转爆款短片" titleEn="Long Video to Viral Shorts"
-          descZh="粘贴长视频/直播回放链接 → 本地转写 → AI 选高光片段 → 切竖屏+烧字幕,一条拆多条短片。复用原画面,几乎零成本。"
-          descEn="Paste a long video link → transcribe → AI picks highlights → vertical clips + subtitles. Reuses footage, near-zero cost."
+          btnZh="✂️ 开始切片 →" btnEn="✂️ Start →"
+          descZh="一条长视频 / 直播,AI 自动揪出最炸的几个高光,切成竖屏短片、配好字幕 —— 播客、访谈、直播,一键变一堆爆款切片。"
+          descEn="Drop in a long video / livestream; AI finds the most viral moments and cuts them into subtitled vertical shorts — podcasts, interviews, streams into a batch of clips."
         />
         <VideoScenarioEntryCard
-          isZh={isZh} onOpen={() => setNarrateOpen(true)}
+          isZh={isZh} onOpen={() => setNarrateOpen(true)} onGoTasks={onGoTasks}
           icon="🎙️" tagZh="解说 · 混剪" tagEn="Commentary Remix"
           titleZh="AI 解说混剪" titleEn="AI Commentary Remix"
-          descZh="粘贴影视/短剧链接 → 本地转写 → AI 写解说词+选精华段 → 配音切片拼接,出「N分钟看完」式成片。复用原画面,几乎零成本。"
-          descEn="Paste a film/drama link → transcribe → AI writes commentary → dub + cut + stitch into a recap. Reuses footage, near-zero cost."
+          btnZh="🎙️ 开始解说 →" btnEn="🎙️ Start →"
+          descZh="影视、短剧丢进来,AI 自动写解说、配音、剪成「N 分钟看完」式爆款解说视频 —— 不用自己看、不用自己剪。"
+          descEn="Drop in films or dramas; AI writes the commentary, voices it, and edits a binge-worthy 'recap in N minutes' — no watching, no editing."
         />
       </section>
 
@@ -1421,7 +1420,7 @@ const VideoCreateFlow: React.FC<{
 
 // ── 卡片 1:原创短视频 · AI自动成片 ───────────────────────────────────
 
-const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> = ({ isZh, onStart }) => (
+const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void; onGoTasks?: () => void }> = ({ isZh, onStart, onGoTasks }) => (
   <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col flex-1">
@@ -1437,13 +1436,13 @@ const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void }> =
           ? '低成本批量日更的利器:不用露脸、不用剪辑。给个主题,AI 自动写口播稿 + 配音 + 字幕,在线素材库一键凑齐画面,本地一次出最多 5 条不同画面的成片(竖屏/横屏/方屏自选)。知识科普 / 资讯解说 / 好物种草都能批量产,配音字幕合成全免费。'
           : 'Batch-publish on a budget — no face, no editing. Give a topic and AI writes the voice-over script, narrates, subtitles, and pulls visuals from the stock library, producing up to 5 differently-cut videos per run (portrait / landscape / square). Great for explainers, news recaps and product picks; TTS, subtitles and compositing are free.'}
       </p>
-      <button
-        type="button"
-        onClick={onStart}
-        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-rose-500 hover:bg-rose-600 text-white shadow-lg shadow-rose-500/25 transition-all active:scale-95"
-      >
-        🎬 {isZh ? '开始创作' : 'Start'} →
-      </button>
+      <CardActionRow
+        isZh={isZh}
+        onConfigure={onStart}
+        onGoToMyTasks={onGoTasks}
+        label={'🎬 ' + (isZh ? '开始创作 →' : 'Start →')}
+        btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
+      />
     </div>
   </div>
 );
@@ -1791,7 +1790,10 @@ const VideoConfigModal: React.FC<{
   }, []);
 
   // 步骤 4:字幕 + 出片
-  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.subtitleEnabled !== false);
+  // 字幕默认值【按模式】决定,而不是盲读历史值:纯 AI(Seedance)= 纯画面默认不烧字幕;
+  // 在线素材/本地素材本身没有内嵌字幕,必须烧录才有字幕 → 默认开。pure_ai 以 engine==='ai' 判。
+  // (修复:早先以 pure_ai 建过、残留 subtitleEnabled=false 的在线素材任务,编辑时字幕错误地默认关。)
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.engine === 'ai' ? false : true);
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
@@ -2070,6 +2072,8 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'stock'}
                     onClick={() => {
                       setMode('stock'); if (materialSource === 'ai') setMaterialSource('stock');
+                      // 在线素材/本地素材没有内嵌字幕,必须烧录才有字幕 → 切到该模式默认开字幕。
+                      setSubtitleEnabled(true);
                       // 切回普通模式:新建任务时还原字幕默认(中号/白字/无描边)。
                       if (!editTask) { setSubtitleFontSize(52); setSubtitleColor('#FFFFFF'); setSubtitleStrokeColor(''); }
                     }}
@@ -2082,6 +2086,8 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'pure_ai'}
                     onClick={() => {
                       setMode('pure_ai'); setMaterialSource('ai');
+                      // Seedance 纯画面片:默认不烧字幕(submit 也会对 pure_ai 强制关)。
+                      setSubtitleEnabled(false);
                       // 纯 AI 成片时长上限 45s:目标时长超了就拉回(否则选择器无高亮 + 会被截)。
                       if (targetSeconds > AI_MAX_SECONDS) setTargetSeconds(30);
                       // AI 自动成片默认字幕:大号(64)+ 黄字 + 黑描边(短视频常见、画面上更醒目)。
@@ -2946,7 +2952,7 @@ const PlatformCheck: React.FC<{
 //  入口卡 + 自带配置 modal。提交直接走 scenarioService 建任务并触发首跑,
 //  任务落到「我的任务」列表(已有徽章/步骤名)。不复用本地一键成片体系。
 // ════════════════════════════════════════════════════════════════════
-const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void }> = ({ isZh, onOpen }) => (
+const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void; onGoTasks?: () => void }> = ({ isZh, onOpen, onGoTasks }) => (
   <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col flex-1">
@@ -2959,16 +2965,16 @@ const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void }> = ({ isZh,
       </h3>
       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
         {isZh
-          ? '自动选品(按赛道+关键词去抖音/快手/B站/小红书/TikTok 找视频)或手动贴链接 → 取无水印源 → 本地 whisper 转写识别语言 → 按需翻译字幕/配音 → 遮原字幕+覆盖新字幕 → 原创度增强 → 合成存本地。可定时持续产出。'
-          : 'Auto-discover by track+keywords across platforms (or paste links) -> grab watermark-free source -> local whisper transcribe -> optional translate/dub -> cover old subs + overlay new -> boost originality -> compose locally. Schedulable.'}
+          ? '全网爆款一键搬成你的:按赛道关键词自动找片(抖音/快手/B站/小红书/TikTok),或自己贴链接;自动翻译、配音、换字幕、过原创度,跨平台重发不撞车。可定时,每天自动产内容。'
+          : 'Turn anyone’s hit videos into yours: auto-find by niche keywords across Douyin/Kuaishou/Bilibili/XHS/TikTok (or paste links); auto translate, dub, re-subtitle and de-dupe for cross-platform reposting. Schedulable for daily output.'}
       </p>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="w-full px-4 py-2.5 text-sm font-bold rounded-xl bg-fuchsia-500 hover:bg-fuchsia-600 text-white shadow-lg shadow-fuchsia-500/25 transition-all active:scale-95"
-      >
-        {isZh ? '配置' : 'Configure'} →
-      </button>
+      <CardActionRow
+        isZh={isZh}
+        onConfigure={onOpen}
+        onGoToMyTasks={onGoTasks}
+        label={'🎬 ' + (isZh ? '开始搬运 →' : 'Start →')}
+        btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+      />
     </div>
   </div>
 );
@@ -3182,14 +3188,11 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
 //  卡②③ 通用入口卡 + 配置 modal(长转短 / 解说混剪,均后端 scenario)
 // ════════════════════════════════════════════════════════════════════
 const VideoScenarioEntryCard: React.FC<{
-  isZh: boolean; onOpen: () => void; icon: string;
+  isZh: boolean; onOpen: () => void; onGoTasks?: () => void; icon: string;
   tagZh: string; tagEn: string; titleZh: string; titleEn: string; descZh: string; descEn: string;
-}> = ({ isZh, onOpen, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn }) => (
-  <button
-    type="button"
-    onClick={onOpen}
-    className="w-full text-left relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden hover:border-fuchsia-500/60 transition-colors group flex flex-col"
-  >
+  btnZh: string; btnEn: string;
+}> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn }) => (
+  <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
     <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col flex-1">
       <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
@@ -3198,11 +3201,15 @@ const VideoScenarioEntryCard: React.FC<{
       </div>
       <h3 className="text-base font-bold dark:text-white mb-1.5">{icon} {isZh ? titleZh : titleEn}</h3>
       <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">{isZh ? descZh : descEn}</p>
-      <span className="self-start inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-fuchsia-500 group-hover:bg-fuchsia-600 text-white text-sm font-bold shadow-lg shadow-fuchsia-500/25 transition-colors">
-        {isZh ? '配置' : 'Configure'} →
-      </span>
+      <CardActionRow
+        isZh={isZh}
+        onConfigure={onOpen}
+        onGoToMyTasks={onGoTasks}
+        label={isZh ? btnZh : btnEn}
+        btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+      />
     </div>
-  </button>
+  </div>
 );
 
 // 共享:链接 textarea 解析 + 建 scenario 任务并触发首跑
