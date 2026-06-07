@@ -1857,9 +1857,11 @@ const VideoConfigModal: React.FC<{
     useStockVideo: materialSource === 'stock',
     voice,
     voiceRate,
+    // Seedance(pure_ai)= 纯画面片:关旁白 + 不烧字幕,只 Seedance 画面 + 可选 BGM。
+    narrationEnabled: mode === 'pure_ai' ? false : undefined,
     bgmPath: bgmPath || undefined,
     bgmVolume,
-    subtitleEnabled,
+    subtitleEnabled: mode === 'pure_ai' ? false : subtitleEnabled,
     subtitleFontSize,
     subtitlePosition,
     subtitleColor: subtitleColor || undefined,
@@ -1942,9 +1944,14 @@ const VideoConfigModal: React.FC<{
               <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '画面' : 'Visuals'} />
               <div className={`h-px w-6 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={step > 5} label={isZh ? '音频' : 'Audio'} />
-              <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={6} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
+              <StepDot n={5} active={step === 5} done={step > 5} label={mode === 'pure_ai' ? (isZh ? '音乐' : 'Music') : (isZh ? '音频' : 'Audio')} />
+              {/* Seedance 纯画面无字幕步 → 隐藏「字幕」圆点 + 一段连接线 */}
+              {mode !== 'pure_ai' && (
+                <>
+                  <div className={`h-px w-6 ${step > 5 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                  <StepDot n={6} active={step === 6} done={step > 6} label={isZh ? '字幕' : 'Subtitles'} />
+                </>
+              )}
               <div className={`h-px w-6 ${step > 6 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={7} active={step === 7} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
@@ -1960,7 +1967,11 @@ const VideoConfigModal: React.FC<{
                 <div className="grid grid-cols-1 gap-2">
                   <ModeOption
                     active={mode === 'stock'}
-                    onClick={() => { setMode('stock'); if (materialSource === 'ai') setMaterialSource('stock'); }}
+                    onClick={() => {
+                      setMode('stock'); if (materialSource === 'ai') setMaterialSource('stock');
+                      // 切回普通模式:新建任务时还原字幕默认(中号/白字/无描边)。
+                      if (!editTask) { setSubtitleFontSize(52); setSubtitleColor('#FFFFFF'); setSubtitleStrokeColor(''); }
+                    }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
                     cost={isZh ? '按条计费 · 单条约 $0.08~$0.1（配音/字幕/合成免费，AI 写稿另计）' : 'Per clip · ~$0.08–0.1 each (TTS/subs/compose free; AI script extra)'}
@@ -1968,7 +1979,12 @@ const VideoConfigModal: React.FC<{
                   />
                   <ModeOption
                     active={mode === 'pure_ai'}
-                    onClick={() => { setMode('pure_ai'); setMaterialSource('ai'); }}
+                    onClick={() => {
+                      setMode('pure_ai'); setMaterialSource('ai');
+                      // AI 自动成片默认字幕:大号(64)+ 黄字 + 白描边(短视频常见、画面上更醒目)。
+                      // 仅新建任务套默认;编辑已有任务保留用户原设置。
+                      if (!editTask) { setSubtitleFontSize(64); setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#FFFFFF'); }
+                    }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step'}
                     cost={isZh ? '按片段计费 · 约 ¥0.2~0.9/秒（按所选模型档位/清晰度，失败自动退）' : 'Per clip · ~¥0.2–0.9/sec (by tier/resolution; auto-refund on failure)'}
@@ -2291,7 +2307,15 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 5:音频 ── */}
           {step === 5 && (
             <>
-              {/* 配音音色 + 语速 */}
+              {/* Seedance 纯画面模式:无配音/字幕,只挑背景音乐 */}
+              {mode === 'pure_ai' && (
+                <div className="text-sm text-gray-500 dark:text-gray-400 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-3">
+                  {isZh ? '🎬 纯 AI 生成(Seedance)= 纯画面片:不配音、不烧字幕,只需(选填)挑首背景音乐,下一步直接出片。' : '🎬 Pure AI (Seedance) = visual-only clip: no narration or subtitles. Optionally pick BGM, then output.'}
+                </div>
+              )}
+
+              {/* 配音音色 + 语速 —— Seedance 纯画面模式隐藏(只配 BGM) */}
+              {mode !== 'pure_ai' && (
               <Field label={isZh ? '配音音色' : 'Voice'} hint={isZh ? 'edge-tts 在线合成，免费' : 'edge-tts, free'}>
                 <select
                   value={voice}
@@ -2319,6 +2343,7 @@ const VideoConfigModal: React.FC<{
                   ))}
                 </div>
               </Field>
+              )}
 
               {/* 背景音乐(选填):无 / 内置曲库 / 自定义上传 */}
               <Field label={isZh ? '背景音乐（选填）' : 'Background music (optional)'} hint={isZh ? '混在旁白下方，出片末尾自动淡出' : 'mixed under narration, fades out'}>
@@ -2452,6 +2477,14 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 6:字幕 + 出片 ── */}
           {step === 6 && (
             <>
+              {mode === 'pure_ai' ? (
+                <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '纯画面模式' : 'pure visual mode'}>
+                  <div className="text-sm text-gray-500 dark:text-gray-400 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 px-3 py-4 text-center">
+                    {isZh ? '纯画面 AI 片不烧字幕（已关「口播旁白」）。直接点「下一步」出片即可。' : 'Pure visual AI clip — no subtitles (voice-over is off). Just continue to output.'}
+                  </div>
+                </Field>
+              ) : (
+              <>
               {/* 字幕样式 + 开关 */}
               <Field label={isZh ? '字幕' : 'Subtitles'} hint={isZh ? '开启时用 edge-tts 词边界对齐时间轴' : 'edge-tts word-boundary timing when on'}>
                 <div className="flex items-center justify-between mb-2">
@@ -2575,6 +2608,8 @@ const VideoConfigModal: React.FC<{
                 )}
               </Field>
             </>
+            )}
+            </>
           )}
 
           {/* ── 步骤 7:出片(生成数量 + 定时运行 + 出片后处理)── */}
@@ -2685,7 +2720,11 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           <button
             type="button"
-            onClick={() => (step === 1 ? onClose() : setStep((s) => (s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7))}
+            onClick={() => {
+              if (step === 1) { onClose(); return; }
+              // Seedance(pure_ai)无字幕步:7 ← 5(跳过 6)
+              setStep((s) => ((mode === 'pure_ai' && s === 7 ? 5 : s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
+            }}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
@@ -2708,7 +2747,8 @@ const VideoConfigModal: React.FC<{
                   return;
                 }
                 setSubmitError(null);
-                setStep((s) => (s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7);
+                // Seedance(pure_ai)无字幕步:5 → 7(跳过 6)
+                setStep((s) => ((mode === 'pure_ai' && s === 5 ? 7 : s + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
               }}
               disabled={(step === 2 && !trackStepValid) || (step === 3 && !scriptStepValid) || (step === 4 && !visualStepValid)}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
