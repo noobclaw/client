@@ -82,13 +82,18 @@ export const CnyWithdrawModal: React.FC<{
   };
 
   const handleSubmit = async () => {
-    if (submitting || !summary) return;
+    if (submitting) return;
+    // summary 没拉到(后端 /summary 非 200 / 网络问题)→ 之前这里静默 return,点了没反应。
+    // 现在给明确提示,而不是让用户对着无反应的按钮发呆。
+    if (!summary) { setMsg({ text: isZh ? '提现额度未加载成功,请关闭重开或检查网络后重试' : 'Withdrawal info failed to load — reopen or check your network and retry', color: 'text-red-500' }); return; }
+    // 必填项优先提示:收款方式已默认选中,收款码 + 金额是用户必须填的。
+    if (!qrUrl) { setMsg({ text: isZh ? '请先上传收款码' : 'Please upload your receive QR first', color: 'text-red-500' }); return; }
+    if (!amount.trim()) { setMsg({ text: isZh ? '请输入提现金额' : 'Please enter the withdrawal amount', color: 'text-red-500' }); return; }
     const amt = parseFloat(amount);
-    if (!Number.isFinite(amt) || amt <= 0) { setMsg({ text: isZh ? '请输入有效金额' : 'Enter a valid amount', color: 'text-red-500' }); return; }
-    if (amt < summary.min_amount) { setMsg({ text: (isZh ? '最低提现 ¥' : 'Min ¥') + summary.min_amount, color: 'text-red-500' }); return; }
-    if (amt > summary.max_amount) { setMsg({ text: (isZh ? '单笔上限 ¥' : 'Max ¥') + summary.max_amount, color: 'text-red-500' }); return; }
-    if (amt > parseFloat(summary.withdrawable)) { setMsg({ text: (isZh ? '超过可提现余额 ¥' : 'Over withdrawable ¥') + summary.withdrawable, color: 'text-red-500' }); return; }
-    if (!qrUrl) { setMsg({ text: isZh ? '请先上传收款码' : 'Upload your receive QR first', color: 'text-red-500' }); return; }
+    if (!Number.isFinite(amt) || amt <= 0) { setMsg({ text: isZh ? '请输入有效的提现金额' : 'Enter a valid amount', color: 'text-red-500' }); return; }
+    if (amt < summary.min_amount) { setMsg({ text: (isZh ? `最低提现 ¥${summary.min_amount}` : 'Min ¥' + summary.min_amount), color: 'text-red-500' }); return; }
+    if (amt > summary.max_amount) { setMsg({ text: (isZh ? `单笔上限 ¥${summary.max_amount}` : 'Max ¥' + summary.max_amount), color: 'text-red-500' }); return; }
+    if (amt > parseFloat(summary.withdrawable)) { setMsg({ text: (isZh ? `超过可提现余额 ¥${summary.withdrawable}` : 'Over withdrawable ¥' + summary.withdrawable), color: 'text-red-500' }); return; }
     setSubmitting(true);
     setMsg({ text: '', color: '' });
     try {
@@ -130,17 +135,16 @@ export const CnyWithdrawModal: React.FC<{
           <div className="py-10 text-center text-sm text-gray-500">{isZh ? '加载中...' : 'Loading...'}</div>
         ) : (
           <>
-            {/* 额度三数字 */}
-            <div className="grid grid-cols-3 gap-2 mb-4">
+            {/* 额度三数字 —— 纯文字一行,不套框 */}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mb-4 text-sm">
               {[
                 { label: isZh ? '可提现' : 'Withdrawable', val: summary?.withdrawable, hi: true },
                 { label: isZh ? '处理中' : 'Pending', val: summary?.total_pending },
                 { label: isZh ? '已提现' : 'Paid', val: summary?.total_paid },
               ].map((x, i) => (
-                <div key={i} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2.5 text-center">
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-0.5">{x.label}</div>
-                  <div className={`text-base font-bold ${x.hi ? 'text-green-500' : 'dark:text-white'}`}>¥{x.val || '0.00'}</div>
-                </div>
+                <span key={i} className="text-gray-500 dark:text-gray-400">
+                  {x.label}：<span className={`font-bold ${x.hi ? 'text-green-500' : 'dark:text-white'}`}>¥{x.val ?? '0.00'}</span>
+                </span>
               ))}
             </div>
 
@@ -191,9 +195,9 @@ export const CnyWithdrawModal: React.FC<{
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/gif,image/webp" className="hidden" onChange={handlePickQr} />
 
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
-                {isZh ? '提现金额 (¥)' : 'Amount (¥)'}
+                {isZh ? '本次提现金额 (¥)' : 'Withdrawal amount (¥)'}
                 <span className="text-[11px] text-gray-400 ml-1">
-                  {isZh ? `¥${summary?.min_amount}起,最多 ¥${summary?.withdrawable}` : `min ¥${summary?.min_amount}, up to ¥${summary?.withdrawable}`}
+                  {isZh ? `¥${summary?.min_amount ?? 50} 起,最多 ¥${summary?.withdrawable ?? '0.00'}` : `min ¥${summary?.min_amount ?? 50}, up to ¥${summary?.withdrawable ?? '0.00'}`}
                 </span>
               </label>
               <input className={inputCls} type="number" min={summary?.min_amount} value={amount}
