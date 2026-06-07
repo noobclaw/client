@@ -130,6 +130,12 @@ export interface VideoCreationInput {
   voice?: string;
   /** 语速档(-50~+50,单位%),0/空 = 正常语速。 */
   voiceRate?: number;
+  /**
+   * 是否生成口播旁白 + 字幕。默认 true。
+   * 仅在 engine==='ai'(Seedance)下可设 false = 纯画面片:跳过 TTS、不烧字幕,
+   * 镜头时长按分镜稿字数估算,音频只用 BGM(没选则静音)。其它模式忽略此字段。
+   */
+  narrationEnabled?: boolean;
   /** 是否烧字幕。默认 true。 */
   subtitleEnabled?: boolean;
   /** 字幕字号(成片原始分辨率下像素)。默认 52。 */
@@ -526,40 +532,70 @@ async function runVideoPipeline(
       tracker.fail('script', err);
       return { ok: false, error: err };
     }
+
+    // 文案本地留一份(txt):全文 + 分镜,放成片输出目录,方便用户复用/二改/存档。
+    try {
+      const txt = [
+        `# ${input.taskTitle || '视频文案'}`,
+        `生成时间: ${new Date().toLocaleString()}`,
+        '',
+        '【完整口播文案】',
+        script,
+        '',
+        `【分镜 ${sentences.length} 句】`,
+        ...sentences.map((s, i) => `${i + 1}. ${s}`),
+      ].join('\n');
+      fs.writeFileSync(path.join(destDir, '文案.txt'), txt, 'utf8');
+    } catch { /* 写文案 txt 失败不影响出片 */ }
     tracker.done('script', `脚本约 ${script.length} 字,拆出 ${sentences.length} 个分镜`);
 
     // 2. 逐句配音。同时收集 edge-tts 词边界字幕 cue,按各句在总时间轴上的累计起点
     //    偏移后合并成全局 cue(离线、精确,抄 MoneyPrinterTurbo);拿不到就让 compose 估算。
+    // v6.x: 纯画面模式(仅 Seedance 可开)— 跳过 TTS、不烧字幕,镜头时长按分镜稿
+    //   字数估算(5~10s,对 Seedance 片段硬限 [4,12] 友好)。其它模式恒为有旁白。
+    const wantNarration = !(input.engine === 'ai' && input.narrationEnabled === false);
+    // 每镜时长来源:有旁白 → 各句真实配音时长;纯画面 → 分镜稿字数估算。下游(Seedance
+    //   生成 / 本地拼接 / compose)统一读 sceneDurations,不再直接摸 audios[i].durationSec。
+    const sceneDurations: number[] = [];
     tracker.start('tts');
     const audios: { audioPath: string; durationSec: number }[] = [];
     const subtitleCues: SubtitleCue[] = [];
-    let timelineOffset = 0;
-    let synthCount = 0;
-    for (let i = 0; i < sentences.length; i++) {
-      const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
-      const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
-      if (!r.synthesized) {
-        // 硬约束:必须有真人配音。某句重试 3 次仍合不出 → 立即终止(别再耗时间硬磨剩余句),
-        // 判任务失败。pre-charge 预扣的平台基础费会在 finally 里自动退回(不交付无配音的视频)。
-        const reason = getLastTtsError();
-        const err = `配音失败:第 ${i + 1}/${sentences.length} 句无法合成语音`
-          + (reason ? `(${reason.slice(0, 160)})` : '')
-          + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
-          + '常见原因:网络无法访问微软在线 TTS 接口,请检查网络/代理后重试。';
-        tracker.fail('tts', err);
-        return { ok: false, error: err };
-      }
-      audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
-      synthCount++;
-      if (r.cues && r.cues.length > 0) {
-        for (const c of r.cues) {
-          subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
+    if (wantNarration) {
+      let timelineOffset = 0;
+      let synthCount = 0;
+      for (let i = 0; i < sentences.length; i++) {
+        const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
+        const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
+        if (!r.synthesized) {
+          // 硬约束:必须有真人配音。某句重试 3 次仍合不出 → 立即终止(别再耗时间硬磨剩余句),
+          // 判任务失败。pre-charge 预扣的平台基础费会在 finally 里自动退回(不交付无配音的视频)。
+          const reason = getLastTtsError();
+          const err = `配音失败:第 ${i + 1}/${sentences.length} 句无法合成语音`
+            + (reason ? `(${reason.slice(0, 160)})` : '')
+            + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
+            + '常见原因:网络无法访问微软在线 TTS 接口,请检查网络/代理后重试。';
+          tracker.fail('tts', err);
+          return { ok: false, error: err };
         }
+        audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
+        sceneDurations.push(r.durationSec);
+        synthCount++;
+        if (r.cues && r.cues.length > 0) {
+          for (const c of r.cues) {
+            subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
+          }
+        }
+        timelineOffset += r.durationSec;
+        tracker.progress(`配音 ${i + 1}/${sentences.length}`);
       }
-      timelineOffset += r.durationSec;
-      tracker.progress(`配音 ${i + 1}/${sentences.length}`);
+      tracker.done('tts', `配音完成(${synthCount} 句全部真人语音)`);
+    } else {
+      // 纯画面:每镜时长 = clamp(字数 / 4.5, 5, 10) 秒,跟着分镜稿内容走。
+      for (let i = 0; i < sentences.length; i++) {
+        sceneDurations.push(Math.max(5, Math.min(10, Math.ceil((sentences[i] || '').length / 4.5))));
+      }
+      tracker.done('tts', `纯画面模式 · 跳过配音,按分镜稿定时长(${sentences.length} 镜)`);
     }
-    tracker.done('tts', `配音完成(${synthCount} 句全部真人语音)`);
 
     // 3. 画面:在线素材库(可叠加用户本地素材混拼);纯本地(老任务)走循环拼接。
     tracker.start('visuals');
@@ -598,7 +634,7 @@ async function runVideoPipeline(
       const resolution = input.seedanceResolution || '720p';
       const aiScenes = sentences.map((s, i) => ({
         prompt: buildSeedancePrompt(s, input),
-        durationSec: Math.max(4, Math.ceil(audios[i].durationSec)),
+        durationSec: Math.max(4, Math.ceil(sceneDurations[i])),
       }));
       tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段(${resolution}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''})…`);
       const clipResults = await generateSeedanceClips({
@@ -632,6 +668,19 @@ async function runVideoPipeline(
         }
         return { sceneClips, imagePool: refImagesAi, imageByScene };
       };
+      // AI 生成的片段本地留一份:assetDir 是临时目录(结尾会清掉),拷到成片输出目录的
+      // 「素材」子文件夹,供用户复用/二剪/排查(对齐"成片+文案+素材"一起留档)。
+      try {
+        const matDir = path.join(destDir, '素材');
+        fs.mkdirSync(matDir, { recursive: true });
+        let saved = 0;
+        clipResults.forEach((r, i) => {
+          if (r.path && fs.existsSync(r.path)) {
+            try { fs.copyFileSync(r.path, path.join(matDir, `第${i + 1}镜_${path.basename(r.path)}`)); saved++; } catch { /* 单个拷贝失败忽略 */ }
+          }
+        });
+        if (saved > 0) tracker.progress(`📁 已在「素材」子目录留存 ${saved} 个 AI 片段(可复用/二剪)`);
+      } catch { /* 留存失败不影响出片 */ }
       tracker.done('visuals', `AI 成片就绪(${okCount}/${aiScenes.length} 镜 Seedance 生成${okCount < aiScenes.length ? ',其余就近降级' : ''})`);
     } else if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
@@ -640,7 +689,7 @@ async function runVideoPipeline(
         // 每条错开起始游标 → 同样的本地素材排出不同组合。
         let localCursor = videoIdx;
         const sceneClips = sentences.map((_, i) => {
-          const dur = Math.max(1.2, audios[i].durationSec);
+          const dur = Math.max(1.2, sceneDurations[i]);
           const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
           const clips: string[] = [];
           for (let k = 0; k < want; k++) clips.push(localVideos[localCursor++ % localVideos.length]);
@@ -857,7 +906,8 @@ async function runVideoPipeline(
     tracker.start('compose');
 
     const { width, height } = aspectToSize(input.aspect);
-    const subtitleEnabled = input.subtitleEnabled !== false;
+    // 纯画面模式(无旁白)→ 无旁白文本时间轴,强制关字幕。
+    const subtitleEnabled = wantNarration && input.subtitleEnabled !== false;
     const subtitle: SubtitleStyle = {
       enabled: subtitleEnabled,
       fontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 52,
@@ -914,8 +964,8 @@ async function runVideoPipeline(
         return {
           clips: hasVideo ? clips : undefined,
           imagePath: image,
-          audioPath: audios[i].audioPath,
-          durationSec: audios[i].durationSec,
+          audioPath: wantNarration ? audios[i].audioPath : undefined,
+          durationSec: sceneDurations[i],
           subtitle: sentence,
         };
       });
@@ -927,6 +977,7 @@ async function runVideoPipeline(
         height,
         maxClipSeconds: maxClip,
         subtitle,
+        narration: wantNarration,
         bgmPath,
         bgmVolume: input.bgmVolume !== undefined && input.bgmVolume >= 0 ? input.bgmVolume : undefined,
         // edge-tts 词边界出的精确 cue;为空时 compose 内部退回按各镜时长估算。
