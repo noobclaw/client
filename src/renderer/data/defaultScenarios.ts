@@ -3767,7 +3767,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
   },
   {
     "id": "x_post_creator",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "platform": "x",
     "platforms": [
       "x_main"
@@ -3776,8 +3776,8 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "category": "creation",
     "name_zh": "推特 · 自动发图文",
     "name_en": "X Auto Post",
-    "description_zh": "三路引擎防同质化：feed 爆款深度仿写、热点原创快评、对大 V 引用回应，AI 按你的人设随机轮换，每天稳定产出不留模板痕。",
-    "description_en": "Three engines, zero template fatigue: deep-rewrites viral feed posts, drafts originals on live trends, quote-tweets influential voices — AI rotates through your persona for variety algorithms reward.",
+    "description_zh": "每日锁定近三周 web3 热门资讯，AI 深度创作引擎写一条踩点市场快评 + 智能配图（源图直用或 AI 生图），自动发到你的推特。蓝V 出深度长文、普通号自动压成精炼短推。只写 web3。",
+    "description_en": "Daily locks onto hot web3 news from the past 3 weeks — AI deep-creation engine crafts a sharp market take with smart imagery (source thumbnail or AI-generated), auto-posted to your X. Long-form for Premium, tight tweets for standard accounts. Web3-only.",
     "icon": "📝",
     "default_config": {
       "keywords": [],
@@ -3788,12 +3788,12 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     },
     "risk_caps": {
       "max_daily_runs": 1,
-      "max_scroll_per_run": 25,
-      "min_scroll_delay_ms": 3000,
-      "max_scroll_delay_ms": 10000,
-      "read_dwell_min_ms": 10000,
-      "read_dwell_max_ms": 45000,
-      "max_run_duration_ms": 3600000,
+      "max_scroll_per_run": 0,
+      "min_scroll_delay_ms": 0,
+      "max_scroll_delay_ms": 0,
+      "read_dwell_min_ms": 0,
+      "read_dwell_max_ms": 0,
+      "max_run_duration_ms": 600000,
       "min_interval_hours": 24,
       "weekly_rest_days": 1,
       "cooldown_captcha_hours": 24,
@@ -3804,14 +3804,14 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
         180000,
         900000
       ],
-      "feed_scroll_min": 5,
-      "feed_scroll_max": 20,
+      "feed_scroll_min": 0,
+      "feed_scroll_max": 0,
       "min_long_tweet_chars": 100,
       "min_rewrite_views": 10000,
       "weights": {
-        "rewrite": 40,
-        "original": 40,
-        "quote": 20
+        "rewrite": 0,
+        "original": 100,
+        "quote": 0
       }
     },
     "required_login_url": "https://x.com",
@@ -3824,6 +3824,7 @@ export const DEFAULT_SCENARIOS: Scenario[] = ([
     "skills": {
       "scripts": {},
       "prompts": {
+        "news_composer": "prompts/news_composer.txt",
         "rewriter": "prompts/rewriter.txt",
         "originator": "prompts/originator.txt",
         "quoter": "prompts/quoter.txt"
