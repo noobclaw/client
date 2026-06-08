@@ -1936,7 +1936,8 @@ const VideoConfigModal: React.FC<{
   const scriptStepValid = scriptValid;
   // 画面:选了本地上传却没传素材时挡一下
   // AI 自动成片:参考图可选,无硬性必填;在线:无必填;本地:至少 1 个上传。
-  const visualStepValid = materialSource === 'stock' || materialSource === 'ai' || localVideos.length > 0;
+  // 「画面」步通过条件 — pure_ai 模式下 mode 就够了(参考图选填);stock 模式下需要选定来源。
+  const visualStepValid = mode === 'pure_ai' || materialSource === 'stock' || localVideos.length > 0;
 
   const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
     || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
@@ -1955,20 +1956,26 @@ const VideoConfigModal: React.FC<{
     keywords: keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean),
     script: script.trim(),
     scriptMode,
-    // AI 自动成片(Seedance)用参考图(≤2)统一风格;其余来源不传(字段向后兼容)。
-    engine: materialSource === 'ai' ? 'ai' : 'stock',
-    seedanceResolution: materialSource === 'ai' ? seedanceResolution : undefined,
-    seedanceModel: materialSource === 'ai' ? seedanceModel : undefined,
-    referenceImages: materialSource === 'ai' ? referenceImages.slice(0, 2) : [],
-    // 素材来源二选一,不混拼:仅本地来源才带 localVideos,在线/AI 来源一律不带。
-    localVideos: materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
+    // engine / seedance / target 等以 mode 为唯一真相源 — 之前以 materialSource 派生,
+    // 但 React state 异步 + closure 边界 case 下,用户切「纯 AI→AI 口播稿」时 mode
+    // 已切回 'stock',materialSource 可能还停在 'ai',结果 engine 错派 'ai' 跑了 Seedance
+    // (用户反馈:选了「AI 口播稿+素材库」结果扣了 200w+ 积分跑了 4 镜 Seedance)。
+    // 现在 mode 决定 engine,materialSource 只在 stock 模式下区分「在线 vs 本地」,
+    // pure_ai 模式 materialSource 视而不见,无串台可能。
+    engine: mode === 'pure_ai' ? 'ai' : 'stock',
+    seedanceResolution: mode === 'pure_ai' ? seedanceResolution : undefined,
+    seedanceModel: mode === 'pure_ai' ? seedanceModel : undefined,
+    referenceImages: mode === 'pure_ai' ? referenceImages.slice(0, 2) : [],
+    // 素材来源二选一,不混拼:仅 stock 模式下的 local 来源才带 localVideos;
+    //   pure_ai 永远不传 localVideos(Seedance 自动生成,不读本地素材)。
+    localVideos: mode === 'stock' && materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
     // 纯 AI(Seedance)每秒都真烧钱 → 写稿时长封顶 45s(UI 也不给 >45s 选项);
     // 其它模式(在线素材/本地)免费拼接,不限。
-    targetSeconds: materialSource === 'ai' ? Math.min(targetSeconds, AI_MAX_SECONDS) : targetSeconds,
+    targetSeconds: mode === 'pure_ai' ? Math.min(targetSeconds, AI_MAX_SECONDS) : targetSeconds,
     // 在线来源 = 搜在线素材库(收平台费);本地/AI = 不搜在线。AI 的钱在服务端逐片段扣。
-    useStockVideo: materialSource === 'stock',
+    useStockVideo: mode === 'stock' && materialSource === 'stock',
     voice,
     voiceRate,
     // Seedance(pure_ai):默认纯画面(关旁白 + 不烧字幕);用户在「音频」步开了「AI 配音」
@@ -2013,7 +2020,7 @@ const VideoConfigModal: React.FC<{
     // 模式一(AI 分镜 + 在线素材)pre-flight:成片成功后会扣平台基础费 + AI token,
     // 这里先拉最新余额校验 > 200000 积分才放行,避免"视频已生成才发现没钱"。
     // 不足时 hasEnoughBalanceForTask 会派发 token-insufficient 事件 → 全局充值弹窗。
-    if (materialSource === 'stock') {
+    if (mode === 'stock') {
       setSubmitting(true);
       let minBalance = VIDEO_MODE1_MIN_BALANCE;
       try {
@@ -2029,7 +2036,7 @@ const VideoConfigModal: React.FC<{
     }
     // AI 自动成片(Seedance)pre-flight:逐镜真烧钱 → 开跑前估价 + 校验余额 + 二次确认,
     // 杜绝"不知情被逐镜扣到没钱"。估不出(后端老/网络差)就放行(逐镜 402 仍兜底)。
-    if (materialSource === 'ai') {
+    if (mode === 'pure_ai') {
       setSubmitting(true);
       const estSec = Math.max(4, Math.min(30, scriptMode === 'strict'
         ? Math.ceil(script.trim().length / 4.5)
@@ -2241,7 +2248,7 @@ const VideoConfigModal: React.FC<{
                 >
                   <div className="flex flex-wrap gap-2">
                     {/* 纯 AI 模式只给 ≤45s 选项(成本敏感),其它模式全开。 */}
-                    {DURATION_OPTIONS.filter((s) => materialSource !== 'ai' || s <= AI_MAX_SECONDS).map((s) => (
+                    {DURATION_OPTIONS.filter((s) => mode !== 'pure_ai' || s <= AI_MAX_SECONDS).map((s) => (
                       <button
                         key={s}
                         type="button"
@@ -2288,7 +2295,7 @@ const VideoConfigModal: React.FC<{
               )}
 
               {/* 纯 AI(Seedance):锁定省钱档(1.0 Lite + 480p,不让用户选,避免烧钱)+ 参考图(≤2)。 */}
-              {materialSource === 'ai' && (
+              {mode === 'pure_ai' && (
               <>
                 <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
                   {isZh
