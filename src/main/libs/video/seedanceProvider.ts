@@ -93,7 +93,8 @@ interface CreateResult { taskId: string; chargeId: string; chargedTokens: number
 
 /** 提交一个 Seedance 片段任务。返回 taskId+chargeId,或抛错(含 402 余额不足)。 */
 async function createClip(
-  prompt: string, imageUrls: string[], duration: number, ratio: string, resolution: string, tier: string,
+  prompt: string, imageUrls: string[], duration: number, ratio: string,
+  resolution: string | undefined, tier: string | undefined,
 ): Promise<CreateResult> {
   const headers = authHeaders();
   if (!headers) throw new Error('未登录 NoobClaw');
@@ -159,7 +160,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** 生成单镜:create → 轮询 → 下载。失败返回 {path:null,error}(不抛,交给上层降级)。 */
 async function generateOne(
   idx: number, scene: SeedanceSceneSpec, imageUrls: string[],
-  ratio: string, resolution: string, tier: string, destDir: string, timeoutSec: number,
+  ratio: string, resolution: string | undefined, tier: string | undefined, destDir: string, timeoutSec: number,
   signal: AbortSignal | undefined,
   onProgress?: (m: string) => void,
 ): Promise<SeedanceClipResult> {
@@ -198,8 +199,9 @@ async function generateOne(
  */
 export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Promise<SeedanceClipResult[]> {
   const { scenes, destDir } = opts;
-  const resolution = opts.resolution || '720p';
-  const tier = opts.tier || 'pro15';
+  // 档位/分辨率不在客户端定:透传(可能 undefined)→ 服务端 create 端点决定。
+  const resolution = opts.resolution;
+  const tier = opts.tier;
   const ratio = opts.ratio || '9:16';
   // 并发 3 / 单镜超时 300s:失败或超时的镜会被 pipeline「就近复用」成重复画面,
   // 所以宁可多等、并发高一点,尽量让每镜都真生成出来,减少重复片段。

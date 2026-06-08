@@ -715,7 +715,8 @@ async function runVideoPipeline(
       // 服务端逐片段计费(时长×分辨率)+ 失败自动退款。失败镜降级:就近复用成功片段,
       // 再不行用参考图静帧;一条都没成则整任务失败(钱已被服务端退回)。
       const refImagesAi = (input.referenceImages || []).filter((p) => p && fs.existsSync(p)).slice(0, 2);
-      const resolution = input.seedanceResolution || '720p';
+      // 档位/分辨率不在客户端定:透传(可能 undefined)→ 服务端 seedance create 端点决定。
+      const resolution = input.seedanceResolution;
       const aiScenes = sentences.map((s, i) => ({
         prompt: buildSeedancePrompt(s, {
           track: input.track, persona: input.persona,
@@ -724,12 +725,12 @@ async function runVideoPipeline(
         // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
         durationSec: Math.max(4, Math.min(12, Math.ceil(sceneDurations[i]))),
       }));
-      tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段(${resolution}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''})…`);
+      tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段${resolution ? `(${resolution})` : ''}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''}…`);
       const clipResults = await generateSeedanceClips({
         scenes: aiScenes,
         referenceImages: refImagesAi,
         resolution,
-        tier: input.seedanceModel || 'pro15',
+        tier: input.seedanceModel,
         ratio: aspectToSeedanceRatio(input.aspect),
         destDir: assetDir,
         onProgress: (m) => tracker.progress(m),
