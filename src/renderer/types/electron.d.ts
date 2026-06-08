@@ -522,6 +522,7 @@ interface IElectronAPI {
   };
   video: {
     generate: (input: unknown) => Promise<{ ok: boolean; outputPath?: string; error?: string }>;
+    stop: (taskId: string) => Promise<{ ok: boolean; error?: string }>;
     pickImages: (max: number) => Promise<string[]>;
     pickVideos: (max: number) => Promise<string[]>;
     readImageDataUrl: (filePath: string) => Promise<string>;

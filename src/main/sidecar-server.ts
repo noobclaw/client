@@ -178,6 +178,9 @@ if (process.platform === 'darwin' && !IS_NATIVE_MESSAGING_HOST) {
 // ── SSE Client Management ──
 
 const sseClients = new Set<http.ServerResponse>();
+// 运行中的视频任务注册表(taskId → AbortController),供「停止」中断 pipeline + kill 子进程。
+// 对齐 Electron main.ts 的 activeVideoRuns;Tauri 下视频跑在 sidecar,停止必须在这里 abort。
+const activeVideoRuns = new Map<string, AbortController>();
 
 function broadcastSSE(event: string, data: unknown): void {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -1054,9 +1057,15 @@ const server = http.createServer(async (req, res) => {
             // its generate() promise on that terminal SSE event.
             try {
               const { generateVideo } = await import('./libs/video/pipeline');
+              // 建 AbortController 并按 taskId 注册,供「停止」中断 pipeline + SIGKILL 子进程。
+              const vTaskId = (args[0] && (args[0] as { taskId?: unknown }).taskId)
+                ? String((args[0] as { taskId?: unknown }).taskId) : '';
+              const ctrl = new AbortController();
+              if (vTaskId) { activeVideoRuns.get(vTaskId)?.abort(); activeVideoRuns.set(vTaskId, ctrl); }
+              const cleanup = () => { if (vTaskId && activeVideoRuns.get(vTaskId) === ctrl) activeVideoRuns.delete(vTaskId); };
               generateVideo(args[0], (progress: unknown) => {
                 broadcastSSE('video:progress', progress);
-              }).then((result) => {
+              }, ctrl.signal).then((result) => {
                 // Belt-and-suspenders terminal event (no `steps` so it can't
                 // wipe the renderer's step list); harmless duplicate of the
                 // pipeline's own done/error emit.
@@ -1072,8 +1081,18 @@ const server = http.createServer(async (req, res) => {
                   status: 'error',
                   error: e?.message || String(e),
                 });
-              });
+              }).finally(cleanup);
               return writeJSON(res, 200, { ok: true, status: 'started' });
+            } catch (e: any) {
+              return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
+            }
+          }
+          case 'video:stop': {
+            // 停止某个正在出片的视频任务:abort → pipeline 步骤边界退出 + ffmpeg/seedance/tts SIGKILL。
+            try {
+              const ctrl = activeVideoRuns.get(String(args[0] || ''));
+              if (ctrl) { ctrl.abort(); return writeJSON(res, 200, { ok: true }); }
+              return writeJSON(res, 200, { ok: false });
             } catch (e: any) {
               return writeJSON(res, 200, { ok: false, error: e?.message || String(e) });
             }
