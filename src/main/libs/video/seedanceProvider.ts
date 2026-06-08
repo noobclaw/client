@@ -60,6 +60,8 @@ export interface GenerateSeedanceOptions {
   concurrency?: number;
   /** 单镜最大等待秒数(轮询超时,默认 240)。 */
   perClipTimeoutSec?: number;
+  /** 中断信号:用户「停止」时停止轮询、不再生成新镜。 */
+  signal?: AbortSignal;
   onProgress?: (msg: string) => void;
 }
 
@@ -158,6 +160,7 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 async function generateOne(
   idx: number, scene: SeedanceSceneSpec, imageUrls: string[],
   ratio: string, resolution: string, tier: string, destDir: string, timeoutSec: number,
+  signal: AbortSignal | undefined,
   onProgress?: (m: string) => void,
 ): Promise<SeedanceClipResult> {
   const duration = Math.max(4, Math.min(12, Math.round(scene.durationSec || 5)));
@@ -171,6 +174,7 @@ async function generateOne(
     const deadline = Date.now() + timeoutSec * 1000;
     while (Date.now() < deadline) {
       await sleep(5000);
+      if (signal?.aborted) return { path: null, error: '已停止', chargedTokens };
       const st = await pollClipOnce(taskId, chargeId);
       if (st.status === 'succeeded') {
         if (!st.videoUrl) return { path: null, error: '成片无 video_url', chargedTokens };
@@ -212,8 +216,9 @@ export async function generateSeedanceClips(opts: GenerateSeedanceOptions): Prom
   let next = 0;
   const worker = async (): Promise<void> => {
     while (next < scenes.length) {
+      if (opts.signal?.aborted) break;
       const i = next++;
-      results[i] = await generateOne(i, scenes[i], imageUrls, ratio, resolution, tier, destDir, timeoutSec, opts.onProgress);
+      results[i] = await generateOne(i, scenes[i], imageUrls, ratio, resolution, tier, destDir, timeoutSec, opts.signal, opts.onProgress);
     }
   };
   const n = Math.max(1, Math.min(concurrency, scenes.length));

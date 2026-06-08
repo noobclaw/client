@@ -248,6 +248,11 @@ class VideoCreationService {
         .catch((e: any) => finish({ ok: false, error: String(e).slice(0, 200) }));
     });
   }
+
+  /** 停止某个正在出片的任务:abort 主进程 pipeline + SIGKILL ffmpeg/seedance/tts 子进程。 */
+  async stop(taskId: string): Promise<void> {
+    try { await (this.api as { stop?: (id: string) => Promise<unknown> })?.stop?.(taskId); } catch {}
+  }
 }
 
 export const videoCreationService = new VideoCreationService();

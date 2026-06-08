@@ -606,6 +606,22 @@ class VideoTaskStore {
   }
 
   /**
+   * 停止正在跑的任务:abort 主进程 pipeline + SIGKILL ffmpeg/seedance/tts 子进程。
+   * 运行记录的终态(error='已停止')由 generate() 的 SSE 终态回写;这里只触发 abort
+   * 并打一条「正在停止」日志。abort 后主进程在步骤边界/子进程退出处优雅收尾。
+   */
+  stopTask(taskId: string): boolean {
+    const task = this.tasks.find((t) => t.id === taskId);
+    if (!task || task.lastStatus !== 'running') return false;
+    const runId = task.lastRunId;
+    if (runId) {
+      this.patchRun(runId, (r) => { if (r.status === 'running') this.appendLog(r, '⏹ 正在停止…'); });
+    }
+    void videoCreationService.stop(taskId);
+    return true;
+  }
+
+  /**
    * 便捷方法:创建任务并立即跑。返回 taskId;已有任务在跑则返回 null。
    * 给「新建视频创作任务」一步到位用。
    */

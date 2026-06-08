@@ -1078,6 +1078,7 @@ const VideoTaskDetail: React.FC<{
   const isRunning = status === 'running';
   const [actionError, setActionError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [stopping, setStopping] = useState(false);
 
   // 输出目录:优先本次运行的目录,否则从成片路径推(配置卡「输出目录」链接用)。
   const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
@@ -1109,6 +1110,14 @@ const VideoTaskDetail: React.FC<{
 
   const handleDelete = () => {
     if (videoTaskStore.deleteTask(task.id)) onBack();
+  };
+
+  // 停止运行中的任务:abort 主进程 pipeline + kill ffmpeg/seedance/tts。终态由 store 刷新。
+  const handleStop = () => {
+    setStopping(true);
+    try { videoTaskStore.stopTask(task.id); } catch {}
+    // 给主进程几秒走到步骤边界 / 子进程被 kill;按钮态兜底复位(真正终态由 store 回写)。
+    setTimeout(() => setStopping(false), 4000);
   };
 
   return (
@@ -1164,14 +1173,24 @@ const VideoTaskDetail: React.FC<{
           </div>
 
           {/* 右:横排操作(逐字对齐币安任务详情的操作行)。
-              运行中 → 只显示绿色「生成中」胶囊(无停止:本地出片不可中断);
+              运行中 → 绿色「生成中」胶囊 + 红色「停止」(abort pipeline + kill 子进程);
               空闲   → 手动触发提示 + 直接运行(绿) + 编辑 + 删除。 */}
           <div className="shrink-0 flex items-center gap-2">
             {isRunning ? (
-              <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                {isZh ? '生成中' : 'Running'}
-              </span>
+              <>
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-green-500">
+                  <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                  {stopping ? (isZh ? '停止中…' : 'Stopping…') : (isZh ? '生成中' : 'Running')}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  disabled={stopping}
+                  className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
+                >
+                  {isZh ? '⏹ 停止' : '⏹ Stop'}
+                </button>
+              </>
             ) : (
               <>
                 <span className="text-xs text-gray-400">{isZh ? '✋ 手动触发' : '✋ Manual'}</span>

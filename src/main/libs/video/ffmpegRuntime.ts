@@ -145,6 +145,8 @@ export interface RunFfmpegOptions {
   /** 超时毫秒,默认 5 分钟。 */
   timeoutMs?: number;
   cwd?: string;
+  /** 中断信号:abort 时立即 SIGKILL 子进程(用户「停止」视频任务)。 */
+  signal?: AbortSignal;
 }
 
 export interface RunResult {
@@ -152,6 +154,12 @@ export interface RunResult {
   code: number | null;
   stderr: string;
 }
+
+/** 模块级「当前视频任务中断信号」:composeVideo 设置后,本文件所有 runFfmpeg 调用
+ *  (含内部 helper renderClipsBg 等十多处)在 abort 时统一 SIGKILL,无需逐个传参。
+ *  单任务足够;并发多任务时以最后设置者为准(视频出片通常串行)。 */
+let _videoAbortSignal: AbortSignal | undefined;
+export function setVideoAbortSignal(s: AbortSignal | undefined): void { _videoAbortSignal = s; }
 
 /** 跑一条 ffmpeg 命令。args 不含可执行名本身。 */
 export function runFfmpeg(args: string[], opts: RunFfmpegOptions = {}): Promise<RunResult> {
@@ -161,9 +169,23 @@ export function runFfmpeg(args: string[], opts: RunFfmpegOptions = {}): Promise<
 
 function runProcess(bin: string, args: string[], opts: RunFfmpegOptions): Promise<RunResult> {
   return new Promise((resolve) => {
+    // 中断信号:本次 opts.signal 优先,否则用模块级(composeVideo 设的当前任务 signal)。
+    const sig = opts.signal ?? _videoAbortSignal;
+    // 已被中断:不起进程,直接返回。
+    if (sig?.aborted) { resolve({ ok: false, code: null, stderr: '[aborted]' }); return; }
     let settled = false;
     let stderr = '';
     const child = spawn(bin, args, { cwd: opts.cwd, windowsHide: true });
+
+    // 用户「停止」→ 立即 SIGKILL,结束本条 ffmpeg。
+    const onAbort = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      try { child.kill('SIGKILL'); } catch {}
+      resolve({ ok: false, code: null, stderr: stderr + '\n[aborted]' });
+    };
+    sig?.addEventListener('abort', onAbort, { once: true });
 
     const timer = setTimeout(() => {
       if (!settled) {

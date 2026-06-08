@@ -17,7 +17,7 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
-import { isFfmpegAvailable } from './ffmpegRuntime';
+import { isFfmpegAvailable, setVideoAbortSignal } from './ffmpegRuntime';
 import { synthesize, getLastTtsError } from './tts';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
@@ -242,6 +242,8 @@ export interface VideoCreationResult {
   /** 批量出片时的全部成片路径(videoCount>1 时长度>1)。 */
   outputPaths?: string[];
   error?: string;
+  /** 用户主动停止(非失败):渲染端据此显示「已停止」而非红色报错。 */
+  aborted?: boolean;
 }
 
 export type ProgressEmitter = (p: VideoCreationProgress) => void;
@@ -443,9 +445,15 @@ function outputFileName(index = 0): string {
  * 来记录最后一次累计 token / 成本(VideoCreationResult 本身不带),仅用于上报,
  * 不改变任何对渲染端的行为。
  */
+/** 用户点「停止」时,signal 被 abort → 在步骤边界抛出,让 pipeline 干净退出。 */
+export function throwIfAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw new Error('VIDEO_ABORTED:已停止');
+}
+
 export async function generateVideo(
   input: VideoCreationInput,
   emit?: ProgressEmitter,
+  signal?: AbortSignal,
 ): Promise<VideoCreationResult> {
   const runId = randomUUID();
   const startedAt = Date.now();
@@ -457,11 +465,19 @@ export async function generateVideo(
     emit?.(p);
   };
 
+  // 设当前任务中断信号 → 本次出片期间 ffmpegRuntime 所有 runFfmpeg(合成/探测)abort 时自动 SIGKILL。
+  setVideoAbortSignal(signal);
   let result: VideoCreationResult;
   try {
-    result = await runVideoPipeline(input, wrappedEmit);
+    result = await runVideoPipeline(input, wrappedEmit, signal);
   } catch (err) {
-    result = { ok: false, error: err instanceof Error ? err.message : String(err) };
+    const msg = err instanceof Error ? err.message : String(err);
+    // 用户主动停止 → 标准化为「已停止」结果(渲染端据此显示停止态,不当报错)。
+    result = msg.startsWith('VIDEO_ABORTED')
+      ? { ok: false, error: '已停止', aborted: true }
+      : { ok: false, error: msg };
+  } finally {
+    setVideoAbortSignal(undefined);
   }
 
   try {
@@ -483,6 +499,7 @@ export async function generateVideo(
 async function runVideoPipeline(
   input: VideoCreationInput,
   emit?: ProgressEmitter,
+  signal?: AbortSignal,
 ): Promise<VideoCreationResult> {
   const jobId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const tracker = new ProgressTracker(jobId, emit);
@@ -522,6 +539,7 @@ async function runVideoPipeline(
   try {
     // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
     //    缺省兼容老任务:有 script → strict,无 → ai。
+    throwIfAborted(signal);
     tracker.start('script', `输出目录:${taskDir}`);
     // 拉服务端可调配置(prompt 模板 + 各阈值)。拉不到 / 没登录 → 用内置默认,出片照常。
     const vcfg = await getVideoConfig();
@@ -621,6 +639,7 @@ async function runVideoPipeline(
     // 每镜时长来源:有旁白 → 各句真实配音时长;纯画面 → 分镜稿字数估算。下游(Seedance
     //   生成 / 本地拼接 / compose)统一读 sceneDurations,不再直接摸 audios[i].durationSec。
     const sceneDurations: number[] = [];
+    throwIfAborted(signal);
     tracker.start('tts');
     const audios: { audioPath: string; durationSec: number }[] = [];
     const subtitleCues: SubtitleCue[] = [];
@@ -662,6 +681,7 @@ async function runVideoPipeline(
     }
 
     // 3. 画面:在线素材库(可叠加用户本地素材混拼);纯本地(老任务)走循环拼接。
+    throwIfAborted(signal);
     tracker.start('visuals');
 
     // 用户上传的本地视频素材(已在 UI 限制格式 + 大小,这里再 existsSync 兜底)。
@@ -713,6 +733,7 @@ async function runVideoPipeline(
         ratio: aspectToSeedanceRatio(input.aspect),
         destDir: assetDir,
         onProgress: (m) => tracker.progress(m),
+        signal,
       });
       const okCount = clipResults.filter((r) => r.path).length;
       if (okCount === 0) {
@@ -971,6 +992,7 @@ async function runVideoPipeline(
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
     //    费用(平台费向上限靠拢 + AI 按条数叠加)开跑前【一次性】整笔预扣,全部失败才整笔退回。
+    throwIfAborted(signal);
     tracker.start('compose');
 
     const { width, height } = aspectToSize(input.aspect);

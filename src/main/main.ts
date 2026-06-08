@@ -2968,8 +2968,13 @@ if (!gotTheLock) {
       return true;
     });
 
+    // 运行中的视频任务注册表(taskId → AbortController),供「停止」中断 pipeline + kill 子进程。
+    const activeVideoRuns = new Map<string, AbortController>();
     ipcMain.handle('video:generate', async (_e, input: unknown) => {
       const { generateVideo } = require('./libs/video/pipeline');
+      const taskId = (input as { taskId?: unknown })?.taskId ? String((input as { taskId?: unknown }).taskId) : '';
+      const ctrl = new AbortController();
+      if (taskId) { activeVideoRuns.get(taskId)?.abort(); activeVideoRuns.set(taskId, ctrl); }
       const emit = (progress: unknown) => {
         try {
           if (mainWindow && !mainWindow.isDestroyed()) {
@@ -2978,10 +2983,18 @@ if (!gotTheLock) {
         } catch {}
       };
       try {
-        return await generateVideo(input, emit);
+        return await generateVideo(input, emit, ctrl.signal);
       } catch (err) {
         return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      } finally {
+        if (taskId && activeVideoRuns.get(taskId) === ctrl) activeVideoRuns.delete(taskId);
       }
+    });
+    // 停止某个正在出片的视频任务:abort → pipeline 步骤边界退出 + ffmpeg/seedance/tts 子进程 SIGKILL。
+    ipcMain.handle('video:stop', async (_e, taskId: unknown) => {
+      const ctrl = activeVideoRuns.get(String(taskId || ''));
+      if (ctrl) { ctrl.abort(); return { ok: true }; }
+      return { ok: false };
     });
   }
 
