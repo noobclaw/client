@@ -1542,9 +1542,9 @@ interface TrackPreset {
 
 const TRACK_PRESETS: TrackPreset[] = [
   {
-    id: 'overseas_life', zh: '🌏 海外生活 · 在日华人', en: 'Overseas Life',
-    persona: { zh: '在东京生活 5 年的华人博主，30 岁，普通上班族。租房、通勤、超市囤货都自己搞，分享真实接地气的日本日常，不滤镜、不贩卖焦虑', en: 'An overseas-Chinese blogger who has lived in Tokyo for 5 years — real, down-to-earth daily life in Japan, no sugar-coating' },
-    keywords: { zh: '东京生活 日本租房 在日华人 日本超市 省钱攻略 日本通勤 海外生活 日本签证', en: 'tokyo japan-life rent overseas-chinese supermarket save-money commute visa' },
+    id: 'pets', zh: '🐾 萌宠 · 日常', en: 'Pets',
+    persona: { zh: '养猫养狗的铲屎官,记录萌宠日常。轻松治愈、会讲细节,分享养宠经验和踩坑,真实不卖惨', en: 'A cat/dog owner sharing daily pet life — light, healing, real tips, no sob stories' },
+    keywords: { zh: '萌宠日常 猫咪 狗狗 养宠攻略 宠物好物 治愈系 铲屎官 宠物搞笑', en: 'pets cat dog pet-care pet-gear healing funny-pets daily' },
   },
   {
     id: 'food', zh: '🍲 美食 · 探店做饭', en: 'Food',
@@ -1801,8 +1801,9 @@ const VideoConfigModal: React.FC<{
   const isEdit = !!editTask;
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
 
-  // 新建默认选中第一个赛道(非 custom),并带出其人设/关键词;编辑模式按已有任务反推。
-  const defaultPreset = TRACK_PRESETS.find((p) => p.id !== 'custom') || TRACK_PRESETS[0];
+  // 新建默认选中「美食」赛道,并带出其人设/关键词;编辑模式按已有任务反推。
+  const defaultPreset = TRACK_PRESETS.find((p) => p.id === 'food')
+    || TRACK_PRESETS.find((p) => p.id !== 'custom') || TRACK_PRESETS[0];
   const initialTrackId = (() => {
     if (!editTask) return defaultPreset.id;
     const t = editTask.input.track;
@@ -1895,7 +1896,7 @@ const VideoConfigModal: React.FC<{
   //   用户进字幕步手动改的会保留(mode 不变就不重置)。
   useEffect(() => {
     if (editTask) return;
-    setSubtitleColor('#FFD700');
+    setSubtitleColor('#FFE600');
     setSubtitleStrokeColor('#000000');
     setSubtitleFontSize(64);
     // eslint-disable-next-line react-hooks/exhaustive-deps
