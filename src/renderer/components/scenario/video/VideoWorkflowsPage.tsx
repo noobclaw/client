@@ -2164,7 +2164,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认带 AI 配音 + 字幕,想要纯画面可在「音频」步关掉' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Comes with AI voice-over + subtitles by default; switch to visual-only in the Audio step'}
-                    cost={isZh ? '我们实收约 ¥0.28/秒' : '~¥0.28/sec'}
+                    cost={isZh ? '按秒计费 · 生成前显示报价,失败镜头自动退' : 'Per-second · quote shown before generation, auto-refund on failure'}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
                 </div>
