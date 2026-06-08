@@ -200,6 +200,9 @@ class VideoTaskStore {
   private listeners = new Set<Listener>();
   private running = false;
   private schedulerTimer: ReturnType<typeof setInterval> | null = null;
+  /** 定时到点时的派发钩子。videoQueue 注入后,定时任务改【入队】而非直接 runTask
+   *  (避免和统一队列抢锁,破坏「视频类同时只 1 个」)。未注入则回落到直接 runTask。 */
+  public onScheduleDue: ((taskId: string) => void) | null = null;
 
   constructor() {
     this.load();
@@ -242,7 +245,9 @@ class VideoTaskStore {
         && typeof t.nextPlannedRunAt === 'number' && now >= (t.nextPlannedRunAt as number))
       .sort((a, b) => (a.nextPlannedRunAt as number) - (b.nextPlannedRunAt as number));
     if (due.length === 0) return;
-    this.runTask(due[0].id);
+    // 有统一队列(videoQueue)接管则入队;否则回落到直接跑(向后兼容)。
+    if (this.onScheduleDue) this.onScheduleDue(due[0].id);
+    else this.runTask(due[0].id);
   }
 
   /** 详情页暂停 / 恢复定时(不改 interval,只切开关并重算 / 清除下次运行)。 */

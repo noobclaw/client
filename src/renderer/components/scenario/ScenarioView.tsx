@@ -521,7 +521,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
         <VideoWorkflowsPage
           section={currentSection === 'create' ? 'create' : currentSection === 'history' ? 'history' : 'tasks'}
           onGoCreate={goVideoCreate}
-          onBack={() => setView({ kind: 'main', section: baseSection, platform: 'video' })}
+          onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
           onDetailChange={setVideoInDetail}
           scenarioTasks={tasksForPlatform}
           scenarios={scenarios}
