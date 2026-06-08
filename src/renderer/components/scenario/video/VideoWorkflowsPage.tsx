@@ -140,8 +140,10 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
           onBack();                              // section → tasks(L1 高亮回任务)
           setDetail({ kind: 'task', taskId });   // 直接进新任务详情(本地一键成片)
         }}
-        onCreatedScenario={(taskId) => {
-          // 二创(scenario)任务:建完直接进 scenario 详情页(参照币安),不弹窗、不立即跑。
+        onCreatedScenario={async (taskId) => {
+          // 二创(scenario)任务:建完【先刷新任务列表再跳详情】(对齐币安 ConfigWizard:
+          // 否则新任务还没进 tasks[],详情页会瞬间显示「该任务已被删除」)。不弹窗、不立即跑。
+          try { await onRefresh?.(); } catch { /* ignore */ }
           if (onOpenScenarioTask) onOpenScenarioTask(taskId);
           else onBack();
         }}

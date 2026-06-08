@@ -1808,12 +1808,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           : sid.startsWith('toutiao_') ? 'toutiao'
           : 'xhs';
         const sp = scenario?.platform;
-        const platform: LP = (sp === 'x' || sp === 'xhs' || sp === 'binance'
-          || sp === 'tiktok' || sp === 'youtube' || sp === 'douyin'
-          || sp === 'kuaishou' || sp === 'bilibili'
-          || sp === 'shipinhao' || sp === 'toutiao')
-          ? sp
-          : inferFromId;
+        // 视频二创(platform='video',如 video_repost_remix / long_to_short):登录检查认
+        // 【源平台】(去那下载无水印源),不是 xhs。auto 模式取 source_platforms[0];
+        // 手动贴链接(无 source_platforms)兜底抖音(最常见源)。
+        const LP_SET: LP[] = ['x', 'xhs', 'binance', 'tiktok', 'youtube', 'douyin', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao'];
+        const videoSrc = String(
+          (Array.isArray((task as any).source_platforms) && (task as any).source_platforms[0])
+          || (task as any).source_platform || '',
+        );
+        const platform: LP = sp === 'video'
+          ? ((LP_SET as string[]).includes(videoSrc) ? (videoSrc as LP) : 'douyin')
+          : ((sp === 'x' || sp === 'xhs' || sp === 'binance'
+            || sp === 'tiktok' || sp === 'youtube' || sp === 'douyin'
+            || sp === 'kuaishou' || sp === 'bilibili'
+            || sp === 'shipinhao' || sp === 'toutiao')
+            ? sp
+            : inferFromId);
         return (
           <LoginRequiredModal
             mode="run"
