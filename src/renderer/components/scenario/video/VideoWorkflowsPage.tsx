@@ -1822,6 +1822,21 @@ const VideoConfigModal: React.FC<{
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(editTask?.input.subtitleStrokeColor ?? '');
   // 字幕字体:空 = 默认思源黑体;其余为 resources/fonts/ 下的字体文件名。
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
+
+  // 字幕样式默认值【随生成模式联动】(仅新建任务,编辑老任务保留其已存设置):
+  //   · AI 自动成片(Seedance,pure_ai)= 黄字 + 黑描边 + 大号 64(短视频画面上最醒目)。
+  //   · 在线素材 / 本地素材 = 白字 + 无描边 + 中号 52。
+  // 放 useEffect 而非只写在模式卡 onClick 里 —— 这样无论怎么进入 pure_ai(直接打开 /
+  // 程序预选 / 点击),都可靠套上黄字黑边默认。用户进字幕步手动改的会保留(mode 不变就不重置)。
+  useEffect(() => {
+    if (editTask) return;
+    if (mode === 'pure_ai') {
+      setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#000000'); setSubtitleFontSize(64);
+    } else {
+      setSubtitleColor('#FFFFFF'); setSubtitleStrokeColor(''); setSubtitleFontSize(52);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, editTask]);
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。默认 1(只跑一次),
   // 用户想批量再手动往上调。
   const [videoCount, setVideoCount] = useState<number>(editTask?.input.videoCount ?? 1);
@@ -2097,8 +2112,7 @@ const VideoConfigModal: React.FC<{
                       setMode('stock'); if (materialSource === 'ai') setMaterialSource('stock');
                       // 在线素材/本地素材没有内嵌字幕,必须烧录才有字幕 → 切到该模式默认开字幕。
                       setSubtitleEnabled(true);
-                      // 切回普通模式:新建任务时还原字幕默认(中号/白字/无描边)。
-                      if (!editTask) { setSubtitleFontSize(52); setSubtitleColor('#FFFFFF'); setSubtitleStrokeColor(''); }
+                      // 字幕默认(中号/白字/无描边)由上面的 useEffect 随 mode 联动设置。
                     }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
@@ -2114,9 +2128,7 @@ const VideoConfigModal: React.FC<{
                       setSubtitleEnabled(false);
                       // 纯 AI 成片时长上限 45s:目标时长超了就拉回(否则选择器无高亮 + 会被截)。
                       if (targetSeconds > AI_MAX_SECONDS) setTargetSeconds(30);
-                      // AI 自动成片默认字幕:大号(64)+ 黄字 + 黑描边(短视频常见、画面上更醒目)。
-                      // 仅新建任务套默认;编辑已有任务保留用户原设置。
-                      if (!editTask) { setSubtitleFontSize(64); setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#000000'); }
+                      // 字幕默认(大号 64/黄字/黑描边)由上面的 useEffect 随 mode 联动设置。
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认纯画面，「音频」步可选开 AI 配音 + 字幕' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Visual-only by default; optionally enable AI voice-over + subtitles in the Audio step'}
