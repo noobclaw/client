@@ -67,7 +67,7 @@ interface VideoWorkflowsPageProps {
   /** 进入/退出任务·运行记录详情时上报,供 ScenarioView 隐藏顶部 L1/L2 tab
    *  (对齐 scenario 详情页:详情态全屏,顶上不挂那么多 tab)。 */
   onDetailChange?: (inDetail: boolean) => void;
-  /** v6.x: video 平台下的【后端 scenario 任务】(搬运二创/长转短/解说混剪)。
+  /** v6.x: video 平台下的【后端 scenario 任务】(翻译二创/长转短)。
    *  这些不是本地一键成片,由 ScenarioView 过滤 platform==='video' 传入,
    *  点开走 onOpenScenarioTask → scenario TaskDetailPage(运行/进度/历史)。 */
   scenarioTasks?: any[];
