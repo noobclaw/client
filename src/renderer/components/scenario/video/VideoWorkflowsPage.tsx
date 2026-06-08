@@ -1743,18 +1743,23 @@ const VideoConfigModal: React.FC<{
   const isEdit = !!editTask;
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
 
-  // 编辑模式:从已有任务的 input 反推预填值(赛道按 label 匹配 preset,匹配不到落 custom)。
+  // 新建默认选中第一个赛道(非 custom),并带出其人设/关键词;编辑模式按已有任务反推。
+  const defaultPreset = TRACK_PRESETS.find((p) => p.id !== 'custom') || TRACK_PRESETS[0];
   const initialTrackId = (() => {
-    if (!editTask) return '';
+    if (!editTask) return defaultPreset.id;
     const t = editTask.input.track;
     const found = TRACK_PRESETS.find((p) => (isZh ? p.zh : p.en) === t);
     return found ? found.id : (t ? 'custom' : '');
   })();
 
-  // 步骤 1:文案
+  // 步骤 1:文案(新建时人设/关键词从默认赛道带出,可改)
   const [trackId, setTrackId] = useState(initialTrackId);
-  const [persona, setPersona] = useState(editTask?.input.persona || '');
-  const [keywords, setKeywords] = useState((editTask?.input.keywords || []).join(' '));
+  const [persona, setPersona] = useState(
+    editTask ? (editTask.input.persona || '') : (isZh ? defaultPreset.persona.zh : defaultPreset.persona.en),
+  );
+  const [keywords, setKeywords] = useState(
+    editTask ? (editTask.input.keywords || []).join(' ') : (isZh ? defaultPreset.keywords.zh : defaultPreset.keywords.en),
+  );
   const [script, setScript] = useState(editTask?.input.script || '');
   // 文案模式:strict 严格逐字 / ai 参考再创作。编辑老任务时按 input 推断(无字段则有文案=strict)。
   const [scriptMode, setScriptMode] = useState<'strict' | 'ai'>(
@@ -1820,21 +1825,21 @@ const VideoConfigModal: React.FC<{
   // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。默认关 = 纯画面片;用户可在「音频」步开启,
   // 开启后跟普通模式一样:对分镜稿 TTS 配音 + 按字幕开关烧录(pipeline 早已支持 ai 模式配音)。
   const [aiNarration, setAiNarration] = useState<boolean>(editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false);
-  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 52);
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 64);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(editTask?.input.subtitleStrokeColor ?? '');
   // 字幕字体:空 = 默认思源黑体;其余为 resources/fonts/ 下的字体文件名。
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
 
-  // 字幕样式默认值【随生成模式联动】(仅新建任务,编辑老任务保留其已存设置):
-  //   烧字幕统一默认 = 黄字 + 黑描边(短视频画面上最醒目);字号按模式区分
-  //   (pure_ai 64 / 在线素材·本地素材 52)。用户进字幕步手动改的会保留(mode 不变就不重置)。
+  // 字幕样式默认值(仅新建任务,编辑老任务保留其已存设置):
+  //   烧字幕统一默认 = 大号 64 + 黄字 + 黑描边(短视频画面上最醒目)。
+  //   用户进字幕步手动改的会保留(mode 不变就不重置)。
   useEffect(() => {
     if (editTask) return;
     setSubtitleColor('#FFD700');
     setSubtitleStrokeColor('#000000');
-    setSubtitleFontSize(mode === 'pure_ai' ? 64 : 52);
+    setSubtitleFontSize(64);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, editTask]);
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。默认 1(只跑一次),
@@ -2085,7 +2090,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
-                    cost={isZh ? '按条计费 · 单条约 $0.08~$0.1（配音/字幕/合成免费，AI 写稿另计）' : 'Per clip · ~$0.08–0.1 each (TTS/subs/compose free; AI script extra)'}
+                    cost={isZh ? '单条约 $0.02~$0.04' : '~$0.02–0.04 per clip'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption

@@ -4,7 +4,7 @@ import { noobClawAuth } from '../../services/noobclawAuth';
 import { noobClawApi, PaymentInfo, RedeemPackagesResponse } from '../../services/noobclawApi';
 import { CnyWithdrawModal } from './CnyWithdrawModal';
 import { readCachedProfile, writeCachedProfile } from '../../services/profileCache';
-import { readCachedPaymentInfo, writeCachedPaymentInfo } from '../../services/paymentInfoCache';
+import { readCachedPaymentInfo, writeCachedPaymentInfo, readCachedRedeemInfo, writeCachedRedeemInfo } from '../../services/paymentInfoCache';
 import { i18nService } from '../../services/i18n';
 import SidebarToggleIcon from '../icons/SidebarToggleIcon';
 import ComposeIcon from '../icons/ComposeIcon';
@@ -132,7 +132,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
   // admin 配了汇率+套餐)才在链选择器里露出「CNY 卡密」tab — 没配就完全隐藏,
   // 不打扰海外/未启用场景。cnySelected 为 true 时 select 步骤渲染卡密面板而非
   // 链上充值 grid。
-  const [redeemInfo, setRedeemInfo] = useState<RedeemPackagesResponse | null>(null);
+  // lazy-init 卡密档位:先用 localStorage 缓存秒出(对齐 USDT/BNB),后台 fetch 静默覆盖。
+  const [redeemInfo, setRedeemInfo] = useState<RedeemPackagesResponse | null>(() => readCachedRedeemInfo());
   const [cnySelected, setCnySelected] = useState(false);
   const [redeemCodeInput, setRedeemCodeInput] = useState('');
   const [redeemMsg, setRedeemMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
@@ -250,7 +251,7 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
 
     // CNY 卡密档位 + 咸鱼地址。独立 fetch,packages 非空才在 UI 露出 CNY tab。
     noobClawApi.getRedeemPackages().then((info) => {
-      if (info && info.packages && info.packages.length > 0) setRedeemInfo(info);
+      if (info && info.packages && info.packages.length > 0) { setRedeemInfo(info); writeCachedRedeemInfo(info); }
     }).catch(() => { /* 没配卡密通道则 CNY tab 不显示,加密充值不受影响 */ });
   };
 

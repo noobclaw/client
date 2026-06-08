@@ -160,7 +160,11 @@ export function resolveBgmFolder(bgmPath?: string): string | undefined {
   if (bgmPath.startsWith(BUILTIN_BGM_PREFIX)) {
     const dirs = bundledBgmDirs();
     for (const d of dirs) { if (fs.existsSync(d)) return d; }
-    return dirs[0];
+    // 随包 bgm 目录没探到(dev / 资源未就位):退回缓存目录(建好它),保证
+    // 「打开文件夹」总能打开一个【真实存在】的目录,而不是返回不存在的路径让上层报「找不到」。
+    const cache = bgmCacheDir();
+    try { fs.mkdirSync(cache, { recursive: true }); } catch { /* ignore */ }
+    return cache;
   }
   if (bgmPath.startsWith(REMOTE_BGM_PREFIX)) {
     const dir = bgmCacheDir();

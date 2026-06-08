@@ -987,6 +987,26 @@ async function runVideoPipeline(
         ? `画面就绪(视频 ${totalClipsUsed} 段${localUsed > 0 ? `（含本地 ${localUsed} 段）` : ''} → 覆盖 ${sentences.length - scenesWithoutVideo}/${sentences.length} 镜,图片 ${imageByScene.size} 张按镜补位${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`
         : '无可用素材,使用文字卡');
 
+    // 在线素材原文件本地留一份(对齐 AI 分支):assetDir 是临时目录、结尾会清掉,把下载的
+    // 在线视频/图片拷到成片输出目录的「素材」子文件夹,供用户复用 / 二剪 / 排查。
+    // 只存下载的在线素材(allVideos + flatImages),不含用户自己的本地上传/参考图。
+    try {
+      const stockFiles = [...allVideos.map((v) => v.path), ...flatImages]
+        .filter((p) => p && fs.existsSync(p));
+      if (stockFiles.length > 0) {
+        const matDir = path.join(destDir, '素材');
+        fs.mkdirSync(matDir, { recursive: true });
+        let saved = 0;
+        const seen = new Set<string>();
+        stockFiles.forEach((src, i) => {
+          if (seen.has(src)) return;
+          seen.add(src);
+          try { fs.copyFileSync(src, path.join(matDir, `${String(i + 1).padStart(3, '0')}_${path.basename(src)}`)); saved++; } catch { /* 单个拷贝失败忽略 */ }
+        });
+        if (saved > 0) tracker.progress(`📁 已在「素材」子目录留存 ${saved} 个在线素材(可复用 / 二剪)`);
+      }
+    } catch { /* 留档失败不影响出片 */ }
+
     return { assign: assignOnce, imagePool, imageByScene };
     } // end buildStockPool
 
