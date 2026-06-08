@@ -138,7 +138,12 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
         onCreated={(taskId) => {
           justCreatedRef.current = true;
           onBack();                              // section → tasks(L1 高亮回任务)
-          setDetail({ kind: 'task', taskId });   // 直接进新任务详情
+          setDetail({ kind: 'task', taskId });   // 直接进新任务详情(本地一键成片)
+        }}
+        onCreatedScenario={(taskId) => {
+          // 二创(scenario)任务:建完直接进 scenario 详情页(参照币安),不弹窗、不立即跑。
+          if (onOpenScenarioTask) onOpenScenarioTask(taskId);
+          else onBack();
         }}
         onGoTasks={onBack}                       // 「已有任务」→ 回任务落地页(含我的二创任务)
       />
@@ -483,21 +488,16 @@ const VideoLanding: React.FC<{
       </div>
       <div className="space-y-3">
         {/* 二创任务(后端 scenario)— 跟一键成片同列,类型徽章区分,点开进 scenario 详情页运行 */}
-        {scenarioTasks.map((t) => {
-          const s = scioMap.get(t.scenario_id);
-          const name = (isZh ? s?.name_zh : s?.name_en) || s?.name_zh || t.scenario_id;
-          return (
-            <button key={'sc-' + t.id} type="button" onClick={() => onOpenScenarioTask?.(t.id)}
-              className="w-full text-left flex items-center justify-between rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent hover:border-fuchsia-500/60 px-4 py-4 transition-colors">
-              <span className="flex items-center gap-2 min-w-0">
-                <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/15 text-fuchsia-500 font-medium shrink-0">{s?.icon || '🎬'} {name}</span>
-                <span className="text-[10px] text-gray-500 shrink-0">#{String(t.id).slice(0, 8)}</span>
-                {queueBadge(t.id)}
-              </span>
-              <span className="text-xs text-fuchsia-500 font-medium shrink-0">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
-            </button>
-          );
-        })}
+        {scenarioTasks.map((t) => (
+          <ScenarioVideoCard
+            key={'sc-' + t.id}
+            isZh={isZh}
+            task={t}
+            scenario={scioMap.get(t.scenario_id)}
+            onClick={() => onOpenScenarioTask?.(t.id)}
+            queueBadge={queueBadge(t.id)}
+          />
+        ))}
         {/* 本地一键成片任务 */}
         {tasks.map((t) => (
           <VideoTaskCard key={t.id} isZh={isZh} task={t} onClick={() => onOpenTask(t.id)} queueBadge={queueBadge(t.id)} />
@@ -562,6 +562,56 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
             ⏰ {intervalLabel(task, isZh)}
             {task.scheduleEnabled && task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
+          </span>
+        )}
+      </div>
+    </button>
+  );
+};
+
+// scenario 二创任务卡(翻译二创 / 长转短):布局对齐本地 AI 成片卡(VideoTaskCard),
+// 让「我的视频任务」列表里两类卡片高度 / 内容一致(类型徽章 + 赛道/人设/关键词 + footer)。
+const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; onClick: () => void; queueBadge?: React.ReactNode }> = ({ isZh, task, scenario, onClick, queueBadge }) => {
+  const name = (isZh ? scenario?.name_zh : scenario?.name_en) || scenario?.name_zh || task.scenario_id;
+  const icon = scenario?.icon || '🎬';
+  const isRunning = videoQueue.isRunning(task.id);
+  const freq = REMIX_INTERVALS.find((it) => it.id === task.run_interval);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
+        isRunning
+          ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
+          : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50 dark:hover:border-fuchsia-500/50 bg-white dark:bg-gray-900'
+      }`}
+    >
+      <div className="flex items-center gap-2 mb-2 flex-wrap min-w-0">
+        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/15 text-fuchsia-500 font-medium shrink-0">{icon} {name}</span>
+        <span className="text-[10px] text-gray-500 shrink-0">#{String(task.id).slice(0, 8)}</span>
+        {queueBadge}
+      </div>
+      <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
+          <span className="truncate">{task.track || '-'}</span>
+        </div>
+        {task.persona && (
+          <div className="flex items-start gap-1.5">
+            <span className="text-gray-400 shrink-0">🧑 {isZh ? '人设' : 'Persona'}</span>
+            <span className="truncate">{task.persona}</span>
+          </div>
+        )}
+        <div className="flex items-start gap-1.5">
+          <span className="text-gray-400 shrink-0">🏷️ {isZh ? '关键词' : 'Keywords'}</span>
+          <KeywordChips keywords={task.keywords || []} max={99} />
+        </div>
+      </div>
+      <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between gap-2">
+        <span className="text-fuchsia-500 font-medium">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
+        {freq && (
+          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+            ⏰ {isZh ? freq.zh : freq.en}
           </span>
         )}
       </div>
@@ -726,11 +776,13 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       })()}
     </Row>
     <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
-      {(input.localVideos && input.localVideos.length > 0)
-        ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
-        : input.useStockVideo !== false
-          ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
-          : (isZh ? '仅图片' : 'images only')}
+      {input.engine === 'ai'
+        ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
+        : (input.localVideos && input.localVideos.length > 0)
+          ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+          : input.useStockVideo !== false
+            ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+            : (isZh ? '仅图片' : 'images only')}
     </Row>
   </div>
 );
@@ -753,11 +805,13 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
   const scriptTag = mode === 'strict' ? (isZh ? '严格逐字' : 'verbatim') : (isZh ? 'AI 写稿' : 'AI script');
   const scriptBody = s || (isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`);
-  const visuals = (input.localVideos && input.localVideos.length > 0)
-    ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
-    : input.useStockVideo !== false
-      ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
-      : (isZh ? '仅图片' : 'images only');
+  const visuals = input.engine === 'ai'
+    ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
+    : (input.localVideos && input.localVideos.length > 0)
+      ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+      : input.useStockVideo !== false
+        ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+        : (isZh ? '仅图片' : 'images only');
   return (
     <>
       <div>🎯 {isZh ? '赛道' : 'Track'}：{input.track || '-'}</div>
@@ -1402,8 +1456,10 @@ const VideoRunRecordDetail: React.FC<{
 const VideoCreateFlow: React.FC<{
   isZh: boolean;
   onCreated: (taskId: string) => void;
+  /** 二创(scenario)任务创建后跳 scenario 详情页(参照币安:建完直接进详情,不弹窗)。 */
+  onCreatedScenario?: (taskId: string) => void;
   onGoTasks?: () => void;
-}> = ({ isZh, onCreated, onGoTasks }) => {
+}> = ({ isZh, onCreated, onCreatedScenario, onGoTasks }) => {
   const [showConfig, setShowConfig] = useState(false);
   // 两张二创卡,各自独立多步向导:翻译二创(video_repost_remix)、长转短(long_to_short)。
   const [remixOpen, setRemixOpen] = useState(false);
@@ -1432,10 +1488,12 @@ const VideoCreateFlow: React.FC<{
         />
       )}
       {remixOpen && (
-        <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)} />
+        <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)}
+          onCreated={(id) => { setRemixOpen(false); onCreatedScenario?.(id); }} />
       )}
       {clipOpen && (
-        <LongToShortModal isZh={isZh} onClose={() => setClipOpen(false)} />
+        <LongToShortModal isZh={isZh} onClose={() => setClipOpen(false)}
+          onCreated={(id) => { setClipOpen(false); onCreatedScenario?.(id); }} />
       )}
     </div>
   );
@@ -2097,16 +2155,16 @@ const VideoConfigModal: React.FC<{
                     active={mode === 'pure_ai'}
                     onClick={() => {
                       setMode('pure_ai'); setMaterialSource('ai');
-                      // 默认纯画面:关 AI 配音 + 不烧字幕(用户可在「音频」步开「AI 配音」)。
-                      setAiNarration(false);
-                      setSubtitleEnabled(false);
+                      // 纯 AI 默认【开 AI 配音 + 烧字幕】(字幕需配音文本)。用户想要纯画面可在「音频」步关掉。
+                      setAiNarration(true);
+                      setSubtitleEnabled(true);
                       // 纯 AI 成片时长上限 45s:目标时长超了就拉回(否则选择器无高亮 + 会被截)。
                       if (targetSeconds > AI_MAX_SECONDS) setTargetSeconds(30);
                       // 字幕默认(大号 64/黄字/黑描边)由上面的 useEffect 随 mode 联动设置。
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
-                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认纯画面，「音频」步可选开 AI 配音 + 字幕' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Visual-only by default; optionally enable AI voice-over + subtitles in the Audio step'}
-                    cost={isZh ? '按片段计费 · 约 ¥0.2~0.9/秒（按所选模型档位/清晰度，失败自动退）' : 'Per clip · ~¥0.2–0.9/sec (by tier/resolution; auto-refund on failure)'}
+                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认带 AI 配音 + 字幕,想要纯画面可在「音频」步关掉' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Comes with AI voice-over + subtitles by default; switch to visual-only in the Audio step'}
+                    cost={isZh ? '我们实收约 ¥0.28/秒' : '~¥0.28/sec'}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
                 </div>
@@ -2264,12 +2322,6 @@ const VideoConfigModal: React.FC<{
               {/* 纯 AI(Seedance):锁定省钱档(1.0 Lite + 480p,不让用户选,避免烧钱)+ 参考图(≤2)。 */}
               {mode === 'pure_ai' && (
               <>
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
-                  {isZh
-                    ? '🪙 已锁定省钱档:1.0 Lite · 480p(成本最低)。画质/分辨率升级后续开放。'
-                    : '🪙 Locked to budget tier: 1.0 Lite · 480p (lowest cost). Higher tiers coming later.'}
-                </div>
-
                 <Field
                   label={isZh ? '参考图（可选，最多 2 张）' : 'Reference images (optional, max 2)'}
                   hint={isZh ? '统一画风/人设；不传则纯按文案生成画面' : 'unify style/persona; omit for pure text-to-video'}
@@ -2984,11 +3036,11 @@ const PlatformCheck: React.FC<{
 //  任务落到「我的任务」列表(已有徽章/步骤名)。不复用本地一键成片体系。
 // ════════════════════════════════════════════════════════════════════
 const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void; onGoTasks?: () => void }> = ({ isZh, onOpen, onGoTasks }) => (
-  <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
-    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+  <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col flex-1">
-      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
         {isZh ? '翻译 · 搬运二创' : 'Translate · Repost Remix'}
       </div>
       <h3 className="text-base font-bold dark:text-white mb-1.5">
@@ -3004,7 +3056,7 @@ const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void; onGoTasks?: 
         onConfigure={onOpen}
         onGoToMyTasks={onGoTasks}
         label={'🎬 ' + (isZh ? '开始二创 →' : 'Start →')}
-        btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+        btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
       />
     </div>
   </div>
@@ -3016,11 +3068,11 @@ const VideoScenarioEntryCard: React.FC<{
   tagZh: string; tagEn: string; titleZh: string; titleEn: string; descZh: string; descEn: string;
   btnZh: string; btnEn: string;
 }> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn }) => (
-  <div className="relative rounded-2xl border border-fuchsia-500/30 bg-gradient-to-br from-fuchsia-500/10 via-purple-500/5 to-transparent p-5 overflow-hidden flex flex-col">
-    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-fuchsia-500/10 blur-3xl pointer-events-none" />
+  <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
+    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
     <div className="relative flex flex-col flex-1">
-      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-fuchsia-500 mb-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-500 animate-pulse" />
+      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
+        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
         {isZh ? tagZh : tagEn}
       </div>
       <h3 className="text-base font-bold dark:text-white mb-1.5">{icon} {isZh ? titleZh : titleEn}</h3>
@@ -3030,7 +3082,7 @@ const VideoScenarioEntryCard: React.FC<{
         onConfigure={onOpen}
         onGoToMyTasks={onGoTasks}
         label={isZh ? btnZh : btnEn}
-        btnClass="bg-fuchsia-500 hover:bg-fuchsia-600 shadow-lg shadow-fuchsia-500/25"
+        btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
       />
     </div>
   </div>
@@ -3043,6 +3095,12 @@ const REMIX_PLATFORMS: Array<{ id: string; zh: string; en: string }> = [
   { id: 'xhs', zh: '小红书', en: 'XHS' },
   { id: 'tiktok', zh: 'TikTok', en: 'TikTok' },
 ];
+// 手动贴链接模式仅支持这些平台(含 YouTube;自动选品不含 YouTube/小红书外站搜索差异);最多 20 条。
+const MANUAL_LINK_MAX = 20;
+const MANUAL_LINK_HINT_ZH = '抖音 / B站 / 快手 / TikTok / YouTube / 小红书';
+function manualLinkOk(u: string): boolean {
+  return /(douyin\.com|iesdouyin\.com|bilibili\.com|b23\.tv|kuaishou\.com|kwai\.com|tiktok\.com|youtube\.com|youtu\.be|xiaohongshu\.com|xhslink\.com)/i.test(u);
+}
 const REMIX_LANGS: Array<{ id: string; zh: string; en: string }> = [
   { id: 'zh', zh: '中文', en: 'Chinese' },
   { id: 'en', zh: '英文', en: 'English' },
@@ -3058,20 +3116,48 @@ const REMIX_TRANSLATE_MODES: Array<{ id: string; zh: string; en: string }> = [
   { id: 'sub', zh: '翻译字幕', en: 'Translate subtitles' },
   { id: 'sub_dub', zh: '翻译字幕 + 配音(基础版)', en: 'Translate subtitles + dub (basic)' },
 ];
+// 运行频率选项(对齐币安等 scenario:同一套 id + pill 按钮呈现)。
 const REMIX_INTERVALS: Array<{ id: string; zh: string; en: string }> = [
-  { id: 'once', zh: '只跑一次', en: 'Once' },
-  { id: '1h', zh: '每小时(随机)', en: 'Hourly (jittered)' },
-  { id: '3h', zh: '每 3 小时(随机)', en: 'Every 3h (jittered)' },
-  { id: '6h', zh: '每 6 小时(随机)', en: 'Every 6h (jittered)' },
-  { id: 'daily_random', zh: '每天随机时段', en: 'Daily random' },
+  { id: 'once', zh: '不重复', en: 'Once' },
+  { id: '30min', zh: '每 30 分钟', en: 'Every 30min' },
+  { id: '1h', zh: '每小时', en: 'Hourly' },
+  { id: '3h', zh: '每 3 小时', en: 'Every 3h' },
+  { id: '6h', zh: '每 6 小时', en: 'Every 6h' },
+  { id: 'daily_random', zh: '每日随机时间', en: 'Daily (random time)' },
 ];
+
+// 运行频率选择器(对齐币安:pill 按钮 + 推荐/jitter 提示,替代下拉)。
+const RemixFreqPicker: React.FC<{ isZh: boolean; value: string; onChange: (v: string) => void }> = ({ isZh, value, onChange }) => (
+  <>
+    <div className="flex gap-2 flex-wrap">
+      {REMIX_INTERVALS.map((it) => (
+        <button key={it.id} type="button" onClick={() => onChange(it.id)}
+          className={`px-2.5 py-1 rounded-md text-xs border transition-colors ${
+            value === it.id
+              ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium'
+              : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-fuchsia-500/50'
+          }`}>
+          {isZh ? it.zh : it.en}
+        </button>
+      ))}
+    </div>
+    {value === 'daily_random' && (
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more human-like'}</p>
+    )}
+    {(value === '30min' || value === '1h' || value === '3h' || value === '6h') && (
+      <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5">
+        {(() => { const isLong = value === '3h' || value === '6h'; const range = isLong ? '1-45' : '1-10'; return isZh ? `⚠️ 到点后再加 ${range} 分钟随机延迟,避免精准卡点` : `⚠️ +${range}min jitter after threshold (anti-detection).`; })()}
+      </p>
+    )}
+  </>
+);
 
 // ════════════════════════════════════════════════════════════════════
 //  卡①:视频翻译二创(后端 scenario `video_repost_remix`)— 4 步向导
 //  来源(源平台单选 + 目标平台多选)→ 翻译方向 → 选题 → 出片
 // ════════════════════════════════════════════════════════════════════
-const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ isZh, onClose }) => {
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (taskId: string) => void }> = ({ isZh, onClose, onCreated }) => {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [sourceMode, setSourceMode] = useState<'auto' | 'manual'>('auto');
   const [sourcePlatform, setSourcePlatform] = useState('douyin');     // 单选
   const [targetPlatforms, setTargetPlatforms] = useState<string[]>(['douyin']); // 多选
@@ -3116,8 +3202,12 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
     const keywords = keywordsText.split(/[\n,，、]+/).map((s) => s.trim()).filter(Boolean);
     const urls = urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
     if (!targetPlatforms.length) { setStep(1); setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
-    if (sourceMode === 'manual' && !urls.length) { setStep(1); setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
-    if (sourceMode === 'auto' && !keywords.length) { setStep(3); setErr(isZh ? '自动选品需要至少一个关键词' : 'Auto mode needs at least one keyword'); return; }
+    if (sourceMode === 'manual') {
+      if (!urls.length) { setStep(1); setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
+      if (urls.length > MANUAL_LINK_MAX) { setStep(1); setErr(isZh ? `最多 ${MANUAL_LINK_MAX} 个链接,当前 ${urls.length} 个` : `Max ${MANUAL_LINK_MAX} links (now ${urls.length})`); return; }
+      if (urls.some((u) => !manualLinkOk(u))) { setStep(1); setErr(isZh ? `仅支持 ${MANUAL_LINK_HINT_ZH} 链接` : `Only ${MANUAL_LINK_HINT_ZH} links allowed`); return; }
+    }
+    if (sourceMode === 'auto' && !keywords.length) { setStep(1); setErr(isZh ? '自动选品需要至少一个关键词' : 'Auto mode needs at least one keyword'); return; }
     if (!(await videoQueue.canCreate())) {
       setErr(isZh
         ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
@@ -3130,7 +3220,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
-      await scenarioService.createTask({
+      const task = await scenarioService.createTask({
         scenario_id: 'video_repost_remix',
         track: trackLabel || 'video_remix',
         keywords,
@@ -3154,8 +3244,8 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
         enabled: true,
         active: true,
       } as any);
-      onClose();
-      alert(isZh ? '✅ 任务已创建,可到「我的视频任务」点「开始」运行,或按设定的频率到点自动跑。' : '✅ Task created. Open it in My Videos to start, or it runs automatically on schedule.');
+      // 创建后不弹窗、不立即运行,直接进任务详情页(参照币安);运行交详情页「开始」/ 定时。
+      if (onCreated) onCreated(task.id); else onClose();
     } catch (e) {
       setErr((isZh ? '创建失败:' : 'Create failed: ') + String(e).slice(0, 140));
     } finally {
@@ -3172,12 +3262,10 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
             <h3 className="text-lg font-bold dark:text-white">🎬 {isZh ? '视频翻译二创' : 'Video Translate-Remix'}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '来源' : 'Source'} />
-              <div className={`h-px w-6 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '翻译' : 'Lang'} />
-              <div className={`h-px w-6 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '选题' : 'Topic'} />
-              <div className={`h-px w-6 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={isZh ? '出片' : 'Output'} />
+              <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={() => !submitting && onClose()} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -3187,104 +3275,99 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
           {/* 步骤 1:来源 */}
           {step === 1 && (
             <>
-              <label className={lbl}>{isZh ? '视频来源' : 'Video source'}</label>
+              {/* 1) 先选语言 —— 关键词语言依此 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={lbl}>{isZh ? '源视频语言' : 'Source language'}</label>
+                  <select className={inputCls} value={sourceLang} onChange={(e) => setSourceLang(e.target.value)}>
+                    {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>{isZh ? '目标视频语言' : 'Target language'}</label>
+                  <select className={inputCls} value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
+                    {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* 2) 视频来源 */}
+              <label className={`${lbl} mt-3`}>{isZh ? '视频来源' : 'Video source'}</label>
               <div className="grid grid-cols-2 gap-2 mb-1">
                 <button type="button" onClick={() => setSourceMode('auto')}
-                  className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'auto' ? 'border-fuchsia-500 bg-fuchsia-500/5 text-fuchsia-600 dark:text-fuchsia-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
+                  className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'auto' ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
                   {isZh ? '🔎 自动选品(推荐)' : '🔎 Auto-discover'}<span className="block text-[11px] text-gray-500">{isZh ? '按赛道+关键词搜源站' : 'search by track+keywords'}</span>
                 </button>
                 <button type="button" onClick={() => setSourceMode('manual')}
-                  className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'manual' ? 'border-fuchsia-500 bg-fuchsia-500/5 text-fuchsia-600 dark:text-fuchsia-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
+                  className={`rounded-lg border p-2.5 text-left text-sm ${sourceMode === 'manual' ? 'border-rose-500 bg-rose-500/5 text-rose-600 dark:text-rose-400' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
                   {isZh ? '📋 手动贴链接' : '📋 Paste links'}<span className="block text-[11px] text-gray-500">{isZh ? '自己粘贴要二创的链接' : 'paste links yourself'}</span>
                 </button>
               </div>
 
-              <label className={`${lbl} mt-3`}>{isZh ? '源平台(单选)' : 'Source platform'}</label>
-              <select className={inputCls} value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>
-                {REMIX_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{isZh ? p.zh : p.en}</option>)}
-              </select>
+              {sourceMode === 'manual' ? (
+                /* 手动:链接紧跟来源下方;无需选源平台 */
+                <>
+                  <label className={`${lbl} mt-2`}>{isZh ? `视频链接(每行一个,最多 ${MANUAL_LINK_MAX} 个)` : `Video links (one per line, max ${MANUAL_LINK_MAX})`}</label>
+                  <textarea className={`${inputCls} font-mono resize-y min-h-[140px] break-all`} value={urlsText} onChange={(e) => setUrlsText(e.target.value)}
+                    placeholder={'https://www.douyin.com/video/...\nhttps://www.bilibili.com/video/BV...\nhttps://www.youtube.com/watch?v=...'} />
+                  <p className="text-[11px] text-gray-400 mt-1">{isZh ? `仅支持 ${MANUAL_LINK_HINT_ZH} 链接。已填 ${urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean).length}/${MANUAL_LINK_MAX}。` : `Only ${MANUAL_LINK_HINT_ZH} links. ${urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean).length}/${MANUAL_LINK_MAX} added.`}</p>
+                </>
+              ) : (
+                /* 自动:赛道 + 关键词(语言依源语言)+ 源平台 + 过滤 */
+                <>
+                  <label className={`${lbl} mt-2`}>{isZh ? '赛道(选一个自动带出关键词)' : 'Track (prefills keywords)'}</label>
+                  <select className={inputCls} value={trackId} onChange={(e) => setTrackId(e.target.value)}>
+                    <option value="">{isZh ? '— 不选,自己填关键词 —' : '— none, type keywords —'}</option>
+                    {TRACK_PRESETS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
+                  </select>
+                  {trackId === 'custom' && (
+                    <input className={`${inputCls} mt-2`} value={customTrack} onChange={(e) => setCustomTrack(e.target.value)} placeholder={isZh ? '自定义赛道名' : 'Custom track name'} />
+                  )}
+                  <label className={`${lbl} mt-3`}>{isZh ? '关键词(逗号/换行分隔)' : 'Keywords (comma/newline)'}</label>
+                  <textarea className={`${inputCls} resize-y min-h-[70px]`} value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)}
+                    placeholder={kwLang === 'zh' ? '猫咪搞笑, 治愈, 萌宠日常' : 'funny cat, healing, daily pets'} />
+                  <p className="text-[11px] text-amber-500 mt-1">{isZh ? `⚠️ 关键词请用【${kwLang === 'zh' ? '中文' : '英文'}】(即源语言,去源平台搜片用)。改了上面的源语言,务必把关键词也换成对应语言,否则可能搜不到片。` : `⚠️ Keywords must be in the SOURCE language (${kwLang === 'zh' ? 'Chinese' : 'English'}) used to search the source platform. If you change the source language, update the keywords' language too.`}</p>
+                  <label className={`${lbl} mt-3`}>{isZh ? '源平台(单选)' : 'Source platform'}</label>
+                  <select className={inputCls} value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>
+                    {REMIX_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{isZh ? p.zh : p.en}</option>)}
+                  </select>
+                  <label className={`${lbl} mt-3`}>{isZh ? '最低播放量过滤' : 'Min play count'}</label>
+                  <input type="number" min={0} className={inputCls} value={minPlay} onChange={(e) => setMinPlay(Math.max(0, parseInt(e.target.value, 10) || 0))} />
+                  <label className={`${lbl} mt-3`}>{isZh ? '每次产出条数' : 'Outputs per run'}</label>
+                  <div className="flex items-center gap-3">
+                    <input type="range" min={1} max={10} step={1} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} className="flex-1 accent-rose-500" />
+                    <span className="w-16 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">{count} {isZh ? '条' : ''}</span>
+                  </div>
+                  <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条按条计费' : '1-10 per run · billed per clip'}</div>
+                </>
+              )}
 
+              {/* 3) 目标平台 */}
               <label className={`${lbl} mt-3`}>{isZh ? '目标平台(可多选)' : 'Target platforms'}</label>
               <div className="flex flex-wrap gap-2">
                 {REMIX_PLATFORMS.map((p) => (
                   <button key={p.id} type="button" onClick={() => toggleTarget(p.id)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border ${targetPlatforms.includes(p.id) ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                    className={`px-3 py-1.5 rounded-lg text-sm border ${targetPlatforms.includes(p.id) ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
                     {isZh ? p.zh : p.en}
                   </button>
                 ))}
               </div>
-
-              {sourceMode === 'auto' ? (
-                <div className="grid grid-cols-2 gap-3 mt-3">
-                  <div>
-                    <label className={lbl}>{isZh ? '最低播放量过滤' : 'Min play count'}</label>
-                    <input type="number" min={0} className={inputCls} value={minPlay} onChange={(e) => setMinPlay(Math.max(0, parseInt(e.target.value, 10) || 0))} />
-                  </div>
-                  <div>
-                    <label className={lbl}>{isZh ? '每次产出条数' : 'Outputs per run'}</label>
-                    <input type="number" min={1} max={10} className={inputCls} value={count} onChange={(e) => setCount(Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1)))} />
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <label className={`${lbl} mt-3`}>{isZh ? '视频链接(每行一个)' : 'Video links (one per line)'}</label>
-                  <textarea className={`${inputCls} font-mono resize-y min-h-[120px] break-all`} value={urlsText} onChange={(e) => setUrlsText(e.target.value)}
-                    placeholder={'https://www.douyin.com/video/...\nhttps://www.bilibili.com/video/BV...'} />
-                </>
-              )}
             </>
           )}
 
           {/* 步骤 2:翻译方向 */}
           {step === 2 && (
             <>
-              <label className={lbl}>{isZh ? '翻译方向' : 'Translation direction'}</label>
-              <div className="grid grid-cols-2 gap-3 items-end">
-                <div>
-                  <label className={lbl}>{isZh ? '源语言' : 'Source language'}</label>
-                  <select className={inputCls} value={sourceLang} onChange={(e) => setSourceLang(e.target.value)}>
-                    {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>{isZh ? '目标语言' : 'Target language'}</label>
-                  <select className={inputCls} value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
-                    {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
-                  </select>
-                </div>
-              </div>
-              <label className={`${lbl} mt-3`}>{isZh ? '翻译模式' : 'Translate mode'}</label>
+              <label className={lbl}>{isZh ? '翻译模式' : 'Translate mode'}</label>
               <select className={inputCls} value={translateMode} onChange={(e) => setTranslateMode(e.target.value)}>
                 {REMIX_TRANSLATE_MODES.map((m) => <option key={m.id} value={m.id}>{isZh ? m.zh : m.en}</option>)}
               </select>
-              <p className="text-[11px] text-gray-400 mt-2">{isZh ? '源语言=目标语言时按「自动」不翻译;不同则翻字幕(可配音)。关键词默认会跟随源语言。' : 'Same language skips translation under Auto; otherwise subtitles are translated. Keyword defaults follow the source language.'}</p>
+              <p className="text-[11px] text-gray-400 mt-2">{isZh ? '源语言=目标语言时按「自动」不翻译;不同则翻字幕(可配音)。语言已在「来源」步选好。' : 'Same language skips translation under Auto; otherwise subtitles are translated. Languages were set in the Source step.'}</p>
             </>
           )}
 
-          {/* 步骤 3:选题 */}
+          {/* 步骤 3:出片 */}
           {step === 3 && (
-            <>
-              <label className={lbl}>{isZh ? '赛道' : 'Track'}</label>
-              <select className={inputCls} value={trackId} onChange={(e) => setTrackId(e.target.value)}>
-                <option value="">{isZh ? '— 选个赛道自动带出关键词 —' : '— pick a track to prefill keywords —'}</option>
-                {TRACK_PRESETS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
-              </select>
-              {trackId === 'custom' && (
-                <input className={`${inputCls} mt-2`} value={customTrack} onChange={(e) => setCustomTrack(e.target.value)} placeholder={isZh ? '自定义赛道名' : 'Custom track name'} />
-              )}
-              <label className={`${lbl} mt-3`}>
-                {isZh ? '关键词(逗号/换行分隔,默认' : 'Keywords (comma/newline; defaults to '}{kwLang === 'zh' ? (isZh ? '中文' : 'Chinese') : (isZh ? '英文' : 'English')}{isZh ? ',可改)' : ')'}
-              </label>
-              <textarea className={`${inputCls} resize-y min-h-[70px]`} value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)}
-                placeholder={kwLang === 'zh' ? '猫咪搞笑, 治愈, 萌宠日常' : 'funny cat, healing, daily pets'} />
-              {sourceMode === 'manual' && (
-                <p className="text-[11px] text-gray-400 mt-1">{isZh ? '手动贴链接模式下,赛道/关键词仅用于成片命名与文案,不影响选片。' : 'In manual mode, track/keywords only affect naming & captions.'}</p>
-              )}
-            </>
-          )}
-
-          {/* 步骤 4:出片 */}
-          {step === 4 && (
             <>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
@@ -3297,10 +3380,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
                 </label>
               </div>
               <label className={`${lbl} mt-4`}>{isZh ? '运行频率' : 'Run frequency'}</label>
-              <select className={inputCls} value={runInterval} onChange={(e) => setRunInterval(e.target.value)}>
-                {REMIX_INTERVALS.map((it) => <option key={it.id} value={it.id}>{isZh ? it.zh : it.en}</option>)}
-              </select>
-              <p className="text-[11px] text-gray-400 mt-1">{isZh ? '固定节奏内随机抖动,模拟真人;手动链接建议「只跑一次」。' : 'Jittered within a fixed cadence; use Once for manual links.'}</p>
+              <RemixFreqPicker isZh={isZh} value={runInterval} onChange={setRunInterval} />
             </>
           )}
 
@@ -3309,26 +3389,35 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
           <button type="button" disabled={submitting}
-            onClick={() => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => (s - 1) as 1 | 2 | 3 | 4); }}
+            onClick={() => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => (s - 1) as 1 | 2 | 3); }}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 4 ? (
+          {step < 3 ? (
             <button type="button"
               onClick={() => {
                 setErr(null);
                 if (step === 1) {
                   if (!targetPlatforms.length) { setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
-                  if (sourceMode === 'manual' && !urlsText.trim()) { setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
+                  if (sourceMode === 'manual') {
+                    const us = urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
+                    if (!us.length) { setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
+                    if (us.length > MANUAL_LINK_MAX) { setErr(isZh ? `最多 ${MANUAL_LINK_MAX} 个链接,当前 ${us.length} 个` : `Max ${MANUAL_LINK_MAX} links (now ${us.length})`); return; }
+                    const bad = us.filter((u) => !manualLinkOk(u));
+                    if (bad.length) { setErr(isZh ? `仅支持 ${MANUAL_LINK_HINT_ZH} 链接,有 ${bad.length} 个不符合` : `Only ${MANUAL_LINK_HINT_ZH} links allowed (${bad.length} invalid)`); return; }
+                  } else {
+                    const kw = keywordsText.split(/[\n,，、]+/).map((s) => s.trim()).filter(Boolean);
+                    if (!kw.length) { setErr(isZh ? '自动选品需要至少一个关键词' : 'Auto mode needs at least one keyword'); return; }
+                  }
                 }
-                setStep((s) => (s + 1) as 1 | 2 | 3 | 4);
+                setStep((s) => (s + 1) as 1 | 2 | 3);
               }}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">
               {isZh ? '下一步' : 'Next'} →
             </button>
           ) : (
             <button type="button" onClick={handleSubmit} disabled={submitting}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">
               {submitting ? (isZh ? '创建中...' : 'Creating...') : '🎬 ' + (isZh ? '创建并开始' : 'Create & Start')}
             </button>
           )}
@@ -3342,7 +3431,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
 function parseLinks(text: string): string[] {
   return text.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
 }
-async function createVideoScenarioTask(scenarioId: string, extra: Record<string, any>, urls: string[], runInterval: string, title: string, isZh = true): Promise<{ ok: boolean; error?: string }> {
+async function createVideoScenarioTask(scenarioId: string, extra: Record<string, any>, urls: string[], runInterval: string, title: string, isZh = true): Promise<{ ok: boolean; error?: string; taskId?: string }> {
   if (!(await videoQueue.canCreate())) {
     return { ok: false, error: isZh
       ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建`
@@ -3352,7 +3441,7 @@ async function createVideoScenarioTask(scenarioId: string, extra: Record<string,
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
-    await scenarioService.createTask({
+    const task = await scenarioService.createTask({
       scenario_id: scenarioId,
       track: 'video_remix',
       keywords: [],
@@ -3368,8 +3457,8 @@ async function createVideoScenarioTask(scenarioId: string, extra: Record<string,
       active: true,
       ...extra,
     } as any);
-    void title; // 仅创建,不立即运行(运行交「开始」按钮 / 定时抢占)
-    return { ok: true };
+    void title; // 仅创建,不立即运行(运行交详情页「开始」/ 定时抢占)
+    return { ok: true, taskId: task.id };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 140) };
   }
@@ -3379,7 +3468,7 @@ async function createVideoScenarioTask(scenarioId: string, extra: Record<string,
 //  卡②:长视频转爆款短片(后端 scenario `long_to_short`)— 3 步向导
 //  手动贴长视频 → 切片设置 → 出片。本质是切高光,不翻译。
 // ════════════════════════════════════════════════════════════════════
-const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ isZh, onClose }) => {
+const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (taskId: string) => void }> = ({ isZh, onClose, onCreated }) => {
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [urlsText, setUrlsText] = useState('');
   const [clipCount, setClipCount] = useState(3);
@@ -3407,7 +3496,8 @@ const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ is
       target_aspect: aspect, target_lang: targetLang, subtitle,
     }, urls, runInterval, isZh ? '长视频转爆款短片' : 'Long → Shorts', isZh);
     setSubmitting(false);
-    if (r.ok) { onClose(); alert(isZh ? '✅ 任务已创建,可到「我的视频任务」点「开始」运行,或按设定频率到点自动跑。' : '✅ Task created. Open it in My Videos to start, or it runs on schedule.'); }
+    // 创建后不弹窗、不立即运行,直接进任务详情页(参照币安)。
+    if (r.ok) { if (onCreated && r.taskId) onCreated(r.taskId); else onClose(); }
     else setErr((isZh ? '创建失败:' : 'Failed: ') + (r.error || ''));
   };
 
@@ -3481,10 +3571,7 @@ const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ is
           {step === 3 && (
             <>
               <label className={lbl}>{isZh ? '运行频率' : 'Run frequency'}</label>
-              <select className={inputCls} value={runInterval} onChange={(e) => setRunInterval(e.target.value)}>
-                {REMIX_INTERVALS.map((it) => <option key={it.id} value={it.id}>{isZh ? it.zh : it.en}</option>)}
-              </select>
-              <p className="text-[11px] text-gray-400 mt-1">{isZh ? '手动贴链接建议「只跑一次」。' : 'Use Once for manually pasted links.'}</p>
+              <RemixFreqPicker isZh={isZh} value={runInterval} onChange={setRunInterval} />
             </>
           )}
 
