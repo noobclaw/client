@@ -17,7 +17,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
 import { noobClawAuth } from '../../../services/noobclawAuth';
-import { noobClawApi } from '../../../services/noobclawApi';
 import { scenarioService } from '../../../services/scenario';
 import { getBackendApiUrl } from '../../../services/endpoints';
 import {
@@ -412,18 +411,14 @@ const VideoLanding: React.FC<{
   // 只用类型徽章区分(用户反馈:别拆两块,都是视频任务)。
   const scioMap = new Map(scenarios.map((s) => [s.id, s]));
   const hasAny = tasks.length > 0 || scenarioTasks.length > 0;
-  // 订阅统一队列 → 排队/生成中徽章实时刷新。
+  // 订阅协调器 → 「生成中」徽章实时刷新(抢占式:同时只 1 个在跑,无排队位次)。
   const [, setQv] = useState(0);
   useEffect(() => videoQueue.subscribe(() => setQv((v) => v + 1)), []);
   const total = tasks.length + scenarioTasks.length;
-  // 队列态徽章:生成中(绿) / 排队中·第N位(琥珀);不在队列返回 null。
+  // 抢占式只有「生成中」一种态(绿);未在跑返回 null。
   const queueBadge = (refId: string): React.ReactNode => {
     if (videoQueue.isRunning(refId)) {
       return <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 font-medium shrink-0">⏳ {isZh ? '生成中' : 'Running'}</span>;
-    }
-    const pos = videoQueue.getPosition(refId);
-    if (pos > 0) {
-      return <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-500 font-medium shrink-0">🕒 {isZh ? `排队中·第${pos}位` : `Queued #${pos}`}</span>;
     }
     return null;
   };
@@ -1123,8 +1118,10 @@ const VideoTaskDetail: React.FC<{
       // 本地上传任务不收平台费,但 AI 写稿仍可能实时扣 token → 保留一次轻量余额校验。
       return;
     }
-    // 交统一队列:空闲立即开跑,有任务在跑则排队、轮到自动跑(不再直接 runTask)。
-    videoQueue.enqueue('local', task.id, task.title);
+    // 抢占式:空闲立即开跑;已有视频在生成则不排队,提示稍后再试。
+    if (!videoQueue.tryRun('local', task.id, task.title)) {
+      setActionError(isZh ? '已有视频正在生成,请等它完成后再开始。' : 'A video is generating. Please wait until it finishes.');
+    }
   };
 
   const handleDelete = () => {
@@ -1831,17 +1828,13 @@ const VideoConfigModal: React.FC<{
   const [subtitleFont, setSubtitleFont] = useState<string>(editTask?.input.subtitleFont ?? '');
 
   // 字幕样式默认值【随生成模式联动】(仅新建任务,编辑老任务保留其已存设置):
-  //   · AI 自动成片(Seedance,pure_ai)= 黄字 + 黑描边 + 大号 64(短视频画面上最醒目)。
-  //   · 在线素材 / 本地素材 = 白字 + 无描边 + 中号 52。
-  // 放 useEffect 而非只写在模式卡 onClick 里 —— 这样无论怎么进入 pure_ai(直接打开 /
-  // 程序预选 / 点击),都可靠套上黄字黑边默认。用户进字幕步手动改的会保留(mode 不变就不重置)。
+  //   烧字幕统一默认 = 黄字 + 黑描边(短视频画面上最醒目);字号按模式区分
+  //   (pure_ai 64 / 在线素材·本地素材 52)。用户进字幕步手动改的会保留(mode 不变就不重置)。
   useEffect(() => {
     if (editTask) return;
-    if (mode === 'pure_ai') {
-      setSubtitleColor('#FFD700'); setSubtitleStrokeColor('#000000'); setSubtitleFontSize(64);
-    } else {
-      setSubtitleColor('#FFFFFF'); setSubtitleStrokeColor(''); setSubtitleFontSize(52);
-    }
+    setSubtitleColor('#FFD700');
+    setSubtitleStrokeColor('#000000');
+    setSubtitleFontSize(mode === 'pure_ai' ? 64 : 52);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, editTask]);
   // 一次出片条数(1~5)。复用脚本/配音、每条不同画面组合。默认 1(只跑一次),
@@ -2019,60 +2012,22 @@ const VideoConfigModal: React.FC<{
       onSaved?.();
       return;
     }
-    // 新建:统一队列额度校验(视频大类列表总数 ≤5,含已完成)。满了拒绝,需先删旧的。
-    if (!(await videoQueue.canCreate())) {
-      setSubmitError(isZh
-        ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
-        : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Videos" first.`);
-      return;
-    }
-    // 模式一(AI 分镜 + 在线素材)pre-flight:成片成功后会扣平台基础费 + AI token,
-    // 这里先拉最新余额校验 > 200000 积分才放行,避免"视频已生成才发现没钱"。
-    // 不足时 hasEnoughBalanceForTask 会派发 token-insufficient 事件 → 全局充值弹窗。
-    if (mode === 'stock') {
-      setSubmitting(true);
-      let minBalance = VIDEO_MODE1_MIN_BALANCE;
-      try {
-        await noobClawAuth.refreshBalance();
-        minBalance = await fetchVideoMinBalance();
-      } catch { /* 网络失败时退回用本地缓存余额 + 兜底门槛判断,不阻塞 */ }
-      setSubmitting(false);
-      // 一次任务即使批量出多条也只收【一份】平台费,门槛不随条数翻倍。阈值由服务端下发。
-      if (!noobClawAuth.hasEnoughBalanceForTask(minBalance)) {
-        onClose();
+    // 新建:对齐币安等 scenario 任务——【只校验「视频」大类列表总数 ≤5(含已完成)】,
+    // 不校验余额、不立即运行。余额由【运行时】(详情页「开始创作」)把关;创建只落任务。
+    if (submitting) return;            // 防连点:创建中再点直接忽略,避免建出多个
+    setSubmitting(true);
+    try {
+      if (!(await videoQueue.canCreate())) {
+        setSubmitError(isZh
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one in "My Videos" first.`);
         return;
       }
-    }
-    // AI 自动成片(Seedance)pre-flight:逐镜真烧钱 → 开跑前估价 + 校验余额 + 二次确认,
-    // 杜绝"不知情被逐镜扣到没钱"。估不出(后端老/网络差)就放行(逐镜 402 仍兜底)。
-    if (mode === 'pure_ai') {
-      setSubmitting(true);
-      const estSec = Math.max(4, Math.min(30, scriptMode === 'strict'
-        ? Math.ceil(script.trim().length / 4.5)
-        : targetSeconds));
-      const est = await noobClawApi.estimateSeedance(estSec, seedanceResolution, seedanceModel);
+      const id = videoTaskStore.createTask(input, buildTitle(), schedule);
+      onCreated(id);
+    } finally {
       setSubmitting(false);
-      if (est) {
-        if (!est.configured) {
-          setSubmitError(isZh ? 'AI 成片档位未在后台配置模型,暂不可用(请联系客服)。' : 'AI tier not configured. Contact support.');
-          return;
-        }
-        if (!est.sufficient) {
-          setSubmitError(isZh
-            ? `余额不足:本条 AI 成片约需 ${est.estTokens.toLocaleString()} 积分(≈¥${est.estCny}),你当前 ${est.balance.toLocaleString()} 积分,请充值后再试。`
-            : `Insufficient: needs ~${est.estTokens} credits (≈¥${est.estCny}), you have ${est.balance}.`);
-          return;
-        }
-        const ok = window.confirm(isZh
-          ? `本条 AI 自动成片预计约 ${est.estTokens.toLocaleString()} 积分(≈¥${est.estCny}),当前余额 ${est.balance.toLocaleString()}。\n失败的镜头会自动退款。确认生成?`
-          : `Est. ~${est.estTokens} credits (≈¥${est.estCny}); balance ${est.balance}. Failed shots auto-refund. Proceed?`);
-        if (!ok) return;
-      }
     }
-    // 创建任务(不直接跑)→ 交统一队列调度:空闲立即开跑,忙则排队、轮到自动跑。
-    const id = videoTaskStore.createTask(input, buildTitle(), schedule);
-    videoQueue.enqueue('local', id, buildTitle());
-    onCreated(id);
   };
 
   const selectedPlatformLabels = (Object.keys(platforms) as Platform[])
@@ -3170,7 +3125,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
       const now = new Date();
       const hh = String(now.getHours()).padStart(2, '0');
       const mm = String(now.getMinutes()).padStart(2, '0');
-      const task = await scenarioService.createTask({
+      await scenarioService.createTask({
         scenario_id: 'video_repost_remix',
         track: trackLabel || 'video_remix',
         keywords,
@@ -3194,9 +3149,8 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void }> = 
         enabled: true,
         active: true,
       } as any);
-      videoQueue.enqueue('scenario', task.id, isZh ? '视频翻译二创' : 'Translate Remix');
       onClose();
-      alert(isZh ? '✅ 任务已创建。空闲会立即开跑,若有任务在跑则自动排队,可到「我的视频任务」查看。' : '✅ Task created. Runs now if idle, otherwise queued. See My Videos.');
+      alert(isZh ? '✅ 任务已创建,可到「我的视频任务」点「开始」运行,或按设定的频率到点自动跑。' : '✅ Task created. Open it in My Videos to start, or it runs automatically on schedule.');
     } catch (e) {
       setErr((isZh ? '创建失败:' : 'Create failed: ') + String(e).slice(0, 140));
     } finally {
@@ -3393,7 +3347,7 @@ async function createVideoScenarioTask(scenarioId: string, extra: Record<string,
     const now = new Date();
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
-    const task = await scenarioService.createTask({
+    await scenarioService.createTask({
       scenario_id: scenarioId,
       track: 'video_remix',
       keywords: [],
@@ -3409,7 +3363,7 @@ async function createVideoScenarioTask(scenarioId: string, extra: Record<string,
       active: true,
       ...extra,
     } as any);
-    videoQueue.enqueue('scenario', task.id, title);
+    void title; // 仅创建,不立即运行(运行交「开始」按钮 / 定时抢占)
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e).slice(0, 140) };
@@ -3448,7 +3402,7 @@ const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void }> = ({ is
       target_aspect: aspect, target_lang: targetLang, subtitle,
     }, urls, runInterval, isZh ? '长视频转爆款短片' : 'Long → Shorts', isZh);
     setSubmitting(false);
-    if (r.ok) { onClose(); alert(isZh ? '✅ 任务已创建。空闲会立即开跑,若有任务在跑则自动排队,可到「我的视频任务」查看。' : '✅ Task created. Runs now if idle, otherwise queued.'); }
+    if (r.ok) { onClose(); alert(isZh ? '✅ 任务已创建,可到「我的视频任务」点「开始」运行,或按设定频率到点自动跑。' : '✅ Task created. Open it in My Videos to start, or it runs on schedule.'); }
     else setErr((isZh ? '创建失败:' : 'Failed: ') + (r.error || ''));
   };
 
