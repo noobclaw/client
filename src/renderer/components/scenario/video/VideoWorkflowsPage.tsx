@@ -1565,6 +1565,11 @@ interface TrackPreset {
 
 const TRACK_PRESETS: TrackPreset[] = [
   {
+    id: 'overseas_life', zh: '🌏 海外生活 · 日常', en: 'Overseas Life',
+    persona: { zh: '在国外生活的普通人，记录真实的海外日常。租房、通勤、超市采购、节日见闻都自己拍，接地气、不滤镜、不贩卖焦虑', en: 'An ordinary person living abroad — real overseas daily life, down-to-earth, no filter, no anxiety-selling' },
+    keywords: { zh: '海外生活 国外日常 租房 超市采购 异国文化 海外Vlog 留学生活 省钱攻略', en: 'overseas-life abroad daily rent supermarket culture vlog student-life save-money' },
+  },
+  {
     id: 'pets', zh: '🐾 萌宠 · 日常', en: 'Pets',
     persona: { zh: '养猫养狗的铲屎官,记录萌宠日常。轻松治愈、会讲细节,分享养宠经验和踩坑,真实不卖惨', en: 'A cat/dog owner sharing daily pet life — light, healing, real tips, no sob stories' },
     keywords: { zh: '萌宠日常 猫咪 狗狗 养宠攻略 宠物好物 治愈系 铲屎官 宠物搞笑', en: 'pets cat dog pet-care pet-gear healing funny-pets daily' },
@@ -1640,9 +1645,19 @@ const TRACK_PRESETS: TrackPreset[] = [
     keywords: { zh: '读书笔记 年度书单 好书推荐 读书打卡 小说推荐 非虚构 读书方法 书评', en: 'reading-notes annual-booklist recommendations reading-log fiction nonfiction methods reviews' },
   },
   {
-    id: 'custom', zh: '✏️ 自定义', en: 'Custom',
-    persona: { zh: '', en: '' },
-    keywords: { zh: '', en: '' },
+    id: 'funny', zh: '😂 搞笑 · 段子娱乐', en: 'Funny',
+    persona: { zh: '专做搞笑短视频的博主，节奏快、有梗、会反转。贴近生活、不低俗，让人刷到忍不住笑出来', en: 'A short-form comedy creator — fast-paced, punchy, with twists; relatable and clean, makes you laugh out loud' },
+    keywords: { zh: '搞笑视频 沙雕日常 神反转 搞笑段子 整活 名场面 爆笑 解压', en: 'funny comedy skit twist meme hilarious relatable stress-relief' },
+  },
+  {
+    id: 'emotion', zh: '💗 情感 · 共鸣治愈', en: 'Emotion',
+    persona: { zh: '讲情感、聊人生的博主，真诚走心。说大白话、给共鸣和温暖,不灌鸡汤、不制造对立', en: 'An emotion / life blogger — sincere and warm, plain talk that resonates, no toxic positivity' },
+    keywords: { zh: '情感共鸣 治愈文案 人生感悟 走心 emo 自我成长 温暖 深夜', en: 'emotion healing life-insight heartfelt growth warmth late-night' },
+  },
+  {
+    id: 'rural', zh: '🌾 三农 · 乡村生活', en: 'Rural Life',
+    persona: { zh: '记录乡村生活的博主，种地、赶集、家常饭都自己拍。真实质朴、烟火气足，让城里人向往慢生活', en: 'A countryside-life creator — farming, markets, home cooking; authentic, full of life, makes city folks long for the slow life' },
+    keywords: { zh: '乡村生活 三农 农村日常 田园 种地 赶大集 农家饭 慢生活', en: 'rural countryside farming village field market farm-food slow-life' },
   },
 ];
 
@@ -1831,7 +1846,7 @@ const VideoConfigModal: React.FC<{
     if (!editTask) return defaultPreset.id;
     const t = editTask.input.track;
     const found = TRACK_PRESETS.find((p) => (isZh ? p.zh : p.en) === t);
-    return found ? found.id : (t ? 'custom' : '');
+    return found ? found.id : '';   // 匹配不到预设 → 不选(自定义档已下线)
   })();
 
   // 步骤 1:文案(新建时人设/关键词从默认赛道带出,可改)
@@ -2038,7 +2053,7 @@ const VideoConfigModal: React.FC<{
   const visualStepValid = mode === 'pure_ai' || materialSource === 'stock' || localVideos.length > 0;
 
   const trackLabel = TRACK_PRESETS.find((t) => t.id === trackId)?.[isZh ? 'zh' : 'en']
-    || (trackId === 'custom' ? (editTask?.input.track || (isZh ? '自定义' : 'Custom')) : '');
+    || editTask?.input.track || '';
 
   const buildTitle = (): string => {
     const kw = keywords.split(/[,，\s]+/).map((k) => k.trim()).filter(Boolean);
@@ -3234,7 +3249,6 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
   const [targetLang, setTargetLang] = useState('zh');
   const [translateMode, setTranslateMode] = useState('auto');
   const [trackId, setTrackId] = useState('');
-  const [customTrack, setCustomTrack] = useState('');
   const [keywordsText, setKeywordsText] = useState('');
   const [originality, setOriginality] = useState(true);
   const [saturation, setSaturation] = useState(true);
@@ -3245,7 +3259,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
   // 关键词默认语言【跟随源语言】:英文源→keywords.en,中文源→keywords.zh,其它源回退英文。
   const kwLang: 'zh' | 'en' = sourceLang === 'zh' ? 'zh' : 'en';
   useEffect(() => {
-    if (!trackId || trackId === 'custom') return;
+    if (!trackId) return;
     const preset = TRACK_PRESETS.find((p) => p.id === trackId);
     if (preset) setKeywordsText(preset.keywords[kwLang]);
   }, [trackId, kwLang]);
@@ -3253,7 +3267,6 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
   const toggleTarget = (id: string) =>
     setTargetPlatforms((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   const trackLabel = (() => {
-    if (trackId === 'custom') return customTrack.trim();
     const p = TRACK_PRESETS.find((t) => t.id === trackId);
     if (!p) return '';
     return (kwLang === 'zh' ? p.zh : p.en).replace(/^[^A-Za-z一-龥]+/, '').split(/\s*·\s*/)[0].trim();
@@ -3388,9 +3401,6 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                     <option value="">{isZh ? '— 不选,自己填关键词 —' : '— none, type keywords —'}</option>
                     {TRACK_PRESETS.map((t) => <option key={t.id} value={t.id}>{isZh ? t.zh : t.en}</option>)}
                   </select>
-                  {trackId === 'custom' && (
-                    <input className={`${inputCls} mt-2`} value={customTrack} onChange={(e) => setCustomTrack(e.target.value)} placeholder={isZh ? '自定义赛道名' : 'Custom track name'} />
-                  )}
                   <label className={`${lbl} mt-3`}>{isZh ? '关键词(逗号/换行分隔)' : 'Keywords (comma/newline)'}</label>
                   <textarea className={`${inputCls} resize-y min-h-[70px]`} value={keywordsText} onChange={(e) => setKeywordsText(e.target.value)}
                     placeholder={kwLang === 'zh' ? '猫咪搞笑, 治愈, 萌宠日常' : 'funny cat, healing, daily pets'} />
