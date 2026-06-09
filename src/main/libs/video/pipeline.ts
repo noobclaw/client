@@ -736,6 +736,11 @@ async function runVideoPipeline(
         onProgress: (m) => tracker.progress(m),
         signal,
       });
+      // Seedance 逐镜扣费计入「本次消耗」—— 否则只统计了 DeepSeek 写稿(几百积分),
+      // 用户看到「本次消耗 435」却实际被逐镜扣了上百万积分,严重对不上。只计【成功镜】
+      // (失败镜服务端已退);costUsd 按 1 USDT=1M tokens 折算(= 积分/1e6)供 $ 展示。
+      const seedanceCharged = clipResults.filter((r) => r.path).reduce((s, r) => s + (r.chargedTokens || 0), 0);
+      if (seedanceCharged > 0) tracker.addTokens(seedanceCharged, seedanceCharged / 1_000_000);
       const okCount = clipResults.filter((r) => r.path).length;
       if (okCount === 0) {
         const sample = clipResults.find((r) => r.error)?.error || '';
