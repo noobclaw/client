@@ -595,11 +595,13 @@ const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; on
       className={`w-full text-left rounded-xl border p-4 transition-colors relative ${
         isRunning
           ? 'border-green-500 ring-2 ring-green-500/30 bg-white dark:bg-gray-900 noobclaw-running-glow'
-          : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50 dark:hover:border-fuchsia-500/50 bg-white dark:bg-gray-900'
+          : 'border-gray-200 dark:border-gray-700 hover:border-rose-500/50 dark:hover:border-rose-500/50 bg-white dark:bg-gray-900'
       }`}
     >
+      {/* Top row — 视频创作 灰徽章 + 类型徽章 + #id(对齐本地一键成片卡,样式统一) */}
       <div className="flex items-center gap-2 mb-2 flex-wrap min-w-0">
-        <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-fuchsia-500/15 text-fuchsia-500 font-medium shrink-0">{icon} {name}</span>
+        <span className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">🎬 {isZh ? '视频创作' : 'Video'}</span>
+        <span className="shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30">{icon} {name}</span>
         <span className="text-[10px] text-gray-500 shrink-0">#{String(task.id).slice(0, 8)}</span>
         {queueBadge}
       </div>
@@ -620,9 +622,9 @@ const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; on
         </div>
       </div>
       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between gap-2">
-        <span className="text-fuchsia-500 font-medium">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
+        <span className="text-rose-500 font-medium">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
         {freq && (
-          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/20">
+          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
             ⏰ {isZh ? freq.zh : freq.en}
           </span>
         )}
@@ -3275,12 +3277,27 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
   const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50';
   const lbl = 'text-sm font-medium dark:text-gray-200 mb-1.5 block';
 
+  // 目标平台多选块(放在「源平台」正下方,两种来源模式都显示;步骤 2 里源/目标上下排)。
+  const targetPlatformsField = (
+    <>
+      <label className={`${lbl} mt-3`}>{isZh ? '目标平台(可多选,成片发到哪)' : 'Target platforms'}</label>
+      <div className="flex flex-wrap gap-2">
+        {REMIX_PLATFORMS.map((p) => (
+          <button key={p.id} type="button" onClick={() => toggleTarget(p.id)}
+            className={`px-3 py-1.5 rounded-lg text-sm border ${targetPlatforms.includes(p.id) ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+            {isZh ? p.zh : p.en}
+          </button>
+        ))}
+      </div>
+    </>
+  );
+
   const handleSubmit = async () => {
     if (submitting) return;
     if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
     const keywords = keywordsText.split(/[\n,，、]+/).map((s) => s.trim()).filter(Boolean);
     const urls = urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
-    if (!targetPlatforms.length) { setStep(3); setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
+    if (!targetPlatforms.length) { setStep(2); setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
     if (sourceMode === 'manual') {
       if (!urls.length) { setStep(2); setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
       if (urls.length > MANUAL_LINK_MAX) { setStep(2); setErr(isZh ? `最多 ${MANUAL_LINK_MAX} 个链接,当前 ${urls.length} 个` : `Max ${MANUAL_LINK_MAX} links (now ${urls.length})`); return; }
@@ -3389,6 +3406,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                   <textarea className={`${inputCls} font-mono resize-y min-h-[160px] break-all`} value={urlsText} onChange={(e) => setUrlsText(e.target.value)}
                     placeholder={'https://www.douyin.com/video/...\nhttps://www.bilibili.com/video/BV...\nhttps://www.youtube.com/watch?v=...'} />
                   <p className="text-[11px] text-gray-400 mt-1">{isZh ? `仅支持 ${MANUAL_LINK_HINT_ZH} 链接。已填 ${urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean).length}/${MANUAL_LINK_MAX}。` : `Only ${MANUAL_LINK_HINT_ZH} links. ${urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean).length}/${MANUAL_LINK_MAX} added.`}</p>
+                  {targetPlatformsField}
                 </>
               ) : (
                 <>
@@ -3396,6 +3414,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                   <select className={inputCls} value={sourcePlatform} onChange={(e) => setSourcePlatform(e.target.value)}>
                     {REMIX_PLATFORMS.map((p) => <option key={p.id} value={p.id}>{isZh ? p.zh : p.en}</option>)}
                   </select>
+                  {targetPlatformsField}
                   <label className={`${lbl} mt-3`}>{isZh ? '赛道(选一个自动带出关键词)' : 'Track (prefills keywords)'}</label>
                   <select className={inputCls} value={trackId} onChange={(e) => setTrackId(e.target.value)}>
                     <option value="">{isZh ? '— 不选,自己填关键词 —' : '— none, type keywords —'}</option>
