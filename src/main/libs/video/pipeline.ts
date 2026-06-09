@@ -730,11 +730,17 @@ async function runVideoPipeline(
       //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
       try {
         tracker.progress('🎨 生成故事板首帧(Seedream 组图,保持角色一致)…');
-        const keyframes = await generateStoryboard({
+        const storyboard = await generateStoryboard({
           shots: aiScenes.map((sc) => sc.prompt),
           character: [input.persona, input.track].filter(Boolean).join(' · '),
           count: aiScenes.length,
         });
+        const keyframes = storyboard.images;
+        // 故事板首帧也是真金白银(Seedream 按张扣)—— 计入「本次消耗」,
+        // 否则进度里图扣了费、总额却只剩 DeepSeek 写稿那几百,严重对不上。
+        if (storyboard.chargedTokens > 0) {
+          tracker.addTokens(storyboard.chargedTokens, storyboard.chargedTokens / 1_000_000);
+        }
         if (keyframes.length > 0) {
           const sbDir = path.join(destDir, '故事板');
           try { fs.mkdirSync(sbDir, { recursive: true }); } catch { /* ignore */ }
@@ -772,10 +778,10 @@ async function runVideoPipeline(
       const okCount = clipResults.filter((r) => r.path).length;
       if (okCount === 0) {
         // 原始 sample(如 "fetch failed")只打到 console 供排查,不展示给用户;
-        // 用户面只给通用文案 + 退费保证(扣费已在服务端按"无可交付成片"自动退回)。
+        // 用户面只给通用文案(退费由服务端按计费政策处理:有 token 输出不退、0 输出才退,不在文案里承诺)。
         const sample = clipResults.find((r) => r.error)?.error || '';
         if (sample) { try { console.error('[seedance] all shots failed, sample error:', sample); } catch { /* ignore */ } }
-        const err = 'AI 自动成片暂时没出片,请稍后重试。本次未成功的扣费会自动退回。';
+        const err = 'AI 自动成片暂时没出片,请稍后重试。';
         tracker.fail('visuals', err);
         return { ok: false, error: err };
       }

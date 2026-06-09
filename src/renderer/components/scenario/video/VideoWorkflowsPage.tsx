@@ -2232,7 +2232,7 @@ const VideoConfigModal: React.FC<{
                     cost={isZh
                       ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})· 失败镜头自动退`
                       : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution}) · auto-refund on failed shots`}
-                    costTag={isZh ? '画质最佳' : 'Best quality'}
+                    costTag={isZh ? '最贴近文案 / 画质最佳' : 'Closest to script / Best quality'}
                   />
                 </div>
               </Field>
@@ -2868,7 +2868,11 @@ const VideoConfigModal: React.FC<{
                     {videoCount} {isZh ? '条' : ''}
                   </span>
                 </div>
-                <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条按条计费' : '1-10 per run · billed per clip'}</div>
+                <div className="text-[11px] text-gray-400 mt-1">{
+                  mode === 'pure_ai'
+                    ? (isZh ? '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)' : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
+                    : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
+                }</div>
               </Field>
 
               {/* 定时运行(参照抖音):选「不重复」就是手动单次;选周期则到点自动重跑,

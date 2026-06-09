@@ -168,15 +168,23 @@ async function downloadVideo(url: string, outPath: string): Promise<void> {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+export interface StoryboardResult {
+  /** 每镜首帧 dataURL 数组(失败为空)。 */
+  images: string[];
+  /** 服务端按张实扣的积分(失败/未配置为 0);计入「本次消耗」总额。 */
+  chargedTokens: number;
+}
+
 /**
  * 故事板组图:调服务端 Seedream 组图(/api/image/storyboard),一次出 N 张【同角色/同画风】
- * 首帧 dataURL。失败返回 [](pipeline 退化为纯文生视频)。服务端按张计费。
+ * 首帧 dataURL。失败返回 {images:[],chargedTokens:0}(pipeline 退化为纯文生视频)。
+ * 服务端按张计费并回 chargedTokens,客户端把它累加进 tracker(本次消耗)。
  */
 export async function generateStoryboard(opts: {
   shots: string[]; character?: string; style?: string; count?: number;
-}): Promise<string[]> {
+}): Promise<StoryboardResult> {
   const headers = authHeaders();
-  if (!headers) return [];
+  if (!headers) return { images: [], chargedTokens: 0 };
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 200_000);
   try {
@@ -191,10 +199,11 @@ export async function generateStoryboard(opts: {
       }),
       signal: ctrl.signal,
     });
-    if (!resp.ok) return [];
+    if (!resp.ok) return { images: [], chargedTokens: 0 };
     const json: any = await resp.json();
-    return Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
-  } catch { return []; }
+    const images = Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
+    return { images, chargedTokens: Number(json?.chargedTokens) || 0 };
+  } catch { return { images: [], chargedTokens: 0 }; }
   finally { clearTimeout(timer); }
 }
 
