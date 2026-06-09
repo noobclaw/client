@@ -1646,8 +1646,8 @@ const SCRIPT_MIN_STRICT = 200;
 // 中文配音约 4.5 字/秒;严格模式据此把字数实时换算成预估时长展示给用户。
 const CHARS_PER_SEC = 4.5;
 const DURATION_OPTIONS = [30, 45, 60, 90, 120, 180, 240];
-// 纯 AI(Seedance)成片成本随秒数线性涨 → 时长上限 45s,UI 不给 >45s 选项。
-const AI_MAX_SECONDS = 45;
+// 纯 AI(Seedance)成片成本随秒数线性涨 → 时长上限 90s(UI 给到 30/45/60/90;>90 不给)。
+const AI_MAX_SECONDS = 90;
 
 // ── MPT 风格出片参数选项 ──
 const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[] = [
