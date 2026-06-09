@@ -1381,7 +1381,18 @@ const VideoTaskDetail: React.FC<{
           StepLogBox:日志贴在所属步骤里)。完整成片预览 / 报错明细仍在
           「运行记录详情」看,通过下面的「查看本次运行明细 →」点进去。 */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
+        <div className="flex items-center gap-2 flex-wrap">
+          <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
+          {/* 出片去向:按用户选择(目前自动发布未上线,恒为「存本地」)。 */}
+          {(() => {
+            const toLocal = (task.input.publishTarget || 'local') === 'local';
+            return (
+              <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${toLocal ? 'text-sky-500 bg-sky-500/10 border-sky-500/30' : 'text-green-500 bg-green-500/10 border-green-500/30'}`}>
+                {toLocal ? (isZh ? '📂 自动保存到本地' : '📂 Saved locally') : (isZh ? '🚀 自动发布到各平台' : '🚀 Auto-publish')}
+              </span>
+            );
+          })()}
+        </div>
         {latestRun && (
           <button
             type="button"
