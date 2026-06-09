@@ -482,9 +482,6 @@ const VideoLanding: React.FC<{
           </span>
         </h2>
         <div className="flex items-center gap-3">
-          {onRefresh && (
-            <button type="button" onClick={() => onRefresh()} className="text-xs text-gray-500 hover:text-fuchsia-500">{isZh ? '刷新' : 'Refresh'}</button>
-          )}
           <VideoTutorialButton isZh={isZh} />
         </div>
       </div>
@@ -2177,7 +2174,7 @@ const VideoConfigModal: React.FC<{
                       // 字幕默认(大号 64/黄字/黑描边)由上面的 useEffect 随 mode 联动设置。
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
-                    desc={isZh ? '逐镜用 AI（Seedance）生成画面，不用素材库、不用上传。可传 ≤2 张参考图统一画风/人设；下一步「画面」里选模型档位(1.0 Lite/Pro·1.5 Pro·2.0)和清晰度。默认带 AI 配音 + 字幕,想要纯画面可在「音频」步关掉' : 'AI (Seedance) generates every shot — no stock, no uploads. Optionally add ≤2 reference images to unify style; pick the model tier & resolution in the Visuals step. Comes with AI voice-over + subtitles by default; switch to visual-only in the Audio step'}
+                    desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
                     cost={isZh ? '按秒计费 · 生成前显示报价,失败镜头自动退' : 'Per-second · quote shown before generation, auto-refund on failure'}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
