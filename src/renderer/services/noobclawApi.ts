@@ -523,7 +523,7 @@ class NoobClawApiService {
   }
 
   // 取 Seedance 该清晰度的每秒卖价($/秒),供卡片动态展示(不写死)。失败返 null。
-  async seedanceRate(resolution: string): Promise<{ usdPerSec: number; cnyPerSec: number; resolution: string } | null> {
+  async seedanceRate(resolution: string): Promise<{ usdPerSec: number; cnyPerSec: number; creditsPerSec: number; resolution: string } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/video/seedance/rate?resolution=${encodeURIComponent(resolution)}`, {
         method: 'GET',

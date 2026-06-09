@@ -1861,11 +1861,14 @@ const VideoConfigModal: React.FC<{
   // 清晰度:480p / 720p 二选一(传后端;单价/千token 不变,只是 720p token 数更多)。默认 720p。
   const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p'>(
     editTask?.input.seedanceResolution === '480p' ? '480p' : '720p');
-  // 纯AI 每秒卖价($/秒)由服务端按清晰度算,动态展示(不写死)。
+  // 纯AI 每秒卖价($/秒)+ 每秒积分,由服务端按清晰度算,动态展示(不写死)。
   const [aiUsdPerSec, setAiUsdPerSec] = useState<number | null>(null);
+  const [aiCreditsPerSec, setAiCreditsPerSec] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
-    noobClawApi.seedanceRate(seedanceResolution).then((r) => { if (alive && r) setAiUsdPerSec(r.usdPerSec); });
+    noobClawApi.seedanceRate(seedanceResolution).then((r) => {
+      if (alive && r) { setAiUsdPerSec(r.usdPerSec); setAiCreditsPerSec(r.creditsPerSec); }
+    });
     return () => { alive = false; };
   }, [seedanceResolution]);
   // Seedance 档位 / 分辨率客户端不再决定:不传,后端按 system_config 定(admin 可切 1.0/1.5 测试)。
@@ -2326,6 +2329,20 @@ const VideoConfigModal: React.FC<{
                   </div>
                 </Field>
               )}
+
+              {/* 纯AI:按【时长 × 清晰度】预估实收费用(积分 + $,按卖价),让用户开跑前心里有数。 */}
+              {mode === 'pure_ai' && aiCreditsPerSec != null && aiUsdPerSec != null && (() => {
+                const estSec = Math.min(AI_MAX_SECONDS, scriptMode === 'strict' ? Math.max(1, strictEstSec) : targetSeconds);
+                const estCredits = Math.round(aiCreditsPerSec * estSec);
+                const estUsd = aiUsdPerSec * estSec;
+                return (
+                  <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
+                    <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '预估费用' : 'Est. cost'}</span>
+                    <span className="ml-2 dark:text-gray-200">{isZh ? `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})` : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
+                    <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣,失败镜头自动退` : `${seedanceResolution} · ~${estSec}s · charged per real shot length, auto-refund on failures`}</div>
+                  </div>
+                );
+              })()}
             </>
           )}
 
