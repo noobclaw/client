@@ -771,8 +771,11 @@ async function runVideoPipeline(
       if (seedanceCharged > 0) tracker.addTokens(seedanceCharged, seedanceCharged / 1_000_000);
       const okCount = clipResults.filter((r) => r.path).length;
       if (okCount === 0) {
+        // 原始 sample(如 "fetch failed")只打到 console 供排查,不展示给用户;
+        // 用户面只给通用文案 + 退费保证(扣费已在服务端按"无可交付成片"自动退回)。
         const sample = clipResults.find((r) => r.error)?.error || '';
-        const err = `AI 自动成片失败:所有片段都没生成成功${sample ? `(${sample})` : '(余额不足或 Seedance 暂不可用)'}。已生成的片段费用服务端会自动退回。`;
+        if (sample) { try { console.error('[seedance] all shots failed, sample error:', sample); } catch { /* ignore */ } }
+        const err = 'AI 自动成片暂时没出片,请稍后重试。本次未成功的扣费会自动退回。';
         tracker.fail('visuals', err);
         return { ok: false, error: err };
       }

@@ -142,19 +142,28 @@ async function pollClipOnce(taskId: string, chargeId: string): Promise<StatusRes
   }
 }
 
-/** 把 CDN 上的成片下载到本地 mp4(片段小,直接 buffer 落盘)。 */
+/** 把 CDN 上的成片下载到本地 mp4(片段小,直接 buffer 落盘)。重试 3 次,防 CDN 偶发 fetch failed。 */
 async function downloadVideo(url: string, outPath: string): Promise<void> {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 120_000);
-  try {
-    const resp = await fetch(url, { signal: ctrl.signal });
-    if (!resp.ok) throw new Error(`下载失败 ${resp.status}`);
-    const buf = Buffer.from(await resp.arrayBuffer());
-    fs.mkdirSync(path.dirname(outPath), { recursive: true });
-    fs.writeFileSync(outPath, buf);
-  } finally {
-    clearTimeout(timer);
+  if (!url) throw new Error('empty_video_url');
+  let lastErr: unknown = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 120_000);
+    try {
+      const resp = await fetch(url, { signal: ctrl.signal });
+      if (!resp.ok) throw new Error(`下载失败 ${resp.status}`);
+      const buf = Buffer.from(await resp.arrayBuffer());
+      fs.mkdirSync(path.dirname(outPath), { recursive: true });
+      fs.writeFileSync(outPath, buf);
+      return;
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 3) await sleep(1500 * attempt);
+    } finally {
+      clearTimeout(timer);
+    }
   }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
