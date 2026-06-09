@@ -2449,7 +2449,7 @@ const VideoConfigModal: React.FC<{
                   <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
                     <span className="text-sm text-gray-700 dark:text-gray-200">
                       {aiNarration
-                        ? (isZh ? '🔊 加 AI 配音 + 字幕(同普通模式)' : '🔊 Add AI voice-over + subtitles')
+                        ? (isZh ? '🔊 加 AI 配音 + 字幕' : '🔊 Add AI voice-over + subtitles')
                         : (isZh ? '🎬 纯画面片(不配音、不烧字幕)' : '🎬 Visual-only (no narration/subtitles)')}
                     </span>
                     <button
