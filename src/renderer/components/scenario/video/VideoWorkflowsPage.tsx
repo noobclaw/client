@@ -525,9 +525,21 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           : 'border-gray-200 dark:border-gray-700 hover:border-rose-500/50 dark:hover:border-rose-500/50 bg-white dark:bg-gray-900'
       }`}
     >
-      {/* Top row — 平台 pill + 类型 badge + title + 任务#id */}
+      {/* Top row — 平台 pill + 类型 badge + 生成模式 + title + 任务#id */}
       <div className="flex items-center gap-2 mb-2 flex-wrap min-w-0">
         <HeadBadges isZh={isZh} />
+        {(() => {
+          // 生成模式徽章:纯AI生成(Seedance)/ 在线素材 / 本地素材 —— 同类型任务也能一眼区分。
+          const isAi = task.input.engine === 'ai';
+          const isLocal = !isAi && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
+          const label = isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
+            : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
+            : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
+          const color = isAi
+            ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+            : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
+          return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
+        })()}
         <span className="font-medium dark:text-white truncate">{task.title}</span>
         <IdTag kind="task" id={task.id} isZh={isZh} />
         {queueBadge}
