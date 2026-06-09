@@ -413,7 +413,7 @@ const VideoLanding: React.FC<{
   scenarios: Array<{ id: string; name_zh?: string; name_en?: string; icon?: string }>;
   onOpenScenarioTask?: (id: string) => void;
   onRefresh?: () => void | Promise<void>;
-}> = ({ isZh, tasks, onGoCreate, onOpenTask, scenarioTasks, scenarios, onOpenScenarioTask, onRefresh }) => {
+}> = ({ isZh, tasks, onGoCreate, onOpenTask, scenarioTasks, scenarios, onOpenScenarioTask }) => {
   // 二创任务(后端 scenario)与一键成片(本地)统一进【我的视频任务】一个列表,
   // 只用类型徽章区分(用户反馈:别拆两块,都是视频任务)。
   const scioMap = new Map(scenarios.map((s) => [s.id, s]));
