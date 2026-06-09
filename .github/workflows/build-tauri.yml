@@ -317,34 +317,7 @@ jobs:
           path: |
             src-tauri/target/${{ matrix.target }}/release/bundle/**/*
           retention-days: 7
-
-  # v1.x: artifact 配额清理 — 每次 build 跑完(无论成功失败)删除 >7 天前的
-  #   artifact。GitHub 内置 retention-days 只对"用 v4 上传时设了 retention"
-  #   的 artifact 生效;历史上配额耗尽的根因是早期 build 用默认 90 天 retention
-  #   累积下来(本次发现时 246 个 ≈ 60 GiB 堵死了 upload)。
-  # `needs: build-tauri` 保证不删正在上传中的 artifact。permissions 必须显式
-  #   声明 actions:write,默认 GITHUB_TOKEN 是 read-only。
-  cleanup-old-artifacts:
-    runs-on: ubuntu-latest
-    needs: build-tauri
-    if: always()
-    permissions:
-      actions: write
-    steps:
-      - name: Delete artifacts older than 7 days
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eo pipefail
-          CUTOFF=$(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%SZ)
-          echo "Cutoff: $CUTOFF"
-          gh api -X GET repos/${{ github.repository }}/actions/artifacts --paginate \
-            --jq ".artifacts[] | select(.created_at < \"$CUTOFF\") | .id" > /tmp/old_ids.txt
-          COUNT=$(wc -l < /tmp/old_ids.txt | tr -d ' ')
-          echo "Found $COUNT stale artifacts"
-          if [ "$COUNT" -gt 0 ]; then
-            xargs -a /tmp/old_ids.txt -P 5 -I {} \
-              gh api -X DELETE repos/${{ github.repository }}/actions/artifacts/{} \
-              || echo "Some deletes failed (likely already removed) — continuing"
-            echo "Cleanup pass complete"
-          fi
+  # Artifact 配额清理已拆到独立的定时 workflow(.github/workflows/cleanup-artifacts.yml):
+  #   每天 cron 自动删 >7 天前的 artifact + 可手动触发。拆出去的原因:原来作为 build 的
+  #   收尾 job(needs: build-tauri),它一旦 cancelled/failed 就把整个 Build Tauri run 标红,
+  #   即便三个平台包全部打成功,看着像"打包失败"。解耦后 build run 只反映打包本身的成败。
