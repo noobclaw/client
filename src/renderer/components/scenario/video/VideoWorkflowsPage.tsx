@@ -3461,7 +3461,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                     <input type="range" min={1} max={10} step={1} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} className="flex-1 accent-rose-500" />
                     <span className="w-16 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">{count} {isZh ? '条' : ''}</span>
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条约 $0.03~$0.05(我们实收)' : '1-10 per run · ~$0.03–0.05 each (charged)'}</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条约 $0.03~$0.05' : '1-10 per run · ~$0.03–0.05 each'}</div>
                 </>
               )}
             </>
