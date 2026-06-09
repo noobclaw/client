@@ -3361,7 +3361,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
               <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '选源' : 'Source'} />
               <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '目标' : 'Target'} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '翻译' : 'Translate'} />
               <div className={`h-px w-6 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={4} active={step === 4} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
@@ -3432,16 +3432,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
           {/* 步骤 3:目标 */}
           {step === 3 && (
             <>
-              <label className={lbl}>{isZh ? '目标平台(可多选,成片发到哪)' : 'Target platforms'}</label>
-              <div className="flex flex-wrap gap-2">
-                {REMIX_PLATFORMS.map((p) => (
-                  <button key={p.id} type="button" onClick={() => toggleTarget(p.id)}
-                    className={`px-3 py-1.5 rounded-lg text-sm border ${targetPlatforms.includes(p.id) ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-                    {isZh ? p.zh : p.en}
-                  </button>
-                ))}
-              </div>
-              <label className={`${lbl} mt-4`}>{isZh ? '翻译模式' : 'Translate mode'}</label>
+              <label className={lbl}>{isZh ? '翻译模式' : 'Translate mode'}</label>
               <select className={inputCls} value={translateMode} onChange={(e) => setTranslateMode(e.target.value)}>
                 {REMIX_TRANSLATE_MODES.map((m) => <option key={m.id} value={m.id}>{isZh ? m.zh : m.en}</option>)}
               </select>
@@ -3455,7 +3446,7 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                     <input type="range" min={1} max={10} step={1} value={count} onChange={(e) => setCount(Number(e.target.value) || 1)} className="flex-1 accent-rose-500" />
                     <span className="w-16 text-center text-sm font-semibold text-rose-600 dark:text-rose-400">{count} {isZh ? '条' : ''}</span>
                   </div>
-                  <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条按条计费' : '1-10 per run · billed per clip'}</div>
+                  <div className="text-[11px] text-gray-400 mt-1">{isZh ? '1-10 条 / 次 · 每条约 $0.03~$0.05(我们实收)' : '1-10 per run · ~$0.03–0.05 each (charged)'}</div>
                 </>
               )}
             </>
@@ -3492,8 +3483,9 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
             <button type="button"
               onClick={() => {
                 setErr(null);
-                // 步骤 2(选源):手动校验链接;自动校验关键词。
+                // 步骤 2(来源):目标平台必选;手动校验链接;自动校验关键词。
                 if (step === 2) {
+                  if (!targetPlatforms.length) { setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
                   if (sourceMode === 'manual') {
                     const us = urlsText.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
                     if (!us.length) { setErr(isZh ? '请粘贴至少一个视频链接' : 'Paste at least one video link'); return; }
@@ -3505,8 +3497,6 @@ const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => void; onCr
                     if (!kw.length) { setErr(isZh ? '自动选品需要至少一个关键词' : 'Auto mode needs at least one keyword'); return; }
                   }
                 }
-                // 步骤 3(目标):目标平台必选。
-                if (step === 3 && !targetPlatforms.length) { setErr(isZh ? '请至少选一个目标平台' : 'Pick at least one target platform'); return; }
                 setStep((s) => (s + 1) as 1 | 2 | 3 | 4);
               }}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50">

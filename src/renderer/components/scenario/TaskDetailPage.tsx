@@ -1216,6 +1216,30 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           : (isZh ? '全部(图文 + 视频)' : 'All (images + videos)');
                         return <div>{isZh ? '搬运类型' : 'Media filter'}: 🎞 {lab}</div>;
                       })()}
+                      {/* 视频翻译二创(video_repost_remix):把向导里填的源/目标平台、翻译方向、
+                          翻译模式、最低播放量也展示出来(详情页之前太简单,只有赛道/关键词)。 */}
+                      {task.scenario_id === 'video_repost_remix' && (() => {
+                        const t = task as any;
+                        const PN: Record<string, string> = { douyin: '抖音', kuaishou: '快手', bilibili: 'B站', xhs: '小红书', tiktok: 'TikTok' };
+                        const LN: Record<string, string> = { zh: '中文', en: '英文', ja: '日语', ko: '韩语', es: '西班牙语', vi: '越南语', th: '泰语' };
+                        const TM: Record<string, string> = { auto: '自动(同语不译)', none: '不翻译', sub: '翻译字幕', sub_dub: '翻译字幕 + 配音' };
+                        const pn = (p: string) => PN[p] || p;
+                        const ln = (l: string) => LN[String(l || '').slice(0, 2).toLowerCase()] || l || '-';
+                        const src = Array.isArray(t.source_platforms) && t.source_platforms.length ? t.source_platforms.map(pn).join('/') : '-';
+                        const tgt = Array.isArray(t.target_platforms) && t.target_platforms.length ? t.target_platforms.map(pn).join('/') : (t.target_platform ? pn(t.target_platform) : '-');
+                        const isManual = t.source_mode === 'manual';
+                        return (
+                          <>
+                            <div>{isZh ? '来源' : 'Source'}: {isManual ? (isZh ? '📋 手动贴链接' : '📋 manual links') : (isZh ? `🔎 自动选品 · ${src}` : `🔎 auto · ${src}`)}</div>
+                            <div>{isZh ? '目标平台' : 'Targets'}: 🎯 {tgt}</div>
+                            <div>{isZh ? '翻译方向' : 'Translation'}: 🌐 {ln(t.source_lang)} → {ln(t.target_lang)}{t.translate_mode ? ` · ${isZh ? (TM[t.translate_mode] || t.translate_mode) : t.translate_mode}` : ''}</div>
+                            {!isManual && (t.min_play !== undefined && t.min_play !== null) && (
+                              <div>{isZh ? '最低播放量' : 'Min plays'}: 📊 {Number(t.min_play).toLocaleString()}</div>
+                            )}
+                            <div>{isZh ? '处理' : 'Processing'}: {t.originality_enhance !== false ? (isZh ? '✅ 原创度增强' : '✅ originality') : (isZh ? '—' : '—')}{t.saturation_check !== false ? (isZh ? ' · 发前查饱和' : ' · saturation check') : ''}</div>
+                          </>
+                        );
+                      })()}
                       <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
                         // v6.x: 详情页频次显示加上随机时间信息 — 短间隔展示 jitter 范围,
                         //   daily_random 展示 schedule_window。跟 wizard step3 那行 hint 对齐,
