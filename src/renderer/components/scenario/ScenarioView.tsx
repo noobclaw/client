@@ -34,7 +34,7 @@ import { ShipinhaoWorkflowsPage } from './ShipinhaoWorkflowsPage';
 import { ToutiaoWorkflowsPage } from './ToutiaoWorkflowsPage';
 import { KuaishouWorkflowsPage } from './KuaishouWorkflowsPage';
 import { BilibiliWorkflowsPage } from './BilibiliWorkflowsPage';
-import { VideoWorkflowsPage } from './video/VideoWorkflowsPage';
+import { VideoWorkflowsPage, VideoRepostRemixModal, LongToShortModal } from './video/VideoWorkflowsPage';
 import { WalletBadge } from '../common/WalletBadge';
 import LuckyBag from '../cowork/LuckyBag';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -133,6 +133,9 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
   const [wizardEditingTask, setWizardEditingTask] = useState<Task | null>(null);
+  // 视频二创(翻译二创 / 长转短)编辑:必须用 VideoWorkflowsPage 那套【专用多步向导】
+  // 回填,而不是通用 ConfigWizard(那套写死小红书文案、字段也对不上 orchestrator)。
+  const [videoEditTask, setVideoEditTask] = useState<Task | null>(null);
   // Link-mode edit modal (separate from the keyword wizard — they capture
   // completely different inputs and users were confusing them)
   const [linkEditTask, setLinkEditTask] = useState<Task | null>(null);
@@ -340,6 +343,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const openWizardEdit = (task: Task, scenario: Scenario) => {
+    // 视频二创(翻译二创 video_repost_remix / 长转短 long_to_short):编辑必须用
+    // 跟【新建】完全相同的那套专用多步向导回填,不能落到通用 ConfigWizard
+    // (那套是小红书关键词向导,字段对不上 orchestrator,会导致选品平台/关键词不生效)。
+    if (scenario.id === 'video_repost_remix' || scenario.id === 'long_to_short') {
+      setVideoEditTask(task);
+      return;
+    }
     // Link-mode tasks have a completely different input shape (URLs vs
     // keywords) — open the dedicated link editor instead of the keyword
     // wizard so users aren't asked to pick a track for links they already
@@ -982,6 +992,24 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           initialTask={wizardEditingTask}
           onCancel={closeWizard}
           onSave={handleWizardSave}
+        />
+      )}
+
+      {/* 视频二创编辑 — 复用新建用的专用多步向导,数据回填(翻译二创 / 长转短) */}
+      {videoEditTask && videoEditTask.scenario_id === 'video_repost_remix' && (
+        <VideoRepostRemixModal
+          isZh={i18nService.currentLanguage === 'zh'}
+          editTask={videoEditTask}
+          onClose={() => setVideoEditTask(null)}
+          onSaved={async () => { setVideoEditTask(null); await refreshAll(); }}
+        />
+      )}
+      {videoEditTask && videoEditTask.scenario_id === 'long_to_short' && (
+        <LongToShortModal
+          isZh={i18nService.currentLanguage === 'zh'}
+          editTask={videoEditTask}
+          onClose={() => setVideoEditTask(null)}
+          onSaved={async () => { setVideoEditTask(null); await refreshAll(); }}
         />
       )}
 
