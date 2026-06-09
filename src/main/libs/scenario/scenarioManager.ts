@@ -724,6 +724,7 @@ function resourceKeysForPack(
   pack: {
     manifest?: {
       id?: string;
+      platform?: string;
       platforms?: string[];
       tab_url_pattern?: string;
       additional_tab_patterns?: string[];
@@ -735,6 +736,13 @@ function resourceKeysForPack(
   const pushKey = (k: string): void => {
     if (k && keys.indexOf(k) < 0) keys.push(k);
   };
+
+  // 顶层平台互斥锁:同一【顶层平台】(douyin / xhs / video / binance …)任意两个任务
+  // 一次只能跑一个 —— 防同账号双开(如抖音创作中心 + 主站互动同时跑触风控),也让「视频类」
+  // (platform='video' 的二创/长转短)同时只跑一个。不同平台仍可并发(推特+币安互不影响)。
+  // sub_platform(douyin_main vs douyin_creator)key 不同会漏挡,这把顶层锁补上。
+  const topPlatform = pack?.manifest?.platform;
+  if (typeof topPlatform === 'string' && topPlatform) pushKey(`platform-top:${topPlatform}`);
 
   // v6.x sub_platform claims.
   const platforms = pack?.manifest?.platforms;
@@ -784,6 +792,16 @@ function findBusyResource(keys: string[]): string | null {
 // v5.x+: 补上 youtube / tiktok / douyin —— 之前漏了,导致这三个平台被资源
 // 锁/并发上限拦下时 toast 显示原始 regex 字符串,用户以为没提示。
 function humanizePlatformFromKey(key: string): string {
+  // 顶层平台互斥 key("platform-top:douyin" / "platform-top:video" 等)。
+  if (key.startsWith('platform-top:')) {
+    const p = key.slice('platform-top:'.length);
+    const map: Record<string, string> = {
+      douyin: '抖音', kuaishou: '快手', bilibili: '哔哩哔哩', xhs: '小红书', x: '推特',
+      binance: '币安广场', youtube: 'YouTube', tiktok: 'TikTok', shipinhao: '视频号',
+      toutiao: '头条号', video: '视频创作',
+    };
+    return map[p] || p;
+  }
   // v6.x sub_platform keys ("platform:xhs_creator", etc).
   // PR6.5: delegate to subPlatformRegistry so labels stay in sync with
   // group title generation + future ScopedTab routing.
