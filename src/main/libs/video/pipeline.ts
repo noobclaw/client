@@ -25,7 +25,7 @@ import { generateScript, generateSearchTerms, detectLang } from './scriptWriter'
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
-import { generateSeedanceClips, type SeedanceClipResult } from './seedanceProvider';
+import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -725,6 +725,34 @@ async function runVideoPipeline(
         // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
         durationSec: Math.max(4, Math.min(12, Math.ceil(sceneDurations[i]))),
       }));
+      // ── 故事板模式:先用 Seedream 组图出每镜【首帧】(同角色/画风),再图生视频(i2v,更稳)──
+      //   首帧也存一份到本次输出目录的「故事板」文件夹(用户要的本地存档)。
+      //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
+      try {
+        tracker.progress('🎨 生成故事板首帧(Seedream 组图,保持角色一致)…');
+        const keyframes = await generateStoryboard({
+          shots: aiScenes.map((sc) => sc.prompt),
+          character: [input.persona, input.track].filter(Boolean).join(' · '),
+          count: aiScenes.length,
+        });
+        if (keyframes.length > 0) {
+          const sbDir = path.join(destDir, '故事板');
+          try { fs.mkdirSync(sbDir, { recursive: true }); } catch { /* ignore */ }
+          keyframes.forEach((dataUrl, i) => {
+            if (i < aiScenes.length) (aiScenes[i] as SeedanceSceneSpec).keyframeDataUrl = dataUrl;
+            try {
+              const m = /^data:(image\/\w+);base64,(.+)$/.exec(dataUrl);
+              if (m) {
+                const ext = m[1] === 'image/png' ? 'png' : m[1] === 'image/webp' ? 'webp' : 'jpg';
+                fs.writeFileSync(path.join(sbDir, `镜${i + 1}.${ext}`), Buffer.from(m[2], 'base64'));
+              }
+            } catch { /* 单张存盘失败不影响 */ }
+          });
+          tracker.progress(`🎨 故事板已生成 ${keyframes.length} 张首帧(已存「故事板」文件夹),转图生视频…`);
+        } else {
+          tracker.progress('🎨 故事板未生成,退化为文生视频…');
+        }
+      } catch { /* 故事板异常 → 退化文生视频 */ }
       tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段${resolution ? `(${resolution})` : ''}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''}…`);
       const clipResults = await generateSeedanceClips({
         scenes: aiScenes,

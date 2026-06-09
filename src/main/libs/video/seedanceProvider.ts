@@ -35,6 +35,8 @@ export interface SeedanceSceneSpec {
   prompt: string;
   /** 该镜目标时长(秒);内部 clamp 到 [4,12](1.5-pro 下限 4)。 */
   durationSec: number;
+  /** 该镜【故事板首帧】data URL(故事板模式 i2v);有则用它做图生视频,无则退化文生视频。 */
+  keyframeDataUrl?: string;
 }
 
 export interface SeedanceClipResult {
@@ -157,6 +159,36 @@ async function downloadVideo(url: string, outPath: string): Promise<void> {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * 故事板组图:调服务端 Seedream 组图(/api/image/storyboard),一次出 N 张【同角色/同画风】
+ * 首帧 dataURL。失败返回 [](pipeline 退化为纯文生视频)。服务端按张计费。
+ */
+export async function generateStoryboard(opts: {
+  shots: string[]; character?: string; style?: string; count?: number;
+}): Promise<string[]> {
+  const headers = authHeaders();
+  if (!headers) return [];
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 200_000);
+  try {
+    const resp = await fetch(`${apiBase()}/api/image/storyboard`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        shots: opts.shots,
+        character: opts.character || '',
+        style: opts.style || '',
+        count: opts.count || opts.shots.length,
+      }),
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) return [];
+    const json: any = await resp.json();
+    return Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
+  } catch { return []; }
+  finally { clearTimeout(timer); }
+}
+
 /** 生成单镜:create → 轮询 → 下载。失败返回 {path:null,error}(不抛,交给上层降级)。 */
 async function generateOne(
   idx: number, scene: SeedanceSceneSpec, imageUrls: string[],
@@ -165,8 +197,10 @@ async function generateOne(
   onProgress?: (m: string) => void,
 ): Promise<SeedanceClipResult> {
   const duration = Math.max(4, Math.min(12, Math.round(scene.durationSec || 5)));
+  // 故事板模式:该镜有首帧图 → 用它做 i2v(图生视频,更稳);否则用全局参考图 / 纯文生视频。
+  const imgs = (scene.keyframeDataUrl && scene.keyframeDataUrl.length > 0) ? [scene.keyframeDataUrl] : imageUrls;
   try {
-    const { taskId, chargeId, chargedTokens } = await createClip(scene.prompt, imageUrls, duration, ratio, resolution, tier);
+    const { taskId, chargeId, chargedTokens } = await createClip(scene.prompt, imgs, duration, ratio, resolution, tier);
     // 每镜【先扣费再生成】(服务端 /seedance/create 原子扣费),把这笔扣费显出来 ——
     // 否则用户只看到"生成中"、看不到扣费,会以为没收钱(失败镜服务端会自动退)。
     onProgress?.(chargedTokens > 0
