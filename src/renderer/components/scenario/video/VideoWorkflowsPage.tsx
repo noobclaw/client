@@ -422,10 +422,20 @@ const VideoLanding: React.FC<{
   // 订阅协调器 → 「生成中」徽章实时刷新(抢占式:同时只 1 个在跑,无排队位次)。
   const [, setQv] = useState(0);
   useEffect(() => videoQueue.subscribe(() => setQv((v) => v + 1)), []);
+  // 轮询 scenario 引擎【真实运行态】—— 二创/长转短任务的定时是 scenario 调度器自动跑的
+  // (不经 videoQueue),只看 videoQueue 会漏掉「定时自动跑」的任务 → 列表看不到哪个在跑。
+  const [runningIds, setRunningIds] = useState<string[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const tick = () => { scenarioService.getRunningTaskIds().then((ids) => { if (alive) setRunningIds(Array.isArray(ids) ? ids : []); }).catch(() => { /* ignore */ }); };
+    tick();
+    const t = setInterval(tick, 3000);
+    return () => { alive = false; clearInterval(t); };
+  }, []);
   const total = tasks.length + scenarioTasks.length;
-  // 抢占式只有「生成中」一种态(绿);未在跑返回 null。
+  // 「生成中」(绿):videoQueue 在跑 或 scenario 引擎在跑(含定时自动触发)。
   const queueBadge = (refId: string): React.ReactNode => {
-    if (videoQueue.isRunning(refId)) {
+    if (videoQueue.isRunning(refId) || runningIds.includes(refId)) {
       return <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-green-500/15 text-green-500 font-medium shrink-0">⏳ {isZh ? '生成中' : 'Running'}</span>;
     }
     return null;
@@ -496,6 +506,7 @@ const VideoLanding: React.FC<{
             scenario={scioMap.get(t.scenario_id)}
             onClick={() => onOpenScenarioTask?.(t.id)}
             queueBadge={queueBadge(t.id)}
+            running={videoQueue.isRunning(t.id) || runningIds.includes(t.id)}
           />
         ))}
         {/* 本地一键成片任务 */}
@@ -583,10 +594,10 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
 
 // scenario 二创任务卡(翻译二创 / 长转短):布局对齐本地 AI 成片卡(VideoTaskCard),
 // 让「我的视频任务」列表里两类卡片高度 / 内容一致(类型徽章 + 赛道/人设/关键词 + footer)。
-const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; onClick: () => void; queueBadge?: React.ReactNode }> = ({ isZh, task, scenario, onClick, queueBadge }) => {
+const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; onClick: () => void; queueBadge?: React.ReactNode; running?: boolean }> = ({ isZh, task, scenario, onClick, queueBadge, running }) => {
   const name = (isZh ? scenario?.name_zh : scenario?.name_en) || scenario?.name_zh || task.scenario_id;
   const icon = scenario?.icon || '🎬';
-  const isRunning = videoQueue.isRunning(task.id);
+  const isRunning = running ?? videoQueue.isRunning(task.id);
   const freq = REMIX_INTERVALS.find((it) => it.id === task.run_interval);
   return (
     <button
