@@ -2186,7 +2186,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
-                    cost={isZh ? '按秒计费 · 生成前显示报价,失败镜头自动退' : 'Per-second · quote shown before generation, auto-refund on failure'}
+                    cost={isZh ? '按秒计费 · 失败镜头自动退' : 'Per-second · auto-refund on failed shots'}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
                 </div>
