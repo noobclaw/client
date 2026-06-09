@@ -17,6 +17,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
 import { noobClawAuth } from '../../../services/noobclawAuth';
+import { noobClawApi } from '../../../services/noobclawApi';
 import { scenarioService } from '../../../services/scenario';
 import { getBackendApiUrl } from '../../../services/endpoints';
 import {
@@ -1855,8 +1856,18 @@ const VideoConfigModal: React.FC<{
       : 'stock',
   );
   const [localVideos, setLocalVideos] = useState<string[]>(editTask?.input.localVideos || []);
-  // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 分辨率档(成本敏感)。
+  // AI 自动成片(Seedance):参考图(≤2,风格/人设统一)+ 清晰度(480/720,用户可选)。
   const [referenceImages, setReferenceImages] = useState<string[]>(editTask?.input.referenceImages || []);
+  // 清晰度:480p / 720p 二选一(传后端;单价/千token 不变,只是 720p token 数更多)。默认 720p。
+  const [seedanceResolution, setSeedanceResolution] = useState<'480p' | '720p'>(
+    editTask?.input.seedanceResolution === '480p' ? '480p' : '720p');
+  // 纯AI 每秒卖价($/秒)由服务端按清晰度算,动态展示(不写死)。
+  const [aiUsdPerSec, setAiUsdPerSec] = useState<number | null>(null);
+  useEffect(() => {
+    let alive = true;
+    noobClawApi.seedanceRate(seedanceResolution).then((r) => { if (alive && r) setAiUsdPerSec(r.usdPerSec); });
+    return () => { alive = false; };
+  }, [seedanceResolution]);
   // Seedance 档位 / 分辨率客户端不再决定:不传,后端按 system_config 定(admin 可切 1.0/1.5 测试)。
   const [mode, setMode] = useState<GenMode>(editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock');
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
@@ -2048,7 +2059,8 @@ const VideoConfigModal: React.FC<{
     // pure_ai 模式 materialSource 视而不见,无串台可能。
     engine: mode === 'pure_ai' ? 'ai' : 'stock',
     // 档位/分辨率不再由客户端传 → 后端按 system_config 决定(可在 admin 切 1.0/1.5/分辨率测试)。
-    seedanceResolution: undefined,
+    // 清晰度用户可选(480/720)传后端;档位仍服务端定(seedanceModel 不传)。
+    seedanceResolution: mode === 'pure_ai' ? seedanceResolution : undefined,
     seedanceModel: undefined,
     referenceImages: mode === 'pure_ai' ? referenceImages.slice(0, 2) : [],
     // 素材来源二选一,不混拼:仅 stock 模式下的 local 来源才带 localVideos;
@@ -2186,7 +2198,9 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
-                    cost={isZh ? '按秒计费 · 约 $0.04/秒(720p)· 失败镜头自动退' : 'Per-second · ~$0.04/s (720p) · auto-refund on failed shots'}
+                    cost={isZh
+                      ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})· 失败镜头自动退`
+                      : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution}) · auto-refund on failed shots`}
                     costTag={isZh ? '画质最佳' : 'Best quality'}
                   />
                 </div>
@@ -2371,6 +2385,19 @@ const VideoConfigModal: React.FC<{
                         ＋ {isZh ? '添加参考图' : 'Add reference image'}
                       </button>
                     )}
+                  </div>
+                </Field>
+                <Field
+                  label={isZh ? '清晰度' : 'Resolution'}
+                  hint={isZh ? '720p 更清晰、按秒计费更高;480p 更省。单价不变,只是 720p 每秒消耗更多' : '720p sharper (pricier per sec), 480p cheaper; same unit price, 720p uses more tokens/sec'}
+                >
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['480p', '720p'] as const).map((r) => (
+                      <button key={r} type="button" onClick={() => setSeedanceResolution(r)}
+                        className={`px-3 py-2 rounded-lg text-sm border transition-colors ${seedanceResolution === r ? 'border-rose-500 bg-rose-500/10 text-rose-600 dark:text-rose-400 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-rose-300'}`}>
+                        {r === '480p' ? (isZh ? '480p · 省' : '480p · Cheaper') : (isZh ? '720p · 清晰' : '720p · Sharper')}
+                      </button>
+                    ))}
                   </div>
                 </Field>
               </>
