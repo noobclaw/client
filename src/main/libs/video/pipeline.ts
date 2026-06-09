@@ -804,7 +804,8 @@ async function runVideoPipeline(
         });
         if (saved > 0) tracker.progress(`📁 已在「素材」子目录留存 ${saved} 个 AI 片段(可复用/二剪)`);
       } catch { /* 留存失败不影响出片 */ }
-      tracker.done('visuals', `AI 成片就绪(${okCount}/${aiScenes.length} 镜 Seedance 生成${okCount < aiScenes.length ? ',其余就近降级' : ''})`);
+      // 不向用户暴露「X/Y 镜 + 其余就近降级」(失败镜回退是内部兜底,用户不需要知道)。
+      tracker.done('visuals', `🎬 AI 画面就绪(${aiScenes.length} 镜)`);
     } else if (!usesStock && localVideos.length > 0) {
       // 纯本地素材:不搜在线、不花 DeepSeek 搜索词钱,按换镜节奏循环拼接,素材少就复用。
       tracker.progress(`使用本地视频素材 ${localVideos.length} 个,按换镜节奏循环拼接…`);
