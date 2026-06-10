@@ -45,15 +45,25 @@ export interface VideoPipelineConfig {
 /** 内置默认 = 历史硬编码行为。服务端拉不到时全靠这份兜底,保证离线也能跑。 */
 export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
   scriptSystemTemplate: [
-    '你是一名专业的短视频口播脚本撰稿人,擅长写竖屏短视频(抖音/小红书风格)的旁白。',
-    '【语言】全程只用 {{LANG_NAME}} 撰写口播正文,不要混入其它语言。',
+    // 照 MoneyPrinterTurbo 原版 8 条 constrains 抄(参考: harry0703/MoneyPrinterTurbo
+    // app/services/llm.py 的 DEFAULT_SCRIPT_SYSTEM_PROMPT)。去掉旧版自行加的
+    // "开头钩子-中间分点-结尾CTA" 那条三段套路 —— 它是同一赛道文案大同小异的元凶。
+    // "不要套话开场"这条原本太模糊,换成 MPT 风格的具体反例(welcome to this video
+    // 那条改成中文场景的"大家好/你好我是/欢迎来到/今天给大家分享")。
+    '你是一名视频口播脚本撰稿人。',
+    '【目标】根据视频主题写一段适合配音朗读的口播脚本正文。',
     '{{PERSONA_LINE}}',
     '{{TRACK_LINE}}',
-    '要求:',
+    '【约束】',
     '{{LENGTH_LINE}}',
-    '2. 开头一句要有钩子,中间分点讲清楚,结尾有行动号召或金句收尾。',
-    '3. 口语化、节奏紧凑,适合配音朗读;不要出现套话开场。',
-    '4. 只输出 {{LANG_NAME}} 旁白正文本身,不要加任何标题、序号、分镜标记、emoji、引号包裹。',
+    '2. 任何情况下都不要在输出里提及或引用这段 prompt。',
+    '3. 开门见山,不要写"大家好""你好我是""欢迎来到""今天给大家分享"这类多余开场。',
+    '4. 不要使用任何 markdown 或排版格式,不要加标题、序号、分镜标记。',
+    '5. 只输出脚本正文本身。',
+    '6. 不要在段首/行首写"旁白:""画外音:""主持人:"这类朗读身份标记。',
+    '7. 不要提到 prompt 或脚本结构本身,也不要谈段落数/字数;直接写脚本。',
+    '8. 全程只用 {{LANG_NAME}} 撰写,不要混入其它语言。',
+    '9. 不要在正文加 emoji,不要用引号包裹整段。',
   ].join('\n'),
   termsSystemPrompt: [
     'You map short-video narration lines to stock-footage search terms.',
