@@ -79,6 +79,10 @@ interface ScenarioViewProps {
   /** v6.x: create 模式(「一键涨粉」新建页)右上角「查看已有的涨粉任务」按钮 →
    *  切到「我的涨粉任务」manage 菜单。由 App 注入,内部切 mainView='quickuse'。 */
   onSwitchToManage?: () => void;
+  /** 进入/退出【任务详情 / 运行记录详情】时上报。create / runs 菜单下钻到任务详情时,
+   *  任务详情逻辑上属于「我的涨粉任务」→ App 据此把左侧菜单高亮切到「我的涨粉任务」,
+   *  使侧栏高亮 + 顶栏标题不再停在「新建涨粉任务 / 涨粉运行记录」。 */
+  onInDetailChange?: (inDetail: boolean) => void;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -109,12 +113,19 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onShowInvite,
   mode = 'manage',
   onSwitchToCreate,
+  onInDetailChange,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
   //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
   const baseSection: SectionId = mode === 'create' ? 'create' : mode === 'runs' ? 'history' : 'tasks';
   const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'binance' });
+
+  // 下钻到【任务详情 / 运行记录详情】时上报给 App —— 任务详情逻辑上属于「我的涨粉任务」,
+  // 让 App 把左侧菜单高亮 + 顶栏标题切过去(create/runs 菜单下钻后不再停在原菜单)。
+  const inDetailView = view.kind === 'task_detail' || view.kind === 'record_detail';
+  useEffect(() => { onInDetailChange?.(inDetailView); }, [inDetailView, onInDetailChange]);
+  useEffect(() => () => { onInDetailChange?.(false); }, [onInDetailChange]);
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
   // every WorkflowsPage are clickable from first paint, not greyed out
@@ -261,18 +272,11 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   };
 
   const setPlatform = (platform: PlatformId) => {
-    // 视频创作是本地工具,没有"运行记录" section。
-    // 从【别的平台的创建态】切到视频 tab 时,应直接进【多平台视频创作新建页】
-    // (两个 card),而不是掉回视频任务 list —— 跟用户在「新建涨粉任务」里切
-    // tab 的预期一致。其余情况(从任务页/记录页切过来)落到 'tasks'(视频落地页)。
-    if (platform === 'video') {
-      const section: SectionId = currentSection === 'create' ? 'create' : 'tasks';
-      setView({ kind: 'main', section, platform });
-      return;
-    }
-    // 平台间互切一律沿用当前 section:在【创建态】点别的平台 tab,就停在该平台的
-    // 创建页(跟用户预期一致 —— 进了"新建视频任务"再点币安,应看到币安的新建页,
-    // 而不是掉回币安任务 list)。其余 section(tasks/history)同样跟随。
+    // 平台间互切一律沿用当前 section(tasks/history/create):
+    //   - 创建态点别的平台 tab → 停在该平台的创建页(跟用户在"新建涨粉任务"里切 tab 的预期一致);
+    //   - 任务页 / 运行记录页 切 tab → 看该平台对应的同一 section。
+    // 视频创作以前被特判过(强制掉到 'tasks'),但 VideoWorkflowsPage 已经完整支持
+    //   三种 section(含 history → VideoRunHistory),不需要再特判。
     setView({ kind: 'main', section: currentSection, platform });
   };
 
@@ -774,11 +778,15 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
             </div>
           )}
           <h1 className="text-lg font-semibold dark:text-claude-darkText text-claude-text">
-            {mode === 'create'
-              ? i18nService.t('quickUse')
-              : mode === 'runs'
-                ? (i18nService.currentLanguage === 'zh' ? '涨粉运行记录' : 'Run History')
-                : i18nService.t('myFanTasks')}
+            {/* 下钻到任务/运行记录详情时,标题归到「我的涨粉任务」(详情逻辑上属于该菜单),
+                不再停在「新建涨粉任务 / 涨粉运行记录」。 */}
+            {inDetailView
+              ? i18nService.t('myFanTasks')
+              : mode === 'create'
+                ? i18nService.t('quickUse')
+                : mode === 'runs'
+                  ? (i18nService.currentLanguage === 'zh' ? '涨粉运行记录' : 'Run History')
+                  : i18nService.t('myFanTasks')}
           </h1>
           {/* v1.x: 钱包余额 + 充值入口紧跟标题,跟 CoworkView 顶栏一致 */}
           <div className="non-draggable">
