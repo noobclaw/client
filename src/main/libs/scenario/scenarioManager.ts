@@ -245,11 +245,6 @@ function initProgress(taskId: string, scenarioId?: string): void {
       '选品 / 收集链接。请勿切换浏览器标签页。',
       '逐条:下载无水印源 → 本地转写 → 翻译 → 遮字幕+二创合成，存本地。请勿切换浏览器标签页。',
     ],
-    // 长视频转爆款短片 = 2 步:收集长视频链接 → 下载·转写·选高光·切竖屏。
-    long_to_short: [
-      '收集长视频链接。请勿切换浏览器标签页。',
-      '逐条:下载源 → 本地转写 → AI 选高光 → 切竖屏+烧字幕，存本地。请勿切换浏览器标签页。',
-    ],
   };
   const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [
     '采集爆款文章。请勿切换浏览器标签页。',
