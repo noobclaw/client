@@ -1484,27 +1484,17 @@ const VideoTaskDetail: React.FC<{
           StepLogBox:日志贴在所属步骤里)。完整成片预览 / 报错明细仍在
           「运行记录详情」看,通过下面的「查看本次运行明细 →」点进去。 */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
-          {/* 出片去向:按用户选择(目前自动发布未上线,恒为「存本地」)。 */}
-          {(() => {
-            const toLocal = (task.input.publishTarget || 'local') === 'local';
-            return (
-              <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${toLocal ? 'text-sky-500 bg-sky-500/10 border-sky-500/30' : 'text-green-500 bg-green-500/10 border-green-500/30'}`}>
-                {toLocal ? (isZh ? '📂 自动保存到本地' : '📂 Saved locally') : (isZh ? '🚀 自动发布到各平台' : '🚀 Auto-publish')}
-              </span>
-            );
-          })()}
-        </div>
-        {latestRun && (
-          <button
-            type="button"
-            onClick={() => onOpenRecord(latestRun.id)}
-            className="text-xs font-medium text-rose-500 hover:text-rose-600 transition-colors"
-          >
-            {isZh ? '查看本次运行明细 →' : 'View run details →'}
-          </button>
-        )}
+        <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
+        {/* 出片去向徽章放右侧(目前自动发布未上线,恒为「存本地」)。
+            「查看本次运行明细 →」已移除:头部「上次运行」卡片已能点进运行记录,这里重复。 */}
+        {(() => {
+          const toLocal = (task.input.publishTarget || 'local') === 'local';
+          return (
+            <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${toLocal ? 'text-sky-500 bg-sky-500/10 border-sky-500/30' : 'text-green-500 bg-green-500/10 border-green-500/30'}`}>
+              {toLocal ? (isZh ? '📂 自动保存到本地' : '📂 Saved locally') : (isZh ? '🚀 自动发布到各平台' : '🚀 Auto-publish')}
+            </span>
+          );
+        })()}
       </div>
       {latestRun ? (
         <StepLogList isZh={isZh} steps={latestRun.steps} logs={latestRun.logs} />
