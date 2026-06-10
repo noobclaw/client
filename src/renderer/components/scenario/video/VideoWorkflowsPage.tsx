@@ -375,7 +375,10 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md' }> = ({ isZh, siz
 
 /** 关键词 chips(最多 n 个,超出显示 +N)。 */
 const KeywordChips: React.FC<{ keywords: string[]; max?: number }> = ({ keywords, max = 6 }) => {
-  const kws = (keywords || []).filter(Boolean);
+  let kws = (keywords || []).filter(Boolean);
+  // 兼容把整串关键词存成【单元素数组】的任务(如二创):按空白拆成独立 chip,
+  // 跟本地 AI 成片卡的多元素 keywords 视觉一致(否则二创卡关键词糊成一个灰框)。
+  if (kws.length === 1 && /\s/.test(kws[0])) kws = kws[0].split(/\s+/).filter(Boolean);
   if (kws.length === 0) return <span className="text-gray-400">-</span>;
   const shown = kws.slice(0, max);
   const rest = kws.length - shown.length;
@@ -671,14 +674,14 @@ const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; on
         )}
       </div>
 
-      {/* footer — 查看/运行 + 频次胶囊(对齐 AI 卡 footer 结构) */}
+      {/* footer — 频率自然语言(对齐 AI 卡:once 不显示「不重复」胶囊,改成「手动单次」;
+          去掉「查看/运行」提示文字,点整卡即可进详情运行)。 */}
       <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-xs flex items-center justify-between gap-2">
-        <span className="text-rose-500 font-medium">{isZh ? '查看 / 运行 →' : 'Open / Run →'}</span>
-        {freq && (
-          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
-            ⏰ {isZh ? freq.zh : freq.en}
-          </span>
-        )}
+        <span className="text-gray-500 dark:text-gray-400">
+          {!freq || freq.id === 'once'
+            ? (isZh ? '✋ 手动单次' : '✋ Manual')
+            : `⏰ ${isZh ? freq.zh : freq.en}${isZh ? ' 自动运行' : ' auto'}`}
+        </span>
       </div>
     </button>
   );
@@ -1979,10 +1982,17 @@ const VideoConfigModal: React.FC<{
   }, []);
 
   // 步骤 4:字幕 + 出片
-  // 字幕默认值【按模式】决定,而不是盲读历史值:纯 AI(Seedance)= 纯画面默认不烧字幕;
-  // 在线素材/本地素材本身没有内嵌字幕,必须烧录才有字幕 → 默认开。pure_ai 以 engine==='ai' 判。
-  // (修复:早先以 pure_ai 建过、残留 subtitleEnabled=false 的在线素材任务,编辑时字幕错误地默认关。)
-  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(editTask?.input.engine === 'ai' ? false : true);
+  // 字幕开关回填规则:
+  //   · 新建:默认开(在线/本地素材无内嵌字幕,必须烧录才有字幕;纯 AI 没配音时这步会被
+  //     上面的「纯画面模式」分支挡掉,值无所谓)。
+  //   · 编辑【纯 AI(engine==='ai')】:按任务【实际保存值】回填 —— 建时开了字幕(配音+字幕)
+  //     就回填开,不能因为是 AI 引擎就一律强制关(否则用户每次编辑都丢掉字幕设置)。
+  //   · 编辑【在线/本地素材】:始终默认开,忽略早期以 pure_ai 建过残留的 subtitleEnabled=false。
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(
+    editTask
+      ? (editTask.input.engine === 'ai' ? editTask.input.subtitleEnabled === true : true)
+      : true,
+  );
   // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。默认关 = 纯画面片;用户可在「音频」步开启,
   // 开启后跟普通模式一样:对分镜稿 TTS 配音 + 按字幕开关烧录(pipeline 早已支持 ai 模式配音)。
   const [aiNarration, setAiNarration] = useState<boolean>(editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false);
