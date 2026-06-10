@@ -811,14 +811,17 @@ async function runVideoPipeline(
         tier: input.seedanceModel,
         ratio: aspectToSeedanceRatio(input.aspect),
         destDir: assetDir,
-        onProgress: (m) => tracker.progress(m),
+        // 每镜【真成功落盘】时 seedanceProvider 会带 chargedTokens 调回来 → 立即累加进
+        //   「上次消耗」,UI 实时跟进度日志同步涨。失败镜不带 charged,所以语义还是
+        //   「只计成功镜」(原 generateSeedanceClips 返回后再 reduce 累加的做法跟用户
+        //   逐镜「已扣 X 积分」日志严重对不上 —— 任务跑完前顶部一直是 0)。
+        //   costUsd 按 1 USDT=1M tokens 折算(= 积分/1e6)供 $ 展示。
+        onProgress: (m, charged) => {
+          if (charged && charged > 0) tracker.addTokens(charged, charged / 1_000_000);
+          tracker.progress(m);
+        },
         signal,
       });
-      // Seedance 逐镜扣费计入「本次消耗」—— 否则只统计了 DeepSeek 写稿(几百积分),
-      // 用户看到「本次消耗 435」却实际被逐镜扣了上百万积分,严重对不上。只计【成功镜】
-      // (失败镜服务端已退);costUsd 按 1 USDT=1M tokens 折算(= 积分/1e6)供 $ 展示。
-      const seedanceCharged = clipResults.filter((r) => r.path).reduce((s, r) => s + (r.chargedTokens || 0), 0);
-      if (seedanceCharged > 0) tracker.addTokens(seedanceCharged, seedanceCharged / 1_000_000);
       const okCount = clipResults.filter((r) => r.path).length;
       if (okCount === 0) {
         // 原始 sample(如 "fetch failed")只打到 console 供排查,不展示给用户;

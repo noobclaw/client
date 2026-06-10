@@ -64,7 +64,12 @@ export interface GenerateSeedanceOptions {
   perClipTimeoutSec?: number;
   /** 中断信号:用户「停止」时停止轮询、不再生成新镜。 */
   signal?: AbortSignal;
-  onProgress?: (msg: string) => void;
+  /**
+   * 进度回调。除常规进度文案外,在每镜【真成功落盘】时会带上该镜 chargedTokens,
+   * pipeline 据此实时累加「上次消耗」(否则要等整个 generateSeedanceClips 跑完才累加,
+   * 用户看不到顶部消耗跟着进度涨)。
+   */
+  onProgress?: (msg: string, chargedTokens?: number) => void;
 }
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -220,7 +225,7 @@ async function generateOne(
   idx: number, scene: SeedanceSceneSpec, imageUrls: string[],
   ratio: string, resolution: string | undefined, tier: string | undefined, destDir: string, timeoutSec: number,
   signal: AbortSignal | undefined,
-  onProgress?: (m: string) => void,
+  onProgress?: (m: string, chargedTokens?: number) => void,
 ): Promise<SeedanceClipResult> {
   const duration = Math.max(4, Math.min(12, Math.round(scene.durationSec || 5)));
   // 故事板模式:该镜有首帧图 → 用它做 i2v(图生视频,更稳);否则用全局参考图 / 纯文生视频。
@@ -241,7 +246,10 @@ async function generateOne(
         if (!st.videoUrl) return { path: null, error: '成片无 video_url', chargedTokens };
         const outPath = path.join(destDir, `seedance_${idx + 1}_${taskId.slice(-8)}.mp4`);
         await downloadVideo(st.videoUrl, outPath);
-        onProgress?.(`✅ 第 ${idx + 1} 镜 AI 片段就绪`);
+        // 镜真成功落盘 → 把该镜 chargedTokens 透给 onProgress,pipeline 实时累加进「上次消耗」。
+        //   失败镜走不到这条 emit(上方 return path:null),所以语义仍是「只计成功镜」,
+        //   跟服务端「有 token 输出不退、0 输出才退」的退款策略对齐。
+        onProgress?.(`✅ 第 ${idx + 1} 镜 AI 片段就绪`, chargedTokens);
         return { path: outPath, chargedTokens };
       }
       // 失败镜:服务端按 chargeId 自动退款,不计入实扣总额。
