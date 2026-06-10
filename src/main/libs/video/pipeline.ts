@@ -765,9 +765,10 @@ async function runVideoPipeline(
           });
           tracker.progress(`🎨 故事板已生成 ${keyframes.length} 张首帧(已存「故事板」文件夹),转图生视频…`);
         } else {
-          tracker.progress('🎨 故事板未生成,退化为文生视频…');
+          // 把服务端真实失败原因显示出来(否则只剩通用「未生成」,没法排查 Seedream 端报错)。
+          tracker.progress(`🎨 故事板未生成${storyboard.error ? `(${storyboard.error})` : ''},退化为文生视频…`);
         }
-      } catch { /* 故事板异常 → 退化文生视频 */ }
+      } catch (e) { tracker.progress(`🎨 故事板异常(${String((e as any)?.message || e).slice(0, 120)}),退化为文生视频…`); }
       tracker.progress(`🎬 AI 自动成片:逐镜生成 ${aiScenes.length} 个片段${resolution ? `(${resolution})` : ''}${refImagesAi.length ? ` · ${refImagesAi.length} 张参考图统一风格` : ''}…`);
       const clipResults = await generateSeedanceClips({
         scenes: aiScenes,

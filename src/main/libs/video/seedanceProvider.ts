@@ -173,6 +173,8 @@ export interface StoryboardResult {
   images: string[];
   /** 服务端按张实扣的积分(失败/未配置为 0);计入「本次消耗」总额。 */
   chargedTokens: number;
+  /** 失败原因(服务端返回的 error/detail 或异常信息),供进度展示排查;成功为空。 */
+  error?: string;
 }
 
 /**
@@ -199,11 +201,17 @@ export async function generateStoryboard(opts: {
       }),
       signal: ctrl.signal,
     });
-    if (!resp.ok) return { images: [], chargedTokens: 0 };
+    if (!resp.ok) {
+      // 把服务端真实失败原因带回去(否则 pipeline 只能显示通用「未生成」,无从排查)。
+      let detail = '';
+      try { const ej: any = await resp.json(); detail = ej?.detail || ej?.error || ''; }
+      catch { try { detail = (await resp.text()).slice(0, 200); } catch { /* ignore */ } }
+      return { images: [], chargedTokens: 0, error: `HTTP ${resp.status}${detail ? ' · ' + detail : ''}` };
+    }
     const json: any = await resp.json();
     const images = Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
-    return { images, chargedTokens: Number(json?.chargedTokens) || 0 };
-  } catch { return { images: [], chargedTokens: 0 }; }
+    return { images, chargedTokens: Number(json?.chargedTokens) || 0, error: images.length ? undefined : (json?.error || 'empty') };
+  } catch (e) { return { images: [], chargedTokens: 0, error: String((e as any)?.message || e).slice(0, 200) }; }
   finally { clearTimeout(timer); }
 }
 
