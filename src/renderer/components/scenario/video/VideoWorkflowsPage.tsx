@@ -1757,17 +1757,94 @@ const ASPECT_OPTIONS: { id: VideoAspect; zh: string; en: string; icon: string }[
   { id: '1:1', zh: '方形 1:1', en: 'Square 1:1', icon: '🔲' },
 ];
 
-// edge-tts 常用中文音色(name 直传 sidecar)。
-const VOICE_OPTIONS: { id: string; zh: string; en: string }[] = [
-  { id: 'zh-CN-XiaoxiaoNeural', zh: '晓晓 · 女声(温柔)', en: 'Xiaoxiao · female (gentle)' },
-  { id: 'zh-CN-XiaoyiNeural', zh: '晓伊 · 女声(活泼)', en: 'Xiaoyi · female (lively)' },
-  { id: 'zh-CN-YunxiNeural', zh: '云希 · 男声(阳光)', en: 'Yunxi · male (sunny)' },
-  { id: 'zh-CN-YunjianNeural', zh: '云健 · 男声(浑厚)', en: 'Yunjian · male (deep)' },
-  { id: 'zh-CN-YunyangNeural', zh: '云扬 · 男声(播音)', en: 'Yunyang · male (anchor)' },
-  { id: 'zh-CN-liaoning-XiaobeiNeural', zh: '晓北 · 东北女声', en: 'Xiaobei · NE female' },
-  { id: 'zh-HK-HiuGaaiNeural', zh: '晓佳 · 粤语女声', en: 'HiuGaai · Cantonese' },
-  { id: 'en-US-JennyNeural', zh: 'Jenny · 英文女声', en: 'Jenny · EN female' },
-  { id: 'en-US-GuyNeural', zh: 'Guy · 英文男声', en: 'Guy · EN male' },
+// edge-tts voice 候选(name 直传 sidecar)。按语种 / 地区分组,UI 用 <optgroup> 渲染避免下拉框塌成一长条。
+// ⚠️ 改这里的 id 时,同步检查 src/main/libs/video/tts.ts 的 getVoiceFallbacks 表
+//   (后台失败救场链);否则改名后失败 voice 没救场直接退费。
+type VoiceOpt = { id: string; zh: string; en: string };
+const VOICE_GROUPS: { groupZh: string; groupEn: string; voices: VoiceOpt[] }[] = [
+  {
+    groupZh: '中文 · 普通话', groupEn: 'Chinese · Mandarin',
+    voices: [
+      { id: 'zh-CN-XiaoxiaoNeural', zh: '晓晓 · 女声(温柔)',  en: 'Xiaoxiao · female (gentle)' },
+      { id: 'zh-CN-XiaoyiNeural',   zh: '晓伊 · 女声(活泼)',  en: 'Xiaoyi · female (lively)' },
+      { id: 'zh-CN-YunxiNeural',    zh: '云希 · 男声(阳光)',  en: 'Yunxi · male (sunny)' },
+      { id: 'zh-CN-YunjianNeural',  zh: '云健 · 男声(浑厚)',  en: 'Yunjian · male (deep)' },
+      { id: 'zh-CN-YunyangNeural',  zh: '云扬 · 男声(播音)',  en: 'Yunyang · male (anchor)' },
+    ],
+  },
+  {
+    groupZh: '中文 · 方言 / 港台', groupEn: 'Chinese · Dialects / HK & TW',
+    voices: [
+      { id: 'zh-CN-liaoning-XiaobeiNeural', zh: '晓北 · 东北女声',       en: 'Xiaobei · NE female' },
+      { id: 'zh-HK-HiuGaaiNeural',          zh: '晓佳 · 粤语女声',       en: 'HiuGaai · Cantonese female' },
+      { id: 'zh-HK-HiuMaanNeural',          zh: '晓敏 · 粤语女声',       en: 'HiuMaan · Cantonese female' },
+      { id: 'zh-HK-WanLungNeural',          zh: '云龙 · 粤语男声',       en: 'WanLung · Cantonese male' },
+      { id: 'zh-TW-HsiaoChenNeural',        zh: '曉臻 · 台湾国语女声',   en: 'HsiaoChen · TW Mandarin female' },
+      { id: 'zh-TW-YunJheNeural',           zh: '雲哲 · 台湾国语男声',   en: 'YunJhe · TW Mandarin male' },
+    ],
+  },
+  {
+    groupZh: '英文 · 美式', groupEn: 'English · US',
+    voices: [
+      { id: 'en-US-JennyNeural',   zh: 'Jenny · 英文女声',         en: 'Jenny · EN female' },
+      { id: 'en-US-AriaNeural',    zh: 'Aria · 英文女声(沉稳)',   en: 'Aria · EN female (poised)' },
+      { id: 'en-US-EmmaNeural',    zh: 'Emma · 英文女声(亲切)',   en: 'Emma · EN female (warm)' },
+      { id: 'en-US-GuyNeural',     zh: 'Guy · 英文男声',           en: 'Guy · EN male' },
+      { id: 'en-US-AndrewNeural',  zh: 'Andrew · 英文男声(浑厚)', en: 'Andrew · EN male (deep)' },
+      { id: 'en-US-BrianNeural',   zh: 'Brian · 英文男声(轻快)',  en: 'Brian · EN male (bright)' },
+    ],
+  },
+  // —— 其他语种按【亚洲(韩) → 东南亚(印尼/越) → 拉美(西/葡) → 欧洲(法) → 中东(阿)】排,
+  //   按华人圈出海短视频 + Binance 重点市场用户密度递减。
+  {
+    groupZh: '韩语', groupEn: 'Korean',
+    voices: [
+      { id: 'ko-KR-SunHiNeural',   zh: '鲜熹 · 韩语女声', en: 'SunHi · KO female' },
+      { id: 'ko-KR-InJoonNeural',  zh: '仁俊 · 韩语男声', en: 'InJoon · KO male' },
+    ],
+  },
+  {
+    groupZh: '印尼语', groupEn: 'Indonesian',
+    voices: [
+      { id: 'id-ID-GadisNeural',   zh: 'Gadis · 印尼语女声', en: 'Gadis · ID female' },
+      { id: 'id-ID-ArdiNeural',    zh: 'Ardi · 印尼语男声',  en: 'Ardi · ID male' },
+    ],
+  },
+  {
+    groupZh: '越南语', groupEn: 'Vietnamese',
+    voices: [
+      { id: 'vi-VN-HoaiMyNeural',   zh: 'HoaiMy · 越南语女声',  en: 'HoaiMy · VI female' },
+      { id: 'vi-VN-NamMinhNeural',  zh: 'NamMinh · 越南语男声', en: 'NamMinh · VI male' },
+    ],
+  },
+  {
+    groupZh: '西语 · 拉美', groupEn: 'Spanish · LatAm',
+    voices: [
+      { id: 'es-MX-DaliaNeural',   zh: 'Dalia · 西语女声(拉美)', en: 'Dalia · ES-MX female' },
+      { id: 'es-MX-JorgeNeural',   zh: 'Jorge · 西语男声(拉美)', en: 'Jorge · ES-MX male' },
+    ],
+  },
+  {
+    groupZh: '葡语 · 巴西', groupEn: 'Portuguese · Brazil',
+    voices: [
+      { id: 'pt-BR-FranciscaNeural', zh: 'Francisca · 葡语女声(巴西)', en: 'Francisca · PT-BR female' },
+      { id: 'pt-BR-AntonioNeural',   zh: 'Antonio · 葡语男声(巴西)',   en: 'Antonio · PT-BR male' },
+    ],
+  },
+  {
+    groupZh: '法语', groupEn: 'French',
+    voices: [
+      { id: 'fr-FR-DeniseNeural',  zh: 'Denise · 法语女声', en: 'Denise · FR female' },
+      { id: 'fr-FR-HenriNeural',   zh: 'Henri · 法语男声',  en: 'Henri · FR male' },
+    ],
+  },
+  {
+    groupZh: '阿拉伯语', groupEn: 'Arabic',
+    voices: [
+      { id: 'ar-SA-ZariyahNeural', zh: 'Zariyah · 阿拉伯语女声', en: 'Zariyah · AR-SA female' },
+      { id: 'ar-SA-HamedNeural',   zh: 'Hamed · 阿拉伯语男声',   en: 'Hamed · AR-SA male' },
+    ],
+  },
 ];
 
 // 本地内置背景音乐(随包 bundle 在 resources/bgm/,来源 MoneyPrinterTurbo 免版税曲库)。
@@ -2647,8 +2724,12 @@ const VideoConfigModal: React.FC<{
                   onChange={(e) => setVoice(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-rose-500/50"
                 >
-                  {VOICE_OPTIONS.map((v) => (
-                    <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
+                  {VOICE_GROUPS.map((g) => (
+                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                      {g.voices.map((v) => (
+                        <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
                 <div className="flex gap-2 mt-2">

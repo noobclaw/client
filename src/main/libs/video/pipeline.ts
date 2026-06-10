@@ -18,7 +18,8 @@ import path from 'path';
 import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
 import { isFfmpegAvailable, setVideoAbortSignal } from './ffmpegRuntime';
-import { synthesize, getLastTtsError } from './tts';
+import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
+import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
@@ -653,34 +654,67 @@ async function runVideoPipeline(
     const audios: { audioPath: string; durationSec: number }[] = [];
     const subtitleCues: SubtitleCue[] = [];
     if (wantNarration) {
-      let timelineOffset = 0;
-      let synthCount = 0;
-      for (let i = 0; i < sentences.length; i++) {
-        const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
-        const r = await synthesize(sentences[i], outMp3, input.voice, input.voiceRate);
-        if (!r.synthesized) {
-          // 硬约束:必须有真人配音。某句重试 3 次仍合不出 → 立即终止(别再耗时间硬磨剩余句),
-          // 判任务失败。pre-charge 预扣的平台基础费会在 finally 里自动退回(不交付无配音的视频)。
-          const reason = getLastTtsError();
-          const err = `配音失败:第 ${i + 1}/${sentences.length} 句无法合成语音`
-            + (reason ? `(${reason.slice(0, 160)})` : '')
-            + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
-            + '常见原因:网络无法访问微软在线 TTS 接口,请检查网络/代理后重试。';
-          tracker.fail('tts', err);
-          return { ok: false, error: err };
+      // Voice fallback 整片重做:edge-tts 2026-04 起上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
+      //   单 voice 内 5 次重试仍败 → 切同语种同性别备用 voice 重头合所有句,音色统一不跳变。
+      //   全 fallback voice 都败才真正失败退费;fallback 表见 tts.ts getVoiceFallbacks。
+      const primary = input.voice || getTtsVoice();
+      const voiceChain = getVoiceFallbacks(primary);
+      let succeeded = false;
+      let lastFailIdx = 0;
+      let lastReason = '';
+      let finalSynthCount = 0;
+
+      for (let vIdx = 0; vIdx < voiceChain.length; vIdx++) {
+        const useVoice = voiceChain[vIdx];
+        if (vIdx > 0) {
+          tracker.progress(`配音失败,切换备用音色 ${useVoice} 重新合成全部 ${sentences.length} 句`);
+          audios.length = 0;
+          sceneDurations.length = 0;
+          subtitleCues.length = 0;
         }
-        audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
-        sceneDurations.push(r.durationSec);
-        synthCount++;
-        if (r.cues && r.cues.length > 0) {
-          for (const c of r.cues) {
-            subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
+        let timelineOffset = 0;
+        let synthCount = 0;
+        let thisVoiceFailed = false;
+        for (let i = 0; i < sentences.length; i++) {
+          const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
+          const r = await synthesize(sentences[i], outMp3, useVoice, input.voiceRate);
+          if (!r.synthesized) {
+            lastReason = getLastTtsError() || '';
+            lastFailIdx = i;
+            thisVoiceFailed = true;
+            break;
           }
+          audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
+          sceneDurations.push(r.durationSec);
+          synthCount++;
+          if (r.cues && r.cues.length > 0) {
+            for (const c of r.cues) {
+              subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
+            }
+          }
+          timelineOffset += r.durationSec;
+          tracker.progress(`配音 ${i + 1}/${sentences.length}${vIdx > 0 ? ` · 备用音色 ${vIdx + 1}/${voiceChain.length}` : ''}`);
         }
-        timelineOffset += r.durationSec;
-        tracker.progress(`配音 ${i + 1}/${sentences.length}`);
+        if (!thisVoiceFailed) {
+          succeeded = true;
+          finalSynthCount = synthCount;
+          break;
+        }
       }
-      tracker.done('tts', `配音完成(${synthCount} 句全部真人语音)`);
+
+      if (!succeeded) {
+        // 硬约束:必须有真人配音。全部 voice 都败 → 终止出片,平台基础费由 finally 退回(不交付无配音视频)。
+        const triedMsg = voiceChain.length > 1
+          ? ` · 已尝试 ${voiceChain.length} 个备用音色,均合成失败`
+          : '';
+        const err = `配音失败:第 ${lastFailIdx + 1}/${sentences.length} 句无法合成语音${triedMsg}`
+          + (lastReason ? `(${lastReason.slice(0, 160)})` : '')
+          + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
+          + '常见原因:网络无法访问微软在线 TTS 接口,或当前为微软上游限流期(2026-04 起已知问题),请检查网络/代理后重试。';
+        tracker.fail('tts', err);
+        return { ok: false, error: err };
+      }
+      tracker.done('tts', `配音完成(${finalSynthCount} 句全部真人语音)`);
     } else {
       // 纯画面:每镜时长 = clamp(字数 / 4.5, 5, 10) 秒,跟着分镜稿内容走。
       for (let i = 0; i < sentences.length; i++) {

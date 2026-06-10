@@ -333,8 +333,10 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
       if (pyExe) {
         // 字幕和音频同名,扩展名 .vtt(edge-tts 按版本写 VTT/SRT,我们的解析器都吃)。
         const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
-        // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 3 次再判失败(指数退避)。
-        const MAX_ATTEMPTS = 3;
+        // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 5 次再判失败(指数退避)。
+        // 2026-04 起微软上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
+        // 单纯加重试次数仍有限,真正救场要靠调用方做 voice fallback(见 getVoiceFallbacks)。
+        const MAX_ATTEMPTS = 5;
         let lastDetail = '';
         for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
           const run = await runEdgeTts(pyExe, clean, useVoice, outPath, rate, subPath);
@@ -375,4 +377,47 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
     durationSec: estDur,
     synthesized: false,
   };
+}
+
+/**
+ * 同语种同性别的 voice fallback 链(整片重做用)。数组首位 = primary,后续是同语种同性别备选。
+ * 表里没有就只返回 [primary] — 不切 voice,只靠 synthesize() 内部 MAX_ATTEMPTS=5 次重试救场。
+ *
+ * 背景:edge-tts 2026-04 起出现【按 voice 间歇性拒发音频】的上游问题(rany2/edge-tts#473 至今 open),
+ *   单 voice 多次重试也救不回时,**换 voice 整片重做**是上游用户实测有效的 workaround
+ *   (评论:"I tried to use another voice, and then it worked again")。
+ *
+ * 设计规则:
+ *   - 只在【同语种 + 同性别】之间 fallback,避免音色 / 语种突变让用户体验更糟。
+ *   - 调用方(pipeline)拿到链后,要的是【整片重头合】,不是单句切,这样音色全篇统一。
+ *   - 没列进表的 voice(方言、独子 voice、跨性别没法救)→ 走单 voice 重试,失败就退费。
+ *   - HsiaoYu(台湾女声第二个)只用作 HsiaoChen 的后台 fallback,UI 不暴露。
+ */
+export function getVoiceFallbacks(primary: string): string[] {
+  const M: Record<string, string[]> = {
+    // —— 中文标准女声 ——
+    'zh-CN-XiaoxiaoNeural':  ['zh-CN-XiaoxiaoNeural',  'zh-CN-XiaoyiNeural'],
+    'zh-CN-XiaoyiNeural':    ['zh-CN-XiaoyiNeural',    'zh-CN-XiaoxiaoNeural'],
+    // —— 中文男声(3 互救) ——
+    'zh-CN-YunxiNeural':     ['zh-CN-YunxiNeural',     'zh-CN-YunyangNeural', 'zh-CN-YunjianNeural'],
+    'zh-CN-YunyangNeural':   ['zh-CN-YunyangNeural',   'zh-CN-YunxiNeural',   'zh-CN-YunjianNeural'],
+    'zh-CN-YunjianNeural':   ['zh-CN-YunjianNeural',   'zh-CN-YunxiNeural',   'zh-CN-YunyangNeural'],
+    // —— 粤语女声(HiuGaai / HiuMaan 互救;WanLung 男声唯一,不 fallback) ——
+    'zh-HK-HiuGaaiNeural':   ['zh-HK-HiuGaaiNeural',   'zh-HK-HiuMaanNeural'],
+    'zh-HK-HiuMaanNeural':   ['zh-HK-HiuMaanNeural',   'zh-HK-HiuGaaiNeural'],
+    // —— 台湾国语女声(HsiaoChen → HsiaoYu 后台备胎) ——
+    'zh-TW-HsiaoChenNeural': ['zh-TW-HsiaoChenNeural', 'zh-TW-HsiaoYuNeural'],
+    // —— 英文女声(3 互救) ——
+    'en-US-JennyNeural':     ['en-US-JennyNeural',     'en-US-AriaNeural',    'en-US-EmmaNeural'],
+    'en-US-AriaNeural':      ['en-US-AriaNeural',      'en-US-JennyNeural',   'en-US-EmmaNeural'],
+    'en-US-EmmaNeural':      ['en-US-EmmaNeural',      'en-US-AriaNeural',    'en-US-JennyNeural'],
+    // —— 英文男声(3 互救) ——
+    'en-US-GuyNeural':       ['en-US-GuyNeural',       'en-US-AndrewNeural',  'en-US-BrianNeural'],
+    'en-US-AndrewNeural':    ['en-US-AndrewNeural',    'en-US-GuyNeural',     'en-US-BrianNeural'],
+    'en-US-BrianNeural':     ['en-US-BrianNeural',     'en-US-AndrewNeural',  'en-US-GuyNeural'],
+    // —— 以下 voice 不做 voice 切换 fallback,只靠 5 次重试: ——
+    //   zh-CN-liaoning-XiaobeiNeural(东北方言独子)、zh-TW-YunJheNeural(台湾男声独子)、
+    //   ja/ko/fr/es-MX/pt-BR/id/vi/ar 各只配了一对 voice,跨性别会让音色跳变,体验不如失败退费让用户重试。
+  };
+  return M[primary] || [primary];
 }
