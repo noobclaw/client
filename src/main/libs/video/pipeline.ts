@@ -26,6 +26,8 @@ import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
 import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
+import type { TemplateOptions } from './templateHtmlWriter';
+import { runTemplatePipeline } from './template-pipeline';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -147,11 +149,13 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai';
+  engine?: 'stock' | 'ai' | 'template';
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
   seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
+  /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
+  template?: TemplateOptions;
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -257,14 +261,15 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'compose', label: '合成视频' },
 ];
 
-class ProgressTracker {
+export class ProgressTracker {
   private steps: ProgressStep[];
   // 累计 token + USD 成本 + 输出目录随每次 emit 带回,渲染端无需自己算。
   private tokensUsed = 0;
   private costUsd = 0;
   private outputDir?: string;
-  constructor(private jobId: string, private emit?: ProgressEmitter) {
-    this.steps = STEP_DEFS.map((s) => ({ ...s, status: 'waiting' as const }));
+  // stepDefs 可定制:stock/ai 用默认 4 步;template 速生传自己的步骤集。
+  constructor(private jobId: string, private emit?: ProgressEmitter, stepDefs: { key: string; label: string }[] = STEP_DEFS) {
+    this.steps = stepDefs.map((s) => ({ ...s, status: 'waiting' as const }));
   }
   private send(status: 'running' | 'done' | 'error', message?: string, extra?: Partial<VideoCreationProgress>) {
     this.emit?.({
@@ -404,7 +409,7 @@ function getNextBatch(dayDir: string): number {
  *       同一任务同一天每手动跑一次新建 1/、2/、3/…(无 taskId 时任务根已是日期,不再套一层)。
  *   一次批量出片(videoCount>1)只调一次 → N 条成片同落一个 <批次号>/,靠文件名 _N 后缀区分。
  */
-function resolveOutputDirs(input?: { taskId?: string; taskTitle?: string }): { taskDir: string; runDir: string } {
+export function resolveOutputDirs(input?: { taskId?: string; taskTitle?: string }): { taskDir: string; runDir: string } {
   let docs: string;
   try {
     docs = require('electron').app.getPath('documents');
@@ -428,7 +433,7 @@ function resolveOutputDirs(input?: { taskId?: string; taskTitle?: string }): { t
   return { taskDir, runDir };
 }
 
-function outputFileName(index = 0): string {
+export function outputFileName(index = 0): string {
   const t = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
   // 批量出片在同一秒内循环写多条 → 时间戳会撞;index>0 时加序号后缀避免覆盖。
@@ -501,6 +506,10 @@ async function runVideoPipeline(
   emit?: ProgressEmitter,
   signal?: AbortSignal,
 ): Promise<VideoCreationResult> {
+  // engine==='template'(模板速生):AI 现编动效 HTML → 逐帧渲染 → 编码。完全独立的
+  // 流水线(template-pipeline.ts),早分流出去,不与 stock/ai 共用下面的步骤。
+  if (input.engine === 'template') return runTemplatePipeline(input, emit, signal);
+
   const jobId = `vid_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const tracker = new ProgressTracker(jobId, emit);
 
