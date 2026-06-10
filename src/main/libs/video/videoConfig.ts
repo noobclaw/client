@@ -23,6 +23,9 @@ export interface VideoPipelineConfig {
   scriptSystemTemplate: string;
   /** 搜索词 system prompt(纯静态,必须保持 {"terms":[[...]]} 输出契约)。 */
   termsSystemPrompt: string;
+  /** 模板速生「数据解析」system prompt(必须保持 {title,subtitle,items:[{rank,name,value,sub}]}
+   *  这个 JSON 输出契约,否则客户端解析不到 items → 退回纯代码兜底)。服务端可调措辞,不可改结构。 */
+  templateDataSystemPrompt: string;
   /** 内容语言 → 素材库 locale。 */
   localeMap: Record<string, string>;
   /** Pexels 视频最低分辨率档:small=HD / medium=Full HD / large=4K。 */
@@ -61,6 +64,16 @@ export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
     'Return ONLY a JSON object of this exact shape:',
     '{"terms": [["term a","term b"], ["term c"], ...]}',
     'The "terms" array length MUST equal the number of input lines, in order.',
+  ].join('\n'),
+  templateDataSystemPrompt: [
+    '你把用户提供的内容整理成【结构化榜单/要点数据】,用于生成动效短视频。只输出严格 JSON(json),不要任何解释。',
+    '输出结构:{"title":"大标题","subtitle":"副标题(可选)","items":[{"rank":1,"name":"主名称","value":"数值","sub":"副说明(可选)"}]}',
+    '规则:',
+    '1. title 简短有力(≤14 字);subtitle 可选(如 "BINANCE · 24H" / 日期 / 来源)。',
+    '2. items 最多 8 条,从用户内容里提取;有数值(涨跌幅/数量/价格)就放 value(保留正负号、百分号、单位),没有就省略 value。',
+    '3. 排行榜/盘点:按用户给的顺序或数值大小排序,逐条填 rank(1,2,3…)。',
+    '4. 金句/语录:items 放一条 {"name":"金句正文","sub":"作者(可选)"}。',
+    '5. 保持用户内容的语言;不要编造用户没给的数据。',
   ].join('\n'),
   localeMap: { zh: 'zh-CN', ja: 'ja-JP', ko: 'ko-KR', en: 'en-US' },
   stockVideoSize: 'small',
@@ -119,6 +132,7 @@ export async function getVideoConfig(): Promise<VideoPipelineConfig> {
     const cfg: VideoPipelineConfig = {
       scriptSystemTemplate: str(c?.scriptSystemTemplate, d.scriptSystemTemplate),
       termsSystemPrompt: str(c?.termsSystemPrompt, d.termsSystemPrompt),
+      templateDataSystemPrompt: str(c?.templateDataSystemPrompt, d.templateDataSystemPrompt),
       localeMap: { ...d.localeMap, ...localeMap },
       stockVideoSize: str(c?.stockVideoSize, d.stockVideoSize),
       minVideoEdge: num(c?.minVideoEdge, d.minVideoEdge),

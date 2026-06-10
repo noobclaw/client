@@ -21,6 +21,7 @@ import {
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
 import { generateTemplateData, detectTemplateLang } from './templateHtmlWriter';
+import { getVideoConfig } from './videoConfig';
 import { renderTemplate, type TemplateSpec } from './templateLibrary';
 import { renderHtmlToFrames, resolveHeadlessBrowser } from './htmlVideoRenderer';
 
@@ -101,7 +102,12 @@ export async function runTemplatePipeline(
     const lang = detectTemplateLang(`${tpl.dataText} ${tpl.title || ''}`);
     const durationSec = clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
     // v2:AI 只产结构化数据(不写 HTML),由精品参数化模板渲染 → 质量稳定可控。
-    const data = await generateTemplateData({ style: tpl.style, title: tpl.title, dataText: tpl.dataText, track: input.track, lang });
+    // 数据解析 prompt 走服务端可调(getVideoConfig),改措辞不用重新打包客户端。
+    const vcfg = await getVideoConfig();
+    const data = await generateTemplateData(
+      { style: tpl.style, title: tpl.title, dataText: tpl.dataText, track: input.track, lang },
+      vcfg.templateDataSystemPrompt,
+    );
     tracker.addTokens(data.tokens, data.costUsd);
     const spec: TemplateSpec = {
       style: tpl.style,

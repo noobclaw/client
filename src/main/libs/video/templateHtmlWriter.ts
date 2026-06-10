@@ -149,7 +149,7 @@ function parseDataText(input: TemplateDataInput): TemplateData {
 /**
  * 产模板数据:AI 解析 dataText → {title,subtitle,items},失败用纯代码兜底。永远返回可用数据。
  */
-export async function generateTemplateData(input: TemplateDataInput): Promise<TemplateDataResult> {
+export async function generateTemplateData(input: TemplateDataInput, systemPrompt?: string): Promise<TemplateDataResult> {
   try {
     const user = [
       input.title ? `标题倾向:${input.title}` : '',
@@ -157,7 +157,7 @@ export async function generateTemplateData(input: TemplateDataInput): Promise<Te
       '用户内容(json):',
       input.dataText.slice(0, 2000),
     ].filter(Boolean).join('\n');
-    const { content, tokens, costUsd } = await callDeepSeekData(SYSTEM_PROMPT, user);
+    const { content, tokens, costUsd } = await callDeepSeekData(systemPrompt || SYSTEM_PROMPT, user);
     const parsed = JSON.parse(extractJsonObject(content));
     const items = cleanItems(parsed?.items);
     if (items.length > 0) {
