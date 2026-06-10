@@ -542,14 +542,16 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
       <div className="flex items-center gap-2 mb-2 flex-wrap min-w-0">
         <HeadBadges isZh={isZh} />
         {(() => {
-          // 生成模式徽章:纯AI生成(Seedance)/ 在线素材 / 本地素材 —— 同类型任务也能一眼区分。
+          // 生成模式徽章:纯AI生成(Seedance)/ 模板速生 / 在线素材 / 本地素材 —— 一眼区分。
           const isAi = task.input.engine === 'ai';
-          const isLocal = !isAi && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
-          const label = isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
+          const isTemplate = task.input.engine === 'template';
+          const isLocal = !isAi && !isTemplate && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
+          const label = isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
+            : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
             : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
             : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
-          const color = isAi
-            ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+          const color = isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+            : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
             : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
           return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
         })()}
@@ -1904,7 +1906,9 @@ const VideoConfigModal: React.FC<{
   const [scriptMode, setScriptMode] = useState<'strict' | 'ai'>(
     editTask?.input.scriptMode || ((editTask?.input.script || '').trim() ? 'strict' : 'ai'),
   );
-  const [targetSeconds, setTargetSeconds] = useState(editTask?.input.targetSeconds ?? 90);
+  // forcedMode='pure_ai'(电影级 card 跳过了 step1 的模式选择)→ 补回 step1 会做的纯AI默认:
+  //   时长拉到纯AI上限内(否则停在 90 超 AI_MAX_SECONDS)。
+  const [targetSeconds, setTargetSeconds] = useState(forcedMode === 'pure_ai' ? 30 : (editTask?.input.targetSeconds ?? 90));
 
   // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
   const [materialSource, setMaterialSource] = useState<MaterialSource>(
@@ -1981,9 +1985,11 @@ const VideoConfigModal: React.FC<{
       ? (editTask.input.engine === 'ai' ? editTask.input.subtitleEnabled === true : true)
       : true,
   );
-  // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。默认关 = 纯画面片;用户可在「音频」步开启,
-  // 开启后跟普通模式一样:对分镜稿 TTS 配音 + 按字幕开关烧录(pipeline 早已支持 ai 模式配音)。
-  const [aiNarration, setAiNarration] = useState<boolean>(editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false);
+  // 纯 AI(Seedance)是否额外加「AI 配音 + 字幕」。电影级 card(forcedMode='pure_ai')默认【开】
+  //   —— 补回 step1 纯AI onClick 的 setAiNarration(true)(用户要求纯AI字幕默认打开);用户仍可在
+  //   「音频」步关掉走纯画面。编辑态按任务实际保存值回填。
+  const [aiNarration, setAiNarration] = useState<boolean>(
+    forcedMode === 'pure_ai' ? true : (editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false));
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 64);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
