@@ -20,8 +20,9 @@ import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
-import { generateTemplateHtml, detectTemplateLang } from './templateHtmlWriter';
-import { renderHtmlToFrames, probeHtml, resolveHeadlessBrowser } from './htmlVideoRenderer';
+import { generateTemplateData, detectTemplateLang } from './templateHtmlWriter';
+import { renderTemplate, type TemplateSpec } from './templateLibrary';
+import { renderHtmlToFrames, resolveHeadlessBrowser } from './htmlVideoRenderer';
 
 const TEMPLATE_STEPS = [
   { key: 'html', label: '生成动效模板' },
@@ -99,28 +100,31 @@ export async function runTemplatePipeline(
     tracker.start('html', `输出目录:${taskDir}`);
     const lang = detectTemplateLang(`${tpl.dataText} ${tpl.title || ''}`);
     const durationSec = clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
-    const gen = await generateTemplateHtml({
+    // v2:AI 只产结构化数据(不写 HTML),由精品参数化模板渲染 → 质量稳定可控。
+    const data = await generateTemplateData({ style: tpl.style, title: tpl.title, dataText: tpl.dataText, track: input.track, lang });
+    tracker.addTokens(data.tokens, data.costUsd);
+    const spec: TemplateSpec = {
       style: tpl.style,
-      title: tpl.title,
-      dataText: tpl.dataText,
-      track: input.track,
-      persona: input.persona,
-      brandColor: tpl.brandColor,
+      title: data.title || tpl.title,
+      subtitle: data.subtitle,
+      items: data.items,
+      brandColor: /^#[0-9a-f]{6}$/i.test(tpl.brandColor || '') ? tpl.brandColor! : '#f0b90b',
       accentColor: tpl.accentColor,
-      lang,
       durationSec,
-    }, probeHtml);
-    tracker.addTokens(gen.tokens, gen.costUsd);
-    try { fs.writeFileSync(path.join(destDir, '模板.html'), gen.html, 'utf8'); } catch { /* non-fatal */ }
-    tracker.done('html', gen.source === 'ai' ? '✅ AI 已生成动效模板' : '✅ 模板已就绪(内置版式)');
+      fps: tpl.fps && tpl.fps > 0 ? tpl.fps : 30,
+      captions: [], // v2-B 音画块填:配音后的字幕时间轴
+    };
+    const html = renderTemplate(spec);
+    try { fs.writeFileSync(path.join(destDir, '模板.html'), html, 'utf8'); } catch { /* non-fatal */ }
+    tracker.done('html', data.source === 'ai' ? '✅ AI 已整理数据 · 精品模板' : '✅ 数据已整理 · 精品模板');
 
     // STEP 2 — 逐帧渲染(无头浏览器逐帧截图)
     throwIfAborted(signal);
     tracker.start('render', '逐帧渲染画面中…');
     await renderHtmlToFrames({
-      html: gen.html,
+      html,
       width: 1080, height: 1920,
-      fps: gen.fps, durationSec: gen.durationSec,
+      fps: spec.fps, durationSec: spec.durationSec,
       framesDir,
       signal,
       onProgress: (done, total) => {
@@ -134,7 +138,7 @@ export async function runTemplatePipeline(
     tracker.start('compose', '编码合成视频…');
     const outPath = path.join(destDir, outputFileName(0));
     const bgm = await resolveBgmPath(input.bgmPath, (m) => tracker.progress(m)).catch(() => undefined);
-    const args = buildEncodeArgs(framesDir, gen.fps, outPath, bgm, input.bgmVolume);
+    const args = buildEncodeArgs(framesDir, spec.fps, outPath, bgm, input.bgmVolume);
     const r = await runFfmpeg(args, { signal });
     if (!r.ok) {
       const err = '视频编码失败,请稍后重试。';
