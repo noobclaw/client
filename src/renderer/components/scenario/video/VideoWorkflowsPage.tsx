@@ -114,10 +114,24 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
           onOpenRecord={(rid) => setDetail({ kind: 'record', recordId: rid })}
           onEdit={() => setEditTaskId(task.id)}
         />
-        {editingTask && (
+        {/* 编辑要用【和新建同一个】向导回填:模板速生(engine==='template')走 TemplateSpeedModal,
+            其余(电影级纯AI / 在线素材)走 VideoConfigModal —— 否则模板任务会落到没有 template 模式的
+            VideoConfigModal,框对不上。 */}
+        {editingTask && editingTask.input?.engine === 'template' && (
+          <TemplateSpeedModal
+            isZh={isZh}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+        {editingTask && editingTask.input?.engine !== 'template' && (
           <VideoConfigModal
             isZh={isZh}
             editTask={editingTask}
+            /* 锁定为任务自身的模式并跳过 step1,跟新建那两张卡(电影级/在线素材)入口一致;
+               同时避免编辑时误切 stock↔pure_ai 引擎(历史上切错跑了 Seedance 烧穿积分)。 */
+            forcedMode={editingTask.input?.engine === 'ai' ? 'pure_ai' : 'stock'}
             onClose={() => setEditTaskId(null)}
             onCreated={() => {}}
             onSaved={() => setEditTaskId(null)}
@@ -2001,7 +2015,11 @@ const VideoConfigModal: React.FC<{
   //   —— 补回 step1 纯AI onClick 的 setAiNarration(true)(用户要求纯AI字幕默认打开);用户仍可在
   //   「音频」步关掉走纯画面。编辑态按任务实际保存值回填。
   const [aiNarration, setAiNarration] = useState<boolean>(
-    forcedMode === 'pure_ai' ? true : (editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true ? true : false));
+    // 编辑态:永远按任务实际保存值回填(即便也传了 forcedMode 来跳过 step1,也不能用
+    // forcedMode 的「默认开」覆盖用户原设置)。新建态:电影级(forcedMode='pure_ai')默认开。
+    isEdit
+      ? (editTask?.input.engine === 'ai' && editTask?.input.narrationEnabled === true)
+      : (forcedMode === 'pure_ai' ? true : false));
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(editTask?.input.subtitleFontSize ?? 64);
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(editTask?.input.subtitlePosition || 'bottom');
   const [subtitleColor, setSubtitleColor] = useState<string>(editTask?.input.subtitleColor || '#FFFFFF');
@@ -3302,15 +3320,18 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
 ];
 
-export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void }> = ({ isZh, onClose, onCreated }) => {
+export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
+  // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
+  const isEdit = !!editTask;
+  const et = editTask?.input?.template;
   const [step, setStep] = useState<1 | 2>(1);
-  const [style, setStyle] = useState<VideoTemplateStyle>('rank_list');
-  const [title, setTitle] = useState('');
-  const [dataText, setDataText] = useState('');
-  const [track, setTrack] = useState('');
-  const [brandColor, setBrandColor] = useState('#f0b90b');
-  const [durationSec, setDurationSec] = useState(6);
-  const [runInterval, setRunInterval] = useState<VideoRunInterval>('once');
+  const [style, setStyle] = useState<VideoTemplateStyle>(et?.style || 'rank_list');
+  const [title, setTitle] = useState<string>(et?.title || '');
+  const [dataText, setDataText] = useState<string>(et?.dataText || '');
+  const [track, setTrack] = useState<string>(editTask?.input?.track || '');
+  const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
+  const [durationSec, setDurationSec] = useState<number>(typeof et?.durationSec === 'number' ? et.durationSec : 6);
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -3319,7 +3340,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
     if (submitting) return;
     setSubmitting(true); setErr(null);
     try {
-      if (!(await videoQueue.canCreate())) {
+      // 新建才校验任务数上限;编辑是改已有任务,不占新名额。
+      if (!isEdit && !(await videoQueue.canCreate())) {
         setErr(isZh
           ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
           : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
@@ -3332,8 +3354,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         template: { style, title: title.trim() || undefined, dataText: dataText.trim(), durationSec, brandColor },
       };
       const schedule: VideoSchedule = { runInterval };
-      const id = videoTaskStore.createTask(input, name, schedule);
-      onCreated?.(id);
+      if (isEdit) {
+        videoTaskStore.updateTask(editTask.id, input, name, schedule);
+        if (onSaved) onSaved(); else onClose();
+      } else {
+        const id = videoTaskStore.createTask(input, name, schedule);
+        onCreated?.(id);
+      }
     } finally {
       setSubmitting(false);
     }
@@ -3345,7 +3372,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
       <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
         <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
-            <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? '模板速生' : 'Template Speed'}</h3>
+            <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
               <div className={`h-px w-6 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
@@ -3421,7 +3448,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           ) : (
             <button type="button" onClick={handleCreate} disabled={submitting}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
-              {submitting ? (isZh ? '创建中...' : 'Creating...') : '⚡ ' + (isZh ? '创建并开始' : 'Create & Start')}
+              {submitting
+                ? (isEdit ? (isZh ? '保存中...' : 'Saving...') : (isZh ? '创建中...' : 'Creating...'))
+                : (isEdit ? '💾 ' + (isZh ? '保存修改' : 'Save') : '⚡ ' + (isZh ? '创建并开始' : 'Create & Start'))}
             </button>
           )}
         </div>
