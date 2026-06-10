@@ -373,9 +373,21 @@ const StatusPill: React.FC<{ isZh: boolean; status: VideoRunStatus | 'idle' }> =
   );
 };
 
-/** 平台 pill + 类型 badge(对齐 scenario 卡片头部)。 */
-const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md' }> = ({ isZh, size = 'sm' }) => {
+/** 平台 pill + 类型 badge(对齐 scenario 卡片头部)。
+ *  传 input(任务 input)时,额外渲染【生成模式】徽章(纯AI/模板速生/在线素材/本地素材),
+ *  跟列表卡片一致 —— 详情页头部一眼区分这条是哪种成片方式。 */
+const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine?: string; localVideos?: unknown[] } }> = ({ isZh, size = 'sm', input }) => {
   const cls = size === 'md' ? 'text-xs px-2.5 py-1' : 'text-[11px] px-2 py-0.5';
+  const isAi = input?.engine === 'ai';
+  const isTemplate = input?.engine === 'template';
+  const isLocal = !!input && !isAi && !isTemplate && Array.isArray(input.localVideos) && input.localVideos.length > 0;
+  const modeLabel = isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
+    : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
+    : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
+    : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
+  const modeColor = isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+    : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
+    : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
   return (
     <>
       <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300`}>
@@ -384,6 +396,11 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md' }> = ({ isZh, siz
       <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border text-rose-500 bg-rose-500/10 border-rose-500/30`}>
         🎬 {isZh ? 'AI自动成片' : 'AI Auto-Video'}
       </span>
+      {input && (
+        <span className={`shrink-0 inline-flex items-center gap-1 ${cls} font-semibold rounded-full border ${modeColor}`}>
+          {modeLabel}
+        </span>
+      )}
     </>
   );
 };
@@ -1300,7 +1317,7 @@ const VideoTaskDetail: React.FC<{
       {/* Header — 平台/类型 badge + 任务#id(对齐币安详情页头部:只有徽章 + #id,
           不挂大标题。任务名已在配置行 / 列表里有,顶上再来个大标题就跟币安不一致)。 */}
       <div className="flex items-center gap-2 mb-3 flex-wrap">
-        <HeadBadges isZh={isZh} size="md" />
+        <HeadBadges isZh={isZh} size="md" input={task.input} />
         <IdTag kind="task" id={task.id} isZh={isZh} />
       </div>
 
