@@ -396,6 +396,14 @@ const KeywordChips: React.FC<{ keywords: string[]; max?: number }> = ({ keywords
 };
 
 function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
+  if (input.engine === 'template') {
+    // 模板速生没有「文案」概念 —— 这一行改成展示「版式 + 数据摘要」。
+    const t = input.template;
+    const st = TEMPLATE_STYLES.find((x) => x.id === t?.style);
+    const styleLabel = st ? (isZh ? st.zh : st.en) : (t?.style || '');
+    const data = (t?.dataText || '').replace(/\s+/g, ' ').trim();
+    return `${isZh ? '模板速生' : 'Template'} · ${styleLabel}${data ? '｜' + (data.length > 30 ? data.slice(0, 30) + '…' : data) : ''}`;
+  }
   const s = (input.script || '').trim();
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
   if (mode === 'ai') {
@@ -847,7 +855,9 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       })()}
     </Row>
     <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
-      {input.engine === 'ai'
+      {input.engine === 'template'
+        ? (isZh ? '模板速生 · AI 动效逐帧渲染' : 'Template Speed · animated render')
+        : input.engine === 'ai'
         ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
         : (input.localVideos && input.localVideos.length > 0)
           ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
@@ -876,7 +886,9 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
   const scriptTag = mode === 'strict' ? (isZh ? '严格逐字' : 'verbatim') : (isZh ? 'AI 写稿' : 'AI script');
   const scriptBody = s || (isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`);
-  const visuals = input.engine === 'ai'
+  const visuals = input.engine === 'template'
+    ? (isZh ? '模板速生 · AI 动效逐帧渲染' : 'Template Speed · animated render')
+    : input.engine === 'ai'
     ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
     : (input.localVideos && input.localVideos.length > 0)
       ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
