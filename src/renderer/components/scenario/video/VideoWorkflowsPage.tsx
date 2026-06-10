@@ -3408,14 +3408,65 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
 ];
 
+// 模板速生:4 步向导(HF 派改造后:加配音/字幕 + 背景音乐两步,原 2 步保持兼容)。
+//   Step 1 内容(版式 + 标题 + 数据)
+//   Step 2 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
+//   Step 3 背景音乐(三选一 + 音量)
+//   Step 4 出片(赛道 + 品牌色 + 时长 + 定时)
+type TplStep = 1 | 2 | 3 | 4;
+
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
   const isEdit = !!editTask;
   const et = editTask?.input?.template;
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<TplStep>(1);
+  // ── Step 1:内容 ──
   const [style, setStyle] = useState<VideoTemplateStyle>(et?.style || 'rank_list');
   const [title, setTitle] = useState<string>(et?.title || '');
   const [dataText, setDataText] = useState<string>(et?.dataText || '');
+  // ── Step 2:配音/字幕 ──
+  const [narration, setNarration] = useState<boolean>(et?.narration === true);
+  const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voiceRate, setVoiceRate] = useState<number>(typeof et?.voiceRate === 'number' ? et.voiceRate : 0);
+  const [voiceScript, setVoiceScript] = useState<string>(et?.voiceScript || '');
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(et?.subtitleEnabled !== false);
+  // ── Step 3:BGM ──
+  const [bgmPath, setBgmPath] = useState<string>(editTask?.input?.bgmPath || '');
+  const [bgmVolume, setBgmVolume] = useState<number>(typeof editTask?.input?.bgmVolume === 'number' ? editTask.input.bgmVolume : 0.18);
+  const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`);
+        if (!resp.ok) return;
+        const json: any = await resp.json();
+        const arr: any[] = Array.isArray(json) ? json : json?.tracks;
+        if (!alive || !Array.isArray(arr)) return;
+        setRemoteBgm(arr.filter((x) => x && typeof x.url === 'string' && x.url)
+          .map((x) => ({ id: String(x.id || x.url), zh: String(x.zh || x.title || x.name || '云端音乐'), en: String(x.en || x.title || x.name || 'Cloud track'), url: String(x.url) })));
+      } catch { /* 清单未上线 / 网络失败:静默,仅用本地曲库 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const pickBgm = async () => {
+    const p = await videoCreationService.pickBgm();
+    if (p) setBgmPath(p);
+  };
+  const [bgmOpening, setBgmOpening] = useState(false);
+  const openBgmFolder = async (token: string) => {
+    if (!token || bgmOpening) return;
+    setBgmOpening(true);
+    try {
+      const dir = await videoCreationService.resolveBgmPath(token);
+      if (dir) { try { (window as any).electron?.shell?.openPath?.(dir); } catch { /* ignore */ } }
+    } finally { setBgmOpening(false); }
+  };
+  const bgmIsBuiltin = bgmPath.startsWith(BUILTIN_BGM_PREFIX);
+  const bgmIsRemote = bgmPath.startsWith(REMOTE_BGM_PREFIX);
+  const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
+  const bgmIsUpload = !!bgmPath && !bgmIsLibrary;
+  // ── Step 4:出片 ──
   const [track, setTrack] = useState<string>(editTask?.input?.track || '');
   const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
   const [durationSec, setDurationSec] = useState<number>(typeof et?.durationSec === 'number' ? et.durationSec : 6);
@@ -3439,7 +3490,20 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
       const input: VideoCreationInput = {
         persona: '', track: track.trim() || name, keywords: [], script: '', scriptMode: 'ai',
         engine: 'template', referenceImages: [], aspect: '9:16', publishTarget: 'local',
-        template: { style, title: title.trim() || undefined, dataText: dataText.trim(), durationSec, brandColor },
+        // 配音/语速也写到 input 顶层一份(向后兼容,且 pipeline.ts 读 input.voice / voiceRate 作为兜底)。
+        voice: narration ? voice : undefined,
+        voiceRate: narration && voiceRate !== 0 ? voiceRate : undefined,
+        // BGM 是 input 顶层字段(pipeline 通用)。空 = 无 BGM。
+        bgmPath: bgmPath || undefined,
+        bgmVolume: bgmPath ? bgmVolume : undefined,
+        template: {
+          style, title: title.trim() || undefined, dataText: dataText.trim(), durationSec, brandColor,
+          narration,
+          voice: narration ? voice : undefined,
+          voiceRate: narration && voiceRate !== 0 ? voiceRate : undefined,
+          voiceScript: narration && voiceScript.trim() ? voiceScript.trim() : undefined,
+          subtitleEnabled: narration ? subtitleEnabled : undefined,
+        },
       };
       const schedule: VideoSchedule = { runInterval };
       if (isEdit) {
@@ -3454,6 +3518,20 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
     }
   };
 
+  // 「下一步」按 step 路由 + 必填校验。
+  const goNext = () => {
+    if (step === 1) {
+      if (!dataText.trim()) { setErr(isZh ? '请填写内容' : 'Enter content'); return; }
+    }
+    setErr(null);
+    setStep((s) => (s < 4 ? ((s + 1) as TplStep) : s));
+  };
+  const goBack = () => {
+    setErr(null);
+    if (step === 1) { onClose(); return; }
+    setStep((s) => ((s - 1) as TplStep));
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -3463,8 +3541,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
             <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
               <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
-              <div className={`h-px w-6 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={false} label={isZh ? '出片' : 'Output'} />
+              <div className={`h-px w-4 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '配音' : 'Voice'} />
+              <div className={`h-px w-4 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音乐' : 'Music'} />
+              <div className={`h-px w-4 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -3498,6 +3580,122 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           )}
           {step === 2 && (
             <>
+              <Field label={isZh ? 'AI 配音 + 字幕' : 'AI voice-over + subs'} hint={isZh ? '开了会按你的数据 AI 写口播稿、念出来、烧字幕。关 = 纯视觉。' : 'On: AI writes a script, narrates, and burns subs.'}>
+                <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
+                  <span className="text-sm dark:text-gray-200">{isZh ? '生成配音 + 字幕' : 'Generate voice-over + subs'}</span>
+                  <button type="button" onClick={() => setNarration((v) => !v)}
+                    className={`w-11 h-6 rounded-full relative transition-colors ${narration ? 'bg-fuchsia-500' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                    <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${narration ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+              </Field>
+              {narration && (
+                <>
+                  <Field label={isZh ? '配音音色' : 'Voice'}>
+                    <select value={voice} onChange={(e) => setVoice(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                      {VOICE_GROUPS.map((g) => (
+                        <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                          {g.voices.map((v) => (
+                            <option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label={isZh ? '语速' : 'Rate'}>
+                    <div className="flex gap-2">
+                      {RATE_OPTIONS.map((r) => (
+                        <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                          className={`flex-1 px-2 py-1.5 rounded-lg text-xs border transition-colors ${voiceRate === r.v ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                          {isZh ? r.zh : r.en}
+                        </button>
+                      ))}
+                    </div>
+                  </Field>
+                  <Field label={isZh ? '烧字幕' : 'Burn subtitles'} hint={isZh ? '字幕跟配音逐句对齐(edge-tts 词级时间戳,无误差)' : 'Word-level aligned (edge-tts)'}>
+                    <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2">
+                      <span className="text-sm dark:text-gray-200">{isZh ? '画面叠加字幕条' : 'Overlay subtitles'}</span>
+                      <button type="button" onClick={() => setSubtitleEnabled((v) => !v)}
+                        className={`w-11 h-6 rounded-full relative transition-colors ${subtitleEnabled ? 'bg-fuchsia-500' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${subtitleEnabled ? 'translate-x-5' : ''}`} />
+                      </button>
+                    </div>
+                  </Field>
+                  <Field label={isZh ? '自定义口播稿(可选)' : 'Custom voice script (optional)'} hint={isZh ? '空 = AI 按你的数据自动写;填了用这个稿子直接配音' : 'Empty: AI writes; Filled: use this'}>
+                    <textarea value={voiceScript} onChange={(e) => setVoiceScript(e.target.value)} rows={3}
+                      placeholder={isZh ? '今日涨幅榜:DOGE 涨 18.96%、SOL 涨 12.47%、BNB 涨 8.13%。' : 'Today gainers: ...'}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
+                  </Field>
+                  <div className="text-[11px] text-gray-400">{isZh ? '⚠️ 开了配音 → 视频时长由真实音频决定,Step 4 的「时长」滑块失效' : '⚠️ With voice on, the slider in Step 4 is ignored — duration = audio length'}</div>
+                </>
+              )}
+            </>
+          )}
+          {step === 3 && (
+            <>
+              <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '配音模式下作为氛围音垫底;纯视觉模式下是主音轨' : 'Bed for narration; main audio in silent mode'}>
+                <div className="grid grid-cols-3 gap-2 mb-2">
+                  <button type="button" onClick={() => setBgmPath('')}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${!bgmPath ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                    {isZh ? '无' : 'None'}
+                  </button>
+                  <button type="button" onClick={() => { if (!bgmIsLibrary) setBgmPath(BUILTIN_BGM_PREFIX + BUILTIN_BGM[0].id); }}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${bgmIsLibrary ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                    {isZh ? '曲库' : 'Library'}
+                  </button>
+                  <button type="button" onClick={pickBgm}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${bgmIsUpload ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                    {isZh ? '上传' : 'Upload'}
+                  </button>
+                </div>
+                {bgmIsLibrary && (
+                  <div className="flex items-center gap-2">
+                    <select value={bgmPath} onChange={(e) => { if (e.target.value) setBgmPath(e.target.value); }}
+                      className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white">
+                      <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                        {BUILTIN_BGM.map((b) => (
+                          <option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>
+                        ))}
+                      </optgroup>
+                      {remoteBgm.length > 0 && (
+                        <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                          {remoteBgm.map((b) => (
+                            <option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                    <button type="button" onClick={() => openBgmFolder(bgmPath)} disabled={bgmOpening}
+                      className="shrink-0 px-3 py-2 rounded-lg text-xs font-medium text-white bg-fuchsia-500 hover:bg-fuchsia-600 disabled:opacity-60">
+                      {bgmOpening ? '⏳' : (isZh ? '📂 文件夹' : '📂 Folder')}
+                    </button>
+                  </div>
+                )}
+                {bgmIsUpload && (
+                  <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-2.5 py-2">
+                    <span className="text-sm">🎵</span>
+                    <span className="flex-1 text-xs text-gray-600 dark:text-gray-300 truncate">{bgmPath.split(/[\\/]/).pop()}</span>
+                    <button type="button" onClick={pickBgm} className="text-xs text-fuchsia-500 hover:underline shrink-0">{isZh ? '更换' : 'Change'}</button>
+                    <button type="button" onClick={() => setBgmPath('')} className="text-xs text-gray-400 hover:text-red-500 shrink-0">{isZh ? '移除' : 'Remove'}</button>
+                  </div>
+                )}
+                {bgmPath && (
+                  <div className="flex gap-2 mt-2">
+                    <span className="text-xs text-gray-500 self-center">{isZh ? 'BGM 音量' : 'BGM volume'}</span>
+                    {BGM_VOLUME_OPTIONS.map((b) => (
+                      <button key={b.v} type="button" onClick={() => setBgmVolume(b.v)}
+                        className={`flex-1 px-2 py-1.5 rounded-lg text-xs border transition-colors ${bgmVolume === b.v ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-500 font-medium' : 'border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                        {isZh ? b.zh : b.en}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </Field>
+            </>
+          )}
+          {step === 4 && (
+            <>
               <Field label={isZh ? '赛道(可选)' : 'Track (optional)'}>
                 <input value={track} onChange={(e) => setTrack(e.target.value)}
                   placeholder={isZh ? '如:加密行情' : 'e.g. Crypto'}
@@ -3510,26 +3708,28 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                   <span className="text-xs text-gray-500">{brandColor}</span>
                 </div>
               </Field>
-              <Field label={`${isZh ? '时长' : 'Duration'} · ${durationSec}s`}>
+              <Field label={narration ? (isZh ? `时长(配音模式下被音频长度覆盖,这里仅作为后备)· ${durationSec}s` : `Duration (overridden by audio when voice on) · ${durationSec}s`) : `${isZh ? '时长' : 'Duration'} · ${durationSec}s`}>
                 <input type="range" min={3} max={20} step={1} value={durationSec}
                   onChange={(e) => setDurationSec(Number(e.target.value))} className="w-full accent-fuchsia-500" />
               </Field>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>
                 <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
               </Field>
-              <div className="text-[11px] text-gray-400">{isZh ? '画面零成本(本地渲染),只有 AI 写模板的几分钱' : 'Zero画面 cost (local render); only a few cents for the AI template'}</div>
+              <div className="text-[11px] text-gray-400">{isZh
+                ? `画面零 AI 成本(本地渲染);${narration ? 'AI 写稿 + 数据解析 ~ 几分钱' : '仅 AI 数据解析 ~ 几分钱'}`
+                : `Zero画面 cost (local render); ${narration ? '~few cents AI for script + data' : '~few cents AI for data'}`}</div>
             </>
           )}
           {err && <div className="text-xs text-red-500">{err}</div>}
         </div>
 
         <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-          <button type="button" onClick={() => { setErr(null); if (step === 1) { onClose(); return; } setStep(1); }}
+          <button type="button" onClick={goBack}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 2 ? (
-            <button type="button" onClick={() => { if (!dataText.trim()) { setErr(isZh ? '请填写内容' : 'Enter content'); return; } setErr(null); setStep(2); }}
+          {step < 4 ? (
+            <button type="button" onClick={goNext}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600">
               {isZh ? '下一步 →' : 'Next →'}
             </button>

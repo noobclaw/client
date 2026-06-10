@@ -1,16 +1,24 @@
 /**
- * htmlVideoRenderer — 「模板速生」的画面引擎:把一个【自包含动画 HTML】用无头浏览器
- *   逐帧截图,产出 PNG 序列(编码成 mp4 交给 template-pipeline 的 ffmpeg)。
+ * htmlVideoRenderer — 「模板速生」HF 派的画面引擎。
  *
- * 抄 HyperFrames 的核心做法 + 复用本项目 cdpBrowser 的「检测 Chrome/Edge + CDP over ws」
- * 范式,但【独立实例】:随机调试端口(绝不碰 cowork 常驻的 9222)、独立临时 user-data-dir、
- * 禁网(Network.setBlockedURLs)、file:// 临时页。渲染的是 AI 生成的 HTML,所以离线 + 沙箱。
+ * 抄 HyperFrames:把【自包含动效 HTML(带 paused seek 协议)】用无头浏览器逐帧 seek +
+ * 截图,帧二进制直接 pipe 到 ffmpeg stdin 编码 mp4 —— **不落盘 PNG**,无需中转目录,
+ * 无需第二次读盘。
  *
- * HTML 契约(templateHtmlWriter 产出、本模块消费):
- *   · 画布固定 1080×1920;
- *   · 定义全局纯函数 window.renderFrame(t)  —— t 秒,按 t 算画面(不依赖真实时间/rAF);
- *   · 定义全局常量 window.DURATION(秒)、可选 window.FPS。
- * 渲染 = 把 t 从 0 一格一格喂给 renderFrame,每格 captureScreenshot。POC 已验证可行。
+ * 跟 v2 的差异:
+ *   · v2:Runtime.evaluate("renderFrame(t)") + Page.captureScreenshot → 写 PNG 到 framesDir
+ *     → ffmpeg 二阶段读 PNG 序列编码
+ *   · v3:Runtime.evaluate("__nbc.seek(t)") + Page.captureScreenshot → 帧 buffer 直接 pipe 给
+ *     ffmpeg → ffmpeg 单一阶段完成编码。省一次磁盘 I/O,且过程中可同时混音轨/字幕轨。
+ *
+ * HF 原版用 HeadlessExperimental.beginFrame —— 那个 CDP 域在很多 Chromium 分支上不稳,
+ * 我们走 Page.captureScreenshot(更普适)+ stdin pipe 也能拿到同样的「不落盘」收益。
+ *
+ * HTML 契约(由 templateLibrary 产、本模块消费):
+ *   · 画布固定 1080×1920
+ *   · 全局 `window.__nbc.seek(t)` —— 把页面 seek 到时间 t(秒),纯函数无壁钟
+ *   · 全局常量 `window.DURATION`(秒),可选 `window.FPS`
+ *   · `window.__nbc.ready === true` 表示协议就绪
  */
 
 import { spawn, type ChildProcess } from 'child_process';
@@ -18,21 +26,28 @@ import WebSocket from 'ws';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { getFfmpegPath } from './ffmpegRuntime';
 
-export interface RenderHtmlOptions {
+export interface RenderHtmlToVideoOptions {
   html: string;
   width?: number;          // 默认 1080
   height?: number;         // 默认 1920
   fps?: number;            // 默认 30
   durationSec: number;     // 总时长(秒)
-  framesDir: string;       // PNG 落地目录(frame_%04d.png)
+  outPath: string;         // 成片 mp4 路径
+  /** 可选:背景音乐(本地路径)。空 = 不加。 */
+  bgmPath?: string;
+  bgmVolume?: number;      // 默认 0.18
+  /** 可选:配音音频(本地路径)。空 = 无配音(纯视觉)。 */
+  narrationPath?: string;
+  narrationVolume?: number; // 默认 1.0
   onProgress?: (done: number, total: number) => void;
   signal?: AbortSignal;
   timeoutMsPerFrame?: number; // 单帧超时,默认 8000
 }
 
 export interface RenderHtmlResult {
-  framesDir: string;
+  outPath: string;
   frameCount: number;
   fps: number;
   width: number;
@@ -51,7 +66,7 @@ export interface HeadlessBrowser {
   kind: 'chrome' | 'edge' | 'chromium';
 }
 
-// ── 无头浏览器检测(抄 cdpBrowser.detectChromePath,但带 kind + 可覆盖)──
+// ── 无头浏览器检测 ────────────────────────────────────────────────────────
 
 export function resolveHeadlessBrowser(): HeadlessBrowser | null {
   const env = process.env.NOOBCLAW_CHROME_PATH;
@@ -92,7 +107,7 @@ export function resolveHeadlessBrowser(): HeadlessBrowser | null {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-// ── 独立无头会话(自管 ws + 进程 + 临时 profile,与 cdpBrowser 的全局单例隔离)──
+// ── 独立无头会话(自管 ws + 进程 + 临时 profile,与 cdpBrowser 全局单例隔离)──
 
 class HeadlessSession {
   private proc: ChildProcess | null = null;
@@ -161,7 +176,7 @@ class HeadlessSession {
 
     await this.cmd('Page.enable');
     await this.cmd('Runtime.enable');
-    // 禁网:渲染的是 AI 生成的 HTML,二次兜底封死任何外链外泄/卡死(静态校验已剥外链)
+    // 禁网:渲染的是 AI 生成的 HTML,二次兜底封死任何外链外泄/卡死
     try {
       await this.cmd('Network.enable');
       await this.cmd('Network.setBlockedURLs', { urls: ['http://*', 'https://*', 'ws://*', 'wss://*'] });
@@ -191,13 +206,13 @@ class HeadlessSession {
     return htmlFile;
   }
 
-  /** 等页面 + 字体就绪(参考 HyperFrames frameCapture 的媒体就绪轮询)。 */
+  /** 等页面 + 字体 + __nbc 协议就绪。 */
   async waitReady(): Promise<void> {
     const deadline = Date.now() + 8000;
     while (Date.now() < deadline) {
       try {
         const r = await this.cmd('Runtime.evaluate', {
-          expression: 'document.readyState === "complete" && typeof window.renderFrame === "function"',
+          expression: 'document.readyState === "complete" && window.__nbc && window.__nbc.ready === true',
           returnByValue: true,
         });
         if (r?.result?.value === true) break;
@@ -209,18 +224,19 @@ class HeadlessSession {
     await sleep(120);
   }
 
-  async evalAt(t: number): Promise<void> {
-    await this.cmd('Runtime.evaluate', { expression: `window.renderFrame(${t})` });
+  /** Seek 页面到时间 t(秒)。这是 HF 派核心 —— 一次调用整张画面到目标时间点。 */
+  async seekAt(t: number): Promise<void> {
+    await this.cmd('Runtime.evaluate', { expression: `window.__nbc.seek(${t})` });
   }
 
-  /** 读 window.DURATION / window.FPS / renderFrame 是否合法。 */
+  /** 读 window.DURATION / window.FPS / __nbc.seek 是否合法。 */
   async readContract(): Promise<{ ok: boolean; durationSec?: number; fps?: number; reason?: string }> {
     try {
       const r = await this.cmd('Runtime.evaluate', {
         expression:
-          '(function(){try{if(typeof window.renderFrame!=="function")return{ok:false,reason:"no renderFrame"};'
+          '(function(){try{if(!window.__nbc||typeof window.__nbc.seek!=="function")return{ok:false,reason:"no __nbc.seek"};'
           + 'if(typeof window.DURATION!=="number"||!(window.DURATION>0))return{ok:false,reason:"no DURATION"};'
-          + 'window.renderFrame(0);return{ok:true,durationSec:window.DURATION,fps:(typeof window.FPS==="number"&&window.FPS>0)?window.FPS:0};}'
+          + 'window.__nbc.seek(0);return{ok:true,durationSec:window.DURATION,fps:(typeof window.FPS==="number"&&window.FPS>0)?window.FPS:0};}'
           + 'catch(e){return{ok:false,reason:String(e&&e.message||e)};}})()',
         returnByValue: true,
       });
@@ -255,13 +271,136 @@ class HeadlessSession {
   }
 }
 
-// ── 公开 API ──
+// ── ffmpeg pipe 编码器 ──────────────────────────────────────────────────
 
 /**
- * 逐帧渲染:把动画 HTML 截成 frame_0000.png … 序列。返回帧目录 + 帧数。
- * 仅产 PNG;编码成 mp4 由调用方(template-pipeline)用 ffmpeg 完成。
+ * 构造 ffmpeg 参数:PNG 序列从 stdin pipe(`-f image2pipe`),
+ * 加 0~1 条配音 + 0~1 条 BGM,混音输出 mp4。
+ *
+ * 关键 ffmpeg 用法:
+ *   · `-f image2pipe -framerate <fps> -i -`:从 stdin 读 PNG 序列(每帧一张 PNG)
+ *   · BGM 用 `-stream_loop -1` 循环铺底
+ *   · 音轨混音 = filter_complex 的 amix(narration:1.0, bgm:0.18)+ shortest
  */
-export async function renderHtmlToFrames(opts: RenderHtmlOptions): Promise<RenderHtmlResult> {
+function buildPipeEncodeArgs(opts: {
+  fps: number;
+  outPath: string;
+  narrationPath?: string;
+  narrationVolume: number;
+  bgmPath?: string;
+  bgmVolume: number;
+  durationSec: number;
+}): string[] {
+  const args: string[] = ['-y'];
+  // 0:v ← stdin PNG 序列
+  args.push('-f', 'image2pipe', '-framerate', String(opts.fps), '-i', '-');
+  // 1:a ← narration(可选)
+  if (opts.narrationPath) {
+    args.push('-i', opts.narrationPath);
+  }
+  // 2:a / 1:a ← bgm(可选,带 stream_loop)
+  if (opts.bgmPath) {
+    args.push('-stream_loop', '-1', '-i', opts.bgmPath);
+  }
+
+  const audioInputs: string[] = [];
+  let nextIdx = 1;
+  if (opts.narrationPath) {
+    audioInputs.push(`[${nextIdx}:a]volume=${opts.narrationVolume.toFixed(2)}[an]`);
+    nextIdx++;
+  }
+  if (opts.bgmPath) {
+    audioInputs.push(`[${nextIdx}:a]volume=${opts.bgmVolume.toFixed(2)}[ab]`);
+  }
+
+  // 混音 filter_complex
+  if (opts.narrationPath && opts.bgmPath) {
+    const fc = `${audioInputs.join(';')};[an][ab]amix=inputs=2:duration=first:dropout_transition=0[aout]`;
+    args.push('-filter_complex', fc);
+    args.push('-map', '0:v', '-map', '[aout]');
+  } else if (opts.narrationPath) {
+    args.push('-filter_complex', audioInputs[0].replace('[an]', '[aout]'));
+    args.push('-map', '0:v', '-map', '[aout]');
+  } else if (opts.bgmPath) {
+    args.push('-filter_complex', audioInputs[0].replace('[ab]', '[aout]'));
+    args.push('-map', '0:v', '-map', '[aout]');
+  } else {
+    args.push('-map', '0:v');
+  }
+
+  // 视频编码
+  args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-movflags', '+faststart');
+  // 音频编码(只在有音轨时设)
+  if (opts.narrationPath || opts.bgmPath) {
+    args.push('-c:a', 'aac', '-b:a', '192k', '-ar', '48000');
+  }
+  // 总时长 = HTML 动画时长(避免 BGM 循环没尽头)
+  args.push('-t', opts.durationSec.toFixed(3));
+  args.push(opts.outPath);
+  return args;
+}
+
+/** ffmpeg 进程包装:暴露 stdin 给逐帧 pipe,close 时等退出。 */
+class FfmpegPipeEncoder {
+  private proc: ChildProcess | null = null;
+  private stderr = '';
+  private exitPromise: Promise<{ ok: boolean; code: number | null; stderr: string }> = Promise.resolve({ ok: false, code: null, stderr: '' });
+
+  start(args: string[], onStderrLine?: (line: string) => void): void {
+    const bin = getFfmpegPath();
+    this.proc = spawn(bin, args, { stdio: ['pipe', 'ignore', 'pipe'], windowsHide: true });
+    this.proc.stderr?.on('data', (b: Buffer) => {
+      const text = b.toString();
+      this.stderr += text;
+      if (this.stderr.length > 200_000) this.stderr = this.stderr.slice(-100_000);
+      if (onStderrLine) {
+        for (const line of text.split(/\r?\n/)) {
+          if (line.trim()) onStderrLine(line);
+        }
+      }
+    });
+    this.exitPromise = new Promise((resolve) => {
+      this.proc!.on('close', (code) => resolve({ ok: code === 0, code, stderr: this.stderr }));
+      this.proc!.on('error', (e) => resolve({ ok: false, code: null, stderr: this.stderr + '\n[spawn error] ' + String(e) }));
+    });
+  }
+
+  /** 写一帧 PNG 到 ffmpeg stdin。stdin 写满时等 drain,避免内存爆。 */
+  writeFrame(buf: Buffer): Promise<void> {
+    if (!this.proc?.stdin || this.proc.stdin.destroyed) return Promise.reject(new Error('ffmpeg stdin 已关闭'));
+    return new Promise((resolve, reject) => {
+      const stdin = this.proc!.stdin!;
+      const ok = stdin.write(buf, (err) => err ? reject(err) : resolve());
+      if (!ok) stdin.once('drain', () => { /* drain 触发就行,resolve 已经在 write 回调里 */ });
+    });
+  }
+
+  endStdin(): void {
+    try { this.proc?.stdin?.end(); } catch { /* ignore */ }
+  }
+
+  kill(): void {
+    try { this.proc?.kill('SIGKILL'); } catch { /* ignore */ }
+  }
+
+  waitExit(): Promise<{ ok: boolean; code: number | null; stderr: string }> {
+    return this.exitPromise;
+  }
+}
+
+// ── 公开 API ─────────────────────────────────────────────────────────────
+
+/**
+ * 渲染 HTML 动画 → mp4(直接出成片,不落盘 PNG)。
+ *
+ * 流程:
+ *   1. 启无头浏览器,导航到 file://(HTML 写到临时 profile 目录)
+ *   2. 等 `__nbc.ready === true` + 字体就绪
+ *   3. 启 ffmpeg,stdin pipe;同步把 narration/bgm 当 -i 输入混音
+ *   4. 逐帧:seek(t) → captureScreenshot → 写 ffmpeg stdin
+ *   5. 关 stdin,等 ffmpeg 退出
+ */
+export async function renderHtmlToVideo(opts: RenderHtmlToVideoOptions): Promise<RenderHtmlResult> {
   const width = opts.width || 1080;
   const height = opts.height || 1920;
   const fps = opts.fps && opts.fps > 0 ? opts.fps : 30;
@@ -269,28 +408,55 @@ export async function renderHtmlToFrames(opts: RenderHtmlOptions): Promise<Rende
   const total = Math.max(1, Math.round(fps * dur));
   const perFrameTimeout = opts.timeoutMsPerFrame || 8000;
 
-  fs.mkdirSync(opts.framesDir, { recursive: true });
+  fs.mkdirSync(path.dirname(opts.outPath), { recursive: true });
+
   const session = new HeadlessSession();
+  const encoder = new FfmpegPipeEncoder();
+  let started = false;
+
   try {
     await session.launch(width, height);
     await session.navigateHtml(opts.html);
     await session.waitReady();
+
+    // 拉起 ffmpeg(只在 HTML 就绪后启,避免空跑/超时窗口)
+    const ffArgs = buildPipeEncodeArgs({
+      fps, outPath: opts.outPath,
+      narrationPath: opts.narrationPath,
+      narrationVolume: typeof opts.narrationVolume === 'number' && opts.narrationVolume >= 0 ? opts.narrationVolume : 1.0,
+      bgmPath: opts.bgmPath,
+      bgmVolume: typeof opts.bgmVolume === 'number' && opts.bgmVolume >= 0 ? opts.bgmVolume : 0.18,
+      durationSec: dur,
+    });
+    encoder.start(ffArgs);
+    started = true;
+
     for (let f = 0; f < total; f++) {
       if (opts.signal?.aborted) throw new Error('aborted');
       const t = f / fps;
-      await session.evalAt(t);
+      await session.seekAt(t);
       const png = await session.shot(width, height, perFrameTimeout);
-      fs.writeFileSync(path.join(opts.framesDir, `frame_${String(f).padStart(4, '0')}.png`), png);
+      await encoder.writeFrame(png);
       opts.onProgress?.(f + 1, total);
     }
-    return { framesDir: opts.framesDir, frameCount: total, fps, width, height };
+
+    encoder.endStdin();
+    const r = await encoder.waitExit();
+    if (!r.ok) {
+      const tail = (r.stderr || '').replace(/\s+/g, ' ').trim().slice(-400);
+      throw new Error(`ffmpeg 编码失败:${tail || '(无 stderr)'}`);
+    }
+    return { outPath: opts.outPath, frameCount: total, fps, width, height };
+  } catch (err) {
+    if (started) encoder.kill();
+    throw err;
   } finally {
     await session.close();
   }
 }
 
 /**
- * 动态预检:启一个短命无头实例,验证 HTML 契约 + t=0 与 t=DUR/2 两帧像素必须不同
+ * 动态预检:启短命无头实例,验证 HTML 契约 + t=0 与 t=DUR/2 两帧像素必须不同
  * (否则 = 动画没接 t,等于静态图,判不合格)。给 templateHtmlWriter 做重试/降级判定。
  */
 export async function probeHtml(html: string): Promise<ProbeHtmlResult> {
@@ -304,12 +470,12 @@ export async function probeHtml(html: string): Promise<ProbeHtmlResult> {
     if (!contract.ok) return { ok: false, reason: contract.reason || 'contract invalid' };
     const dur = contract.durationSec || 5;
     // 两帧差异:t=0 vs t=DUR/2
-    await session.evalAt(0);
+    await session.seekAt(0);
     const a = await session.shot(width, height, 8000);
-    await session.evalAt(dur / 2);
+    await session.seekAt(dur / 2);
     const b = await session.shot(width, height, 8000);
     if (a.length === b.length && a.equals(b)) {
-      return { ok: false, reason: '动画无变化(renderFrame 未按 t 改变画面)' };
+      return { ok: false, reason: '动画无变化(seek 未按 t 改变画面)' };
     }
     return { ok: true, durationSec: dur, fps: contract.fps || 30 };
   } catch (e) {

@@ -27,8 +27,19 @@ export interface VideoTemplateOptions {
   fps?: number;
   brandColor?: string;
   accentColor?: string;
+  // ── HF 派新增:可选配音 + 字幕(narration on 时生效)──
+  /** 是否生成 AI 口播 + 字幕(默认 false=纯视觉)。 */
   narration?: boolean;
+  /** edge-tts 音色(如 zh-CN-XiaoxiaoNeural),空 = 默认。 */
+  voice?: string;
+  /** 语速档(-50~+50,单位%),0/空 = 正常。 */
+  voiceRate?: number;
+  /** 用户自定义口播稿;空 = AI 按 dataText 生成。 */
   voiceScript?: string;
+  /** 烧字幕开关(narration on 时才有意义)。默认 true。 */
+  subtitleEnabled?: boolean;
+  /** 右下角水印文案。空字符串 = 不显示;undefined = 默认 NoobClaw。 */
+  watermark?: string;
 }
 
 export interface VideoCreationInput {
