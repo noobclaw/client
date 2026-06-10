@@ -52,6 +52,9 @@ const App: React.FC = () => {
   const [mainView, setMainView] = useState<'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'partners' | 'personality'>('scenarioCreate');
   // v4.31.44: 主页 6 个涨粉标签可以指定打开"一键使用"时初选哪个平台
   const [quickUseInitialPlatform, setQuickUseInitialPlatform] = useState<'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video' | undefined>(undefined);
+  // ScenarioView 下钻到任务/运行记录详情时为 true:任务详情逻辑上属于「我的涨粉任务」,
+  // 在「新建涨粉任务 / 涨粉运行记录」菜单下钻时,把左侧菜单高亮临时切到「我的涨粉任务」。
+  const [scenarioInDetail, setScenarioInDetail] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -930,7 +933,9 @@ const App: React.FC = () => {
         <Sidebar
           onShowLogin={handleShowLogin}
           onShowSettings={handleShowSettings}
-          activeView={mainView}
+          /* create/runs 菜单下钻到任务详情时,高亮临时归到「我的涨粉任务」(quickuse),
+             保持「任务详情属于我的涨粉任务」的认知一致;其余情况按真实 mainView 高亮。 */
+          activeView={scenarioInDetail && (mainView === 'scenarioCreate' || mainView === 'scenarioRuns') ? 'quickuse' : mainView}
           onShowSkills={handleShowSkills}
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
@@ -997,6 +1002,7 @@ const App: React.FC = () => {
               <ScenarioView
                 mode="create"
                 onSwitchToManage={() => handleShowQuickUse()}
+                onInDetailChange={setScenarioInDetail}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
@@ -1008,6 +1014,7 @@ const App: React.FC = () => {
               <ScenarioView
                 mode="manage"
                 onSwitchToCreate={handleShowScenarioCreate}
+                onInDetailChange={setScenarioInDetail}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
@@ -1019,6 +1026,7 @@ const App: React.FC = () => {
               <ScenarioView
                 mode="runs"
                 onSwitchToCreate={handleShowScenarioCreate}
+                onInDetailChange={setScenarioInDetail}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
