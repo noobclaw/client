@@ -571,9 +571,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'video_repost_remix') return isZh
       ? ['选品 / 收集链接', '逐条:下载源 → 本地转写 → 翻译 → 遮字幕+二创合成,存本地']
       : ['Pick / collect links', 'Per video: download → transcribe → translate → cover-subs + remix compose, save'];
-    if (sid === 'long_to_short') return isZh
-      ? ['收集长视频链接', '逐条:下载源 → 转写 → AI 选高光 → 切竖屏+烧字幕,存本地']
-      : ['Collect long-video links', 'Per video: download → transcribe → AI pick highlights → vertical clips + subs, save'];
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -951,7 +948,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
     if (sid === 'video_repost_remix')             return { icon: '🎬', label: isZh ? '视频搬运 · 二创' : 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
-    if (sid === 'long_to_short')                  return { icon: '✂️', label: isZh ? '长视频转爆款短片' : 'Long → Shorts', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -1832,7 +1828,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           : sid.startsWith('toutiao_') ? 'toutiao'
           : 'xhs';
         const sp = scenario?.platform;
-        // 视频二创(platform='video',如 video_repost_remix / long_to_short):登录检查认
+        // 视频二创(platform='video',如 video_repost_remix):登录检查认
         // 【源平台】(去那下载无水印源),不是 xhs。auto 模式取 source_platforms[0];
         // 手动贴链接(无 source_platforms)兜底抖音(最常见源)。
         const LP_SET: LP[] = ['x', 'xhs', 'binance', 'tiktok', 'youtube', 'douyin', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao'];

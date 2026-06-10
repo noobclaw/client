@@ -734,7 +734,7 @@ function resourceKeysForPack(
 
   // 顶层平台互斥锁:同一【顶层平台】(douyin / xhs / video / binance …)任意两个任务
   // 一次只能跑一个 —— 防同账号双开(如抖音创作中心 + 主站互动同时跑触风控),也让「视频类」
-  // (platform='video' 的二创/长转短)同时只跑一个。不同平台仍可并发(推特+币安互不影响)。
+  // (platform='video' 的二创)同时只跑一个。不同平台仍可并发(推特+币安互不影响)。
   // sub_platform(douyin_main vs douyin_creator)key 不同会漏挡,这把顶层锁补上。
   const topPlatform = pack?.manifest?.platform;
   if (typeof topPlatform === 'string' && topPlatform) pushKey(`platform-top:${topPlatform}`);

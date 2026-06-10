@@ -1,5 +1,5 @@
 /**
- * 本地语音转写(ASR)—— 视频搬运/二创 & 长转短 用。
+ * 本地语音转写(ASR)—— 视频搬运/二创 用。
  *
  * 选型:faster-whisper(CTranslate2 实现的 whisper,CPU int8 比官方 whisper 快很多),
  *      跑在【edge-tts 已经在用的那套 Python 运行时】里 —— 本地、免费、无需 key、跨平台。
@@ -247,7 +247,7 @@ export async function transcribe(
     let stderr = '';
     let done = false;
     const child = spawn(py, [script, wav, model, lang, dlRoot], { env: pythonEnv() });
-    // 首次下载模型 + 长视频转写都可能很久,给 60 分钟上限。
+    // 首次下载模型 + 较长音视频转写都可能很久,给 60 分钟上限。
     const timer = setTimeout(() => {
       if (done) return;
       done = true;

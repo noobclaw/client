@@ -27,6 +27,7 @@ import {
   type VideoPublishTarget,
   type VideoAspect,
   type SubtitlePosition,
+  type VideoTemplateStyle,
 } from '../../../services/videoCreation';
 import {
   videoTaskStore,
@@ -68,7 +69,7 @@ interface VideoWorkflowsPageProps {
   /** 进入/退出任务·运行记录详情时上报,供 ScenarioView 隐藏顶部 L1/L2 tab
    *  (对齐 scenario 详情页:详情态全屏,顶上不挂那么多 tab)。 */
   onDetailChange?: (inDetail: boolean) => void;
-  /** v6.x: video 平台下的【后端 scenario 任务】(翻译二创/长转短)。
+  /** v6.x: video 平台下的【后端 scenario 任务】(翻译二创)。
    *  这些不是本地一键成片,由 ScenarioView 过滤 platform==='video' 传入,
    *  点开走 onOpenScenarioTask → scenario TaskDetailPage(运行/进度/历史)。 */
   scenarioTasks?: any[];
@@ -425,7 +426,7 @@ const VideoLanding: React.FC<{
   // 订阅协调器 → 「生成中」徽章实时刷新(抢占式:同时只 1 个在跑,无排队位次)。
   const [, setQv] = useState(0);
   useEffect(() => videoQueue.subscribe(() => setQv((v) => v + 1)), []);
-  // 轮询 scenario 引擎【真实运行态】—— 二创/长转短任务的定时是 scenario 调度器自动跑的
+  // 轮询 scenario 引擎【真实运行态】—— 二创任务的定时是 scenario 调度器自动跑的
   // (不经 videoQueue),只看 videoQueue 会漏掉「定时自动跑」的任务 → 列表看不到哪个在跑。
   const [runningIds, setRunningIds] = useState<string[]>([]);
   useEffect(() => {
@@ -595,7 +596,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
   );
 };
 
-// scenario 二创任务卡(翻译二创 / 长转短):布局【完全对齐】本地 AI 成片卡(VideoTaskCard)——
+// scenario 二创任务卡(翻译二创):布局【完全对齐】本地 AI 成片卡(VideoTaskCard)——
 // 同样的「🎬视频创作 + 类型徽章 + 模式徽章 + 粗体标题 + #id」头行,多行配置(来源→目标 / 翻译方向 /
 // 切片设置 / 关键词),底部 footer。两类卡片高度、视觉重量一致,列表里不再一胖一瘦。
 const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; onClick: () => void; queueBadge?: React.ReactNode; running?: boolean }> = ({ isZh, task, scenario, onClick, queueBadge, running }) => {
@@ -633,7 +634,7 @@ const ScenarioVideoCard: React.FC<{ isZh: boolean; task: any; scenario?: any; on
         {queueBadge}
       </div>
 
-      {/* 配置摘要:人设 / 来源→目标 + 翻译方向(翻译二创)或 切片设置(长转短) / 关键词 */}
+      {/* 配置摘要:人设 / 来源→目标 + 翻译方向 / 关键词 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
         {task.persona && (
           <div className="flex items-start gap-1.5">
@@ -1539,73 +1540,55 @@ const VideoCreateFlow: React.FC<{
   onCreatedScenario?: (taskId: string) => void;
   onGoTasks?: () => void;
 }> = ({ isZh, onCreated, onCreatedScenario, onGoTasks }) => {
-  const [showConfig, setShowConfig] = useState(false);
-  // 两张二创卡,各自独立多步向导:翻译二创(video_repost_remix)、长转短(long_to_short)。
-  const [remixOpen, setRemixOpen] = useState(false);
-  const [clipOpen, setClipOpen] = useState(false);
+  // 4 张独立 card,各自独立向导:电影级(纯AI)/ 在线素材(AI口播)/ 模板速生 / 翻译二创。
+  const [cinemaOpen, setCinemaOpen] = useState(false);     // 电影级 → VideoConfigModal forcedMode=pure_ai
+  const [stockOpen, setStockOpen] = useState(false);       // 在线素材 → VideoConfigModal forcedMode=stock
+  const [templateOpen, setTemplateOpen] = useState(false); // 模板速生 → TemplateSpeedModal
+  const [remixOpen, setRemixOpen] = useState(false);       // 翻译二创 → VideoRepostRemixModal
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
+    <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <OriginalShortVideoCard isZh={isZh} onStart={() => setShowConfig(true)} onGoTasks={onGoTasks} />
+        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
+          titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
+          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成全新画面、自动配音+字幕,现实里拍不到的镜头也能生出来,还能传参考图锁画风。脑洞 / 概念 / 想象类内容的最强搭子。"
+          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film. Add reference images to lock the style."
+          costZh="按秒计费 · 约 $0.04/秒(720p)· 失败镜头自动退" costEn="Per-second · ~$0.04/s (720p) · auto-refund on failed shots"
+          btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
+          titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
+          descZh="低成本批量日更的利器:给个主题,AI 自动写口播稿+配音+字幕,海量正版素材库一键凑齐画面,一次最多出 5 条不同画面的成片。知识科普 / 资讯解说 / 好物种草,配音字幕合成全免费。"
+          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 5 differently-cut videos per run. TTS / subtitles / compositing are free."
+          costZh="单条约 $0.02~$0.04(写稿/素材/合成)" costEn="~$0.02–0.04 per clip (script / stock / compose)"
+          btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
+        <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
+          titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
+          descZh="把榜单、资讯、数据、金句一键变成带动效的竖屏短视频 —— AI 现编动画页面、本地逐帧渲染,画面零成本、秒级出片、稳定可控。币安行情榜、热点快讯、Top 盘点最合适。"
+          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame. Zero-cost visuals, seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
+          costZh="画面免费 · 仅 AI 写稿几分钱" costEn="Visuals free · only a few cents for the AI script"
+          btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
         <RemixEntryCard isZh={isZh} onOpen={() => setRemixOpen(true)} onGoTasks={onGoTasks} />
-        <VideoScenarioEntryCard
-          isZh={isZh} onOpen={() => setClipOpen(true)} onGoTasks={onGoTasks}
-          icon="✂️" tagZh="长转短 · 切片" tagEn="Long → Shorts"
-          titleZh="长视频转爆款短片" titleEn="Long Video to Viral Shorts"
-          btnZh="✂️ 开始切片 →" btnEn="✂️ Start →"
-          descZh="一条长视频 / 直播,AI 自动揪出最炸的几个高光,切成竖屏短片、配好字幕 —— 播客、访谈、直播,一键变一堆爆款切片。"
-          descEn="Drop in a long video / livestream; AI finds the most viral moments and cuts them into subtitled vertical shorts — podcasts, interviews, streams into a batch of clips."
-        />
       </section>
 
-      {showConfig && (
-        <VideoConfigModal
-          isZh={isZh}
-          onClose={() => setShowConfig(false)}
-          onCreated={onCreated}
-        />
+      {cinemaOpen && (
+        <VideoConfigModal isZh={isZh} forcedMode="pure_ai" onClose={() => setCinemaOpen(false)} onCreated={onCreated} />
+      )}
+      {stockOpen && (
+        <VideoConfigModal isZh={isZh} forcedMode="stock" onClose={() => setStockOpen(false)} onCreated={onCreated} />
+      )}
+      {templateOpen && (
+        <TemplateSpeedModal isZh={isZh} onClose={() => setTemplateOpen(false)} onCreated={onCreated} />
       )}
       {remixOpen && (
         <VideoRepostRemixModal isZh={isZh} onClose={() => setRemixOpen(false)}
           onCreated={(id) => { setRemixOpen(false); onCreatedScenario?.(id); }} />
       )}
-      {clipOpen && (
-        <LongToShortModal isZh={isZh} onClose={() => setClipOpen(false)}
-          onCreated={(id) => { setClipOpen(false); onCreatedScenario?.(id); }} />
-      )}
     </div>
   );
 };
-
-// ── 卡片 1:原创短视频 · AI自动成片 ───────────────────────────────────
-
-const OriginalShortVideoCard: React.FC<{ isZh: boolean; onStart: () => void; onGoTasks?: () => void }> = ({ isZh, onStart, onGoTasks }) => (
-  <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
-    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
-    <div className="relative flex flex-col flex-1">
-      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-        {isZh ? 'AI自动成片' : 'AI Auto-Video'}
-      </div>
-      <h3 className="text-base font-bold dark:text-white mb-1.5">
-        🎬 {isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video'}
-      </h3>
-      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">
-        {isZh
-          ? '低成本批量日更的利器:不用露脸、不用剪辑。给个主题,AI 自动写口播稿 + 配音 + 字幕,在线素材库一键凑齐画面,本地一次出最多 5 条不同画面的成片(竖屏/横屏/方屏自选)。知识科普 / 资讯解说 / 好物种草都能批量产,配音字幕合成全免费。'
-          : 'Batch-publish on a budget — no face, no editing. Give a topic and AI writes the voice-over script, narrates, subtitles, and pulls visuals from the stock library, producing up to 5 differently-cut videos per run (portrait / landscape / square). Great for explainers, news recaps and product picks; TTS, subtitles and compositing are free.'}
-      </p>
-      <CardActionRow
-        isZh={isZh}
-        onConfigure={onStart}
-        onGoToMyTasks={onGoTasks}
-        label={'🎬 ' + (isZh ? '开始创作 →' : 'Start →')}
-        btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
-      />
-    </div>
-  </div>
-);
 
 // ── 卡片 2(每日热点 · 自动成片)已移除:新建页改为「原创 + 视频搬运·二创」两张。 ──
 
@@ -1891,9 +1874,12 @@ const VideoConfigModal: React.FC<{
   editTask?: VideoTask;
   /** 编辑保存成功回调。 */
   onSaved?: () => void;
-}> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
+  /** 新建时锁定生成模式(电影级=pure_ai / 在线素材=stock):隐藏模式选择步,直接从赛道开始。 */
+  forcedMode?: GenMode;
+}> = ({ isZh, onClose, onCreated, editTask, onSaved, forcedMode }) => {
   const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(1);
+  // forcedMode(从「电影级 / 在线素材」card 进来)锁定模式 → 跳过 step1 模式选择,从 step2(赛道)起。
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6 | 7>(forcedMode ? 2 : 1);
 
   // 新建默认选中「美食」赛道,并带出其人设/关键词;编辑模式按已有任务反推。
   const defaultPreset = TRACK_PRESETS.find((p) => p.id === 'food')
@@ -1922,7 +1908,9 @@ const VideoConfigModal: React.FC<{
 
   // 步骤 2:画面(素材来源 / 在线模式 / 本地素材 / 画幅 / 换镜)
   const [materialSource, setMaterialSource] = useState<MaterialSource>(
-    editTask?.input.engine === 'ai' ? 'ai'
+    forcedMode === 'pure_ai' ? 'ai'
+      : forcedMode === 'stock' ? 'stock'
+      : editTask?.input.engine === 'ai' ? 'ai'
       : (editTask?.input.localVideos && editTask.input.localVideos.length > 0) ? 'local'
       : 'stock',
   );
@@ -1943,7 +1931,7 @@ const VideoConfigModal: React.FC<{
     return () => { alive = false; };
   }, [seedanceResolution]);
   // Seedance 档位 / 分辨率客户端不再决定:不传,后端按 system_config 定(admin 可切 1.0/1.5 测试)。
-  const [mode, setMode] = useState<GenMode>(editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock');
+  const [mode, setMode] = useState<GenMode>(forcedMode ?? (editTask?.input.engine === 'ai' ? 'pure_ai' : 'stock'));
   const [aspect, setAspect] = useState<VideoAspect>(editTask?.input.aspect || '9:16');
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
 
@@ -2224,8 +2212,12 @@ const VideoConfigModal: React.FC<{
               🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '模式' : 'Mode'} />
-              <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              {!forcedMode && (
+                <>
+                  <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '模式' : 'Mode'} />
+                  <div className={`h-px w-6 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+                </>
+              )}
               <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '赛道' : 'Track'} />
               <div className={`h-px w-6 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '文案' : 'Script'} />
@@ -3015,13 +3007,14 @@ const VideoConfigModal: React.FC<{
           <button
             type="button"
             onClick={() => {
-              if (step === 1) { onClose(); return; }
+              // forcedMode 锁定模式 → 最低步是 step2(赛道),从 step2 点「上一步」= 取消(没有 step1)。
+              if (step === 1 || (forcedMode && step === 2)) { onClose(); return; }
               // Seedance 纯画面(未开 AI 配音)无字幕步:7 ← 5(跳过 6)
               setStep((s) => ((mode === 'pure_ai' && !aiNarration && s === 7 ? 5 : s - 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7));
             }}
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
+            {(step === 1 || (forcedMode && step === 2)) ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
           {step < 7 ? (
             <button
@@ -3210,31 +3203,45 @@ const RemixEntryCard: React.FC<{ isZh: boolean; onOpen: () => void; onGoTasks?: 
   </div>
 );
 
-// 通用入口卡(长转短等后端 scenario 卡复用)
+// 通用入口卡(4 张视频创作卡复用:电影级 / 在线素材 / 模板速生 / 翻译二创)。
+// accent 决定主色;cost 在描述下方展示「价格」(用户要求 card 表面带价格特点)。
+// accent 类名写成完整字面量映射,避免 Tailwind 动态拼接被 purge。
+const ENTRY_ACCENTS: Record<string, { tag: string; dot: string; border: string; glow: string; btn: string }> = {
+  rose:    { tag: 'text-rose-500',    dot: 'bg-rose-500',    border: 'border-rose-500/30',    glow: 'bg-rose-500/10',    btn: 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/25' },
+  sky:     { tag: 'text-sky-500',     dot: 'bg-sky-500',     border: 'border-sky-500/30',     glow: 'bg-sky-500/10',     btn: 'bg-sky-500 hover:bg-sky-600 shadow-sky-500/25' },
+  fuchsia: { tag: 'text-fuchsia-500', dot: 'bg-fuchsia-500', border: 'border-fuchsia-500/30', glow: 'bg-fuchsia-500/10', btn: 'bg-fuchsia-500 hover:bg-fuchsia-600 shadow-fuchsia-500/25' },
+  violet:  { tag: 'text-violet-500',  dot: 'bg-violet-500',  border: 'border-violet-500/30',  glow: 'bg-violet-500/10',  btn: 'bg-violet-500 hover:bg-violet-600 shadow-violet-500/25' },
+};
 const VideoScenarioEntryCard: React.FC<{
   isZh: boolean; onOpen: () => void; onGoTasks?: () => void; icon: string;
   tagZh: string; tagEn: string; titleZh: string; titleEn: string; descZh: string; descEn: string;
-  btnZh: string; btnEn: string;
-}> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn }) => (
-  <div className="relative rounded-2xl border border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-orange-500/5 to-transparent p-5 overflow-hidden flex flex-col">
-    <div className="absolute -top-16 -right-16 w-40 h-40 rounded-full bg-rose-500/10 blur-3xl pointer-events-none" />
-    <div className="relative flex flex-col flex-1">
-      <div className="inline-flex items-center gap-1.5 text-xs font-medium text-rose-500 mb-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-        {isZh ? tagZh : tagEn}
+  btnZh: string; btnEn: string; costZh?: string; costEn?: string; accent?: 'rose' | 'sky' | 'fuchsia' | 'violet';
+}> = ({ isZh, onOpen, onGoTasks, icon, tagZh, tagEn, titleZh, titleEn, descZh, descEn, btnZh, btnEn, costZh, costEn, accent = 'rose' }) => {
+  const A = ENTRY_ACCENTS[accent];
+  return (
+    <div className={`relative rounded-2xl border ${A.border} bg-white dark:bg-gray-900 p-5 overflow-hidden flex flex-col`}>
+      <div className={`absolute -top-16 -right-16 w-40 h-40 rounded-full ${A.glow} blur-3xl pointer-events-none`} />
+      <div className="relative flex flex-col flex-1">
+        <div className={`inline-flex items-center gap-1.5 text-xs font-medium ${A.tag} mb-2`}>
+          <span className={`inline-block w-1.5 h-1.5 rounded-full ${A.dot} animate-pulse`} />
+          {isZh ? tagZh : tagEn}
+        </div>
+        <h3 className="text-base font-bold dark:text-white mb-1.5">{icon} {isZh ? titleZh : titleEn}</h3>
+        <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-2 flex-1">{isZh ? descZh : descEn}</p>
+        {(costZh || costEn) && (
+          <div className={`text-xs font-semibold ${A.tag} mb-3`}>💰 {isZh ? costZh : costEn}</div>
+        )}
+        <CardActionRow
+          isZh={isZh}
+          onConfigure={onOpen}
+          onGoToMyTasks={onGoTasks}
+          label={isZh ? btnZh : btnEn}
+          btnClass={`${A.btn} shadow-lg`}
+        />
       </div>
-      <h3 className="text-base font-bold dark:text-white mb-1.5">{icon} {isZh ? titleZh : titleEn}</h3>
-      <p className="text-xs text-gray-600 dark:text-gray-300 leading-relaxed mb-3 flex-1">{isZh ? descZh : descEn}</p>
-      <CardActionRow
-        isZh={isZh}
-        onConfigure={onOpen}
-        onGoToMyTasks={onGoTasks}
-        label={isZh ? btnZh : btnEn}
-        btnClass="bg-rose-500 hover:bg-rose-600 shadow-lg shadow-rose-500/25"
-      />
     </div>
-  </div>
-);
+  );
+};
 
 const REMIX_PLATFORMS: Array<{ id: string; zh: string; en: string }> = [
   { id: 'douyin', zh: '抖音', en: 'Douyin' },
@@ -3265,6 +3272,146 @@ const REMIX_TRANSLATE_MODES: Array<{ id: string; zh: string; en: string }> = [
   { id: 'sub_dub', zh: '翻译字幕 + 配音(基础版)', en: 'Translate subtitles + dub (basic)' },
 ];
 // 运行频率选项(对齐币安等 scenario:同一套 id + pill 按钮呈现)。
+// ════════════════════════════════════════════════════════════════════
+//  卡:模板速生(本地任务 engine='template')— AI 现编动效 HTML → 逐帧渲染出片
+//  2 步向导:内容(版式 + 标题 + 数据)→ 出片(赛道 + 品牌色 + 时长 + 定时)
+// ════════════════════════════════════════════════════════════════════
+const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; emoji: string; hint: string }> = [
+  { id: 'rank_list', zh: '排行榜 / 榜单', en: 'Rank list', emoji: '🏆', hint: '涨幅榜、热门榜、Top N' },
+  { id: 'news_cards', zh: '资讯快讯', en: 'News cards', emoji: '📰', hint: '今日要点、公告、日报' },
+  { id: 'quote', zh: '金句 / 语录', en: 'Quote', emoji: '✍️', hint: '观点、知识点、避坑' },
+  { id: 'countdown', zh: '盘点倒数', en: 'Countdown', emoji: '🔟', hint: '倒数揭晓 Top 榜' },
+  { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
+];
+
+export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void }> = ({ isZh, onClose, onCreated }) => {
+  const [step, setStep] = useState<1 | 2>(1);
+  const [style, setStyle] = useState<VideoTemplateStyle>('rank_list');
+  const [title, setTitle] = useState('');
+  const [dataText, setDataText] = useState('');
+  const [track, setTrack] = useState('');
+  const [brandColor, setBrandColor] = useState('#f0b90b');
+  const [durationSec, setDurationSec] = useState(6);
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>('once');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const handleCreate = async () => {
+    if (!dataText.trim()) { setStep(1); setErr(isZh ? '请填写榜单/要点内容' : 'Enter the list / points'); return; }
+    if (submitting) return;
+    setSubmitting(true); setErr(null);
+    try {
+      if (!(await videoQueue.canCreate())) {
+        setErr(isZh
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
+        return;
+      }
+      const name = title.trim() || (isZh ? '模板速生' : 'Template');
+      const input: VideoCreationInput = {
+        persona: '', track: track.trim() || name, keywords: [], script: '', scriptMode: 'ai',
+        engine: 'template', referenceImages: [], aspect: '9:16', publishTarget: 'local',
+        template: { style, title: title.trim() || undefined, dataText: dataText.trim(), durationSec, brandColor },
+      };
+      const schedule: VideoSchedule = { runInterval };
+      const id = videoTaskStore.createTask(input, name, schedule);
+      onCreated?.(id);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
+        <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? '模板速生' : 'Template Speed'}</h3>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
+              <div className={`h-px w-6 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={false} label={isZh ? '出片' : 'Output'} />
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+        </div>
+
+        <div className="px-6 py-4 space-y-4">
+          {step === 1 && (
+            <>
+              <Field label={isZh ? '版式' : 'Style'} hint={isZh ? '决定画面长什么样' : 'how the画面 looks'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {TEMPLATE_STYLES.map((s) => (
+                    <button key={s.id} type="button" onClick={() => setStyle(s.id)}
+                      className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${style === s.id ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
+                      <div className="font-medium dark:text-white">{s.emoji} {isZh ? s.zh : s.en}</div>
+                      <div className="text-[11px] text-gray-500">{s.hint}</div>
+                    </button>
+                  ))}
+                </div>
+              </Field>
+              <Field label={isZh ? '标题(可选)' : 'Title (optional)'}>
+                <input value={title} onChange={(e) => setTitle(e.target.value)}
+                  placeholder={isZh ? '如:今日涨幅榜' : 'e.g. Today Top Gainers'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
+              </Field>
+              <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '每行一条,AI 自动排版成动效画面' : 'one per line; AI lays it out'}>
+                <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={6}
+                  placeholder={isZh ? 'DOGE +18.96%\nSOL +12.47%\nBNB +8.13%' : 'DOGE +18.96%\nSOL +12.47%'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
+              </Field>
+            </>
+          )}
+          {step === 2 && (
+            <>
+              <Field label={isZh ? '赛道(可选)' : 'Track (optional)'}>
+                <input value={track} onChange={(e) => setTrack(e.target.value)}
+                  placeholder={isZh ? '如:加密行情' : 'e.g. Crypto'}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
+              </Field>
+              <Field label={isZh ? '主品牌色' : 'Brand color'}>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)}
+                    className="h-9 w-14 rounded border border-gray-300 dark:border-gray-700 bg-transparent" />
+                  <span className="text-xs text-gray-500">{brandColor}</span>
+                </div>
+              </Field>
+              <Field label={`${isZh ? '时长' : 'Duration'} · ${durationSec}s`}>
+                <input type="range" min={3} max={20} step={1} value={durationSec}
+                  onChange={(e) => setDurationSec(Number(e.target.value))} className="w-full accent-fuchsia-500" />
+              </Field>
+              <Field label={isZh ? '运行频率' : 'Run frequency'}>
+                <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
+              </Field>
+              <div className="text-[11px] text-gray-400">{isZh ? '画面零成本(本地渲染),只有 AI 写模板的几分钱' : 'Zero画面 cost (local render); only a few cents for the AI template'}</div>
+            </>
+          )}
+          {err && <div className="text-xs text-red-500">{err}</div>}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
+          <button type="button" onClick={() => { setErr(null); if (step === 1) { onClose(); return; } setStep(1); }}
+            className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
+            {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
+          </button>
+          {step < 2 ? (
+            <button type="button" onClick={() => { if (!dataText.trim()) { setErr(isZh ? '请填写内容' : 'Enter content'); return; } setErr(null); setStep(2); }}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600">
+              {isZh ? '下一步 →' : 'Next →'}
+            </button>
+          ) : (
+            <button type="button" onClick={handleCreate} disabled={submitting}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
+              {submitting ? (isZh ? '创建中...' : 'Creating...') : '⚡ ' + (isZh ? '创建并开始' : 'Create & Start')}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const REMIX_INTERVALS: Array<{ id: string; zh: string; en: string }> = [
   { id: 'once', zh: '不重复', en: 'Once' },
   { id: '30min', zh: '每 30 分钟', en: 'Every 30min' },
@@ -3595,199 +3742,4 @@ export const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => voi
   );
 };
 
-// 共享:链接 textarea 解析 + 建 scenario 任务并交统一队列调度
-function parseLinks(text: string): string[] {
-  return text.split(/\s*\n\s*/).map((s) => s.trim()).filter(Boolean);
-}
-async function createVideoScenarioTask(scenarioId: string, extra: Record<string, any>, urls: string[], runInterval: string, title: string, isZh = true): Promise<{ ok: boolean; error?: string; taskId?: string }> {
-  if (!(await videoQueue.canCreate())) {
-    return { ok: false, error: isZh
-      ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建`
-      : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.` };
-  }
-  try {
-    const now = new Date();
-    const hh = String(now.getHours()).padStart(2, '0');
-    const mm = String(now.getMinutes()).padStart(2, '0');
-    const task = await scenarioService.createTask({
-      scenario_id: scenarioId,
-      track: 'video_remix',
-      keywords: [],
-      urls,
-      source_mode: 'manual',
-      whisper_model: 'small',
-      persona: '',
-      variants_per_post: 1,
-      daily_count: Math.max(1, urls.length),
-      daily_time: `${hh}:${mm}`,
-      run_interval: runInterval,
-      enabled: true,
-      active: true,
-      ...extra,
-    } as any);
-    void title; // 仅创建,不立即运行(运行交详情页「开始」/ 定时抢占)
-    return { ok: true, taskId: task.id };
-  } catch (e) {
-    return { ok: false, error: String(e).slice(0, 140) };
-  }
-}
 
-// ════════════════════════════════════════════════════════════════════
-//  卡②:长视频转爆款短片(后端 scenario `long_to_short`)— 3 步向导
-//  手动贴长视频 → 切片设置 → 出片。本质是切高光,不翻译。
-// ════════════════════════════════════════════════════════════════════
-export const LongToShortModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (taskId: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
-  // 编辑态:用 editTask 现有配置回填(新建/编辑共用同一向导)。
-  const isEdit = !!editTask;
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [urlsText, setUrlsText] = useState<string>(Array.isArray(editTask?.urls) ? editTask.urls.join('\n') : '');
-  const [clipCount, setClipCount] = useState<number>(typeof editTask?.clip_count === 'number' ? editTask.clip_count : 3);
-  const [minSec, setMinSec] = useState<number>(typeof editTask?.min_clip_sec === 'number' ? editTask.min_clip_sec : 20);
-  const [maxSec, setMaxSec] = useState<number>(typeof editTask?.max_clip_sec === 'number' ? editTask.max_clip_sec : 60);
-  const [aspect, setAspect] = useState<string>(editTask?.target_aspect || '9:16');
-  const [subtitle, setSubtitle] = useState<boolean>(editTask ? editTask.subtitle !== false : true);
-  const [targetLang, setTargetLang] = useState<string>(editTask?.target_lang || 'zh');
-  const [runInterval, setRunInterval] = useState<string>(editTask?.run_interval || 'once');
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-
-  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-fuchsia-500/50';
-  const lbl = 'text-sm font-medium dark:text-gray-200 mb-1.5 block';
-
-  const handleSubmit = async () => {
-    if (submitting) return;
-    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
-    const urls = parseLinks(urlsText);
-    if (!urls.length) { setStep(1); setErr(isZh ? '请粘贴至少一个长视频链接' : 'Paste at least one link'); return; }
-    setSubmitting(true);
-    setErr(null);
-    if (isEdit) {
-      try {
-        await scenarioService.updateTask(editTask.id, {
-          scenario_id: 'long_to_short', track: editTask.track || 'video_remix',
-          urls, source_mode: 'manual', whisper_model: 'small', persona: '', variants_per_post: 1,
-          daily_count: Math.max(1, urls.length),
-          clip_count: clipCount, min_clip_sec: minSec, max_clip_sec: maxSec,
-          target_aspect: aspect, target_lang: targetLang, subtitle,
-          run_interval: runInterval, enabled: true, active: true,
-        } as any);
-        setSubmitting(false);
-        if (onSaved) onSaved(); else onClose();
-      } catch (e) {
-        setSubmitting(false);
-        setErr((isZh ? '保存失败:' : 'Save failed: ') + String(e).slice(0, 140));
-      }
-      return;
-    }
-    const r = await createVideoScenarioTask('long_to_short', {
-      clip_count: clipCount, min_clip_sec: minSec, max_clip_sec: maxSec,
-      target_aspect: aspect, target_lang: targetLang, subtitle,
-    }, urls, runInterval, isZh ? '长视频转爆款短片' : 'Long → Shorts', isZh);
-    setSubmitting(false);
-    // 创建后不弹窗、不立即运行,直接进任务详情页(参照币安)。
-    if (r.ok) { if (onCreated && r.taskId) onCreated(r.taskId); else onClose(); }
-    else setErr((isZh ? '创建失败:' : 'Failed: ') + (r.error || ''));
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => !submitting && onClose()} />
-      <div className="relative w-full max-w-xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl">
-        <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
-          <div>
-            <h3 className="text-lg font-bold dark:text-white">✂️ {isZh ? (isEdit ? '编辑长转短' : '长视频转爆款短片') : (isEdit ? 'Edit Long→Shorts' : 'Long Video to Shorts')}</h3>
-            <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '来源' : 'Source'} />
-              <div className={`h-px w-6 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '切片' : 'Clips'} />
-              <div className={`h-px w-6 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={false} label={isZh ? '出片' : 'Output'} />
-            </div>
-          </div>
-          <button type="button" onClick={() => !submitting && onClose()} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
-        </div>
-
-        <div className="px-6 py-4 space-y-3">
-          {step === 1 && (
-            <>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{isZh ? '本地 whisper + ffmpeg,AI 按转写文字挑高光、居中裁竖屏、烧原语言字幕。复用原画面,几乎零成本。首次运行下载语音模型(~480MB)。' : 'Local whisper + ffmpeg; AI picks highlights from the transcript, center-crops to vertical, burns original-language subtitles. First run downloads the speech model (~480MB).'}</p>
-              <label className={lbl}>{isZh ? '长视频/直播回放链接(每行一个)' : 'Long-video links (one per line)'}</label>
-              <textarea className={`${inputCls} font-mono resize-y min-h-[140px] break-all`} value={urlsText} onChange={(e) => setUrlsText(e.target.value)}
-                placeholder={'https://www.bilibili.com/video/BV...\nhttps://www.douyin.com/video/...'} />
-            </>
-          )}
-
-          {step === 2 && (
-            <>
-              <div className="grid grid-cols-3 gap-3">
-                <div>
-                  <label className={lbl}>{isZh ? '切几条' : 'Clips'}</label>
-                  <input type="number" min={1} max={10} className={inputCls} value={clipCount} onChange={(e) => setClipCount(Math.max(1, Math.min(10, parseInt(e.target.value, 10) || 1)))} />
-                </div>
-                <div>
-                  <label className={lbl}>{isZh ? '最短(秒)' : 'Min (s)'}</label>
-                  <input type="number" min={5} className={inputCls} value={minSec} onChange={(e) => setMinSec(Math.max(5, parseInt(e.target.value, 10) || 20))} />
-                </div>
-                <div>
-                  <label className={lbl}>{isZh ? '最长(秒)' : 'Max (s)'}</label>
-                  <input type="number" min={10} className={inputCls} value={maxSec} onChange={(e) => setMaxSec(Math.max(10, parseInt(e.target.value, 10) || 60))} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 mt-1">
-                <div>
-                  <label className={lbl}>{isZh ? '画幅' : 'Aspect'}</label>
-                  <select className={inputCls} value={aspect} onChange={(e) => setAspect(e.target.value)}>
-                    <option value="9:16">{isZh ? '竖屏 9:16' : 'Portrait 9:16'}</option>
-                    <option value="1:1">{isZh ? '方形 1:1' : 'Square 1:1'}</option>
-                    <option value="16:9">{isZh ? '横屏 16:9' : 'Landscape 16:9'}</option>
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>{isZh ? '字幕语言' : 'Subtitle lang'}</label>
-                  <select className={inputCls} value={targetLang} onChange={(e) => setTargetLang(e.target.value)}>
-                    {REMIX_LANGS.map((l) => <option key={l.id} value={l.id}>{isZh ? l.zh : l.en}</option>)}
-                  </select>
-                </div>
-              </div>
-              <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer mt-2">
-                <input type="checkbox" checked={subtitle} onChange={(e) => setSubtitle(e.target.checked)} className="accent-fuchsia-500" />
-                {isZh ? '烧录字幕' : 'Burn subtitles'}
-              </label>
-            </>
-          )}
-
-          {step === 3 && (
-            <>
-              <label className={lbl}>{isZh ? '运行频率' : 'Run frequency'}</label>
-              <RemixFreqPicker isZh={isZh} value={runInterval} onChange={setRunInterval} />
-            </>
-          )}
-
-          {err && <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500">{err}</div>}
-        </div>
-
-        <div className="px-6 py-4 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-          <button type="button" disabled={submitting}
-            onClick={() => { setErr(null); if (step === 1) { onClose(); return; } setStep((s) => (s - 1) as 1 | 2 | 3); }}
-            className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
-            {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
-          </button>
-          {step < 3 ? (
-            <button type="button"
-              onClick={() => { setErr(null); if (step === 1 && !urlsText.trim()) { setErr(isZh ? '请粘贴至少一个长视频链接' : 'Paste at least one link'); return; } setStep((s) => (s + 1) as 1 | 2 | 3); }}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
-              {isZh ? '下一步' : 'Next'} →
-            </button>
-          ) : (
-            <button type="button" onClick={handleSubmit} disabled={submitting}
-              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
-              {submitting
-                ? (isEdit ? (isZh ? '保存中...' : 'Saving...') : (isZh ? '创建中...' : 'Creating...'))
-                : (isEdit ? '💾 ' + (isZh ? '保存修改' : 'Save') : '✂️ ' + (isZh ? '创建并开始' : 'Create & Start'))}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};

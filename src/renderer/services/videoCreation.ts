@@ -16,6 +16,21 @@ export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
 
 export type SubtitlePosition = 'top' | 'center' | 'bottom';
 
+/** 模板速生版式(与主进程 templateHtmlWriter.TemplateStyle 对齐)。 */
+export type VideoTemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board';
+/** 模板速生任务配置(IPC 传到主进程 template-pipeline;字段需与主进程 TemplateOptions 一致)。 */
+export interface VideoTemplateOptions {
+  style: VideoTemplateStyle;
+  title?: string;
+  dataText: string;
+  durationSec?: number;
+  fps?: number;
+  brandColor?: string;
+  accentColor?: string;
+  narration?: boolean;
+  voiceScript?: string;
+}
+
 export interface VideoCreationInput {
   /** 人设 —— 影响 AI 文案口吻(一期文案靠粘贴,这里先收着备用)。 */
   persona: string;
@@ -36,7 +51,9 @@ export interface VideoCreationInput {
    * 画面引擎:'stock'(默认,AI 分镜 + 在线素材库) | 'ai'(Seedance AI 自动成片,
    * 逐镜生成视频片段,参考图统一风格,走服务端代理逐片段计费)。
    */
-  engine?: 'stock' | 'ai';
+  engine?: 'stock' | 'ai' | 'template';
+  /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
+  template?: VideoTemplateOptions;
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
