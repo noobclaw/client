@@ -268,6 +268,10 @@ const STEP_DEFS: { key: string; label: string }[] = [
   { key: 'tts', label: '生成 AI 配音' },
   { key: 'visuals', label: '准备画面素材' },
   { key: 'compose', label: '合成视频' },
+  // 5: publish —— 出片完成后,遍历用户勾选的平台调对应 driver(未登录跳过,不杀任务)。
+  //   即使 publishPlatforms 为空也保留这一步:tracker.finish 会自动把所有未完成步骤标 done,
+  //   日志里推「📂 未选发布平台 · 仅存本地」让用户看清楚。
+  { key: 'publish', label: '发布到各大平台' },
 ];
 
 export class ProgressTracker {
@@ -1277,6 +1281,27 @@ async function runVideoPipeline(
     tracker.progress(videoCount > 1 && failCount > 0
       ? `🎉 已生成 ${outputPaths.length}/${videoCount} 条（${failCount} 条失败,费用已按 ${videoCount} 条预扣） · 📂 输出目录:${destDir}`
       : `🎉 已生成 ${outputPaths.length} 条 · 📂 输出目录:${destDir}`);
+
+    // ── Step 5: 发布到各大平台(用户硬约束:未登录跳过、不杀任务) ─────────────
+    // 本地 mp4 已经在 outputPaths[0],可以放心调 publish step。哪怕全平台都失败,
+    // 用户还有本地文件,任务终态仍是 done(本地任务核心交付物是 mp4)。
+    // videoCount>1 时只取首条发(避免重复发同样内容触发平台限流);后续条用户自己挑发。
+    tracker.start('publish');
+    try {
+      const { runPublishStep } = require('./publishers/runPublish');
+      await runPublishStep({
+        platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
+        videoPath: outputPaths[0],
+        title: input.script ? input.script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
+        description: input.script || '',
+        tags: Array.isArray(input.keywords) ? input.keywords : [],
+        onLog: (msg: string) => tracker.progress(msg),
+        signal,
+      });
+    } catch (e) {
+      // runPublishStep 自身就吞所有错,这层 catch 只是兜底(import 失败等极端情况)
+      tracker.progress(`⚠️ 发布步骤异常:${String((e as Error)?.message || e).slice(0, 120)}`);
+    }
     tracker.finish(outputPaths[0], outputPaths.length);
     return { ok: true, outputPath: outputPaths[0], outputPaths };
   } catch (e) {

@@ -37,6 +37,9 @@ const TEMPLATE_STEPS = [
   { key: 'data', label: '生成动效数据' },
   { key: 'voice', label: '生成 AI 配音' },     // narration off 时仍存在,但秒过
   { key: 'render', label: '渲染 + 编码合成' },
+  // 跟 stock/ai pipeline 对齐:publish 步骤 —— 出片完成后发到用户勾选的平台。
+  //   publishPlatforms 为空时秒过,日志推「📂 未选发布平台 · 仅存本地」。
+  { key: 'publish', label: '发布到各大平台' },
 ];
 
 function clamp(n: number, lo: number, hi: number): number {
@@ -308,6 +311,25 @@ export async function runTemplatePipeline(
     tracker.progress(`📂 输出目录:${destDir}`);
     // 渲染编码成功 = 不再退款(用户拿到了成片,平台费名正言顺收下)
     refundOnExit = false;
+
+    // ── Step 4: 发布到各大平台(同 stock/ai pipeline 口径) ──────────────────
+    // 视觉/口播稿 都已经稳了,放心调 publisher。未登录的平台自动跳过,日志会说明。
+    tracker.start('publish');
+    try {
+      const { runPublishStep } = require('./publishers/runPublish');
+      const titleHint = tpl.title || (tpl.dataText || '').split(/\r?\n/).filter(Boolean)[0]?.slice(0, 40);
+      await runPublishStep({
+        platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
+        videoPath: outPath,
+        title: titleHint,
+        description: tpl.voiceScript || tpl.dataText || titleHint || '',
+        tags: [],
+        onLog: (msg: string) => tracker.progress(msg),
+        signal,
+      });
+    } catch (e) {
+      tracker.progress(`⚠️ 发布步骤异常:${String((e as Error)?.message || e).slice(0, 120)}`);
+    }
     tracker.finish(outPath, 1);
     return { ok: true, outputPath: outPath, outputPaths: [outPath] };
   } catch (err) {
