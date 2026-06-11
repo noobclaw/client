@@ -255,7 +255,8 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
       const s = t ? scenarios.find(s => s.id === t.scenario_id) : null;
       const p = s?.platform;
       // v2.4.61: 漏了 'binance' — 进币安任务详情然后返回会跳回小红书 tab
-      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube') return p;
+      // v6.x:  漏了 'video' — 翻译二创(scenario.platform='video')详情返回也会掉小红书 tab
+      if (p === 'xhs' || p === 'x' || p === 'binance' || p === 'douyin' || p === 'shipinhao' || p === 'toutiao' || p === 'kuaishou' || p === 'bilibili' || p === 'tiktok' || p === 'youtube' || p === 'video') return p;
       return 'xhs';
     }
     return 'xhs';
