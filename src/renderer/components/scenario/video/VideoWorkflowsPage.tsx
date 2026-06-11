@@ -1417,6 +1417,11 @@ const VideoTaskDetail: React.FC<{
   const [actionError, setActionError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [stopping, setStopping] = useState(false);
+  // 删除二次确认(对齐 scenario TaskDetailPage.handleDelete):首次点亮,3 秒内再点才真删。
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  // 防止 3s setTimeout 在组件卸载后触发 setState 警告。
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   // 输出目录:优先本次运行的目录,否则从成片路径推(配置卡「输出目录」链接用)。
   const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
@@ -1446,7 +1451,20 @@ const VideoTaskDetail: React.FC<{
     }
   };
 
+  // 删除流程:对齐 scenario TaskDetailPage —— 运行中拒绝(先停);首次点击亮红 3 秒,
+  // 再点才真删。无 Modal,inline 状态切换,跟币安/抖音的删除一致。
   const handleDelete = () => {
+    if (isRunning) {
+      setActionError(isZh ? '该任务正在运行中,请先停止再删除' : 'Task is running — stop it before deleting');
+      return;
+    }
+    if (!confirmingDelete) {
+      setConfirmingDelete(true);
+      // 3s 内不再点 → 自动复位,避免误删(币安同款超时)
+      setTimeout(() => { if (mountedRef.current) setConfirmingDelete(false); }, 3000);
+      return;
+    }
+    setConfirmingDelete(false);
     if (videoTaskStore.deleteTask(task.id)) onBack();
   };
 
@@ -1552,9 +1570,13 @@ const VideoTaskDetail: React.FC<{
                 <button
                   type="button"
                   onClick={handleDelete}
-                  className="px-3 py-2 text-sm rounded-lg border border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10 transition-colors"
+                  className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+                    confirmingDelete
+                      ? 'border-red-500 bg-red-500 text-white hover:bg-red-600'
+                      : 'border-red-300 dark:border-red-900/50 text-red-500 hover:bg-red-500/10'
+                  }`}
                 >
-                  {isZh ? '删除' : 'Delete'}
+                  {confirmingDelete ? (isZh ? '确定删除?' : 'Confirm?') : (isZh ? '删除' : 'Delete')}
                 </button>
               </>
             )}
@@ -3981,7 +4003,9 @@ export const VideoRepostRemixModal: React.FC<{ isZh: boolean; onClose: () => voi
   const [keywordsText, setKeywordsText] = useState<string>(Array.isArray(editTask?.keywords) ? editTask.keywords.join(' ') : '');
   const [originality, setOriginality] = useState(editTask ? editTask.originality_enhance !== false : true);
   const [saturation, setSaturation] = useState(editTask ? editTask.saturation_check !== false : true);
-  const [runInterval, setRunInterval] = useState(editTask?.run_interval || '1h');
+  // 默认「不重复」(once):翻译二创每跑一次都按目标平台条数计费,默认每小时容易让没看说明的
+  //   用户首跑就被持续扣费;改成 once 让用户必须显式选周期才会自动重跑。编辑老任务时仍按存档值回填。
+  const [runInterval, setRunInterval] = useState(editTask?.run_interval || 'once');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
