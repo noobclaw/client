@@ -608,10 +608,6 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           return (
             <>
               <div className="flex items-start gap-1.5">
-                <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
-                <span className="truncate">{task.input.track || '-'}</span>
-              </div>
-              <div className="flex items-start gap-1.5">
                 <span className="text-gray-400 shrink-0">⚡ {isZh ? '版式' : 'Style'}</span>
                 <span className="truncate">{templateStyleLabel(t?.style, isZh)}</span>
               </div>
@@ -970,7 +966,6 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       : `${t?.durationSec || 6}s`;
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
-        <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
         <Row label={`⚡ ${isZh ? '版式' : 'Style'}`}>{templateStyleLabel(t?.style, isZh)}</Row>
         <Row label={`📋 ${isZh ? '标题' : 'Title'}`}>{t?.title || <span className="text-gray-400">{isZh ? '(未填,AI 自定)' : '(empty, AI fills)'}</span>}</Row>
         <Row label={`📊 ${isZh ? '内容' : 'Content'}`}>
@@ -1055,7 +1050,6 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       : `${t?.durationSec || 6}s`;
     return (
       <>
-        <div>🎯 {isZh ? '赛道' : 'Track'}：{input.track || '-'}</div>
         <div>⚡ {isZh ? '版式' : 'Style'}：{templateStyleLabel(t?.style, isZh)}</div>
         <div>📋 {isZh ? '标题' : 'Title'}：{t?.title || <span className="text-gray-400">{isZh ? '(未填,AI 自定)' : '(empty, AI fills)'}</span>}</div>
         <div className="break-words whitespace-pre-wrap">
@@ -3631,7 +3625,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
   const bgmIsUpload = !!bgmPath && !bgmIsLibrary;
   // ── Step 4:出片 ──
-  const [track, setTrack] = useState<string>(editTask?.input?.track || '');
+  // 赛道字段对模板速生没实际用处(AI 排版按 style + 数据,不参考 track;
+  // 任务名也只看 title)—— 2026-06-12 删除入口,沿用编辑态老任务可能存在的旧值。
   const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
   const [durationSec, setDurationSec] = useState<number>(typeof et?.durationSec === 'number' ? et.durationSec : 6);
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
@@ -3652,7 +3647,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
       }
       const name = title.trim() || (isZh ? '模板速生' : 'Template');
       const input: VideoCreationInput = {
-        persona: '', track: track.trim() || name, keywords: [], script: '', scriptMode: 'ai',
+        // 模板速生不用 persona/track/keywords/script(那些是 stock/pure_ai 的字段);
+        // 编辑老任务时若 input 里残留 track 不动它,新建一律置空。
+        persona: '', track: editTask?.input?.track || '', keywords: [], script: '', scriptMode: 'ai',
         engine: 'template', referenceImages: [], aspect: '9:16', publishTarget: 'local',
         // 配音/语速也写到 input 顶层一份(向后兼容,且 pipeline.ts 读 input.voice / voiceRate 作为兜底)。
         voice: narration ? voice : undefined,
@@ -3860,11 +3857,6 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           )}
           {step === 4 && (
             <>
-              <Field label={isZh ? '赛道(可选)' : 'Track (optional)'}>
-                <input value={track} onChange={(e) => setTrack(e.target.value)}
-                  placeholder={isZh ? '如:加密行情' : 'e.g. Crypto'}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
-              </Field>
               <Field label={isZh ? '主品牌色' : 'Brand color'}>
                 <div className="flex items-center gap-2">
                   <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)}

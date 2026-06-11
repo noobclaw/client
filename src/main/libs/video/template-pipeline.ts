@@ -139,7 +139,8 @@ export async function runTemplatePipeline(
         style: tpl.style,
         title: tpl.title,
         dataText: tpl.dataText,
-        track: input.track,
+        // 模板速生不再用 track —— 它对 AI 排版/口播稿都没指导意义(2026-06-12 删字段);
+        // 编辑老任务时 input.track 可能还在,但生成不参考。
         lang,
         needVoiceScript: wantNarration,
         // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉不需要
