@@ -30,6 +30,7 @@ import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, typ
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
+import { resolvePublishCaption } from './publishCaptionWriter';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -173,6 +174,14 @@ export interface VideoCreationInput {
    */
   publishTarget: VideoPublishTarget;
   publishPlatforms?: string[];
+  /**
+   * 平台发布文案(用户向导可选填,覆盖 AI 自动生成)。这三个是【配在视频下方钩人点击】
+   * 的文案,跟口播稿 / 视频标题是不同产物 —— 详见 publishCaptionWriter.ts。
+   * 都留空 → 出片时 AI 自动生成(generatePublishCaption);用户填了 → 用用户的。
+   */
+  publishTitle?: string;     // 钩人标题(B站/头条号标题 + 小红书标题 + 抖音 caption 开头)
+  publishCaption?: string;   // 正文(简介 + 引导互动)
+  hashtags?: string[];       // 话题标签(driver 按平台加 #)
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
   /** BGM 音量(0~1),默认 0.18。 */
@@ -1287,14 +1296,33 @@ async function runVideoPipeline(
     // 用户还有本地文件,任务终态仍是 done(本地任务核心交付物是 mp4)。
     // videoCount>1 时只取首条发(避免重复发同样内容触发平台限流);后续条用户自己挑发。
     tracker.start('publish');
+    const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
+      // 平台发布文案:钩人标题 + 引导互动正文 + 话题标签(跟口播稿/视频标题是不同产物)。
+      //   优先级:用户向导填的 > AI 生成的 > 兜底(标题首句 + keywords)。
+      //   只在【确实有平台要发】时才调 AI(省钱);AI 失败自动降级到兜底。
+      const cap = await resolvePublishCaption({
+        wantPublish,
+        // AI 模式 script 是局部 AI 重写稿;严格模式是 input.script。这里用最终的 script
+        //   变量(已是 AI 重写后的),不再用 input.script —— 修「文不对题」的根因。
+        summary: script || input.script || '',
+        title: input.script ? input.script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
+        keywords: input.keywords,
+        track: input.track,
+        lang: contentLang,
+        userTitle: input.publishTitle,
+        userCaption: input.publishCaption,
+        userTags: input.hashtags,
+        onLog: (m: string) => tracker.progress(m),
+        onCost: (tk, usd) => tracker.addTokens(tk, usd),
+      });
       const { runPublishStep } = require('./publishers/runPublish');
       await runPublishStep({
         platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
         videoPath: outputPaths[0],
-        title: input.script ? input.script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
-        description: input.script || '',
-        tags: Array.isArray(input.keywords) ? input.keywords : [],
+        title: cap.title,
+        description: cap.description,
+        tags: cap.tags,
         onLog: (msg: string) => tracker.progress(msg),
         signal,
       });

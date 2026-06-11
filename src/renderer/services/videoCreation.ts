@@ -86,6 +86,13 @@ export interface VideoCreationInput {
    * 空数组 / undefined = 仅存本地不发。pipeline iterator forEach 调对应 driver,未登录的会跳过。
    */
   publishPlatforms?: string[];
+  /**
+   * 平台发布文案(向导可选填,覆盖 AI 自动生成):钩人标题 + 引导互动正文 + 话题标签。
+   * 跟口播稿 / 视频标题是不同产物。都留空 → 出片时 AI 自动生成;填了 → 用用户的。
+   */
+  publishTitle?: string;
+  publishCaption?: string;
+  hashtags?: string[];
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
   /** BGM 音量(0~1),默认 0.18。 */

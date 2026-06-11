@@ -315,15 +315,31 @@ export async function runTemplatePipeline(
     // ── Step 4: 发布到各大平台(同 stock/ai pipeline 口径) ──────────────────
     // 视觉/口播稿 都已经稳了,放心调 publisher。未登录的平台自动跳过,日志会说明。
     tracker.start('publish');
+    const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
-      const { runPublishStep } = require('./publishers/runPublish');
+      const { resolvePublishCaption } = require('./publishCaptionWriter');
       const titleHint = tpl.title || (tpl.dataText || '').split(/\r?\n/).filter(Boolean)[0]?.slice(0, 40);
+      // 平台发布文案:AI 据 voiceScript/dataText 写钩人文案(不再把口播稿/榜单原样当 caption)。
+      const cap = await resolvePublishCaption({
+        wantPublish,
+        summary: tpl.voiceScript || tpl.dataText || titleHint || '',
+        title: titleHint,
+        keywords: [],
+        track: input.track,
+        lang,
+        userTitle: input.publishTitle,
+        userCaption: input.publishCaption,
+        userTags: input.hashtags,
+        onLog: (m: string) => tracker.progress(m),
+        onCost: (tk: number, usd: number) => tracker.addTokens(tk, usd),
+      });
+      const { runPublishStep } = require('./publishers/runPublish');
       await runPublishStep({
         platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
         videoPath: outPath,
-        title: titleHint,
-        description: tpl.voiceScript || tpl.dataText || titleHint || '',
-        tags: [],
+        title: cap.title,
+        description: cap.description,
+        tags: cap.tags,
         onLog: (msg: string) => tracker.progress(msg),
         signal,
       });
