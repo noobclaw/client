@@ -247,8 +247,12 @@ class HeadlessSession {
   }
 
   async shot(width: number, height: number, timeoutMs: number): Promise<Buffer> {
+    // JPEG quality 85:1080×1920 PNG 通常 1-3MB,JPEG 缩到 100-300KB,base64 传输 +
+    //   Buffer.from 解码 + ffmpeg stdin 写都跟着变快 5-10x。视频帧最终走 H264 二次编码,
+    //   JPEG 85 的损失肉眼不可见。probeHtml 那两帧 t=0 vs t=DUR/2 对比仍 work —— 同 t 两次
+    //   JPEG 字节一致(chromium JPEG encoder 是确定性的),不同 t 画面有差异自然字节不同。
     const r = await this.cmd('Page.captureScreenshot',
-      { format: 'png', clip: { x: 0, y: 0, width, height, scale: 1 } }, timeoutMs);
+      { format: 'jpeg', quality: 85, clip: { x: 0, y: 0, width, height, scale: 1 } }, timeoutMs);
     return Buffer.from(r.data, 'base64');
   }
 
@@ -274,11 +278,13 @@ class HeadlessSession {
 // ── ffmpeg pipe 编码器 ──────────────────────────────────────────────────
 
 /**
- * 构造 ffmpeg 参数:PNG 序列从 stdin pipe(`-f image2pipe`),
+ * 构造 ffmpeg 参数:图片序列从 stdin pipe(`-f image2pipe`),
  * 加 0~1 条配音 + 0~1 条 BGM,混音输出 mp4。
  *
  * 关键 ffmpeg 用法:
- *   · `-f image2pipe -framerate <fps> -i -`:从 stdin 读 PNG 序列(每帧一张 PNG)
+ *   · `-f image2pipe -framerate <fps> -i -`:从 stdin 读图片序列(每帧一张)。
+ *     image2pipe demuxer 按 magic bytes 自动探测格式 —— 当前实际传 JPEG(见
+ *     HeadlessSession.shot,2026-06 起 PNG → JPEG/85 为加速换的);PNG 也兼容。
  *   · BGM 用 `-stream_loop -1` 循环铺底
  *   · 音轨混音 = filter_complex 的 amix(narration:1.0, bgm:0.18)+ shortest
  */
@@ -431,11 +437,24 @@ export async function renderHtmlToVideo(opts: RenderHtmlToVideoOptions): Promise
     encoder.start(ffArgs);
     started = true;
 
+    // 流水线优化:同帧 seek→shot 必须串行(否则会拍到错时间画面),但 shot(N) 之后
+    //   到下一轮 shot(N+1) 之前的窗口里,seek(N+1) 跟 writeFrame(N) 完全可以并发 ——
+    //   ffmpeg stdin 反压时 chromium 不再干等。原先三步串行单核走完,改后单核两路并行,
+    //   理论上限 ~1.5x 提速,叠加 PNG→JPEG 的 2-3x,合计 3-5x。
+    //
+    //   异步 seek 的拒绝处理:不立即 throw(没人 await 会变 unhandled rejection),记到
+    //   seekErr,在下一轮 await nextSeekPromise 后检查。
+    let seekErr: unknown = null;
+    let nextSeekPromise: Promise<void> = session.seekAt(0).catch((e) => { seekErr = e; });
     for (let f = 0; f < total; f++) {
       if (opts.signal?.aborted) throw new Error('aborted');
-      const t = f / fps;
-      await session.seekAt(t);
+      await nextSeekPromise;
+      if (seekErr) throw seekErr;
       const png = await session.shot(width, height, perFrameTimeout);
+      // 排下一帧 seek(不等);自己同时 await 当前帧 writeFrame。
+      nextSeekPromise = f + 1 < total
+        ? session.seekAt((f + 1) / fps).catch((e) => { seekErr = e; })
+        : Promise.resolve();
       await encoder.writeFrame(png);
       opts.onProgress?.(f + 1, total);
     }
