@@ -1773,7 +1773,20 @@ const TRACK_PRESETS: TrackPreset[] = [
 
 type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
-type Platform = 'douyin' | 'xhs' | 'binance';
+// 9 个发布平台,跟 src/main/libs/video/publishers/types.VideoPlatform 严格对齐 ——
+// 改这一行必须同步改 publishers/types.ts,否则 pipeline 运行期收不到对应 platform id。
+type Platform = 'douyin' | 'xhs' | 'tiktok' | 'binance' | 'x' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao';
+const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: string }> = [
+  { id: 'douyin',    zh: '抖音',     en: 'Douyin',      emoji: '🎵' },
+  { id: 'xhs',       zh: '小红书',   en: 'Xiaohongshu', emoji: '📕' },
+  { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
+  { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
+  { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
+  { id: 'bilibili',  zh: 'B 站',     en: 'Bilibili',    emoji: '📺' },
+  { id: 'kuaishou',  zh: '快手',     en: 'Kuaishou',    emoji: '⚡' },
+  { id: 'shipinhao', zh: '视频号',   en: 'Channels',    emoji: '🟢' },
+  { id: 'toutiao',   zh: '头条号',   en: 'Toutiao',     emoji: '🟠' },
+];
 
 const SCRIPT_MAX = 800;
 // 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
@@ -2163,7 +2176,22 @@ const VideoConfigModal: React.FC<{
   // 视频任务已去掉「每日定时」选项,dailyTime 仅作占位默认值(不再可编辑)。
   const [dailyTime] = useState<string>(editTask?.dailyTime || '08:00');
   const [outputMode, setOutputMode] = useState<OutputMode>('local');
-  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>({ douyin: true, xhs: true, binance: true });
+  // 新建默认勾抖音 + 小红书(国内最大两个);编辑老任务从 input.publishPlatforms 反推。
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const init: Record<Platform, boolean> = {
+      douyin: false, xhs: false, tiktok: false, binance: false, x: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
+    };
+    const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
+      ? ((editTask!.input as any).publishPlatforms as string[]) : null;
+    if (editList && editList.length > 0) {
+      editList.forEach((p) => { if (p in init) init[p as Platform] = true; });
+    } else if (!editTask) {
+      // 新建默认开两个国内主力
+      init.douyin = true; init.xhs = true;
+    }
+    return init;
+  });
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -2291,6 +2319,10 @@ const VideoConfigModal: React.FC<{
     localVideos: mode === 'stock' && materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
     publishTarget: 'local' as VideoPublishTarget,
+    // 出片完成后,pipeline 会 iterator forEach 这个数组调对应 driver。
+    // 「存本地不上传」→ 空数组(pipeline 推「📂 未选发布平台 · 仅存本地」);
+    // 「上传到各大平台」→ 用户勾选的几个 id(未登录的运行期跳过)。
+    publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
     // 纯 AI(Seedance)每秒都真烧钱 → 写稿时长封顶 45s(UI 也不给 >45s 选项);
     // 其它模式(在线素材/本地)免费拼接,不限。
     targetSeconds: mode === 'pure_ai' ? Math.min(targetSeconds, AI_MAX_SECONDS) : targetSeconds,
@@ -2350,9 +2382,8 @@ const VideoConfigModal: React.FC<{
     }
   };
 
-  const selectedPlatformLabels = (Object.keys(platforms) as Platform[])
-    .filter((p) => platforms[p])
-    .map((p) => (p === 'douyin' ? (isZh ? '抖音' : 'Douyin') : p === 'xhs' ? (isZh ? '小红书' : 'XHS') : (isZh ? '币安' : 'Binance')));
+  // 用户勾选的发布平台 id 数组 —— 写到 input.publishPlatforms,pipeline 据此 forEach 调 driver。
+  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -3134,7 +3165,6 @@ const VideoConfigModal: React.FC<{
                     onClick={() => setOutputMode('upload')}
                     title={isZh ? '上传到各大平台' : 'Upload to platforms'}
                     desc={isZh ? '出片后自动发到选中的平台' : 'auto-publish to selected platforms after'}
-                    soon={isZh ? '即将推出' : 'Soon'}
                   />
                 </div>
               </Field>
@@ -3142,14 +3172,19 @@ const VideoConfigModal: React.FC<{
               {outputMode === 'upload' && (
                 <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
                   <div className="flex flex-wrap gap-2">
-                    <PlatformCheck checked={platforms.douyin} onClick={() => togglePlatform('douyin')} label={isZh ? '抖音' : 'Douyin'} />
-                    <PlatformCheck checked={platforms.xhs} onClick={() => togglePlatform('xhs')} label={isZh ? '小红书' : 'XHS'} />
-                    <PlatformCheck checked={platforms.binance} onClick={() => togglePlatform('binance')} label={isZh ? '币安' : 'Binance'} />
+                    {PUBLISH_PLATFORMS.map((m) => (
+                      <PlatformCheck
+                        key={m.id}
+                        checked={!!platforms[m.id]}
+                        onClick={() => togglePlatform(m.id)}
+                        label={`${m.emoji} ${isZh ? m.zh : m.en}`}
+                      />
+                    ))}
                   </div>
-                  <div className="mt-2 text-[11px] text-amber-500">
+                  <div className="mt-2 text-[11px] text-amber-500 leading-relaxed">
                     {isZh
-                      ? `⚠️ 上传功能即将上线，本次仍会先存到本地${selectedPlatformLabels.length ? `（已记下要发：${selectedPlatformLabels.join(' / ')}）` : ''}。`
-                      : 'Upload is coming soon — this run still saves locally first.'}
+                      ? '💡 出片后会自动登录态检查 → 已登录就发,未登录的【自动跳过】(下次登录后再跑会补传)。不强制全部登录,可以一次勾完慢慢补。'
+                      : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
                   </div>
                 </Field>
               )}
