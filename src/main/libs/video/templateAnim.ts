@@ -59,12 +59,23 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e11;color:#f
  */
 export const NBC_RUNTIME_JS = `(function(){
   function clamp(x,lo,hi){return x<lo?lo:x>hi?hi:x;}
-  // 缓动函数:cubic(easeOutCubic) / linear / back(easeOutBack) / quad(easeOutQuad)
+  // 缓动函数(对齐 GSAP 的 .out 系列,纯确定性数学,无壁钟):
+  //   cubic / quad / linear / back(回弹过冲) / expo(迅猛冲入) / elastic(弹性) / bounce(弹跳)
   function ease(p,kind){
+    if(p<=0) return 0; if(p>=1) return 1;
     if(kind==='linear') return p;
-    if(kind==='back'){var c=1.70158;return 1+(c+1)*Math.pow(p-1,3)+c*Math.pow(p-1,2);}
     if(kind==='quad') return 1-Math.pow(1-p,2);
-    return 1-Math.pow(1-p,3); // cubic 默认
+    if(kind==='expo') return 1-Math.pow(2,-10*p);                                  // easeOutExpo:开头猛、收尾稳
+    if(kind==='back'){var c=2.4;return 1+(c+1)*Math.pow(p-1,3)+c*Math.pow(p-1,2);}  // easeOutBack:冲过头再回弹(加强 c)
+    if(kind==='elastic'){var c4=(2*Math.PI)/3;return Math.pow(2,-10*p)*Math.sin((p*10-0.75)*c4)+1;} // 弹性
+    if(kind==='bounce'){var n=7.5625,d=2.75;var q=1-p;var b;if(q<1/d)b=n*q*q;else if(q<2/d){q-=1.5/d;b=n*q*q+0.75;}else if(q<2.5/d){q-=2.25/d;b=n*q*q+0.9375;}else{q-=2.625/d;b=n*q*q+0.984375;}return 1-b;} // 弹跳
+    return 1-Math.pow(1-p,3); // cubic 默认(easeOutCubic)
+  }
+  // 数字滚动专用:用【单调】缓动,绝不用 back/elastic/bounce(否则数值会冲过目标再回落,
+  // 百分比看着像 98→101→98 很怪)。回弹类一律退化成 expo(同样迅猛但不过冲)。
+  function countEase(p,kind){
+    if(kind==='back'||kind==='elastic'||kind==='bounce') kind='expo';
+    return ease(p,kind);
   }
   // 单个 [data-anim] 元素:按 progress 算 opacity + transform
   function applyAnim(el,p,kind,easeKind){
@@ -90,7 +101,7 @@ export const NBC_RUNTIME_JS = `(function(){
   }
   // 计数器:[data-count-from] [data-count-to] [data-count-decimals] [data-count-prefix] [data-count-suffix]
   function applyCount(el,p,easeKind){
-    var e = ease(p, easeKind);
+    var e = countEase(p, easeKind);
     var from = parseFloat(el.getAttribute('data-count-from'))||0;
     var to = parseFloat(el.getAttribute('data-count-to'))||0;
     var dec = parseInt(el.getAttribute('data-count-decimals'))||0;
@@ -117,7 +128,14 @@ export const NBC_RUNTIME_JS = `(function(){
         var start = parseFloat(n.getAttribute('data-start'))||0;
         var dur = parseFloat(n.getAttribute('data-duration'))||0.6;
         var anim = n.getAttribute('data-anim') || 'fade';
-        var easeKind = n.getAttribute('data-ease') || 'cubic';
+        // 没显式指定 data-ease 时,按动画类型给【弹簧/迅猛】默认缓动 —— 这是"变酷"的核心:
+        //   缩放类(pop/scale-in)用 back 冲过头再回弹;位移/上浮类用 expo 猛地入场;其余(纯 fade/wipe)保持 cubic。
+        var easeKind = n.getAttribute('data-ease');
+        if(!easeKind){
+          easeKind = (anim==='pop'||anim==='scale-in') ? 'back'
+            : (anim==='slide-in-right'||anim==='slide-in-left'||anim==='rise'||anim==='fade-up'||anim==='fade-down'||anim==='fade-left'||anim==='fade-right') ? 'expo'
+            : 'cubic';
+        }
         var p = clamp((t-start)/Math.max(0.01,dur), 0, 1);
         applyAnim(n, p, anim, easeKind);
         // 内含计数器 → 同步更新数值
