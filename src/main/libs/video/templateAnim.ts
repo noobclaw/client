@@ -35,8 +35,11 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e11;color:#f
 #stage{width:1080px;height:1920px;position:relative;background:radial-gradient(120% 60% at 50% 0%,#1c2026 0%,#0b0e11 55%)}
 .bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:60px 60px;pointer-events:none}
 .bg-glow{position:absolute;width:1000px;height:1000px;border-radius:50%;left:40px;top:-280px;filter:blur(50px);background:radial-gradient(circle,${brandColor}33,transparent 70%);pointer-events:none}
-#caption-track{position:absolute;left:60px;right:60px;bottom:160px;text-align:center;font-size:48px;font-weight:800;line-height:1.3;color:#fff;text-shadow:0 4px 18px rgba(0,0,0,0.9),0 0 2px #000;pointer-events:none}
-#caption-track .cap{display:inline-block;padding:14px 28px;border-radius:14px;background:rgba(0,0,0,0.55);backdrop-filter:blur(8px)}
+#caption-track{position:absolute;left:60px;right:60px;bottom:60px;text-align:center;font-size:42px;font-weight:800;line-height:1.25;color:#fff;text-shadow:0 4px 18px rgba(0,0,0,0.9),0 0 2px #000;pointer-events:none}
+#caption-track .cap{display:inline-block;padding:10px 22px;border-radius:12px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px)}
+/* 字幕开启时给主内容区让出底部安全区,避免字幕跟列表/网格末尾重叠把最后一条遮住。
+   各模板默认 bottom 140 是为没字幕时贴底用的,有字幕时整体上抬 ~60-80px。 */
+.has-caption #list-area,.has-caption #grid-area,.has-caption #quote-area{bottom:220px}
 #watermark{position:absolute;bottom:70px;width:100%;text-align:center;font-size:24px;color:#5e6673;letter-spacing:2px;pointer-events:none}
 [data-anim]{will-change:opacity,transform}
 `;
@@ -192,10 +195,16 @@ export interface WrapHtmlOptions {
 }
 
 export function wrapTemplateHtml(opts: WrapHtmlOptions): string {
-  const watermark = opts.watermark === '' ? '' : `<div id="watermark">${escapeHtml(opts.watermark || 'NoobClaw')}</div>`;
+  // 水印:默认【不显示】,要露品牌需要显式传 opts.watermark 非空。原先默认会显示 "NoobClaw"
+  //   作为兜底,但用户不希望成片上有这个 logo,改为只在显式配置时才渲染。
+  const watermark = opts.watermark ? `<div id="watermark">${escapeHtml(opts.watermark)}</div>` : '';
   const captionTrack = renderCaptionTrack(opts.captionCues);
+  // has-caption 状态类:有字幕时给 #stage 加 class,让模板里的 #list-area / #grid-area /
+  //   #quote-area 自动让出底部安全区(见 templateBaseCss 里 .has-caption 选择器)。
+  //   否则 caption-track 会跟列表/网格底部重叠,字幕把最后一条数据挡住。
+  const stageClass = captionTrack ? ' class="has-caption"' : '';
   return `<!doctype html><html><head><meta charset="utf-8"><style>${templateBaseCss(opts.brandColor)}${opts.css}</style></head>
-<body><div id="stage">
+<body><div id="stage"${stageClass}>
 <div class="bg-grid"></div><div class="bg-glow"></div>
 ${opts.bodyHtml}
 ${captionTrack}
