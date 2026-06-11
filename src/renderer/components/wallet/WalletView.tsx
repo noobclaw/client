@@ -704,6 +704,18 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                 const isPending = order.status === 'pending';
                 const createdTime = new Date(order.created_at);
                 const timeStr = createdTime.toLocaleDateString(i18nService.getDateLocale()) + ' ' +createdTime.toLocaleTimeString(i18nService.getDateLocale(), { hour: '2-digit', minute: '2-digit' });
+                // CNY 卡密(redeem code)订单识别:跟 BNB/USDT 链上订单完全不同的支付方式,
+                // 不能拿 chain 来推单位(老逻辑把卡密订单全显示成 "— BNB",已被用户截图实锤误导)。
+                // 4 重兜底(任一命中就判作 CNY 卡密),应对后端字段命名不固定:
+                //   1) order.payment_method === 'redeem'(后端最可能加的字段)
+                //   2) order.kind === 'redeem'(备选命名)
+                //   3) order_no 以 RD 开头(redeem code 兑换订单实测前缀,如 RD1781083633513EEK8B)
+                //   4) bnb_amount 和 usdt_amount 都为 null(卡密没链上资产,这两字段都 NULL)
+                const orderNo = String(order.order_no || '');
+                const isRedeem = order.payment_method === 'redeem'
+                  || order.kind === 'redeem'
+                  || /^RD/i.test(orderNo)
+                  || (order.bnb_amount == null && order.usdt_amount == null);
                 // Chain-aware amount + unit. BSC orders carry bnb_amount,
                 // TRON orders carry usdt_amount (the other is NULL). Legacy
                 // BSC rows without a chain field default to 'BSC'.
@@ -712,6 +724,11 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                   ? (order.usdt_amount != null ? parseFloat(order.usdt_amount).toFixed(6) : '—')
                   : (order.bnb_amount != null ? parseFloat(order.bnb_amount).toFixed(6) : '—');
                 const orderUnit = orderChain === 'TRON' ? 'USDT' : 'BNB';
+                // 卡密订单优先显示「¥金额」(后端常用字段:rmb_amount / face_value_rmb / amount_cny),
+                // 都没有就只显示「CNY 卡密」标签(避免出现误导性的 BNB / USDT 单位)。
+                const rmbAmount = isRedeem
+                  ? (order.rmb_amount ?? order.face_value_rmb ?? order.amount_cny ?? null)
+                  : null;
 
                 return (
                   <div key={order.id} className="p-3.5 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border">
@@ -719,8 +736,20 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                       <div>
                         <code className="text-xs font-mono dark:text-claude-darkTextSecondary text-claude-textSecondary">{order.order_no}</code>
                         <div className="flex items-center gap-1.5 text-sm font-medium dark:text-claude-darkText text-claude-text mt-1">
-                          <ChainLogo chain={orderChain} size={14} />
-                          {orderAmount} {orderUnit}
+                          {isRedeem ? (
+                            // CNY 卡密:🎟️ 图标 + 「CNY 卡密」标签 + 可选金额(¥xx)
+                            <>
+                              <span className="text-base leading-none">🎟️</span>
+                              <span>{i18nService.t('walletRedeemTab')}</span>
+                              {rmbAmount != null && <span>· ¥{Number(rmbAmount).toFixed(0)}</span>}
+                            </>
+                          ) : (
+                            // 链上充值:ChainLogo + 金额 + 单位(BNB / USDT)
+                            <>
+                              <ChainLogo chain={orderChain} size={14} />
+                              {orderAmount} {orderUnit}
+                            </>
+                          )}
                           <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary font-normal"> · {(order.tokens_purchased / 1_000_000).toFixed(1)}{i18nService.t('walletMTokenUnit')}</span>
                         </div>
                       </div>
