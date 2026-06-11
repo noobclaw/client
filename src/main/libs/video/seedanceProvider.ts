@@ -183,41 +183,58 @@ export interface StoryboardResult {
 }
 
 /**
- * 故事板组图:调服务端 Seedream 组图(/api/image/storyboard),一次出 N 张【同角色/同画风】
- * 首帧 dataURL。失败返回 {images:[],chargedTokens:0}(pipeline 退化为纯文生视频)。
- * 服务端按张计费并回 chargedTokens,客户端把它累加进 tracker(本次消耗)。
+ * 故事板首帧:【逐张】调服务端 /api/image/storyboard 生成每镜首帧 dataURL。
+ *
+ * 为什么逐张而不是组图一次出 N 张:组图是单次长请求(6 张 >100s),必然撞 Cloudflare
+ * 的 100s 超时(HTTP 524)→ 生产环境组图永远失败。逐张每张独立短请求(~20s)既绕开 524,
+ * 又能逐张回进度(onProgress)。一致性靠每张都带【角色设定串(character)】文本维持。
+ *
+ * 返回的 images 按 shot 索引【对齐】(某张失败 → 该位置为空串 ''),pipeline 按 index 挂首帧,
+ * 失败的那镜自动退化为纯文生视频。chargedTokens 为各张实扣之和。
  */
-export async function generateStoryboard(opts: {
-  shots: string[]; character?: string; style?: string; count?: number;
-}): Promise<StoryboardResult> {
+export async function generateStoryboard(
+  opts: { shots: string[]; character?: string; style?: string; count?: number },
+  onProgress?: (done: number, total: number) => void,
+): Promise<StoryboardResult> {
   const headers = authHeaders();
-  if (!headers) return { images: [], chargedTokens: 0 };
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 200_000);
-  try {
-    const resp = await fetch(`${apiBase()}/api/image/storyboard`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        shots: opts.shots,
-        character: opts.character || '',
-        style: opts.style || '',
-        count: opts.count || opts.shots.length,
-      }),
-      signal: ctrl.signal,
-    });
-    if (!resp.ok) {
-      // 把服务端真实失败原因带回去(否则 pipeline 只能显示通用「未生成」,无从排查)。
-      let detail = '';
-      try { const ej: any = await resp.json(); detail = ej?.detail || ej?.error || ''; }
-      catch { try { detail = (await resp.text()).slice(0, 200); } catch { /* ignore */ } }
-      return { images: [], chargedTokens: 0, error: `HTTP ${resp.status}${detail ? ' · ' + detail : ''}` };
-    }
-    const json: any = await resp.json();
-    const images = Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
-    return { images, chargedTokens: Number(json?.chargedTokens) || 0, error: images.length ? undefined : (json?.error || 'empty') };
-  } catch (e) { return { images: [], chargedTokens: 0, error: String((e as any)?.message || e).slice(0, 200) }; }
-  finally { clearTimeout(timer); }
+  if (!headers) return { images: [], chargedTokens: 0, error: '未登录' };
+  const shots = (opts.shots || []).filter((s) => typeof s === 'string' && s.trim());
+  const total = shots.length;
+  const images: string[] = new Array(total).fill('');
+  let chargedTokens = 0;
+  let okCount = 0;
+  let lastError = '';
+
+  for (let i = 0; i < total; i++) {
+    onProgress?.(i, total);
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 90_000); // 单张 < CF 100s,绝不触发 524
+    try {
+      const resp = await fetch(`${apiBase()}/api/image/storyboard`, {
+        method: 'POST',
+        headers,
+        // 单镜单图:count=1。character 每张都带 → 文本层维持角色一致。
+        body: JSON.stringify({ shots: [shots[i]], character: opts.character || '', style: opts.style || '', count: 1 }),
+        signal: ctrl.signal,
+      });
+      if (!resp.ok) {
+        let detail = '';
+        try { const ej: any = await resp.json(); detail = ej?.detail || ej?.error || ''; }
+        catch { try { detail = (await resp.text()).slice(0, 200); } catch { /* ignore */ } }
+        lastError = `HTTP ${resp.status}${detail ? ' · ' + detail : ''}`;
+        continue;
+      }
+      const json: any = await resp.json();
+      const imgs = Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
+      chargedTokens += Number(json?.chargedTokens) || 0;
+      if (imgs[0]) { images[i] = imgs[0]; okCount++; }
+      else lastError = json?.error || 'empty';
+    } catch (e) {
+      lastError = String((e as any)?.message || e).slice(0, 200);
+    } finally { clearTimeout(timer); }
+  }
+  onProgress?.(total, total);
+  return { images, chargedTokens, error: okCount > 0 ? undefined : (lastError || 'all_failed') };
 }
 
 /** 生成单镜:create → 轮询 → 下载。失败返回 {path:null,error}(不抛,交给上层降级)。 */

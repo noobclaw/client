@@ -772,32 +772,28 @@ async function runVideoPipeline(
       //   首帧也存一份到本次输出目录的「故事板」文件夹(用户要的本地存档)。
       //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
       try {
-        tracker.progress(`🎨 生成故事板首帧(Seedream 组图,一次出 ${aiScenes.length} 张保持角色一致)…`);
-        // Seedream 组图是【单次原子调用】(一次返回全部 N 张),拿不到逐张进度 → 用计时心跳
-        // 让用户看到在跑、不是卡死(对齐小红书生图那种"生成中"反馈)。每 4s 刷一次已用时。
-        const sbStart = Date.now();
-        const sbBeat = setInterval(() => {
-          const s = Math.round((Date.now() - sbStart) / 1000);
-          tracker.progress(`🎨 故事板生成中…(已 ${s}s · ${aiScenes.length} 张组图保持角色一致,通常 30~90s)`);
-        }, 4000);
-        let storyboard: { images: string[]; chargedTokens: number; error?: string };
-        try {
-          storyboard = await generateStoryboard({
+        tracker.progress(`🎨 生成故事板首帧(逐张出 ${aiScenes.length} 张,保持角色一致)…`);
+        // 逐张生成:每张独立短请求(绕开 Cloudflare 100s/HTTP524),并逐张回进度。
+        const storyboard = await generateStoryboard(
+          {
             shots: aiScenes.map((sc) => sc.prompt),
             character: [input.persona, input.track].filter(Boolean).join(' · '),
             count: aiScenes.length,
-          });
-        } finally { clearInterval(sbBeat); }
-        const keyframes = storyboard.images;
+          },
+          (done, total) => { if (done < total) tracker.progress(`🎨 故事板生成中… ${done + 1}/${total} 张`); },
+        );
+        const keyframes = storyboard.images; // 按 shot 索引对齐,失败位为 ''
+        const okFrames = keyframes.filter((s) => s).length;
         // 故事板首帧也是真金白银(Seedream 按张扣)—— 计入「本次消耗」,
         // 否则进度里图扣了费、总额却只剩 DeepSeek 写稿那几百,严重对不上。
         if (storyboard.chargedTokens > 0) {
           tracker.addTokens(storyboard.chargedTokens, storyboard.chargedTokens / 1_000_000);
         }
-        if (keyframes.length > 0) {
+        if (okFrames > 0) {
           const sbDir = path.join(destDir, '故事板');
           try { fs.mkdirSync(sbDir, { recursive: true }); } catch { /* ignore */ }
           keyframes.forEach((dataUrl, i) => {
+            if (!dataUrl) return; // 该镜没出图 → 不挂首帧,下游自动退化为文生视频
             if (i < aiScenes.length) (aiScenes[i] as SeedanceSceneSpec).keyframeDataUrl = dataUrl;
             try {
               const m = /^data:(image\/\w+);base64,(.+)$/.exec(dataUrl);
@@ -807,7 +803,7 @@ async function runVideoPipeline(
               }
             } catch { /* 单张存盘失败不影响 */ }
           });
-          tracker.progress(`🎨 故事板已生成 ${keyframes.length} 张首帧(已存「故事板」文件夹),转图生视频…`);
+          tracker.progress(`🎨 故事板已生成 ${okFrames}/${aiScenes.length} 张首帧(已存「故事板」文件夹),转图生视频…`);
         } else {
           // 把服务端真实失败原因显示出来(否则只剩通用「未生成」,没法排查 Seedream 端报错)。
           tracker.progress(`🎨 故事板未生成${storyboard.error ? `(${storyboard.error})` : ''},退化为文生视频…`);
