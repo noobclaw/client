@@ -38,6 +38,28 @@ export interface TemplateSpec {
   durationSec: number;
   fps: number;
   captions?: CaptionCue[];  // TTS 出的句级时间戳;空 = 纯视觉,字幕轨隐藏
+  /**
+   * 外部传入的【每页时间窗】(秒),由 pipeline 根据 voiceSegments 在 TTS 真实时长上反算。
+   * 长度必须 == 分页后 page 数;为空时各模板按 durationSec 均分。
+   * 实现「音画同步」:配音念到第 N 段时,画面正好在第 N 页。
+   */
+  pageTimings?: Array<{ startSec: number; durSec: number }>;
+}
+
+/** 计算分页的 pageCount(给 pipeline 算 pageMeta 用)。 */
+export function calcPageCount(itemsLen: number, pageSize: number): number {
+  return Math.max(1, Math.ceil(itemsLen / pageSize));
+}
+
+/** 计算每页的 items 索引范围(给 pipeline 喂给 AI 的 pageRanges 用)。 */
+export function calcPageRanges(itemsLen: number, pageSize: number): Array<[number, number]> {
+  const ranges: Array<[number, number]> = [];
+  for (let p = 0; p * pageSize < itemsLen; p++) {
+    const a = p * pageSize;
+    const b = Math.min(itemsLen - 1, a + pageSize - 1);
+    ranges.push([a, b]);
+  }
+  return ranges.length ? ranges : [[0, Math.max(0, itemsLen - 1)]];
 }
 
 /** 把 items 分页 + 计算每页时间窗。最后一页不退场(留到片尾)。 */
@@ -52,8 +74,25 @@ interface PageSlot {
   pageIndex: number;
   pageCount: number;
 }
-function paginate(items: TemplateItem[], pageSize: number, totalSec: number): PageSlot[] {
+function paginate(items: TemplateItem[], pageSize: number, totalSec: number, pageTimings?: Array<{ startSec: number; durSec: number }>): PageSlot[] {
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  // 优先用外部传入的 pageTimings(配音同步模式):pipeline 已经根据 voiceSegments
+  // 在 TTS 真实时长上算好每段时间窗,跟配音 100% 对齐。
+  if (pageTimings && pageTimings.length === pageCount) {
+    const slots: PageSlot[] = [];
+    for (let p = 0; p < pageCount; p++) {
+      slots.push({
+        items: items.slice(p * pageSize, (p + 1) * pageSize),
+        pageStartSec: pageTimings[p].startSec,
+        pageDurationSec: pageTimings[p].durSec,
+        isLast: p === pageCount - 1,
+        pageIndex: p,
+        pageCount,
+      });
+    }
+    return slots;
+  }
+  // 兜底:按 totalSec 均分(纯视觉模式 / TTS 失败时走这条)。
   // 留 0.5s 入场缓冲 + 0.5s 尾留白
   const usable = Math.max(2.0, totalSec - 1.0);
   const perPage = usable / pageCount;
@@ -69,6 +108,18 @@ function paginate(items: TemplateItem[], pageSize: number, totalSec: number): Pa
     });
   }
   return slots;
+}
+
+/** 各模板的【每页容量】导出,供 pipeline 算 pageMeta 用(不重复硬编码)。 */
+export function pageSizeFor(style: TemplateStyle): number {
+  switch (style) {
+    case 'rank_list': return 6;
+    case 'news_cards': return 4;
+    case 'countdown': return 6;
+    case 'stat_board': return 4;
+    case 'quote': return 1; // 金句只展示 items[0],分页无意义
+    default: return 4;
+  }
 }
 
 /** 给 page wrapper 拼 data-* 属性 —— fade 进场 + 末尾退场(最后一页不退)。 */
@@ -134,7 +185,7 @@ function renderRankList(spec: TemplateSpec): string {
     ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.1" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
   </div>`;
 
-  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const pages = slots.map((slot) => {
     const rows = slot.items.map((it, i) => {
       const r = it.rank ?? (slot.pageIndex * PAGE + i + 1);
@@ -205,7 +256,7 @@ function renderNewsCards(spec: TemplateSpec): string {
 .card .v{font-size:54px;font-weight:900;color:${accent};margin-top:10px}
 .pager{position:absolute;bottom:96px;left:0;right:0;text-align:center;font-size:24px;color:#5e6673;letter-spacing:6px}
 `;
-  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const pages = slots.map((slot) => {
     const cards = slot.items.map((it, i) => {
       const start = slot.pageStartSec + 0.2 + i * 0.18;
@@ -251,7 +302,7 @@ function renderCountdown(spec: TemplateSpec): string {
 .row .sb{font-size:28px;color:#848e9c;margin-top:6px}
 .row .val{font-size:42px;font-weight:800;color:${accent};white-space:nowrap;margin-left:18px}
 `;
-  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const totalN = spec.items.length;
   const pages = slots.map((slot) => {
     const N = slot.items.length;
@@ -297,7 +348,7 @@ function renderStatBoard(spec: TemplateSpec): string {
 .cell.full{grid-column:span 2;min-height:200px}
 .cell.full .num{font-size:96px}
 `;
-  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const pages = slots.map((slot) => {
     const cells = slot.items.map((it, i) => {
       const start = slot.pageStartSec + 0.2 + i * 0.15;

@@ -26,7 +26,7 @@ import {
 } from './pipeline';
 import { generateTemplateData, detectTemplateLang } from './templateHtmlWriter';
 import { getVideoConfig } from './videoConfig';
-import { renderTemplate, type TemplateSpec } from './templateLibrary';
+import { renderTemplate, pageSizeFor, calcPageCount, calcPageRanges, type TemplateSpec } from './templateLibrary';
 import { renderHtmlToVideo, resolveHeadlessBrowser } from './htmlVideoRenderer';
 import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
 import { getTtsVoice } from './config';
@@ -121,12 +121,19 @@ export async function runTemplatePipeline(
   let refundOnExit = false;
 
   try {
-    // ── STEP 1:AI 产数据 + 可选口播稿 ──────────────────────────────────
+    // ── STEP 1:AI 产数据 + 可选口播稿(分段以便音画同步)──────────────
     throwIfAborted(signal);
     tracker.start('data', `输出目录:${taskDir}`);
     const lang = detectTemplateLang(`${tpl.dataText} ${tpl.title || ''}`);
     const wantNarration = tpl.narration === true;
     const vcfg = await getVideoConfig();
+    // 估算 items 数量(就是 dataText 的非空行数,clamp 到模板上限 12),
+    // 算 pageMeta 用 —— 让 AI 知道画面分几页、每页几条,据此分段输出 voiceSegments。
+    const estItemCount = Math.min(12, Math.max(1,
+      (tpl.dataText || '').split(/\r?\n/).filter((l) => l.trim()).length || 1));
+    const pageSize = pageSizeFor(tpl.style);
+    const estPageCount = calcPageCount(estItemCount, pageSize);
+    const pageRanges = calcPageRanges(estItemCount, pageSize);
     const data = await generateTemplateData(
       {
         style: tpl.style,
@@ -135,6 +142,8 @@ export async function runTemplatePipeline(
         track: input.track,
         lang,
         needVoiceScript: wantNarration,
+        // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉不需要
+        pageMeta: wantNarration ? { pageCount: estPageCount, pageRanges } : undefined,
       },
       // 服务端可调 prompt(只覆盖纯数据版;needVoiceScript 时仍用本地的强约束版,避免改坏)
       wantNarration ? undefined : vcfg.templateDataSystemPrompt,
@@ -204,6 +213,40 @@ export async function runTemplatePipeline(
     tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
     tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
 
+    // ── 音画同步:由 voiceSegments + 真实音频时长反算每页时间窗 ──
+    //
+    // 原理:edge-tts 朗读速度恒定 → 段字符数比例 ≈ 段时间比例。我们把 AI 切好的
+    // voiceSegments(每段对应一页画面)按字符长度比例分配真实音频时长,得到每页
+    // 的 [startSec, durSec],传给 templateLibrary 替代均分,实现配音念到第 N 段
+    // 时画面正好在第 N 页。
+    //
+    // 触发条件(任一不满足就 fallback 到均分):
+    //   1) 开了配音,且 TTS 成功(realDurationSec > 0)
+    //   2) AI 返回了 voiceSegments(且长度等于实际 items 分页后的页数)
+    //   3) 实际 items 的分页页数 == AI 给的 segments 数量
+    const actualPageSize = pageSizeFor(tpl.style);
+    const actualPageCount = calcPageCount(data.items.length, actualPageSize);
+    let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
+    if (wantNarration && realDurationSec > 0 && data.voiceSegments && data.voiceSegments.length === actualPageCount) {
+      const segs = data.voiceSegments;
+      const totalChars = segs.reduce((s, x) => s + x.length, 0);
+      if (totalChars > 0) {
+        // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
+        const usable = Math.max(2.0, realDurationSec - 0.6);
+        let cursor = 0.3;
+        pageTimings = segs.map((seg) => {
+          const dur = (seg.length / totalChars) * usable;
+          const startSec = cursor;
+          cursor += dur;
+          return { startSec, durSec: dur };
+        });
+        tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页配上 ${segs.length} 段配音`);
+      }
+    } else if (wantNarration && actualPageCount > 1) {
+      // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
+      tracker.progress(`⚠️ AI 未按页切分配音,画面将按时长均分(${actualPageCount} 页 × ${(durationSec / actualPageCount).toFixed(1)}s)`);
+    }
+
     const spec: TemplateSpec = {
       style: tpl.style,
       title: data.title || tpl.title,
@@ -214,6 +257,7 @@ export async function runTemplatePipeline(
       durationSec,
       fps: tpl.fps && tpl.fps > 0 ? tpl.fps : 30,
       captions: captionCues,
+      pageTimings,
     };
     const html = renderTemplate(spec);
     try { fs.writeFileSync(path.join(destDir, '模板.html'), html, 'utf8'); } catch { /* non-fatal */ }

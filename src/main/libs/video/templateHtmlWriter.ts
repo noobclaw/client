@@ -49,6 +49,13 @@ export interface TemplateData {
   items: TemplateItem[];
   /** AI 顺手产的口播稿(中文短句,适合 TTS),narration 开启时用。 */
   voiceScript?: string;
+  /**
+   * AI 把口播稿按【画面页数】切成 N 段,每段对应一个 page 的画面停留时间。
+   * pipeline 据此把 page wrapper 的 data-start / data-duration 跟 TTS 真实时间锚定,
+   * 实现「配音念到第 N 条时,画面正好显示第 N 条所在那一页」 —— 抄 HF 派的音画同步。
+   * 与 voiceScript 的关系:voiceSegments.join(' ') ≈ voiceScript(用于按字符比例反算时间)。
+   */
+  voiceSegments?: string[];
 }
 
 export interface TemplateDataResult extends TemplateData {
@@ -65,6 +72,15 @@ export interface TemplateDataInput {
   lang: ContentLang;
   /** 是否一并要求 AI 产口播稿(开了配音才要,省 token)。 */
   needVoiceScript?: boolean;
+  /**
+   * 画面分页元信息,用于告诉 AI 该把口播稿切成几段、每段对应哪几条 items。
+   * 让 AI 输出的 voiceSegments[i] 严格对应画面 page[i] 的内容,音画对齐。
+   */
+  pageMeta?: {
+    pageCount: number;
+    /** 每页 items 索引范围,如 [[0,3],[4,5]] 表示 page 1 含 items[0..3], page 2 含 items[4..5]。 */
+    pageRanges: Array<[number, number]>;
+  };
 }
 
 const SYSTEM_PROMPT_BASE = [
@@ -83,12 +99,18 @@ const SYSTEM_PROMPT_BASE = [
 const SYSTEM_PROMPT_WITH_VOICE = [
   SYSTEM_PROMPT_BASE,
   '',
-  '【追加】同时产一段【自然流畅的中文短视频口播稿】放在 "voiceScript" 字段。这是新闻主播/财经评论员口吻,**不是机械念清单**。要求:',
-  'A. 时长 12-30 秒(约 80-180 字),覆盖**所有** items 要点(信息密度高,但要听感自然)。',
+  '【追加 1:口播稿】产一段【自然流畅的中文短视频口播稿】放在 "voiceScript" 字段。这是新闻主播/财经评论员口吻,**不是机械念清单**。要求:',
+  'A. 时长 12-45 秒(约 80-260 字),覆盖**所有** items 要点(信息密度高,但要听感自然)。',
   'B. **不是逐条念**,而是用承接词("其中"/"值得注意的是"/"最引人关注的是"/"另外"/"与此同时"/"截至发稿")把数据/事件**串成一段流畅播报**。有起承转合:开场点题 → 关键数据 → 收尾补充。',
   'C. 没有无关开场白(不要"大家好"/"今天给大家分享"),没有结尾煽情(不要"快来关注"/"记得点赞")。',
   'D. 数据必须正确,但**表达可以重组润色** —— 把生硬的"DOGE 涨 18.96%"说成"狗狗币以 18.96% 的涨幅领涨";把"美联储6月维持利率不变的概率为 98.4%"说成"美联储 6 月按兵不动几成定局,市场押注高达 98.4%"。',
   'E. 句子长短交替,适合 TTS 自然停顿;用中文标点(逗号、句号、顿号);不要英文标点。',
+  '',
+  '【追加 2:画面音画同步,关键!】**同时**产一个 "voiceSegments" 字符串数组,把上面的 voiceScript 严格按【画面页数】切成 N 段(N 由用户消息里的 pageCount 给出),每段对应一页画面的内容,音画同步。要求:',
+  'F. voiceSegments 数组长度 **必须等于** pageCount。',
+  'G. voiceSegments[i] 是 voiceScript 的【连续子段】,内容必须只覆盖第 i 页对应的 items(用户消息里 pageRanges 给出每页 items 索引范围)。例:pageRanges=[[0,3],[4,5]] 时,segments[0] 念 items[0..3] 的内容,segments[1] 念 items[4..5] 的内容。',
+  'H. voiceSegments.join(" ") 拼起来必须 == voiceScript(或仅相差空格)。**绝不在 segments 里添加 voiceScript 中没有的字**。',
+  'I. 单页只有 1 条 item 时,segments[i] 也可以只有一两句话(自然就行,不强求字数均匀)。',
 ].join('\n');
 
 interface ChatResult { content: string; tokens: number; costUsd: number; }
@@ -201,31 +223,51 @@ function fallbackVoiceScript(items: TemplateItem[], title?: string): string {
 }
 
 /**
- * 产模板数据:AI 解析 dataText → {title,subtitle,items,voiceScript},失败用纯代码兜底。
- * 永远返回可用数据。needVoiceScript=true 时同时产口播稿(narration 开启专用,省 token)。
+ * 产模板数据:AI 解析 dataText → {title,subtitle,items,voiceScript,voiceSegments},失败用纯代码兜底。
+ * 永远返回可用数据。needVoiceScript=true 时同时产口播稿 + 按 pageMeta 分段(narration 开启专用)。
  */
 export async function generateTemplateData(input: TemplateDataInput, systemPrompt?: string): Promise<TemplateDataResult> {
   const sys = systemPrompt
     || (input.needVoiceScript ? SYSTEM_PROMPT_WITH_VOICE : SYSTEM_PROMPT_BASE);
   try {
-    const user = [
-      input.title ? `标题倾向:${input.title}` : '',
-      input.track ? `赛道:${input.track}` : '',
-      input.needVoiceScript ? '需要 voiceScript:true(产中文口播稿)' : '',
-      '用户内容(json):',
-      input.dataText.slice(0, 2000),
-    ].filter(Boolean).join('\n');
+    const userParts: string[] = [];
+    if (input.title) userParts.push(`标题倾向:${input.title}`);
+    if (input.track) userParts.push(`赛道:${input.track}`);
+    if (input.needVoiceScript) {
+      userParts.push('需要 voiceScript:true(产中文口播稿)');
+      if (input.pageMeta) {
+        const ranges = input.pageMeta.pageRanges
+          .map(([a, b], i) => `page ${i + 1} 含 items[${a}..${b}]`)
+          .join(';');
+        userParts.push(`画面分页:pageCount=${input.pageMeta.pageCount}(${ranges})`);
+        userParts.push('需要 voiceSegments:长度等于 pageCount,每段对应一页画面内容(音画同步)');
+      }
+    }
+    userParts.push('用户内容(json):');
+    userParts.push(input.dataText.slice(0, 2000));
+    const user = userParts.join('\n');
     const { content, tokens, costUsd } = await callDeepSeekData(sys, user);
     const parsed = JSON.parse(extractJsonObject(content));
     const items = cleanItems(parsed?.items);
     if (items.length > 0) {
       const voiceScript = (typeof parsed?.voiceScript === 'string' && parsed.voiceScript.trim())
-        ? parsed.voiceScript.trim().slice(0, 400)
+        ? parsed.voiceScript.trim().slice(0, 800)
         : undefined;
+      // voiceSegments:数组,过滤非字符串/空串,clamp 元素数到 pageCount(AI 多给/少给都救场)
+      let voiceSegments: string[] | undefined;
+      if (Array.isArray(parsed?.voiceSegments) && input.pageMeta) {
+        const raw: string[] = parsed.voiceSegments
+          .filter((s: any) => typeof s === 'string' && s.trim())
+          .map((s: string) => s.trim().slice(0, 600));
+        if (raw.length === input.pageMeta.pageCount) {
+          voiceSegments = raw;
+        }
+        // 长度对不上就丢弃 segments —— pipeline 会 fallback 到字符均分
+      }
       return {
         title: (typeof parsed?.title === 'string' && parsed.title.trim()) ? parsed.title.trim().slice(0, 28) : input.title,
         subtitle: (typeof parsed?.subtitle === 'string' && parsed.subtitle.trim()) ? parsed.subtitle.trim().slice(0, 40) : undefined,
-        items, voiceScript,
+        items, voiceScript, voiceSegments,
         source: 'ai', tokens, costUsd,
       };
     }
