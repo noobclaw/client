@@ -288,6 +288,9 @@ export async function runTemplatePipeline(
     });
 
     tracker.progress(`✅ 已生成 ${path.basename(outPath)}`);
+    // 结尾把【本次实际写片的目录】绝对路径推一条 —— 渲染端 renderVideoLog 会自动把含 NoobClaw
+    // 的路径转成可点击 button(点一下用 Finder/资源管理器打开),跟 stock 模式日志末尾的口径一致。
+    tracker.progress(`📂 输出目录:${destDir}`);
     // 渲染编码成功 = 不再退款(用户拿到了成片,平台费名正言顺收下)
     refundOnExit = false;
     tracker.finish(outPath, 1);
