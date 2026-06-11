@@ -3517,6 +3517,21 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // 按数据行数估算,用户手动调没意义 —— 2026-06-12 删除入口。
   const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
+  // ── Step 5:出片 —— 发布平台(可选,默认不勾=仅本地)+ 自定义发布文案 ──
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const init: Record<Platform, boolean> = {
+      douyin: false, xhs: false, tiktok: false, binance: false, x: false,
+      bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
+    };
+    const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
+      ? ((editTask!.input as any).publishPlatforms as string[]) : null;
+    if (editList && editList.length > 0) editList.forEach((p) => { if (p in init) init[p as Platform] = true; });
+    return init;
+  });
+  const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
+  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+  const [publishTitle, setPublishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
+  const [publishCaption, setPublishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -3544,6 +3559,10 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         // BGM 是 input 顶层字段(pipeline 通用)。空 = 无 BGM。
         bgmPath: bgmPath || undefined,
         bgmVolume: bgmPath ? bgmVolume : undefined,
+        // 发布平台(空数组 = 仅存本地)+ 自定义发布文案(空 = AI 自动写钩人文案)。
+        publishPlatforms: selectedPlatformIds,
+        publishTitle: selectedPlatformIds.length && publishTitle.trim() ? publishTitle.trim() : undefined,
+        publishCaption: selectedPlatformIds.length && publishCaption.trim() ? publishCaption.trim() : undefined,
         template: {
           // durationSec 不传:配音 ON 由真实音频决定,配音 OFF 由 pipeline.autoDuration 估算。
           style, title: title.trim() || undefined, dataText: dataText.trim(), brandColor,
@@ -3765,6 +3784,40 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                     className="h-9 w-14 rounded border border-gray-300 dark:border-gray-700 bg-transparent" />
                   <span className="text-xs text-gray-500">{brandColor}</span>
                 </div>
+              </Field>
+              <Field label={isZh ? '发布平台（选填）' : 'Publish to (optional)'} hint={isZh ? '勾了出片后自动发,未登录的运行时跳过;不勾 = 仅存本地' : 'auto-publish after render; unlogged skipped; none = save local only'}>
+                <div className="flex flex-wrap gap-2">
+                  {PUBLISH_PLATFORMS.map((m) => (
+                    <PlatformCheck
+                      key={m.id}
+                      checked={!!platforms[m.id]}
+                      onClick={() => togglePlatform(m.id)}
+                      label={`${m.emoji} ${isZh ? m.zh : m.en}`}
+                    />
+                  ))}
+                </div>
+                {selectedPlatformIds.length > 0 && (
+                  <div className="mt-2 space-y-2">
+                    <div className="text-[11px] text-amber-500 leading-relaxed">
+                      {isZh
+                        ? '💡 已登录就发,未登录的自动跳过(下次登录再跑会补传)。'
+                        : '💡 Logged-in ones publish; unlogged are skipped. Log in later and re-run.'}
+                    </div>
+                    <input
+                      value={publishTitle}
+                      onChange={(e) => setPublishTitle(e.target.value)}
+                      placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                    />
+                    <textarea
+                      value={publishCaption}
+                      onChange={(e) => setPublishCaption(e.target.value)}
+                      rows={2}
+                      placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                    />
+                  </div>
+                )}
               </Field>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>
                 <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
