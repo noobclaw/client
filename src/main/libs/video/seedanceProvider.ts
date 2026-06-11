@@ -204,6 +204,8 @@ export async function generateStoryboard(
   let chargedTokens = 0;
   let okCount = 0;
   let lastError = '';
+  // image2「单参考锚定」:第 1 张成功的首帧作锚点,后续每镜把它当参考图(图生图)→ 锁角色一致。
+  let anchor = '';
 
   for (let i = 0; i < total; i++) {
     onProgress?.(i, total);
@@ -213,8 +215,11 @@ export async function generateStoryboard(
       const resp = await fetch(`${apiBase()}/api/image/storyboard`, {
         method: 'POST',
         headers,
-        // 单镜单图:count=1。character 每张都带 → 文本层维持角色一致。
-        body: JSON.stringify({ shots: [shots[i]], character: opts.character || '', style: opts.style || '', count: 1 }),
+        // 单镜单图:count=1。character 每张都带(文本一致)+ 有锚点时把锚点当参考图(图生图,更强一致)。
+        body: JSON.stringify({
+          shots: [shots[i]], character: opts.character || '', style: opts.style || '', count: 1,
+          ...(anchor ? { referenceImage: anchor } : {}),
+        }),
         signal: ctrl.signal,
       });
       if (!resp.ok) {
@@ -227,7 +232,7 @@ export async function generateStoryboard(
       const json: any = await resp.json();
       const imgs = Array.isArray(json?.images) ? json.images.filter((s: any) => typeof s === 'string' && s) : [];
       chargedTokens += Number(json?.chargedTokens) || 0;
-      if (imgs[0]) { images[i] = imgs[0]; okCount++; }
+      if (imgs[0]) { images[i] = imgs[0]; okCount++; if (!anchor) anchor = imgs[0]; }
       else lastError = json?.error || 'empty';
     } catch (e) {
       lastError = String((e as any)?.message || e).slice(0, 200);
