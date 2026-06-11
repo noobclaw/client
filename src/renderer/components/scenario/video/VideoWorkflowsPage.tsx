@@ -861,43 +861,132 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
   );
 };
 
-// ── 配置卡片(详情页 / 运行记录详情共用,展示赛道/人设/关键词/文案) ──────────
+// ── 配置卡片(详情页 / 运行记录详情共用) ──────────────────────────────────
+//
+// 模板速生(engine='template')的字段跟 stock/pure_ai 完全不同 ——
+//   · 没有「人设/关键词/文案」概念(用户填的是【版式 + 数据 + 配音 + BGM】)
+//   · 共用同一份卡片只会让无效字段显示「-」误导用户(数据看板填 50 个币种,
+//     这里居然显示「关键词: -」「视频文案: 留空 · AI 按 45s 写稿」)
+// 所以两个 ConfigCard / ConfigRows 都按 engine 分流,模板速生走专属布局。
 
-const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ isZh, input }) => (
-  <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
-    <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
-    <Row label={`🧑 ${isZh ? '人设' : 'Persona'}`}>{input.persona || '-'}</Row>
-    <Row label={`🏷️ ${isZh ? '关键词' : 'Keywords'}`}><KeywordChips keywords={input.keywords} max={20} /></Row>
-    <Row label={`📝 ${isZh ? '视频文案' : 'Script'}`}>
-      {(() => {
-        const s = (input.script || '').trim();
-        const mode = input.scriptMode || (s ? 'strict' : 'ai');
-        const tag = mode === 'strict'
-          ? (isZh ? '严格逐字' : 'verbatim')
-          : (isZh ? 'AI 写稿' : 'AI script');
-        return (
+/** 把模板速生的 BGM 配置压成一行描述。空 = 无;builtin/remote/上传分类。 */
+function templateBgmSummary(input: VideoCreationInput, isZh: boolean): string {
+  const p = input.bgmPath;
+  if (!p) return isZh ? '无' : 'none';
+  const volLabel = BGM_VOLUME_OPTIONS.find((b) => b.v === input.bgmVolume);
+  const vol = volLabel ? (isZh ? volLabel.zh : volLabel.en) : (input.bgmVolume?.toFixed(2) ?? '');
+  if (p.startsWith(BUILTIN_BGM_PREFIX)) {
+    const id = p.slice(BUILTIN_BGM_PREFIX.length);
+    const item = BUILTIN_BGM.find((b) => b.id === id);
+    const name = item ? (isZh ? item.zh : item.en) : id;
+    return `${isZh ? '曲库' : 'Library'} · ${name}${vol ? ` · ${vol}` : ''}`;
+  }
+  if (p.startsWith(REMOTE_BGM_PREFIX)) {
+    const url = p.slice(REMOTE_BGM_PREFIX.length);
+    const name = (url.split('/').pop() || 'cloud').replace(/\.[^.]+$/, '');
+    return `☁️ ${isZh ? '云端' : 'Cloud'} · ${name}${vol ? ` · ${vol}` : ''}`;
+  }
+  const file = p.split(/[\\/]/).pop() || p;
+  return `${isZh ? '上传' : 'Upload'} · ${file}${vol ? ` · ${vol}` : ''}`;
+}
+
+/** 模板速生:配音字段压成一句话。关 = 「关(纯视觉)」;开 = 「<音色> · <语速>[ · 烧字幕]」。 */
+function templateNarrationSummary(input: VideoCreationInput, isZh: boolean): string {
+  const t = input.template;
+  if (!t?.narration) return isZh ? '关(纯视觉)' : 'Off (silent)';
+  const voice = VOICE_GROUPS.flatMap((g) => g.voices).find((v) => v.id === (t.voice || input.voice));
+  const voiceName = voice ? (isZh ? voice.zh : voice.en) : (t.voice || input.voice || (isZh ? '默认音色' : 'Default'));
+  const rate = RATE_OPTIONS.find((r) => r.v === (t.voiceRate ?? input.voiceRate ?? 0));
+  const rateName = rate ? (isZh ? rate.zh : rate.en) : (isZh ? '正常' : 'Normal');
+  const subPart = t.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subs') : (isZh ? ' · 不烧字幕' : ' · no subs');
+  return `${voiceName} · ${rateName}${subPart}`;
+}
+
+/** 模板速生:dataText 压成「[N 条] line1 · line2 · line3 ...」。 */
+function templateDataPreview(dataText: string | undefined, isZh: boolean): { count: number; preview: string } {
+  const lines = (dataText || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean);
+  if (lines.length === 0) return { count: 0, preview: isZh ? '(空)' : '(empty)' };
+  const head = lines.slice(0, 3).join(' · ');
+  const tail = lines.length > 3 ? (isZh ? ` · 等 ${lines.length} 条` : ` · +${lines.length - 3} more`) : '';
+  return { count: lines.length, preview: head + tail };
+}
+
+/** 模板速生:版式 id → emoji + 中英名。 */
+function templateStyleLabel(style: string | undefined, isZh: boolean): string {
+  const s = TEMPLATE_STYLES.find((x) => x.id === style);
+  if (!s) return style || '-';
+  return `${s.emoji} ${isZh ? s.zh : s.en}`;
+}
+
+const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ isZh, input }) => {
+  // 模板速生专属布局:展示用户真正填的字段(版式/标题/数据/配音/BGM/品牌色/时长)
+  if (input.engine === 'template') {
+    const t = input.template;
+    const { count: dataCount, preview: dataPreview } = templateDataPreview(t?.dataText, isZh);
+    const durationDesc = t?.narration
+      ? (isZh ? '配音模式 · 由真实音频时长决定' : 'Voice mode · driven by audio')
+      : `${t?.durationSec || 6}s`;
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
+        <Row label={`⚡ ${isZh ? '版式' : 'Style'}`}>{templateStyleLabel(t?.style, isZh)}</Row>
+        <Row label={`📋 ${isZh ? '标题' : 'Title'}`}>{t?.title || <span className="text-gray-400">{isZh ? '(未填,AI 自定)' : '(empty, AI fills)'}</span>}</Row>
+        <Row label={`📊 ${isZh ? '内容' : 'Content'}`}>
           <div className="space-y-1">
-            <span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{tag}</span>
-            {s
-              ? <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div>
-              : <div className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</div>}
+            <span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">
+              {isZh ? `${dataCount} 条` : `${dataCount} items`}
+            </span>
+            <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{dataPreview}</div>
           </div>
-        );
-      })()}
-    </Row>
-    <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
-      {input.engine === 'template'
-        ? (isZh ? '模板速生 · AI 动效逐帧渲染' : 'Template Speed · animated render')
-        : input.engine === 'ai'
-        ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
-        : (input.localVideos && input.localVideos.length > 0)
-          ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
-          : input.useStockVideo !== false
-            ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
-            : (isZh ? '仅图片' : 'images only')}
-    </Row>
-  </div>
-);
+        </Row>
+        <Row label={`🎤 ${isZh ? '配音' : 'Voice-over'}`}>{templateNarrationSummary(input, isZh)}</Row>
+        <Row label={`🎵 ${isZh ? '背景音乐' : 'BGM'}`}>{templateBgmSummary(input, isZh)}</Row>
+        <Row label={`🎨 ${isZh ? '品牌色' : 'Brand'}`}>
+          <span className="inline-flex items-center gap-2">
+            <span className="inline-block w-3 h-3 rounded-sm border border-gray-300 dark:border-gray-700" style={{ background: t?.brandColor || '#f0b90b' }} />
+            <span className="font-mono">{t?.brandColor || '#f0b90b'}</span>
+          </span>
+        </Row>
+        <Row label={`⏱️ ${isZh ? '时长' : 'Duration'}`}>{durationDesc}</Row>
+        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '本地动效渲染(HF 派)' : 'Local animated render (HF-style)'}</Row>
+      </div>
+    );
+  }
+  // 其它 engine(stock / pure_ai / 本地素材)走老的赛道/人设/关键词/文案布局。
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+      <Row label={`🎯 ${isZh ? '赛道' : 'Track'}`}>{input.track || '-'}</Row>
+      <Row label={`🧑 ${isZh ? '人设' : 'Persona'}`}>{input.persona || '-'}</Row>
+      <Row label={`🏷️ ${isZh ? '关键词' : 'Keywords'}`}><KeywordChips keywords={input.keywords} max={20} /></Row>
+      <Row label={`📝 ${isZh ? '视频文案' : 'Script'}`}>
+        {(() => {
+          const s = (input.script || '').trim();
+          const mode = input.scriptMode || (s ? 'strict' : 'ai');
+          const tag = mode === 'strict'
+            ? (isZh ? '严格逐字' : 'verbatim')
+            : (isZh ? 'AI 写稿' : 'AI script');
+          return (
+            <div className="space-y-1">
+              <span className="inline-block rounded bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 text-[11px] text-gray-500 dark:text-gray-400">{tag}</span>
+              {s
+                ? <div className="whitespace-pre-wrap break-words text-gray-600 dark:text-gray-300">{input.script}</div>
+                : <div className="text-gray-400">{isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`}</div>}
+            </div>
+          );
+        })()}
+      </Row>
+      <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>
+        {input.engine === 'ai'
+          ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
+          : (input.localVideos && input.localVideos.length > 0)
+            ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
+            : input.useStockVideo !== false
+              ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
+              : (isZh ? '仅图片' : 'images only')}
+      </Row>
+    </div>
+  );
+};
 
 const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="flex items-start gap-2">
@@ -910,16 +999,44 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
  * 扁平配置文本行(任务详情页用)。对齐币安详情卡:左列就是一串纯文本字段,
  * 没有内嵌灰框、没有「任务配置」小标题 —— 跟 TaskDetailPage 的 persona/频次/
  * 创建时间块同一种排版。运行记录详情仍用上面带框的 ConfigCard。
+ *
+ * 模板速生(engine='template')的字段跟 stock/pure_ai 完全不同 —— 没有「人设/
+ * 关键词/文案」概念,有的是【版式 + 数据 + 配音 + BGM + 品牌色】,所以按 engine
+ * 分流,模板速生走专属布局(避免展示一堆 `-`)。
  */
 const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ isZh, input }) => {
+  if (input.engine === 'template') {
+    const t = input.template;
+    const { count: dataCount, preview: dataPreview } = templateDataPreview(t?.dataText, isZh);
+    const durationDesc = t?.narration
+      ? (isZh ? '配音模式 · 由真实音频时长决定' : 'Voice mode · driven by audio')
+      : `${t?.durationSec || 6}s`;
+    return (
+      <>
+        <div>🎯 {isZh ? '赛道' : 'Track'}：{input.track || '-'}</div>
+        <div>⚡ {isZh ? '版式' : 'Style'}：{templateStyleLabel(t?.style, isZh)}</div>
+        <div>📋 {isZh ? '标题' : 'Title'}：{t?.title || <span className="text-gray-400">{isZh ? '(未填,AI 自定)' : '(empty, AI fills)'}</span>}</div>
+        <div className="break-words whitespace-pre-wrap">
+          📊 {isZh ? '内容' : 'Content'}：<span className="text-gray-400">[{isZh ? `${dataCount} 条` : `${dataCount} items`}]</span> {dataPreview}
+        </div>
+        <div>🎤 {isZh ? '配音' : 'Voice-over'}：{templateNarrationSummary(input, isZh)}</div>
+        <div>🎵 {isZh ? '背景音乐' : 'BGM'}：{templateBgmSummary(input, isZh)}</div>
+        <div className="inline-flex items-center gap-2">
+          🎨 {isZh ? '品牌色' : 'Brand color'}：
+          <span className="inline-block w-3 h-3 rounded-sm border border-gray-300 dark:border-gray-700 align-middle" style={{ background: t?.brandColor || '#f0b90b' }} />
+          <span className="font-mono">{t?.brandColor || '#f0b90b'}</span>
+        </div>
+        <div>⏱️ {isZh ? '时长' : 'Duration'}：{durationDesc}</div>
+        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '本地动效渲染(HF 派)' : 'Local animated render (HF-style)'}</div>
+      </>
+    );
+  }
   const kw = (input.keywords || []).filter(Boolean).join(' · ');
   const s = (input.script || '').trim();
   const mode = input.scriptMode || (s ? 'strict' : 'ai');
   const scriptTag = mode === 'strict' ? (isZh ? '严格逐字' : 'verbatim') : (isZh ? 'AI 写稿' : 'AI script');
   const scriptBody = s || (isZh ? `留空 · AI 按 ${input.targetSeconds ?? 45}s 写稿` : `empty · AI writes for ${input.targetSeconds ?? 45}s`);
-  const visuals = input.engine === 'template'
-    ? (isZh ? '模板速生 · AI 动效逐帧渲染' : 'Template Speed · animated render')
-    : input.engine === 'ai'
+  const visuals = input.engine === 'ai'
     ? (isZh ? '纯 AI 生成（Seedance）' : 'Pure AI (Seedance)')
     : (input.localVideos && input.localVideos.length > 0)
       ? (isZh ? `本地素材 ${input.localVideos.length} 个` : `${input.localVideos.length} local clips`)
