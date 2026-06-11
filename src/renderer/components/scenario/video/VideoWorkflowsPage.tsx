@@ -841,7 +841,7 @@ const VideoRunCard: React.FC<{ isZh: boolean; run: VideoRunRecord; onClick: () =
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-2 min-w-0 flex-1">
           <StatusPill isZh={isZh} status={run.status} />
-          <HeadBadges isZh={isZh} />
+          <HeadBadges isZh={isZh} input={run.input} />
           <span className="font-medium dark:text-white truncate">{run.title}</span>
         </div>
         <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400 shrink-0 flex-wrap">
@@ -1686,7 +1686,7 @@ const VideoRunRecordDetail: React.FC<{
       </button>
 
       <div className="flex items-center gap-2 mb-2 flex-wrap">
-        <HeadBadges isZh={isZh} size="md" />
+        <HeadBadges isZh={isZh} size="md" input={run.input} />
         <span className="text-[10px] text-gray-500 dark:text-gray-500 font-mono">#{run.id.slice(0, 8)}</span>
       </div>
       <h2 className="text-lg font-bold dark:text-white mb-1">🎬 {run.title}</h2>
@@ -3562,12 +3562,13 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
 ];
 
-// 模板速生:4 步向导(HF 派改造后:加配音/字幕 + 背景音乐两步,原 2 步保持兼容)。
-//   Step 1 内容(版式 + 标题 + 数据)
-//   Step 2 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
-//   Step 3 背景音乐(三选一 + 音量)
-//   Step 4 出片(赛道 + 品牌色 + 时长 + 定时)
-type TplStep = 1 | 2 | 3 | 4;
+// 模板速生:5 步向导(2026-06-12 把版式 / 内容拆开,看清版式后再填内容比挤在一屏好用)。
+//   Step 1 版式(挑模板:排行榜 / 资讯 / 金句 / 倒数 / 数据看板)
+//   Step 2 内容(标题 + 内容/数据)
+//   Step 3 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
+//   Step 4 背景音乐(三选一 + 音量)
+//   Step 5 出片(品牌色 + 运行频率)
+type TplStep = 1 | 2 | 3 | 4 | 5;
 
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。
@@ -3635,7 +3636,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const [err, setErr] = useState<string | null>(null);
 
   const handleCreate = async () => {
-    if (!dataText.trim()) { setStep(1); setErr(isZh ? '请填写榜单/要点内容' : 'Enter the list / points'); return; }
+    if (!dataText.trim()) { setStep(2); setErr(isZh ? '请填写榜单/要点内容' : 'Enter the list / points'); return; }
     if (submitting) return;
     setSubmitting(true); setErr(null);
     try {
@@ -3683,11 +3684,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
 
   // 「下一步」按 step 路由 + 必填校验。
   const goNext = () => {
-    if (step === 1) {
+    // Step 2 = 内容/数据,必填校验放这里(版式默认 rank_list,不会缺)。
+    if (step === 2) {
       if (!dataText.trim()) { setErr(isZh ? '请填写内容' : 'Enter content'); return; }
     }
     setErr(null);
-    setStep((s) => (s < 4 ? ((s + 1) as TplStep) : s));
+    setStep((s) => (s < 5 ? ((s + 1) as TplStep) : s));
   };
   const goBack = () => {
     setErr(null);
@@ -3703,13 +3705,15 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           <div>
             <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
-              <div className={`h-px w-4 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '配音' : 'Voice'} />
-              <div className={`h-px w-4 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音乐' : 'Music'} />
-              <div className={`h-px w-4 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={isZh ? '出片' : 'Output'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '版式' : 'Style'} />
+              <div className={`h-px w-3 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
+              <div className={`h-px w-3 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Voice'} />
+              <div className={`h-px w-3 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音乐' : 'Music'} />
+              <div className={`h-px w-3 ${step > 4 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -3718,7 +3722,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         <div className="px-6 py-4 space-y-4">
           {step === 1 && (
             <>
-              <Field label={isZh ? '版式' : 'Style'} hint={isZh ? '决定画面长什么样' : 'how the画面 looks'}>
+              <Field label={isZh ? '版式' : 'Style'} hint={isZh ? '决定画面长什么样,选完进下一步填内容' : 'how the visuals look — pick here, fill content next'}>
                 <div className="grid grid-cols-2 gap-2">
                   {TEMPLATE_STYLES.map((s) => (
                     <button key={s.id} type="button" onClick={() => setStyle(s.id)}
@@ -3729,19 +3733,30 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                   ))}
                 </div>
               </Field>
+            </>
+          )}
+          {step === 2 && (
+            <>
               <Field label={isZh ? '标题(可选)' : 'Title (optional)'}>
                 <input value={title} onChange={(e) => setTitle(e.target.value)}
                   placeholder={isZh ? '如:今日涨幅榜' : 'e.g. Today Top Gainers'}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
               </Field>
               <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '每行一条,AI 自动排版成动效画面' : 'one per line; AI lays it out'}>
-                <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={6}
+                <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={8}
                   placeholder={isZh ? 'DOGE +18.96%\nSOL +12.47%\nBNB +8.13%' : 'DOGE +18.96%\nSOL +12.47%'}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
               </Field>
+              {(() => {
+                const s = TEMPLATE_STYLES.find((x) => x.id === style);
+                if (!s) return null;
+                return (
+                  <div className="text-[11px] text-gray-400">{isZh ? `已选版式:${s.emoji} ${s.zh}` : `Selected style: ${s.emoji} ${s.en}`}</div>
+                );
+              })()}
             </>
           )}
-          {step === 2 && (
+          {step === 3 && (
             <>
               <Field label={isZh ? 'AI 配音 + 字幕' : 'AI voice-over + subs'} hint={isZh ? '开了会按你的数据 AI 写口播稿、念出来、烧字幕。关 = 纯视觉。' : 'On: AI writes a script, narrates, and burns subs.'}>
                 <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
@@ -3790,12 +3805,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                       placeholder={isZh ? '今日涨幅榜:DOGE 涨 18.96%、SOL 涨 12.47%、BNB 涨 8.13%。' : 'Today gainers: ...'}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
                   </Field>
-                  <div className="text-[11px] text-gray-400">{isZh ? '⚠️ 开了配音 → 视频时长由真实音频决定,Step 4 的「时长」滑块失效' : '⚠️ With voice on, the slider in Step 4 is ignored — duration = audio length'}</div>
+                  <div className="text-[11px] text-gray-400">{isZh ? '⚠️ 开了配音 → 视频时长由真实音频决定' : '⚠️ With voice on, duration = real audio length'}</div>
                 </>
               )}
             </>
           )}
-          {step === 3 && (
+          {step === 4 && (
             <>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '配音模式下作为氛围音垫底;纯视觉模式下是主音轨' : 'Bed for narration; main audio in silent mode'}>
                 <div className="grid grid-cols-3 gap-2 mb-2">
@@ -3857,7 +3872,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               </Field>
             </>
           )}
-          {step === 4 && (
+          {step === 5 && (
             <>
               <Field label={isZh ? '主品牌色' : 'Brand color'} hint={isZh ? '画面整体主色调:标题字色、装饰元素、数字高亮都用它' : 'Drives the title color, accent bars, and number highlights'}>
                 <div className="flex items-center gap-2">
@@ -3887,7 +3902,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 4 ? (
+          {step < 5 ? (
             <button type="button" onClick={goNext}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600">
               {isZh ? '下一步 →' : 'Next →'}
