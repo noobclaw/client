@@ -115,22 +115,43 @@ const SYSTEM_PROMPT_WITH_VOICE = [
 
 interface ChatResult { content: string; tokens: number; costUsd: number; }
 
-async function callDeepSeekData(system: string, user: string): Promise<ChatResult> {
+/**
+ * 随机抽一种播报语气塞进 generateTemplateData 的 user message —— needVoiceScript=true 时打破
+ *   「同一份数据 → 同一种主播口吻」。模板速生 voiceScript 硬编码中文(见 SYSTEM_PROMPT_WITH_VOICE),
+ *   语气池也只做中文。5 种都是【专业感框架内】的语气变体,不会破坏数据准确性。
+ */
+function pickTemplateVoiceTone(): string {
+  const POOL = [
+    '财经主播口吻(沉稳、用"我们关注到 / 数据显示 / 截至发稿"等承接词,新闻播报感)',
+    '深度评论员口吻(分析感强、用"值得注意的是 / 背后逻辑是 / 这意味着"做层层递进)',
+    '资讯简报口吻(短句、信息密度高、像 30 秒快讯,不展开解读)',
+    '行业老炮闲聊口吻(像跟同行茶水间聊 — 仍保持数据准确,但用词更松,有"老实说 / 说白了"这种)',
+    '科普讲解口吻(把数据用对比/类比解释清楚,适合非专业观众,如"涨幅 18% 是什么概念,相当于...")',
+  ];
+  return POOL[Math.floor(Math.random() * POOL.length)];
+}
+
+async function callDeepSeekData(system: string, user: string, temperature?: number): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60_000);
   try {
+    const body: Record<string, unknown> = {
+      model: 'noobclawai-chat',
+      messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
+      stream: false,
+      max_tokens: 2400,
+      response_format: { type: 'json_object' },
+    };
+    // 创作类(voiceScript)显式拉高温度提升多样性;纯数据 items 抽取不传 = 用默认低温保稳定。
+    if (typeof temperature === 'number' && Number.isFinite(temperature)) {
+      body.temperature = temperature;
+    }
     const resp = await fetch(`${apiBase()}/api/ai/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-      body: JSON.stringify({
-        model: 'noobclawai-chat',
-        messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
-        stream: false,
-        max_tokens: 2400,
-        response_format: { type: 'json_object' },
-      }),
+      body: JSON.stringify(body),
       signal: ctrl.signal,
     });
     if (!resp.ok) {
@@ -235,6 +256,11 @@ export async function generateTemplateData(input: TemplateDataInput, systemPromp
     if (input.track) userParts.push(`赛道:${input.track}`);
     if (input.needVoiceScript) {
       userParts.push('需要 voiceScript:true(产中文口播稿)');
+      // 每次随机一种语气,塞到 user message,跟跨调用的「同一份数据 → 同一种口吻」对着干。
+      //   不放 system prompt 是因为 system 是服务端可调的,改这事跟模板措辞无关;tone 是每次
+      //   现 roll 的运行期行为,本该在 call site。
+      const tone = pickTemplateVoiceTone();
+      userParts.push(`本次 voiceScript 请采用「${tone}」,跟该数据类型常见的播报口吻明显错开。注意:tone 只影响表达风格,绝不能改变数据的准确性。`);
       if (input.pageMeta) {
         const ranges = input.pageMeta.pageRanges
           .map(([a, b], i) => `page ${i + 1} 含 items[${a}..${b}]`)
@@ -246,7 +272,9 @@ export async function generateTemplateData(input: TemplateDataInput, systemPromp
     userParts.push('用户内容(json):');
     userParts.push(input.dataText.slice(0, 2000));
     const user = userParts.join('\n');
-    const { content, tokens, costUsd } = await callDeepSeekData(sys, user);
+    // temperature=1.0 仅在 voiceScript 时拉高(让口播稿措辞多样);纯抽 items 时不传 = 用默认
+    //   低温保数据稳定。system prompt 里的"绝不修改用户给的数值/绝不编造"是强约束,1.0 不会突破。
+    const { content, tokens, costUsd } = await callDeepSeekData(sys, user, input.needVoiceScript ? 1.0 : undefined);
     const parsed = JSON.parse(extractJsonObject(content));
     const items = cleanItems(parsed?.items);
     if (items.length > 0) {
