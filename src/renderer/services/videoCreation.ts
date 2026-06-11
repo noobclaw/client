@@ -78,8 +78,8 @@ export interface VideoCreationInput {
   localVideos?: string[];
   /** 画幅,默认竖屏 9:16。 */
   aspect: VideoAspect;
-  /** 发布去向(老字段,保留兼容)。一期只用了 'local';实际多平台发布看 publishPlatforms。 */
-  publishTarget: VideoPublishTarget;
+  /** 老字段,已废弃,只为兼容老任务。实际发哪几个平台只看 publishPlatforms。改可选,新建不写。 */
+  publishTarget?: VideoPublishTarget;
   /**
    * 出片完成后要发到哪几个平台(9 选 N):
    *   'douyin' | 'xhs' | 'tiktok' | 'binance' | 'x' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao'

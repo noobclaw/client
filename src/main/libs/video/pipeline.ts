@@ -172,7 +172,11 @@ export interface VideoCreationInput {
    * iterator forEach 它,对每个平台 driver 调 upload(不在数组里的不发,数组空 = 仅存本地)。
    * 用户在向导里勾选 9 平台中的 N 个,持久化到这里(空数组等价于以前的 'local')。
    */
-  publishTarget: VideoPublishTarget;
+  /**
+   * 老字段,已废弃,只为兼容老任务/数据库里残留的 publishTarget:'local'。
+   * 实际发哪几个平台只看 publishPlatforms,不要再读这个字段。改可选,新建任务不写。
+   */
+  publishTarget?: VideoPublishTarget;
   publishPlatforms?: string[];
   /**
    * 平台发布文案(用户向导可选填,覆盖 AI 自动生成)。这三个是【配在视频下方钩人点击】
@@ -511,7 +515,7 @@ export async function generateVideo(
     const { scheduleVideoRunReport } = require('../scenario/taskRunReporter');
     scheduleVideoRunReport({
       runId,
-      input: { track: input.track, keywords: input.keywords, publishTarget: input.publishTarget },
+      input: { track: input.track, keywords: input.keywords, publishPlatforms: input.publishPlatforms },
       result,
       startedAt,
       finishedAt: Date.now(),

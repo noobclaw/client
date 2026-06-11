@@ -129,11 +129,11 @@ export function scheduleRunReport(rec: RunRecord): void {
 export interface VideoRunReportArgs {
   /** 本次出片的 UUID(run_id,幂等键)。 */
   runId: string;
-  /** 视频创作输入(取 track / keywords / publishTarget 等做任务名/平台)。 */
+  /** 视频创作输入(取 track / keywords / publishPlatforms 等做任务名/平台)。 */
   input: {
     track?: string;
     keywords?: string[];
-    publishTarget?: string;
+    publishPlatforms?: string[];
   };
   /** generateVideo 的返回(决定成功/失败 + 输出路径 / 错误)。 */
   result: { ok: boolean; outputPath?: string; error?: string };
@@ -154,7 +154,9 @@ export function scheduleVideoRunReport(args: VideoRunReportArgs): void {
     enqueue(args.runId, () => ({
       run_id: args.runId,
       task_id: 'video:' + (input.track || 'custom'),
-      platform: input.publishTarget || 'local',
+      platform: (Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0)
+        ? input.publishPlatforms.join(',')
+        : 'local',
       workflow_type: 'video',
       task_name: '视频创作 · ' + topic,
       status: result.ok ? 'done' : 'error',

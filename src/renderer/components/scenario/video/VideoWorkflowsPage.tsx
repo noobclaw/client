@@ -23,7 +23,6 @@ import {
   videoCreationService,
   type VideoCreationInput,
   type VideoCreationProgressStep,
-  type VideoPublishTarget,
   type VideoAspect,
   type SubtitlePosition,
   type VideoTemplateStyle,
@@ -1526,13 +1525,16 @@ const VideoTaskDetail: React.FC<{
           「运行记录详情」看,通过下面的「查看本次运行明细 →」点进去。 */}
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <h2 className="text-base font-bold dark:text-white">{isZh ? '当前运行明细' : 'Current Run Details'}</h2>
-        {/* 出片去向徽章放右侧(目前自动发布未上线,恒为「存本地」)。
-            「查看本次运行明细 →」已移除:头部「上次运行」卡片已能点进运行记录,这里重复。 */}
+        {/* 出片去向徽章:看 publishPlatforms 是否非空(以前看 publishTarget,恒为 'local'
+            → 徽章永远显示「存本地」是个 bug,勾了平台也不亮「自动发布」。已改成看真实平台列表)。 */}
         {(() => {
-          const toLocal = (task.input.publishTarget || 'local') === 'local';
+          const platforms = (task.input as any).publishPlatforms as string[] | undefined;
+          const toLocal = !(Array.isArray(platforms) && platforms.length > 0);
           return (
             <span className={`inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full border font-medium ${toLocal ? 'text-sky-500 bg-sky-500/10 border-sky-500/30' : 'text-green-500 bg-green-500/10 border-green-500/30'}`}>
-              {toLocal ? (isZh ? '📂 自动保存到本地' : '📂 Saved locally') : (isZh ? '🚀 自动发布到各平台' : '🚀 Auto-publish')}
+              {toLocal
+                ? (isZh ? '📂 自动保存到本地' : '📂 Saved locally')
+                : (isZh ? `🚀 自动发布 · ${platforms!.length} 平台` : `🚀 Auto-publish · ${platforms!.length}`)}
             </span>
           );
         })()}
@@ -2321,7 +2323,7 @@ const VideoConfigModal: React.FC<{
     //   pure_ai 永远不传 localVideos(Seedance 自动生成,不读本地素材)。
     localVideos: mode === 'stock' && materialSource === 'local' && localVideos.length > 0 ? localVideos : undefined,
     aspect,
-    publishTarget: 'local' as VideoPublishTarget,
+    // publishTarget 已废弃,不再写(实际发布看 publishPlatforms)。
     // 出片完成后,pipeline 会 iterator forEach 这个数组调对应 driver。
     // 「存本地不上传」→ 空数组(pipeline 推「📂 未选发布平台 · 仅存本地」);
     // 「上传到各大平台」→ 用户勾选的几个 id(未登录的运行期跳过)。
@@ -3535,7 +3537,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         // 模板速生不用 persona/track/keywords/script(那些是 stock/pure_ai 的字段);
         // 编辑老任务时若 input 里残留 track 不动它,新建一律置空。
         persona: '', track: editTask?.input?.track || '', keywords: [], script: '', scriptMode: 'ai',
-        engine: 'template', referenceImages: [], aspect: '9:16', publishTarget: 'local',
+        engine: 'template', referenceImages: [], aspect: '9:16',
         // 配音/语速也写到 input 顶层一份(向后兼容,且 pipeline.ts 读 input.voice / voiceRate 作为兜底)。
         voice: narration ? voice : undefined,
         voiceRate: narration && voiceRate !== 0 ? voiceRate : undefined,
