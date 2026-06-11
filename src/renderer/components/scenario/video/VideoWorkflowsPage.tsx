@@ -599,26 +599,68 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         {queueBadge}
       </div>
 
-      {/* 配置摘要:赛道 / 人设 / 关键词(全部展示) / 文案 */}
+      {/* 配置摘要:engine 分流 —— stock/pure_ai 展示 赛道/人设/关键词/文案;
+          模板速生展示 赛道/版式/标题/数据/配音/BGM(用户真正填的)。 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
-        <div className="flex items-start gap-1.5">
-          <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
-          <span className="truncate">{task.input.track || '-'}</span>
-        </div>
-        {task.input.persona && (
-          <div className="flex items-start gap-1.5">
-            <span className="text-gray-400 shrink-0">🧑 {isZh ? '人设' : 'Persona'}</span>
-            <span className="truncate">{task.input.persona}</span>
-          </div>
+        {task.input.engine === 'template' ? (() => {
+          const t = task.input.template;
+          const { count, preview } = templateDataPreview(t?.dataText, isZh);
+          return (
+            <>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
+                <span className="truncate">{task.input.track || '-'}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">⚡ {isZh ? '版式' : 'Style'}</span>
+                <span className="truncate">{templateStyleLabel(t?.style, isZh)}</span>
+              </div>
+              {t?.title && (
+                <div className="flex items-start gap-1.5">
+                  <span className="text-gray-400 shrink-0">📋 {isZh ? '标题' : 'Title'}</span>
+                  <span className="truncate">{t.title}</span>
+                </div>
+              )}
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">📊 {isZh ? '内容' : 'Content'}</span>
+                <span className="truncate text-gray-500 dark:text-gray-400">
+                  <span className="text-gray-400">[{isZh ? `${count} 条` : `${count} items`}]</span> {preview}
+                </span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🎤 {isZh ? '配音' : 'Voice'}</span>
+                <span className="truncate">{templateNarrationSummary(task.input, isZh)}</span>
+              </div>
+              {task.input.bgmPath && (
+                <div className="flex items-start gap-1.5">
+                  <span className="text-gray-400 shrink-0">🎵 BGM</span>
+                  <span className="truncate">{templateBgmSummary(task.input, isZh)}</span>
+                </div>
+              )}
+            </>
+          );
+        })() : (
+          <>
+            <div className="flex items-start gap-1.5">
+              <span className="text-gray-400 shrink-0">🎯 {isZh ? '赛道' : 'Track'}</span>
+              <span className="truncate">{task.input.track || '-'}</span>
+            </div>
+            {task.input.persona && (
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🧑 {isZh ? '人设' : 'Persona'}</span>
+                <span className="truncate">{task.input.persona}</span>
+              </div>
+            )}
+            <div className="flex items-start gap-1.5">
+              <span className="text-gray-400 shrink-0">🏷️ {isZh ? '关键词' : 'Keywords'}</span>
+              <KeywordChips keywords={task.input.keywords} max={99} />
+            </div>
+            <div className="flex items-start gap-1.5">
+              <span className="text-gray-400 shrink-0">📝 {isZh ? '文案' : 'Script'}</span>
+              <span className="truncate text-gray-500 dark:text-gray-400">{scriptSummary(task.input, isZh)}</span>
+            </div>
+          </>
         )}
-        <div className="flex items-start gap-1.5">
-          <span className="text-gray-400 shrink-0">🏷️ {isZh ? '关键词' : 'Keywords'}</span>
-          <KeywordChips keywords={task.input.keywords} max={99} />
-        </div>
-        <div className="flex items-start gap-1.5">
-          <span className="text-gray-400 shrink-0">📝 {isZh ? '文案' : 'Script'}</span>
-          <span className="truncate text-gray-500 dark:text-gray-400">{scriptSummary(task.input, isZh)}</span>
-        </div>
       </div>
 
       {/* footer — 「已生成 N 个视频」+ 定时胶囊(设了定时才显) */}
