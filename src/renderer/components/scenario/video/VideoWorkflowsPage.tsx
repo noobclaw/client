@@ -2192,6 +2192,9 @@ const VideoConfigModal: React.FC<{
     }
     return init;
   });
+  // 自定义发布文案(选填):留空 → 出片时 AI 自动生成钩人文案;填了 → 覆盖 AI。
+  const [publishTitle, setPublishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
+  const [publishCaption, setPublishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -2323,6 +2326,9 @@ const VideoConfigModal: React.FC<{
     // 「存本地不上传」→ 空数组(pipeline 推「📂 未选发布平台 · 仅存本地」);
     // 「上传到各大平台」→ 用户勾选的几个 id(未登录的运行期跳过)。
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+    // 自定义发布文案(选填);空 = AI 自动生成。仅在要上传时带上。
+    publishTitle: outputMode === 'upload' && publishTitle.trim() ? publishTitle.trim() : undefined,
+    publishCaption: outputMode === 'upload' && publishCaption.trim() ? publishCaption.trim() : undefined,
     // 纯 AI(Seedance)每秒都真烧钱 → 写稿时长封顶 45s(UI 也不给 >45s 选项);
     // 其它模式(在线素材/本地)免费拼接,不限。
     targetSeconds: mode === 'pure_ai' ? Math.min(targetSeconds, AI_MAX_SECONDS) : targetSeconds,
@@ -3185,6 +3191,29 @@ const VideoConfigModal: React.FC<{
                     {isZh
                       ? '💡 出片后会自动登录态检查 → 已登录就发,未登录的【自动跳过】(下次登录后再跑会补传)。不强制全部登录,可以一次勾完慢慢补。'
                       : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
+                  </div>
+
+                  {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签 */}
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                    <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                      {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
+                      <span className="ml-1.5 font-normal text-[11px] text-gray-400">
+                        {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
+                      </span>
+                    </div>
+                    <input
+                      value={publishTitle}
+                      onChange={(e) => setPublishTitle(e.target.value)}
+                      placeholder={isZh ? '钩人标题(如:今天这 3 个币闷声干了大事 🚀)' : 'Hook title'}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                    />
+                    <textarea
+                      value={publishCaption}
+                      onChange={(e) => setPublishCaption(e.target.value)}
+                      rows={3}
+                      placeholder={isZh ? '正文(钩子 + 看点 + 引导关注/评论)。可在文末写 #话题标签' : 'Caption body (hook + CTA). Add #hashtags at the end.'}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                    />
                   </div>
                 </Field>
               )}
