@@ -177,9 +177,12 @@ export async function runTemplatePipeline(
     throwIfAborted(signal);
     tracker.start('render', '🎞️ 渲染 + 编码…');
 
-    // 时长决策:有配音 → 真实音频时长 + 0.4s 尾留白;无配音 → 用户配置 / 自动估算
+    // 时长决策:
+    //   · 有配音 → 真实音频时长 + 0.4s 尾留白(clamp[3, 60])。上限放到 60 是因为分页轮播
+    //     用户可能填 12 条数据,AI 口播稿一念就 30-50s,旧的 30s clamp 会截断收尾。
+    //   · 无配音 → 用户配置 / 自动估算(clamp[3, 20])
     const durationSec = wantNarration && realDurationSec > 0
-      ? clamp(realDurationSec + 0.4, 3, 30)
+      ? clamp(realDurationSec + 0.4, 3, 60)
       : clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
 
     // 平台基础费预扣(对齐 stock 模式定价口径,单条约 $0.09~$0.18,服务端权威值)。

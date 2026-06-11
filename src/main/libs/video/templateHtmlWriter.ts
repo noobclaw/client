@@ -72,21 +72,23 @@ const SYSTEM_PROMPT_BASE = [
   '输出结构:{"title":"大标题","subtitle":"副标题(可选)","items":[{"rank":1,"name":"主名称","value":"数值","sub":"副说明(可选)"}]}',
   '硬规则(违反任何一条 = 失败):',
   '1. title 简短有力(≤14 字);subtitle 可选(如 "BINANCE · 24H" / 日期 / 来源)。',
-  '2. items 最多 8 条,从用户内容里提取;有数值(涨跌幅/数量/价格)就放 value(保留正负号、百分号、单位),没有就省略 value。',
-  '3. 排行榜/盘点:按用户给的顺序或数值大小排序,逐条填 rank(1,2,3…)。',
-  '4. 金句/语录:items 放一条 {"name":"金句正文","sub":"作者(可选)"}。',
-  '5. 保持用户内容的语言;**绝不编造用户没给的数据**(没就留空);**绝不修改用户给的数值**(原样回传)。',
-  '6. 不要输出 Markdown 围栏、不要解释、不要加 emoji。',
+  '2. items **最多 12 条**,从用户内容里提取;有数值(涨跌幅/数量/价格)就放 value(保留正负号、百分号、单位),没有就省略 value。',
+  '3. **name 与 value 严格不重叠**:value 是纯数值串(带单位/符号即可,如 "+18.96%" / "1.2亿" / "98.4%"),name 是【主名称/事件描述】不能末尾再带这个数值。例:用户给"美联储6月维持利率不变的概率为 98.4%" → name="美联储6月维持利率不变的概率",value="98.4%"(name 末尾不要再带"98.4%")。',
+  '4. 排行榜/盘点:按用户给的顺序或数值大小排序,逐条填 rank(1,2,3…)。',
+  '5. 金句/语录:items 放一条 {"name":"金句正文","sub":"作者(可选)"}。',
+  '6. 保持用户内容的语言;**绝不编造用户没给的数据**(没就留空);**绝不修改用户给的数值**(原样回传)。',
+  '7. 不要输出 Markdown 围栏、不要解释、不要加 emoji。',
 ].join('\n');
 
 const SYSTEM_PROMPT_WITH_VOICE = [
   SYSTEM_PROMPT_BASE,
   '',
-  '【追加】同时产一段【中文口播稿】放在 "voiceScript" 字段(短视频 6-12 秒,大约 50-90 字),要求:',
-  'A. 直接念用户给的内容要点,不要无关开场白(不要"大家好"/"今天给大家分享"),不要结尾煽情(不要"快来关注")。',
-  'B. 数据/榜单:逐条念,数字+名称,简洁有节奏;金句:直接念金句,带作者。',
-  'C. 跟 items 一致 —— **不许提 items 里没有的内容**,不许编 items 里没有的数据。',
-  'D. 句子短,每句 8-16 字,适合 TTS 自然停顿;用中文标点(逗号、句号);不要英文标点。',
+  '【追加】同时产一段【自然流畅的中文短视频口播稿】放在 "voiceScript" 字段。这是新闻主播/财经评论员口吻,**不是机械念清单**。要求:',
+  'A. 时长 12-30 秒(约 80-180 字),覆盖**所有** items 要点(信息密度高,但要听感自然)。',
+  'B. **不是逐条念**,而是用承接词("其中"/"值得注意的是"/"最引人关注的是"/"另外"/"与此同时"/"截至发稿")把数据/事件**串成一段流畅播报**。有起承转合:开场点题 → 关键数据 → 收尾补充。',
+  'C. 没有无关开场白(不要"大家好"/"今天给大家分享"),没有结尾煽情(不要"快来关注"/"记得点赞")。',
+  'D. 数据必须正确,但**表达可以重组润色** —— 把生硬的"DOGE 涨 18.96%"说成"狗狗币以 18.96% 的涨幅领涨";把"美联储6月维持利率不变的概率为 98.4%"说成"美联储 6 月按兵不动几成定局,市场押注高达 98.4%"。',
+  'E. 句子长短交替,适合 TTS 自然停顿;用中文标点(逗号、句号、顿号);不要英文标点。',
 ].join('\n');
 
 interface ChatResult { content: string; tokens: number; costUsd: number; }
@@ -144,14 +146,32 @@ function extractJsonObject(raw: string): string {
   return t;
 }
 
+/** AI 偶尔会把 value("98.4%") 同时塞在 name 末尾(name="...概率为 98.4%", value="98.4%"),
+ *  渲染时画面会同时出两遍数值。这里前端兜底:value 在 name 末尾出现就切掉,顺带把
+ *  常见承接介词("为/是/达/约/共/合计"等)也一起剥掉,保留干净的 name。 */
+function dedupValueFromName(name: string, value: string | undefined): string {
+  if (!value || !name) return name;
+  const v = value.trim();
+  if (!v) return name;
+  // 末尾包含 value(允许 value 前有空格/介词)
+  const tail = new RegExp(`\\s*[为是达约共合计]?\\s*\\(?\\s*${escapeForRegex(v)}\\s*\\)?\\s*$`);
+  const cleaned = name.replace(tail, '').replace(/[,，、:：=的\s]+$/, '').trim();
+  return cleaned || name; // 切完空了就还原(避免误伤)
+}
+function escapeForRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function cleanItems(raw: any): TemplateItem[] {
   if (!Array.isArray(raw)) return [];
-  return raw.slice(0, 8).map((it: any, i: number) => {
-    const name = typeof it?.name === 'string' ? it.name.trim() : '';
+  return raw.slice(0, 12).map((it: any, i: number) => {
+    let name = typeof it?.name === 'string' ? it.name.trim() : '';
     if (!name) return null;
+    const value = typeof it?.value === 'string' && it.value.trim() ? it.value.trim().slice(0, 24) : undefined;
+    name = dedupValueFromName(name, value);
     const item: TemplateItem = { name: name.slice(0, 60) };
     if (typeof it?.rank === 'number') item.rank = it.rank; else item.rank = i + 1;
-    if (typeof it?.value === 'string' && it.value.trim()) item.value = it.value.trim().slice(0, 24);
+    if (value) item.value = value;
     if (typeof it?.sub === 'string' && it.sub.trim()) item.sub = it.sub.trim().slice(0, 60);
     return item;
   }).filter(Boolean) as TemplateItem[];

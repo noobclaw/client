@@ -3584,13 +3584,18 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const [title, setTitle] = useState<string>(et?.title || '');
   const [dataText, setDataText] = useState<string>(et?.dataText || '');
   // ── Step 2:配音/字幕 ──
-  const [narration, setNarration] = useState<boolean>(et?.narration === true);
+  // 新建:默认开配音 + 字幕(模板速生定位短视频,有配音 + 烧字幕完播率更高)。
+  // 编辑:保留任务现有设置(et?.narration === true 才认为开过)。
+  const [narration, setNarration] = useState<boolean>(isEdit ? et?.narration === true : true);
   const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(typeof et?.voiceRate === 'number' ? et.voiceRate : 0);
   const [voiceScript, setVoiceScript] = useState<string>(et?.voiceScript || '');
-  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(et?.subtitleEnabled !== false);
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? et?.subtitleEnabled !== false : true);
   // ── Step 3:BGM ──
-  const [bgmPath, setBgmPath] = useState<string>(editTask?.input?.bgmPath || '');
+  // 新建:默认带上内置 BGM 第 1 首(中音量),让用户开箱即用就有完整氛围。编辑保留原值。
+  const [bgmPath, setBgmPath] = useState<string>(
+    isEdit ? (editTask.input.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`,
+  );
   const [bgmVolume, setBgmVolume] = useState<number>(typeof editTask?.input?.bgmVolume === 'number' ? editTask.input.bgmVolume : 0.18);
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
   useEffect(() => {

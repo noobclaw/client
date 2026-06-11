@@ -40,6 +40,54 @@ export interface TemplateSpec {
   captions?: CaptionCue[];  // TTS 出的句级时间戳;空 = 纯视觉,字幕轨隐藏
 }
 
+/** 把 items 分页 + 计算每页时间窗。最后一页不退场(留到片尾)。 */
+interface PageSlot {
+  items: TemplateItem[];
+  /** 本页元素的【建议 data-start 起点秒】 —— 子元素在此基础上 +0.1, +0.25... 错开。 */
+  pageStartSec: number;
+  /** 本页持续多久(秒)。 */
+  pageDurationSec: number;
+  /** 本页是不是最后一页(最后一页不退场,留到 video 结束)。 */
+  isLast: boolean;
+  pageIndex: number;
+  pageCount: number;
+}
+function paginate(items: TemplateItem[], pageSize: number, totalSec: number): PageSlot[] {
+  const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
+  // 留 0.5s 入场缓冲 + 0.5s 尾留白
+  const usable = Math.max(2.0, totalSec - 1.0);
+  const perPage = usable / pageCount;
+  const slots: PageSlot[] = [];
+  for (let p = 0; p < pageCount; p++) {
+    slots.push({
+      items: items.slice(p * pageSize, (p + 1) * pageSize),
+      pageStartSec: 0.5 + p * perPage,
+      pageDurationSec: perPage,
+      isLast: p === pageCount - 1,
+      pageIndex: p,
+      pageCount,
+    });
+  }
+  return slots;
+}
+
+/** 给 page wrapper 拼 data-* 属性 —— fade 进场 + 末尾退场(最后一页不退)。 */
+function pageDataAttrs(slot: PageSlot): string {
+  const enterDur = 0.35;
+  const exitDur = 0.4;
+  const attrs = [
+    `data-anim="fade"`,
+    `data-start="${slot.pageStartSec.toFixed(2)}"`,
+    `data-duration="${enterDur}"`,
+  ];
+  if (!slot.isLast) {
+    const exitStart = slot.pageStartSec + slot.pageDurationSec - exitDur;
+    attrs.push(`data-exit-start="${exitStart.toFixed(2)}"`);
+    attrs.push(`data-exit-duration="${exitDur.toFixed(2)}"`);
+  }
+  return attrs.join(' ');
+}
+
 /** 解析「+18.96%」「-2.3%」「1.2亿」「12345」这类显示串,拆出数值/符号/前后缀。
  *  用于 count-up 动画:从 0 滚到目标数,完整保留前后缀。返回 null 表示无法解析。 */
 function parseNumeric(raw: string | undefined): null | {
@@ -60,13 +108,16 @@ function parseNumeric(raw: string | undefined): null | {
 }
 
 // ── 精品模板 1:排行榜 / 榜单(rank_list)──────────────────────────────────
+// 每页 6 行;数据超过 6 条自动分页轮播,每页占 totalSec/pageCount 秒。
 function renderRankList(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#0ecb81';
+  const PAGE = 6;
   const css = `
 #title{position:absolute;top:170px;left:80px;right:80px;text-align:center}
 #title .t1{font-size:78px;font-weight:900;color:${spec.brandColor};letter-spacing:1px;text-shadow:0 6px 24px ${spec.brandColor}40}
 #title .t2{font-size:34px;color:#848e9c;margin-top:18px;letter-spacing:8px;font-weight:600}
-#list{position:absolute;top:440px;left:70px;right:70px}
+#list-area{position:absolute;top:440px;left:70px;right:70px;bottom:140px}
+.page{position:absolute;inset:0}
 .row{height:178px;margin-bottom:26px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);display:flex;align-items:center;padding:0 46px;position:relative;overflow:hidden}
 .row .bar{position:absolute;left:0;top:0;bottom:0;width:8px;background:${spec.brandColor};opacity:0.9}
 .rank{width:104px;display:flex;align-items:center;justify-content:center}
@@ -78,36 +129,37 @@ function renderRankList(spec: TemplateSpec): string {
 .val.up{color:${accent}} .val.down{color:#f6465d} .val.flat{color:#eaecef}
 `;
 
-  // 标题区:进场 0~0.6s,fade-up;副标题晚 0.1s
   const titleBlock = `<div id="title">
     <div class="t1" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '榜单速览')}</div>
     ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.1" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
   </div>`;
 
-  // 列表行:逐行右滑入,数值滚动到目标值
-  const rows = spec.items.slice(0, 6).map((it, i) => {
-    const r = it.rank ?? (i + 1);
-    const start = 0.5 + i * 0.16;
-    const dur = 0.7;
-    const valParsed = parseNumeric(it.value);
-    let valNode: string;
-    if (valParsed) {
-      const colorCls = valParsed.positive ? 'up' : (it.value && it.value.startsWith('-') ? 'down' : 'flat');
-      // count-up:从 0 滚到 abs(num);前后缀完整保留,负号在 prefix 里
-      const signedPrefix = it.value && it.value.startsWith('-') ? '-' : valParsed.prefix;
-      valNode = `<div class="val ${colorCls}" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="${dur}" data-count-from="0" data-count-to="${valParsed.num}" data-count-decimals="${valParsed.decimals}" data-count-prefix="${signedPrefix}" data-count-suffix="${esc(valParsed.suffix)}">${esc(valParsed.prefix + valParsed.num.toFixed(valParsed.decimals) + valParsed.suffix)}</div>`;
-    } else {
-      valNode = `<div class="val flat" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="${dur}">${esc(it.value || '')}</div>`;
-    }
-    return `<div class="row" data-anim="slide-in-right" data-start="${start.toFixed(2)}" data-duration="${dur}">
-      <div class="bar"></div>
-      <div class="rank"><b>${r}</b></div>
-      <div class="coin"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
-      ${valNode}
-    </div>`;
+  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const pages = slots.map((slot) => {
+    const rows = slot.items.map((it, i) => {
+      const r = it.rank ?? (slot.pageIndex * PAGE + i + 1);
+      const start = slot.pageStartSec + 0.2 + i * 0.12;
+      const dur = 0.6;
+      const valParsed = parseNumeric(it.value);
+      let valNode: string;
+      if (valParsed) {
+        const colorCls = valParsed.positive ? 'up' : (it.value && it.value.startsWith('-') ? 'down' : 'flat');
+        const signedPrefix = it.value && it.value.startsWith('-') ? '-' : valParsed.prefix;
+        valNode = `<div class="val ${colorCls}" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="${dur}" data-count-from="0" data-count-to="${valParsed.num}" data-count-decimals="${valParsed.decimals}" data-count-prefix="${signedPrefix}" data-count-suffix="${esc(valParsed.suffix)}">${esc(valParsed.prefix + valParsed.num.toFixed(valParsed.decimals) + valParsed.suffix)}</div>`;
+      } else {
+        valNode = `<div class="val flat" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="${dur}">${esc(it.value || '')}</div>`;
+      }
+      return `<div class="row" data-anim="slide-in-right" data-start="${start.toFixed(2)}" data-duration="${dur}">
+        <div class="bar"></div>
+        <div class="rank"><b>${r}</b></div>
+        <div class="coin"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
+        ${valNode}
+      </div>`;
+    }).join('');
+    return `<div class="page" ${pageDataAttrs(slot)}>${rows}</div>`;
   }).join('');
 
-  const body = `${titleBlock}<div id="list">${rows}</div>`;
+  const body = `${titleBlock}<div id="list-area">${pages}</div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
@@ -137,29 +189,44 @@ function renderQuote(spec: TemplateSpec): string {
 }
 
 // ── 精品模板 3:资讯快讯(news_cards)──────────────────────────────────────
+// 每页 4 张卡;数据多自动分页轮播(避免用户的 8 条要点只显示前 4 条)。
 function renderNewsCards(spec: TemplateSpec): string {
   const accent = spec.accentColor || spec.brandColor;
+  const PAGE = 4;
   const css = `
 #title{position:absolute;top:180px;left:80px;right:80px;text-align:center;font-size:72px;font-weight:900;color:${spec.brandColor}}
 #subtitle{position:absolute;top:300px;left:80px;right:80px;text-align:center;font-size:32px;color:#848e9c;letter-spacing:6px}
-#cards{position:absolute;top:440px;left:80px;right:80px}
+#cards-area{position:absolute;top:440px;left:80px;right:80px;bottom:140px}
+.page{position:absolute;inset:0}
 .card{margin-bottom:34px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);padding:42px 48px;position:relative;overflow:hidden}
 .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:${accent}}
 .card .h{font-size:48px;font-weight:800;color:#fff;line-height:1.3}
 .card .b{font-size:32px;color:#c7ccd4;margin-top:14px;line-height:1.45}
 .card .v{font-size:54px;font-weight:900;color:${accent};margin-top:10px}
+.pager{position:absolute;bottom:96px;left:0;right:0;text-align:center;font-size:24px;color:#5e6673;letter-spacing:6px}
 `;
-  const cards = spec.items.slice(0, 4).map((it, i) => {
-    const start = 0.5 + i * 0.2;
-    return `<div class="card" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.7">
-      <div class="h">${esc(it.name)}</div>
-      ${it.value ? `<div class="v">${esc(it.value)}</div>` : ''}
-      ${it.sub ? `<div class="b">${esc(it.sub)}</div>` : ''}
-    </div>`;
+  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const pages = slots.map((slot) => {
+    const cards = slot.items.map((it, i) => {
+      const start = slot.pageStartSec + 0.2 + i * 0.18;
+      return `<div class="card" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.6">
+        <div class="h">${esc(it.name)}</div>
+        ${it.value ? `<div class="v">${esc(it.value)}</div>` : ''}
+        ${it.sub ? `<div class="b">${esc(it.sub)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="page" ${pageDataAttrs(slot)}>${cards}</div>`;
   }).join('');
+  // 多页时底部显示「1 / 2」「2 / 2」 翻页提示(单页不显)
+  const pager = slots.length > 1
+    ? slots.map((slot) =>
+      `<div class="pager" ${pageDataAttrs(slot)}>${slot.pageIndex + 1} / ${slot.pageCount}</div>`
+    ).join('')
+    : '';
   const body = `<div id="title" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '今日要点')}</div>
     ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.15" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
-    <div id="cards">${cards}</div>`;
+    <div id="cards-area">${pages}</div>
+    ${pager}`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
@@ -167,13 +234,16 @@ function renderNewsCards(spec: TemplateSpec): string {
 }
 
 // ── 精品模板 4:盘点倒数(countdown)── 排行榜的「倒序揭晓」变体 ─────────
+// 每页 6 行;倒数语义保留(每页内最低名次先,最高名次最后揭晓)。
 function renderCountdown(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#f0b90b';
+  const PAGE = 6;
   const css = `
 #title{position:absolute;top:170px;left:80px;right:80px;text-align:center}
 #title .t1{font-size:74px;font-weight:900;color:${spec.brandColor};letter-spacing:1px;text-shadow:0 6px 24px ${spec.brandColor}40}
 #title .t2{font-size:32px;color:#848e9c;margin-top:18px;letter-spacing:8px;font-weight:600}
-#list{position:absolute;top:430px;left:70px;right:70px}
+#list-area{position:absolute;top:430px;left:70px;right:70px;bottom:140px}
+.page{position:absolute;inset:0}
 .row{height:178px;margin-bottom:26px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);display:flex;align-items:center;padding:0 46px;position:relative;overflow:hidden}
 .row .big{font-size:120px;font-weight:900;color:${accent};line-height:1;width:160px;text-shadow:0 4px 18px ${accent}40}
 .row .body{flex:1;padding-left:30px;min-width:0}
@@ -181,25 +251,29 @@ function renderCountdown(spec: TemplateSpec): string {
 .row .sb{font-size:28px;color:#848e9c;margin-top:6px}
 .row .val{font-size:42px;font-weight:800;color:${accent};white-space:nowrap;margin-left:18px}
 `;
-  // 倒数:第 N 名先出(最低名次先,最高名次最后揭晓),所以反序入场
-  const items = spec.items.slice(0, 6);
-  const N = items.length;
-  const rows = items.map((it, i) => {
-    const r = it.rank ?? (i + 1);
-    // 倒序时间:第一名最后出
-    const reverseIdx = N - 1 - i;
-    const start = 0.5 + reverseIdx * 0.4;
-    return `<div class="row" data-anim="pop" data-start="${start.toFixed(2)}" data-duration="0.6" data-ease="back">
-      <div class="big">${r}</div>
-      <div class="body"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
-      ${it.value ? `<div class="val">${esc(it.value)}</div>` : ''}
-    </div>`;
+  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const totalN = spec.items.length;
+  const pages = slots.map((slot) => {
+    const N = slot.items.length;
+    const rows = slot.items.map((it, i) => {
+      const r = it.rank ?? (slot.pageIndex * PAGE + i + 1);
+      // 倒序:本页内最高 i 先出,i=0 最后出。每条间隔 = (页时长-1) / N。
+      const reverseIdx = N - 1 - i;
+      const stagger = Math.min(0.6, Math.max(0.2, (slot.pageDurationSec - 1.0) / Math.max(1, N)));
+      const start = slot.pageStartSec + 0.2 + reverseIdx * stagger;
+      return `<div class="row" data-anim="pop" data-start="${start.toFixed(2)}" data-duration="0.55" data-ease="back">
+        <div class="big">${r}</div>
+        <div class="body"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
+        ${it.value ? `<div class="val">${esc(it.value)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="page" ${pageDataAttrs(slot)}>${rows}</div>`;
   }).join('');
   const body = `<div id="title">
-    <div class="t1" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || 'Top ' + N)}</div>
+    <div class="t1" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || 'Top ' + totalN)}</div>
     ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.1" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
   </div>
-  <div id="list">${rows}</div>`;
+  <div id="list-area">${pages}</div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
@@ -207,12 +281,15 @@ function renderCountdown(spec: TemplateSpec): string {
 }
 
 // ── 精品模板 5:数据看板(stat_board)── 大数字 + 关键指标 ────────────────
+// 每页 4 格(2×2);数据多自动分页。1 条时占满宽。
 function renderStatBoard(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#0ecb81';
+  const PAGE = 4;
   const css = `
 #title{position:absolute;top:160px;left:80px;right:80px;text-align:center;font-size:62px;font-weight:900;color:${spec.brandColor}}
 #subtitle{position:absolute;top:270px;left:80px;right:80px;text-align:center;font-size:30px;color:#848e9c;letter-spacing:8px}
-#grid{position:absolute;top:400px;left:60px;right:60px;display:grid;grid-template-columns:1fr 1fr;gap:34px}
+#grid-area{position:absolute;top:400px;left:60px;right:60px;bottom:140px}
+.page{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:34px;align-content:start}
 .cell{border-radius:32px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);padding:56px 36px;text-align:center;min-height:340px;display:flex;flex-direction:column;justify-content:center;align-items:center}
 .cell .lbl{font-size:30px;color:#848e9c;font-weight:700;letter-spacing:2px}
 .cell .num{font-size:118px;font-weight:900;color:${accent};line-height:1.05;margin-top:20px;text-shadow:0 4px 20px ${accent}30}
@@ -220,28 +297,30 @@ function renderStatBoard(spec: TemplateSpec): string {
 .cell.full{grid-column:span 2;min-height:200px}
 .cell.full .num{font-size:96px}
 `;
-  // 4 个格子(2x2);超过 4 个忽略;只有 1 个时占满宽
-  const items = spec.items.slice(0, 4);
-  const cells = items.map((it, i) => {
-    const start = 0.5 + i * 0.18;
-    const parsed = parseNumeric(it.value);
-    const fullCls = items.length === 1 ? ' full' : '';
-    let numNode: string;
-    if (parsed) {
-      const signedPrefix = it.value && it.value.startsWith('-') ? '-' : parsed.prefix;
-      numNode = `<div class="num" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="0.9" data-count-from="0" data-count-to="${parsed.num}" data-count-decimals="${parsed.decimals}" data-count-prefix="${signedPrefix}" data-count-suffix="${esc(parsed.suffix)}">${esc(parsed.prefix + parsed.num.toFixed(parsed.decimals) + parsed.suffix)}</div>`;
-    } else {
-      numNode = `<div class="num" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.7">${esc(it.value || it.name)}</div>`;
-    }
-    return `<div class="cell${fullCls}" data-anim="rise" data-start="${start.toFixed(2)}" data-duration="0.7">
-      <div class="lbl">${esc(it.name)}</div>
-      ${numNode}
-      ${it.sub ? `<div class="sub">${esc(it.sub)}</div>` : ''}
-    </div>`;
+  const slots = paginate(spec.items, PAGE, spec.durationSec);
+  const pages = slots.map((slot) => {
+    const cells = slot.items.map((it, i) => {
+      const start = slot.pageStartSec + 0.2 + i * 0.15;
+      const parsed = parseNumeric(it.value);
+      const fullCls = slot.items.length === 1 ? ' full' : '';
+      let numNode: string;
+      if (parsed) {
+        const signedPrefix = it.value && it.value.startsWith('-') ? '-' : parsed.prefix;
+        numNode = `<div class="num" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="0.8" data-count-from="0" data-count-to="${parsed.num}" data-count-decimals="${parsed.decimals}" data-count-prefix="${signedPrefix}" data-count-suffix="${esc(parsed.suffix)}">${esc(parsed.prefix + parsed.num.toFixed(parsed.decimals) + parsed.suffix)}</div>`;
+      } else {
+        numNode = `<div class="num" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.6">${esc(it.value || it.name)}</div>`;
+      }
+      return `<div class="cell${fullCls}" data-anim="rise" data-start="${start.toFixed(2)}" data-duration="0.6">
+        <div class="lbl">${esc(it.name)}</div>
+        ${numNode}
+        ${it.sub ? `<div class="sub">${esc(it.sub)}</div>` : ''}
+      </div>`;
+    }).join('');
+    return `<div class="page" ${pageDataAttrs(slot)}>${cells}</div>`;
   }).join('');
   const body = `<div id="title" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '数据看板')}</div>
     ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.15" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
-    <div id="grid">${cells}</div>`;
+    <div id="grid-area">${pages}</div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
