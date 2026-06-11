@@ -772,12 +772,22 @@ async function runVideoPipeline(
       //   首帧也存一份到本次输出目录的「故事板」文件夹(用户要的本地存档)。
       //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
       try {
-        tracker.progress('🎨 生成故事板首帧(Seedream 组图,保持角色一致)…');
-        const storyboard = await generateStoryboard({
-          shots: aiScenes.map((sc) => sc.prompt),
-          character: [input.persona, input.track].filter(Boolean).join(' · '),
-          count: aiScenes.length,
-        });
+        tracker.progress(`🎨 生成故事板首帧(Seedream 组图,一次出 ${aiScenes.length} 张保持角色一致)…`);
+        // Seedream 组图是【单次原子调用】(一次返回全部 N 张),拿不到逐张进度 → 用计时心跳
+        // 让用户看到在跑、不是卡死(对齐小红书生图那种"生成中"反馈)。每 4s 刷一次已用时。
+        const sbStart = Date.now();
+        const sbBeat = setInterval(() => {
+          const s = Math.round((Date.now() - sbStart) / 1000);
+          tracker.progress(`🎨 故事板生成中…(已 ${s}s · ${aiScenes.length} 张组图保持角色一致,通常 30~90s)`);
+        }, 4000);
+        let storyboard: { images: string[]; chargedTokens: number; error?: string };
+        try {
+          storyboard = await generateStoryboard({
+            shots: aiScenes.map((sc) => sc.prompt),
+            character: [input.persona, input.track].filter(Boolean).join(' · '),
+            count: aiScenes.length,
+          });
+        } finally { clearInterval(sbBeat); }
         const keyframes = storyboard.images;
         // 故事板首帧也是真金白银(Seedream 按张扣)—— 计入「本次消耗」,
         // 否则进度里图扣了费、总额却只剩 DeepSeek 写稿那几百,严重对不上。
