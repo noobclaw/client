@@ -35,14 +35,75 @@ html,body{width:1080px;height:1920px;overflow:hidden;background:#0b0e11;color:#f
 #stage{width:1080px;height:1920px;position:relative;background:radial-gradient(120% 60% at 50% 0%,#1c2026 0%,#0b0e11 55%)}
 .bg-grid{position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.03) 1px,transparent 1px);background-size:60px 60px;pointer-events:none}
 .bg-glow{position:absolute;width:1000px;height:1000px;border-radius:50%;left:40px;top:-280px;filter:blur(50px);background:radial-gradient(circle,${brandColor}33,transparent 70%);pointer-events:none}
-#caption-track{position:absolute;left:60px;right:60px;bottom:60px;text-align:center;font-size:42px;font-weight:800;line-height:1.25;color:#fff;text-shadow:0 4px 18px rgba(0,0,0,0.9),0 0 2px #000;pointer-events:none}
+#caption-track{position:absolute;left:60px;right:60px;bottom:60px;text-align:center;font-size:42px;font-weight:800;line-height:1.25;color:#fff;text-shadow:0 4px 18px rgba(0,0,0,0.9),0 0 2px #000;pointer-events:none;z-index:30}
 #caption-track .cap{display:inline-block;padding:10px 22px;border-radius:12px;background:rgba(0,0,0,0.6);backdrop-filter:blur(8px)}
 /* 字幕开启时给主内容区让出底部安全区,避免字幕跟列表/网格末尾重叠把最后一条遮住。
    各模板默认 bottom 140 是为没字幕时贴底用的,有字幕时整体上抬 ~60-80px。 */
 .has-caption #list-area,.has-caption #grid-area,.has-caption #quote-area{bottom:220px}
-#watermark{position:absolute;bottom:70px;width:100%;text-align:center;font-size:24px;color:#5e6673;letter-spacing:2px;pointer-events:none}
+#watermark{position:absolute;bottom:70px;width:100%;text-align:center;font-size:24px;color:#5e6673;letter-spacing:2px;pointer-events:none;z-index:30}
 [data-anim]{will-change:opacity,transform}
+/* ── HF 派视觉配方(2026-06 酷炫化改造,抄 nexu-io/html-video 模板的纯 CSS 技法)── */
+/* 胶片颗粒:SVG feTurbulence data-URI,静态纹理零成本;overlay 混合让暗部更脏、亮部更糙 */
+.fx-grain{position:absolute;inset:0;opacity:0.09;mix-blend-mode:overlay;z-index:20;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23n)'/%3E%3C/svg%3E")}
+/* 暗角:radial 渐变,把视线压向中心 */
+.fx-vignette{position:absolute;inset:0;background:radial-gradient(circle at 50% 45%,transparent 46%,rgba(0,0,0,0.55) 100%);z-index:19;pointer-events:none}
+/* 扫描线:Breaking News / 终端质感 */
+.fx-scanlines{position:absolute;inset:0;background-image:repeating-linear-gradient(0deg,rgba(0,0,0,0.16) 0px,rgba(0,0,0,0.16) 1px,transparent 1px,transparent 4px);mix-blend-mode:multiply;opacity:0.55;z-index:18;pointer-events:none}
+/* 液态极光 blob:大圆重模糊 + screen 混合,配 data-loop=float 缓慢漂移 */
+.fx-blob{position:absolute;border-radius:50%;mix-blend-mode:screen;filter:blur(60px);pointer-events:none;will-change:transform}
+/* 白闪转场层:页切换时 data-anim=flash 快进快出 */
+.fx-flash{position:absolute;inset:0;background:#fff;opacity:0;z-index:25;pointer-events:none}
+/* 行内光泽扫过:伪元素斜向高光,配 data-loop=sweep 周期平移 */
+.fx-sheen{position:absolute;top:0;bottom:0;width:220px;background:linear-gradient(105deg,transparent 0%,rgba(255,255,255,0.07) 45%,rgba(255,255,255,0.14) 50%,rgba(255,255,255,0.07) 55%,transparent 100%);pointer-events:none}
+/* 逐字 kinetic 容器:span 不换行断词 */
+.kchar{display:inline-block;white-space:pre}
 `;
+}
+
+// ── 视觉配方生成器(templateLibrary 各模板按需取用)─────────────────────────
+
+/** 液态极光背景:3 个 blur 大圆围绕品牌色取类比色,data-loop=float 确定性漂移。 */
+export function liquidBlobsHtml(brandColor: string, accentColor?: string): string {
+  const a = accentColor || '#7c5cff';
+  return `
+<div class="fx-blob" data-loop="float" data-loop-period="11" data-loop-amp="70" style="width:640px;height:640px;background:${brandColor};opacity:0.5;top:-140px;left:-160px"></div>
+<div class="fx-blob" data-loop="float" data-loop-period="14" data-loop-amp="90" data-loop-phase="2.1" style="width:560px;height:560px;background:${a};opacity:0.42;top:34%;right:-180px"></div>
+<div class="fx-blob" data-loop="float" data-loop-period="17" data-loop-amp="60" data-loop-phase="4.4" style="width:520px;height:520px;background:#ec4899;opacity:0.30;bottom:-120px;left:22%"></div>`;
+}
+
+/**
+ * 逐字 kinetic 拆分:每个字一个 span,各自 data-start 错开 —— 标题像被「打」出来。
+ * CJK 按字符拆;连续 Latin/数字按词拆(避免英文单词断字)。
+ */
+export function splitKinetic(
+  text: string, baseStart: number,
+  opts?: { stagger?: number; anim?: string; duration?: number; ease?: string },
+): string {
+  const stagger = opts?.stagger ?? 0.045;
+  const anim = opts?.anim ?? 'fade-up';
+  const dur = opts?.duration ?? 0.5;
+  const ease = opts?.ease ? ` data-ease="${opts.ease}"` : '';
+  // 按「CJK 单字 | Latin 词 | 空白 | 其他单字符」切
+  const units = (text || '').match(/[㐀-鿿豈-﫿]|[A-Za-z0-9]+|\s+|./gu) || [];
+  let i = 0;
+  return units.map((u) => {
+    if (/^\s+$/.test(u)) return escapeHtml(u); // 空白不参与动画,原样保留
+    const start = baseStart + i * stagger;
+    i++;
+    return `<span class="kchar" data-anim="${anim}" data-start="${start.toFixed(2)}" data-duration="${dur}"${ease}>${escapeHtml(u)}</span>`;
+  }).join('');
+}
+
+/**
+ * 页转场白闪:每个【页边界】一个全屏白闪(0→峰值→0,持续 0.36s,中点正好是切页时刻)。
+ * 用 data-anim=flash(runtime 里 opacity=sin(p·π)·峰值),纯确定性。单页模板不需要。
+ */
+export function pageFlashesHtml(pageStartSecs: number[]): string {
+  // pageStartSecs[0] 是第一页(片头),不闪;从第二页起每个切换点闪一下。
+  return pageStartSecs.slice(1).map((s) => {
+    const start = Math.max(0, s - 0.18);
+    return `<div class="fx-flash" data-anim="flash" data-start="${start.toFixed(2)}" data-duration="0.36"></div>`;
+  }).join('');
 }
 
 /**
@@ -94,10 +155,46 @@ export const NBC_RUNTIME_JS = `(function(){
       case 'wipe-right': op = 1; el.style.clipPath = 'inset(0 '+((1-e)*100)+'% 0 0)'; break;
       case 'wipe-left':  op = 1; el.style.clipPath = 'inset(0 0 0 '+((1-e)*100)+'%)'; break;
       case 'rise': op = e; tx = 'translateY('+((1-e)*120)+'px) scale('+(0.94+0.06*e)+')'; break;
+      // 白闪转场:p 走 0→1,亮度 sin(p·π) 走 0→1→0,中点最亮。用【线性 p】不用缓动,
+      // 保证对称;duration 外恒 0。
+      case 'flash': op = Math.sin(Math.min(1,Math.max(0,p))*Math.PI)*0.92; break;
       default: op = e;
     }
     el.style.opacity = op;
     if(tx) el.style.transform = tx;
+  }
+  // ── data-loop 环境动画:整段时长内持续循环,全部 sin/cos 由 t 算(确定性、可倒带)──
+  //   float: 双 sin 不同频的有机漂移(液态 blob 用)   pulse: 透明度呼吸
+  //   sweep: 高光从左扫到右(行内光泽)               spin: 匀速旋转
+  //   glitch: 间歇抖动(高频 sin 过阈值才触发,Breaking News 标题用)
+  function applyLoop(el,t){
+    var kind = el.getAttribute('data-loop');
+    var period = parseFloat(el.getAttribute('data-loop-period'))||10;
+    var amp = parseFloat(el.getAttribute('data-loop-amp'))||40;
+    var phase = parseFloat(el.getAttribute('data-loop-phase'))||0;
+    var w = 2*Math.PI/period;
+    if(kind==='float'){
+      var x = Math.sin(t*w+phase)*amp;
+      var y = Math.cos(t*w*0.73+phase*1.3)*amp*0.8;
+      var s = 1+Math.sin(t*w*0.5+phase)*0.06;
+      el.style.transform = 'translate('+x.toFixed(1)+'px,'+y.toFixed(1)+'px) scale('+s.toFixed(3)+')';
+    } else if(kind==='pulse'){
+      var base = parseFloat(el.getAttribute('data-loop-base'))||0.65;
+      el.style.opacity = base + (Math.sin(t*w+phase)*0.5+0.5)*(1-base);
+    } else if(kind==='sweep'){
+      // 高光条从 -宽 平移到 容器宽+宽,循环;data-loop-travel 是行进距离 px(默认 1200)
+      var travel = parseFloat(el.getAttribute('data-loop-travel'))||1200;
+      var prog = ((t+phase)%period)/period;
+      el.style.transform = 'translateX('+((prog*1.6-0.3)*travel).toFixed(1)+'px) skewX(-12deg)';
+    } else if(kind==='spin'){
+      el.style.transform = 'rotate('+((t/period*360+phase*57.3)%360).toFixed(1)+'deg)';
+    } else if(kind==='glitch'){
+      // 高频确定性伪随机:两路大频 sin 相乘,>0.92 才触发位移 → 大部分时间静止、偶发抖一下
+      var n = Math.sin(t*13.7+phase)*Math.sin(t*7.3+phase*2.7);
+      if(n>0.92){ el.style.transform='translate('+(Math.sin(t*97)*7).toFixed(1)+'px,'+(Math.cos(t*61)*3).toFixed(1)+'px)'; }
+      else if(n<-0.94){ el.style.transform='translate('+(Math.cos(t*83)*-6).toFixed(1)+'px,1px)'; }
+      else { el.style.transform='translate(0,0)'; }
+    }
   }
   // 计数器:[data-count-from] [data-count-to] [data-count-decimals] [data-count-prefix] [data-count-suffix]
   function applyCount(el,p,easeKind){
@@ -161,6 +258,9 @@ export const NBC_RUNTIME_JS = `(function(){
       // 3. 字幕节点
       var caps = document.querySelectorAll('[data-caption-start]');
       for(var k=0;k<caps.length;k++) applyCaption(caps[k], t);
+      // 4. data-loop 环境动画(背景 blob / 光泽扫过 / 标题故障抖动等,持续循环)
+      var loops = document.querySelectorAll('[data-loop]');
+      for(var m=0;m<loops.length;m++) applyLoop(loops[m], t);
     }
   };
   window.__nbc = nbc;

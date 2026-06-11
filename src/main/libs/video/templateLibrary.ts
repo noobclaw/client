@@ -19,6 +19,7 @@
 import type { TemplateStyle } from './templateHtmlWriter';
 import {
   wrapTemplateHtml, escapeHtml as esc, type CaptionCue,
+  liquidBlobsHtml, splitKinetic, pageFlashesHtml,
 } from './templateAnim';
 
 export interface TemplateItem {
@@ -158,21 +159,29 @@ function parseNumeric(raw: string | undefined): null | {
   return { num: Math.abs(num), decimals, prefix, suffix, positive };
 }
 
-// ── 精品模板 1:排行榜 / 榜单(rank_list)──────────────────────────────────
-// 每页 6 行;数据超过 6 条自动分页轮播,每页占 totalSec/pageCount 秒。
+// ── 精品模板 1:排行榜 / 榜单(rank_list)── 币安暗金风 ────────────────────
+// 每页 6 行;数据超过 6 条自动分页轮播。2026-06 酷炫化(抄 html-video 技法):
+// 标题逐字打出、前三名金银铜、行内光泽周期扫过(data-loop=sweep)、页切白闪、胶片颗粒。
 function renderRankList(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#0ecb81';
   const PAGE = 6;
+  // 前三名奖牌色(金/银/铜),其余用品牌色 —— 信息层级一眼立住
+  const MEDAL = ['#f0b90b', '#c0c8d8', '#cd7f32'];
   const css = `
 #title{position:absolute;top:170px;left:80px;right:80px;text-align:center}
 #title .t1{font-size:78px;font-weight:900;color:${spec.brandColor};letter-spacing:1px;text-shadow:0 6px 24px ${spec.brandColor}40}
 #title .t2{font-size:34px;color:#848e9c;margin-top:18px;letter-spacing:8px;font-weight:600}
+#title .rule{height:4px;width:180px;margin:24px auto 0;background:linear-gradient(90deg,transparent,${spec.brandColor},transparent)}
 #list-area{position:absolute;top:440px;left:70px;right:70px;bottom:140px}
 .page{position:absolute;inset:0}
 .row{height:178px;margin-bottom:26px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);display:flex;align-items:center;padding:0 46px;position:relative;overflow:hidden}
 .row .bar{position:absolute;left:0;top:0;bottom:0;width:8px;background:${spec.brandColor};opacity:0.9}
+.row.m0 .bar{background:${MEDAL[0]}} .row.m1 .bar{background:${MEDAL[1]}} .row.m2 .bar{background:${MEDAL[2]}}
 .rank{width:104px;display:flex;align-items:center;justify-content:center}
 .rank b{display:inline-flex;align-items:center;justify-content:center;width:74px;height:74px;border-radius:50%;background:${spec.brandColor}1a;border:2px solid ${spec.brandColor};color:${spec.brandColor};font-size:42px;font-weight:900}
+.row.m0 .rank b{background:${MEDAL[0]}22;border-color:${MEDAL[0]};color:${MEDAL[0]};box-shadow:0 0 26px ${MEDAL[0]}55}
+.row.m1 .rank b{background:${MEDAL[1]}1c;border-color:${MEDAL[1]};color:${MEDAL[1]}}
+.row.m2 .rank b{background:${MEDAL[2]}22;border-color:${MEDAL[2]};color:${MEDAL[2]}}
 .coin{flex:1;min-width:0;padding-left:8px}
 .coin .nm{font-size:54px;font-weight:800;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.15;word-break:break-word}
 .coin .sb{font-size:28px;color:#848e9c;margin-top:6px}
@@ -181,14 +190,16 @@ function renderRankList(spec: TemplateSpec): string {
 `;
 
   const titleBlock = `<div id="title">
-    <div class="t1" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '榜单速览')}</div>
-    ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.1" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
+    <div class="t1">${splitKinetic(spec.title || '榜单速览', 0.1, { stagger: 0.05, anim: 'fade-up', ease: 'expo' })}</div>
+    ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
+    <div class="rule" data-anim="wipe-right" data-start="0.4" data-duration="0.5"></div>
   </div>`;
 
   const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const pages = slots.map((slot) => {
     const rows = slot.items.map((it, i) => {
       const r = it.rank ?? (slot.pageIndex * PAGE + i + 1);
+      const medalCls = r >= 1 && r <= 3 ? ` m${r - 1}` : '';
       const start = slot.pageStartSec + 0.2 + i * 0.12;
       const dur = 0.6;
       const valParsed = parseNumeric(it.value);
@@ -200,8 +211,10 @@ function renderRankList(spec: TemplateSpec): string {
       } else {
         valNode = `<div class="val flat" data-anim="fade" data-start="${start.toFixed(2)}" data-duration="${dur}">${esc(it.value || '')}</div>`;
       }
-      return `<div class="row" data-anim="slide-in-right" data-start="${start.toFixed(2)}" data-duration="${dur}">
+      // 行内光泽:错相位让各行不同时亮(i*1.1s),7s 一轮 —— 画面持续有微动,不死板
+      return `<div class="row${medalCls}" data-anim="slide-in-right" data-start="${start.toFixed(2)}" data-duration="${dur}">
         <div class="bar"></div>
+        <div class="fx-sheen" data-loop="sweep" data-loop-period="7" data-loop-phase="${(i * 1.1).toFixed(1)}" data-loop-travel="1100"></div>
         <div class="rank"><b>${r}</b></div>
         <div class="coin"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
         ${valNode}
@@ -210,47 +223,63 @@ function renderRankList(spec: TemplateSpec): string {
     return `<div class="page" ${pageDataAttrs(slot)}>${rows}</div>`;
   }).join('');
 
-  const body = `${titleBlock}<div id="list-area">${pages}</div>`;
+  const body = `${titleBlock}<div id="list-area">${pages}</div>
+    ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+    <div class="fx-grain"></div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
   });
 }
 
-// ── 精品模板 2:金句 / 语录(quote)───────────────────────────────────────
+// ── 精品模板 2:金句 / 语录(quote)── 杂志社论风 ──────────────────────────
+// 2026-06 酷炫化:液态极光背景(blur 大圆 data-loop=float 缓慢漂移)、正文逐字浮现
+// (kinetic typography 精髓)、衬线巨型引号、分隔线自画、胶片颗粒收尾。
 function renderQuote(spec: TemplateSpec): string {
   const quote = spec.items[0]?.name || spec.title || '';
   const author = spec.items[0]?.sub || spec.subtitle || '';
+  // 逐字 stagger 总时长跟句长走,但 clamp 住:短句逐字慢慢出,长句加速(2.2s 内出完)。
+  const stagger = Math.min(0.06, Math.max(0.022, 2.2 / Math.max(1, quote.length)));
   const css = `
-#quote{position:absolute;left:110px;right:110px;top:50%;transform:translate(0,-50%);text-align:center}
-#quote .mark{font-size:200px;line-height:0.6;color:${spec.brandColor};opacity:0.35;font-family:Georgia,serif}
-#quote .q{font-size:72px;font-weight:800;line-height:1.5;margin-top:30px}
-#quote .a{font-size:36px;color:#848e9c;margin-top:50px;letter-spacing:2px}
+#quote{position:absolute;left:100px;right:100px;top:50%;transform:translate(0,-50%);text-align:center;z-index:5}
+#quote .mark{font-size:220px;line-height:0.6;color:${spec.brandColor};opacity:0.4;font-family:Georgia,'Times New Roman',serif;text-shadow:0 0 60px ${spec.brandColor}66}
+#quote .q{font-size:74px;font-weight:800;line-height:1.55;margin-top:34px;text-shadow:0 4px 30px rgba(0,0,0,0.55)}
+#quote .rule{height:3px;width:220px;margin:54px auto 0;background:linear-gradient(90deg,transparent,${spec.brandColor},transparent)}
+#quote .a{font-size:36px;color:#aeb4bf;margin-top:30px;letter-spacing:3px;font-family:Georgia,'Times New Roman',serif;font-style:italic}
 `;
-  // 引号→正文→作者依次浮现
-  const body = `<div id="quote">
-    <div class="mark" data-anim="scale-in" data-start="0" data-duration="0.7">"</div>
-    <div class="q" data-anim="fade-up" data-start="0.3" data-duration="0.9">${esc(quote)}</div>
-    ${author ? `<div class="a" data-anim="fade" data-start="0.9" data-duration="0.7">— ${esc(author)}</div>` : ''}
-  </div>`;
+  // 引号 pop → 正文逐字浮现 → 分隔线自画 → 作者淡入;背景极光全程缓慢漂移
+  const charsDoneAt = 0.45 + quote.length * stagger;
+  const body = `${liquidBlobsHtml(spec.brandColor, spec.accentColor)}
+  <div id="quote">
+    <div class="mark" data-anim="pop" data-start="0.05" data-duration="0.8" data-ease="back">"</div>
+    <div class="q">${splitKinetic(quote, 0.45, { stagger, anim: 'fade-up', duration: 0.45, ease: 'expo' })}</div>
+    <div class="rule" data-anim="wipe-right" data-start="${(charsDoneAt + 0.15).toFixed(2)}" data-duration="0.6"></div>
+    ${author ? `<div class="a" data-anim="fade-up" data-start="${(charsDoneAt + 0.4).toFixed(2)}" data-duration="0.7">— ${esc(author)}</div>` : ''}
+  </div>
+  <div class="fx-grain"></div><div class="fx-vignette"></div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
   });
 }
 
-// ── 精品模板 3:资讯快讯(news_cards)──────────────────────────────────────
-// 每页 4 张卡;数据多自动分页轮播(避免用户的 8 条要点只显示前 4 条)。
+// ── 精品模板 3:资讯快讯(news_cards)── Breaking News 风 ──────────────────
+// 每页 4 张卡;数据多自动分页轮播。2026-06 酷炫化:扫描线 + 暗角营造新闻直播质感、
+// 顶部红色 BREAKING 条自画、标题间歇故障抖动(data-loop=glitch)、卡片左右交替滑入、页切白闪。
 function renderNewsCards(spec: TemplateSpec): string {
   const accent = spec.accentColor || spec.brandColor;
+  const RED = '#e5273e';
   const PAGE = 4;
   const css = `
-#title{position:absolute;top:180px;left:80px;right:80px;text-align:center;font-size:72px;font-weight:900;color:${spec.brandColor}}
-#subtitle{position:absolute;top:300px;left:80px;right:80px;text-align:center;font-size:32px;color:#848e9c;letter-spacing:6px}
+#breaking{position:absolute;top:128px;left:80px;right:80px;display:flex;align-items:center;gap:22px}
+#breaking .tag{background:${RED};color:#fff;font-size:30px;font-weight:900;letter-spacing:4px;padding:10px 26px;border-radius:8px;box-shadow:0 0 30px ${RED}66}
+#breaking .line{flex:1;height:3px;background:linear-gradient(90deg,${RED},transparent)}
+#title{position:absolute;top:218px;left:80px;right:80px;text-align:left;font-size:74px;font-weight:900;color:#fff;line-height:1.18;text-shadow:0 4px 24px rgba(0,0,0,0.6)}
+#subtitle{position:absolute;top:336px;left:84px;right:80px;text-align:left;font-size:30px;color:#8d95a3;letter-spacing:5px;font-family:'JetBrains Mono',Consolas,monospace}
 #cards-area{position:absolute;top:440px;left:80px;right:80px;bottom:140px}
 .page{position:absolute;inset:0}
-.card{margin-bottom:34px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);padding:42px 48px;position:relative;overflow:hidden}
-.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:${accent}}
+.card{margin-bottom:34px;border-radius:24px;background:linear-gradient(135deg,#15181d,#1d2126);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.4);padding:42px 48px;position:relative;overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:8px;background:${RED}}
 .card .h{font-size:48px;font-weight:800;color:#fff;line-height:1.3}
 .card .b{font-size:32px;color:#c7ccd4;margin-top:14px;line-height:1.45}
 .card .v{font-size:54px;font-weight:900;color:${accent};margin-top:10px}
@@ -260,7 +289,9 @@ function renderNewsCards(spec: TemplateSpec): string {
   const pages = slots.map((slot) => {
     const cards = slot.items.map((it, i) => {
       const start = slot.pageStartSec + 0.2 + i * 0.18;
-      return `<div class="card" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.6">
+      // 左右交替滑入,比千篇一律 fade-up 更有「新闻条目插播」感
+      const anim = i % 2 === 0 ? 'slide-in-left' : 'slide-in-right';
+      return `<div class="card" data-anim="${anim}" data-start="${start.toFixed(2)}" data-duration="0.55" data-ease="expo">
         <div class="h">${esc(it.name)}</div>
         ${it.value ? `<div class="v">${esc(it.value)}</div>` : ''}
         ${it.sub ? `<div class="b">${esc(it.sub)}</div>` : ''}
@@ -274,22 +305,30 @@ function renderNewsCards(spec: TemplateSpec): string {
       `<div class="pager" ${pageDataAttrs(slot)}>${slot.pageIndex + 1} / ${slot.pageCount}</div>`
     ).join('')
     : '';
-  const body = `<div id="title" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '今日要点')}</div>
-    ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.15" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
+  // BREAKING 条 wipe 自画 → 标题滑入后持续轻微故障抖动 → 副标题等宽字体像 ticker
+  const body = `<div id="breaking" data-anim="wipe-right" data-start="0" data-duration="0.45">
+      <span class="tag">BREAKING</span><span class="line"></span>
+    </div>
+    <div id="title" data-anim="slide-in-left" data-start="0.25" data-duration="0.6" data-ease="expo"><span data-loop="glitch" data-loop-phase="1.7" style="display:inline-block">${esc(spec.title || '今日要点')}</span></div>
+    ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.55" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
     <div id="cards-area">${pages}</div>
-    ${pager}`;
+    ${pager}
+    ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+    <div class="fx-scanlines"></div><div class="fx-vignette"></div><div class="fx-grain"></div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
   });
 }
 
-// ── 精品模板 4:盘点倒数(countdown)── 排行榜的「倒序揭晓」变体 ─────────
-// 每页 6 行;倒数语义保留(每页内最低名次先,最高名次最后揭晓)。
+// ── 精品模板 4:盘点倒数(countdown)── 聚光揭晓风 ─────────────────────────
+// 每页 6 行;倒数语义保留(每页内最低名次先,最高名次最后揭晓)。2026-06 酷炫化:
+// 中心聚光 + 重暗角(揭晓舞台感)、标题逐字、第 1 名金色脉冲光环(全片唯一持续发光体)、页切白闪。
 function renderCountdown(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#f0b90b';
   const PAGE = 6;
   const css = `
+#spotlight{position:absolute;inset:0;background:radial-gradient(80% 46% at 50% 40%,${accent}14 0%,transparent 60%);pointer-events:none}
 #title{position:absolute;top:170px;left:80px;right:80px;text-align:center}
 #title .t1{font-size:74px;font-weight:900;color:${spec.brandColor};letter-spacing:1px;text-shadow:0 6px 24px ${spec.brandColor}40}
 #title .t2{font-size:32px;color:#848e9c;margin-top:18px;letter-spacing:8px;font-weight:600}
@@ -301,6 +340,10 @@ function renderCountdown(spec: TemplateSpec): string {
 .row .nm{font-size:50px;font-weight:800;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.15;word-break:break-word}
 .row .sb{font-size:28px;color:#848e9c;margin-top:6px}
 .row .val{font-size:42px;font-weight:800;color:${accent};white-space:nowrap;margin-left:18px}
+/* 冠军行:金边 + 微放大;.crown-glow 是行内叠的脉冲光层(data-loop=pulse 驱动) */
+.row.champ{border-color:${accent}aa;transform-origin:center;box-shadow:0 10px 40px ${accent}33}
+.row.champ .big{text-shadow:0 0 36px ${accent}aa}
+.crown-glow{position:absolute;inset:0;border-radius:28px;background:linear-gradient(135deg,${accent}1f,transparent 55%);pointer-events:none}
 `;
   const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const totalN = spec.items.length;
@@ -312,7 +355,11 @@ function renderCountdown(spec: TemplateSpec): string {
       const reverseIdx = N - 1 - i;
       const stagger = Math.min(0.6, Math.max(0.2, (slot.pageDurationSec - 1.0) / Math.max(1, N)));
       const start = slot.pageStartSec + 0.2 + reverseIdx * stagger;
-      return `<div class="row" data-anim="pop" data-start="${start.toFixed(2)}" data-duration="0.55" data-ease="back">
+      // 第 1 名 = 全片压轴揭晓:金边 + 行内脉冲光层(全片唯一持续发光的东西,视线必然聚焦)
+      const isChamp = r === 1;
+      const champGlow = isChamp ? `<div class="crown-glow" data-loop="pulse" data-loop-period="2.4" data-loop-base="0.35"></div>` : '';
+      return `<div class="row${isChamp ? ' champ' : ''}" data-anim="pop" data-start="${start.toFixed(2)}" data-duration="${isChamp ? '0.7' : '0.55'}" data-ease="back">
+        ${champGlow}
         <div class="big">${r}</div>
         <div class="body"><div class="nm">${esc(it.name)}</div>${it.sub ? `<div class="sb">${esc(it.sub)}</div>` : ''}</div>
         ${it.value ? `<div class="val">${esc(it.value)}</div>` : ''}
@@ -320,33 +367,46 @@ function renderCountdown(spec: TemplateSpec): string {
     }).join('');
     return `<div class="page" ${pageDataAttrs(slot)}>${rows}</div>`;
   }).join('');
-  const body = `<div id="title">
-    <div class="t1" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || 'Top ' + totalN)}</div>
-    ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.1" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
+  const body = `<div id="spotlight"></div>
+  <div id="title">
+    <div class="t1">${splitKinetic(spec.title || 'Top ' + totalN, 0.1, { stagger: 0.05, anim: 'pop', ease: 'back' })}</div>
+    ${spec.subtitle ? `<div class="t2" data-anim="fade-up" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
   </div>
-  <div id="list-area">${pages}</div>`;
+  <div id="list-area">${pages}</div>
+  ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+  <div class="fx-vignette"></div><div class="fx-grain"></div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
   });
 }
 
-// ── 精品模板 5:数据看板(stat_board)── 大数字 + 关键指标 ────────────────
-// 每页 4 格(2×2);数据多自动分页。1 条时占满宽。
+// ── 精品模板 5:数据看板(stat_board)── Swiss 网格风 ──────────────────────
+// 每页 4 格(2×2);数据多自动分页。1 条时占满宽。2026-06 酷炫化(抄 html-video 的
+// frame-swiss-grid):结构网格线开场自画、几何形状点缀(圆环 pop / 方块匀速慢旋)、
+// Swiss 经典红点、左对齐排版、巨型数字滚动保留。
 function renderStatBoard(spec: TemplateSpec): string {
   const accent = spec.accentColor || '#0ecb81';
+  const SWISS_RED = '#e5273e';
   const PAGE = 4;
   const css = `
-#title{position:absolute;top:160px;left:80px;right:80px;text-align:center;font-size:62px;font-weight:900;color:${spec.brandColor}}
-#subtitle{position:absolute;top:270px;left:80px;right:80px;text-align:center;font-size:30px;color:#848e9c;letter-spacing:8px}
+.swiss-line{position:absolute;background:rgba(255,255,255,0.10);pointer-events:none}
+.swiss-line.h{left:60px;right:60px;height:2px}
+.swiss-line.v{top:140px;bottom:140px;width:2px}
+#swiss-circle{position:absolute;width:120px;height:120px;border-radius:50%;border:3px solid ${accent};right:96px;top:150px;pointer-events:none}
+#swiss-square{position:absolute;width:64px;height:64px;background:${SWISS_RED};left:96px;bottom:170px;pointer-events:none}
+#title{position:absolute;top:158px;left:100px;right:240px;text-align:left;font-size:64px;font-weight:900;color:#fff;line-height:1.15}
+#title .dot{color:${SWISS_RED}}
+#subtitle{position:absolute;top:282px;left:102px;right:80px;text-align:left;font-size:28px;color:#848e9c;letter-spacing:6px;font-family:'JetBrains Mono',Consolas,monospace}
 #grid-area{position:absolute;top:400px;left:60px;right:60px;bottom:140px}
 .page{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:34px;align-content:start}
-.cell{border-radius:32px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);padding:56px 36px;text-align:center;min-height:340px;display:flex;flex-direction:column;justify-content:center;align-items:center}
-.cell .lbl{font-size:30px;color:#848e9c;font-weight:700;letter-spacing:2px}
-.cell .num{font-size:118px;font-weight:900;color:${accent};line-height:1.05;margin-top:20px;text-shadow:0 4px 20px ${accent}30}
+.cell{border-radius:8px;background:linear-gradient(135deg,#15181d,#1c2025);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);padding:56px 40px;text-align:left;min-height:340px;display:flex;flex-direction:column;justify-content:center;position:relative;overflow:hidden}
+.cell::after{content:"";position:absolute;left:40px;bottom:34px;width:56px;height:4px;background:${SWISS_RED}}
+.cell .lbl{font-size:30px;color:#848e9c;font-weight:700;letter-spacing:2px;text-transform:uppercase}
+.cell .num{font-size:124px;font-weight:900;color:${accent};line-height:1.02;margin-top:18px;letter-spacing:-2px;text-shadow:0 4px 20px ${accent}30}
 .cell .sub{font-size:26px;color:#c7ccd4;margin-top:14px;line-height:1.4}
 .cell.full{grid-column:span 2;min-height:200px}
-.cell.full .num{font-size:96px}
+.cell.full .num{font-size:100px}
 `;
   const slots = paginate(spec.items, PAGE, spec.durationSec, spec.pageTimings);
   const pages = slots.map((slot) => {
@@ -361,7 +421,7 @@ function renderStatBoard(spec: TemplateSpec): string {
       } else {
         numNode = `<div class="num" data-anim="fade-up" data-start="${start.toFixed(2)}" data-duration="0.6">${esc(it.value || it.name)}</div>`;
       }
-      return `<div class="cell${fullCls}" data-anim="rise" data-start="${start.toFixed(2)}" data-duration="0.6">
+      return `<div class="cell${fullCls}" data-anim="rise" data-start="${start.toFixed(2)}" data-duration="0.6" data-ease="expo">
         <div class="lbl">${esc(it.name)}</div>
         ${numNode}
         ${it.sub ? `<div class="sub">${esc(it.sub)}</div>` : ''}
@@ -369,9 +429,18 @@ function renderStatBoard(spec: TemplateSpec): string {
     }).join('');
     return `<div class="page" ${pageDataAttrs(slot)}>${cells}</div>`;
   }).join('');
-  const body = `<div id="title" data-anim="fade-up" data-start="0" data-duration="0.6">${esc(spec.title || '数据看板')}</div>
-    ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.15" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
-    <div id="grid-area">${pages}</div>`;
+  // Swiss 结构线开场自己画出来(横线左→右,竖线 fade),几何形状随后 pop,排版骨架先于内容立住
+  const body = `
+    <div class="swiss-line h" style="top:382px" data-anim="wipe-right" data-start="0.05" data-duration="0.6"></div>
+    <div class="swiss-line h" style="bottom:128px" data-anim="wipe-left" data-start="0.15" data-duration="0.6"></div>
+    <div class="swiss-line v" style="left:50%" data-anim="fade" data-start="0.35" data-duration="0.5"></div>
+    <div id="swiss-circle" data-anim="pop" data-start="0.5" data-duration="0.7" data-ease="back"></div>
+    <div id="swiss-square" data-anim="fade" data-start="0.6" data-duration="0.5"><div style="width:100%;height:100%;background:inherit" data-loop="spin" data-loop-period="24"></div></div>
+    <div id="title" data-anim="slide-in-left" data-start="0.2" data-duration="0.6" data-ease="expo">${esc(spec.title || '数据看板')}<span class="dot">.</span></div>
+    ${spec.subtitle ? `<div id="subtitle" data-anim="fade" data-start="0.5" data-duration="0.6">${esc(spec.subtitle)}</div>` : ''}
+    <div id="grid-area">${pages}</div>
+    ${pageFlashesHtml(slots.map((s) => s.pageStartSec))}
+    <div class="fx-grain"></div>`;
   return wrapTemplateHtml({
     bodyHtml: body, css, brandColor: spec.brandColor,
     durationSec: spec.durationSec, fps: spec.fps, captionCues: spec.captions,
