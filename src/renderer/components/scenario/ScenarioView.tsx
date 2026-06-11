@@ -121,12 +121,6 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const baseSection: SectionId = mode === 'create' ? 'create' : mode === 'runs' ? 'history' : 'tasks';
   const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'binance' });
 
-  // 下钻到【任务详情 / 运行记录详情】时上报给 App —— 任务详情逻辑上属于「我的涨粉任务」,
-  // 让 App 把左侧菜单高亮 + 顶栏标题切过去(create/runs 菜单下钻后不再停在原菜单)。
-  const inDetailView = view.kind === 'task_detail' || view.kind === 'record_detail';
-  useEffect(() => { onInDetailChange?.(inDetailView); }, [inDetailView, onInDetailChange]);
-  useEffect(() => () => { onInDetailChange?.(false); }, [onInDetailChange]);
-
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
   // every WorkflowsPage are clickable from first paint, not greyed out
   // while we wait on the network. listScenarios() result REPLACES this
@@ -140,6 +134,14 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // 视频是本地工具,任务/运行记录详情是 VideoWorkflowsPage 的内部状态(view 仍是
   // 'main'),进详情时由它上报,这里据此隐藏顶部 L1/L2 tab,对齐 scenario 详情页全屏。
   const [videoInDetail, setVideoInDetail] = useState(false);
+
+  // 下钻到【任务详情 / 运行记录详情】时上报给 App —— 任务详情逻辑上属于「我的涨粉任务」,
+  // 让 App 把左侧菜单高亮 + 顶栏标题切过去(create/runs 菜单下钻后不再停在原菜单)。
+  // ⚠️ 视频本地任务(AI自动成片)的详情是 VideoWorkflowsPage 内部状态、view.kind 仍是 'main',
+  //    必须把 videoInDetail 也算进来,否则点视频任务进详情时导航不切。
+  const inDetailView = view.kind === 'task_detail' || view.kind === 'record_detail' || videoInDetail;
+  useEffect(() => { onInDetailChange?.(inDetailView); }, [inDetailView, onInDetailChange]);
+  useEffect(() => () => { onInDetailChange?.(false); }, [onInDetailChange]);
 
   // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);
