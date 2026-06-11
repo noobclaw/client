@@ -46,6 +46,11 @@ async function callDeepSeek(
   jsonMode: boolean,
   timeoutMs = 60_000,
   model: 'noobclawai-chat' | 'noobclawai-reasoner' = 'noobclawai-chat',
+  /**
+   * 取样温度。omit = DeepSeek 用模型默认值(reasoner 偏低,精确度优先)。
+   * 创作类(写口播稿)显式传 1.0+ 提升输出多样性;搜索词那种确定性映射不传 = 用默认低温。
+   */
+  temperature?: number,
 ): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
@@ -59,6 +64,9 @@ async function callDeepSeek(
     stream: false,
     max_tokens: 4000,
   };
+  if (typeof temperature === 'number' && Number.isFinite(temperature)) {
+    body.temperature = temperature;
+  }
   // response_format=json_object 这道「强制只能输出合法 JSON」的开关仅 chat(flash)支持;
   // reasoner(Pro 思考模型)不支持该开关(DeepSeek 官方限制),强行带上会被拒/失效。
   // 故 reasoner 不发此字段,改靠 prompt 约束 + 下游 extractJsonObject 宽松解析兜底。
@@ -105,6 +113,59 @@ async function callDeepSeek(
 /** 中文约 4.5 字/秒;由目标秒数反推目标字数。 */
 function targetCharCount(seconds: number): number {
   return Math.round(Math.max(10, seconds) * 4.5);
+}
+
+/**
+ * 随机抽一个叙事视角,塞进 generateScript 的 user message,强行打破「同主题/赛道 → 同结构」。
+ *   reasoner 模型温度默认偏低,加视角注入比单纯加 temperature 更精准 —— 哪怕模型沿用同一
+ *   套词汇,结构会从「场景→体验→性价比→复刻」这种探店模板里跳出来。
+ *   8 种视角覆盖常见短视频文案套路,大多互斥(不会同时出现「自嘲」+「数据驱动」)。
+ */
+function pickNarrationAngle(lang: ContentLang): string {
+  const POOL: Record<ContentLang, string[]> = {
+    zh: [
+      '反差对比视角(从一句反预期的事实切入,先抛悖论再揭原因)',
+      '场景代入视角(用具体时间/地点/动作把观众拉进一个画面)',
+      '清单/盘点视角(一句一个要点,信息密度高,不铺垫不抒情)',
+      '故事化视角(像跟朋友聊一段亲身经历,有人物、有起伏)',
+      '争议/反套路视角(先反驳一个流行说法或踩点常识,再给自己的版本)',
+      '数据/事实驱动视角(用一个具体数字/时间/比例开头,后续都围绕这个数字展开)',
+      '自嘲/翻车视角(承认踩过的坑或翻过的车,从教训反推真有用的建议)',
+      '提问引导视角(以一个直接问读者的问题开头,正文逐步回答)',
+    ],
+    ja: [
+      'コントラスト視点(予想を裏切る事実から入る)',
+      '没入シーン視点(具体的な時間・場所・動作で読者を引き込む)',
+      'リスト/まとめ視点(一文一要点、情報密度高め)',
+      'ストーリー視点(友達に体験談を語る感じ)',
+      '反論視点(よくある誤解を先に否定して自分の見解を提示)',
+      'データ駆動視点(具体的な数字/時間から始めて全編それを軸に)',
+      '失敗談視点(踩った地雷を素直に認めてから本物の助言)',
+      '問いかけ視点(冒頭で読者に直接問いかけて本文で答える)',
+    ],
+    ko: [
+      '대비 시점(예상을 뒤집는 사실로 시작)',
+      '몰입 장면 시점(구체적 시간/장소/행동으로 끌어들이기)',
+      '리스트/정리 시점(한 문장 한 요점, 정보 밀도 높게)',
+      '스토리텔링 시점(친구에게 경험담을 들려주듯)',
+      '반박 시점(흔한 통념을 먼저 깬 뒤 자기 견해)',
+      '데이터 시점(구체적 숫자/시간으로 시작해 그것을 축으로)',
+      '실패담 시점(겪은 실수를 솔직히 인정한 뒤 진짜 조언)',
+      '질문 시점(독자에게 직접 묻는 문장으로 시작)',
+    ],
+    en: [
+      'Contrast angle (open with a fact that subverts expectations)',
+      'Scene-immersion angle (concrete time/place/action that drops the viewer in)',
+      'List/round-up angle (one sentence per point, high information density)',
+      'Story angle (recount a personal experience like talking to a friend)',
+      'Contrarian angle (push back on a common belief, then give your version)',
+      'Data-driven angle (open with a specific number/time/ratio, build around it)',
+      'Self-deprecating angle (own a mistake first, then derive the real lesson)',
+      'Direct-question angle (open with a question to the viewer, answer in the body)',
+    ],
+  };
+  const list = POOL[lang] || POOL.zh;
+  return list[Math.floor(Math.random() * list.length)];
 }
 
 /** 内容语言:决定口播稿 + 素材搜索词用哪种语言。 */
@@ -188,17 +249,24 @@ export async function generateScript(
   // 参考文案:作为方向/素材给 AI 参考,明确告知"可借鉴但不要逐字照搬",
   // 让 AI 重新组织成更适合口播的版本。
   const ref = (input.referenceScript || '').trim();
+  // 叙事视角池 — 每次随机选一个塞进 user message,强行打破「同主题=同结构」的套路。
+  //   不放进 system template 是因为 system template 是服务端可调的,改这事跟模板措辞无关;
+  //   而且视角是「每次创作变一次」的运行期行为,本该在每次调用处现 roll。
+  const angle = pickNarrationAngle(lang);
   const user = [
     `主题:${input.topic}`,
     kw ? `关键词:${kw}` : '',
     ref ? `【用户参考文案,仅供参考方向,请重新创作、不要逐字照搬】:\n${ref.slice(0, 1500)}` : '',
+    angle ? (lang === 'zh' ? `本次创作请采用「${angle}」,跟该主题/赛道的常见写法明显错开。` : `Use the "${angle}" angle this time — deliberately avoid the most common framing for this topic.`) : '',
     lang === 'zh'
       ? `请直接输出约 ${targetChars} 字的口播旁白正文。`
       : `Now output ONLY the ${ln} narration body (about ${targetSec}s when read aloud).`,
   ].filter(Boolean).join('\n');
 
   // 旁白创作走 Pro(reasoner),质量明显优于 flash;服务端按 ~3x 计费,故仅此一处用。
-  const { content, tokens, costUsd } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner');
+  // temperature=1.2:reasoner 默认偏低导致同 prompt 输出趋同,创作场景显式拉高让文案更
+  //   多样;搜索词那步保持默认低温(要稳定一致)。
+  const { content, tokens, costUsd } = await callDeepSeek(system, user, false, 90_000, 'noobclawai-reasoner', 1.2);
   // 去掉可能的包裹引号 / 多余空行
   const script = content.trim().replace(/^["'「『]+|["'」』]+$/g, '').trim();
   return { script, tokens, costUsd };
