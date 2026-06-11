@@ -158,10 +158,13 @@ export async function resolveBgmPath(
 export function resolveBgmFolder(bgmPath?: string): string | undefined {
   if (!bgmPath) return undefined;
   if (bgmPath.startsWith(BUILTIN_BGM_PREFIX)) {
-    const dirs = bundledBgmDirs();
-    for (const d of dirs) { if (fs.existsSync(d)) return d; }
-    // 随包 bgm 目录没探到(dev / 资源未就位):退回缓存目录(建好它),保证
-    // 「打开文件夹」总能打开一个【真实存在】的目录,而不是返回不存在的路径让上层报「找不到」。
+    // 关键:复用【出片那套已验证能定位到文件】的 resolveBuiltin(找 <dir>/<id>.mp3 文件存在),
+    // 而不是只判"目录存在" —— 后者会命中存在但没歌的候选目录、或在 sidecar 里探不到而落空,
+    // 导致出片能用 BGM、这里却「找不到」。出片找得到的目录,这里就一定打得开(完全对齐)。
+    const id = bgmPath.slice(BUILTIN_BGM_PREFIX.length);
+    const file = resolveBuiltin(id);
+    if (file) return path.dirname(file);
+    // 真没探到(dev / 资源未就位):退回缓存目录(建好它),保证总能打开一个真实存在的目录。
     const cache = bgmCacheDir();
     try { fs.mkdirSync(cache, { recursive: true }); } catch { /* ignore */ }
     return cache;
