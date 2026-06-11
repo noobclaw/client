@@ -1310,7 +1310,8 @@ async function runVideoPipeline(
         // AI 模式 script 是局部 AI 重写稿;严格模式是 input.script。这里用最终的 script
         //   变量(已是 AI 重写后的),不再用 input.script —— 修「文不对题」的根因。
         summary: script || input.script || '',
-        title: input.script ? input.script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
+        // 标题参考也用 AI 重写后的 script 首句(不用 input.script —— 否则 AI 降级时兜底标题又文不对题)。
+        title: script ? script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
         keywords: input.keywords,
         track: input.track,
         lang: contentLang,
