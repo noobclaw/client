@@ -178,6 +178,15 @@ export async function runTemplatePipeline(
       }
       realNarrationPath = r.audioPath;
       realDurationSec = r.durationSec;
+      // 荒谬值护栏:>10 分钟判 TTS 异常(正常口播 800 字 AI 稿 ≈ 3 分钟;用户自定义长稿
+      //   也到不了这)。重点是【显式失败】而不是默默截断 —— 任何"砍音频凑上限"都会交付
+      //   念一半戛然而止的废片(2026-06-11 的 60s clamp 截断事故就是这么来的)。
+      //   此时平台基础费还没预扣(charge 在渲染前才调),直接 return 即可,与配音失败同路径。
+      if (realDurationSec > 600) {
+        const err = `配音时长异常(${Math.round(realDurationSec)}s > 600s 上限),疑似 TTS 异常或口播稿过长。请缩短稿子后重试。`;
+        tracker.fail('voice', err);
+        return { ok: false, error: err };
+      }
       // 字幕开关:默认 true,显式 false 时关
       if (tpl.subtitleEnabled !== false) captionCues = r.cues;
       // 把口播稿存一份到任务目录(对齐 stock pipeline 的「文案.txt」)。失败不阻塞出片 ——
@@ -206,14 +215,13 @@ export async function runTemplatePipeline(
     tracker.start('render', '🎞️ 渲染 + 编码…');
 
     // 时长决策:
-    //   · 有配音 → 真实音频时长 + 0.4s 尾留白。配音是真理源,视频必须跟完整段音频 ——
-    //     上限只是防病态值的安全护栏,**绝不能低于正常口播可能的长度**。曾设 60s,
-    //     结果 8 条快讯的口播念了 ~65s,视频被砍到 60s、配音念到一半戛然而止
-    //     (2026-06-11 用户实测截断)。放宽到 180s:正常稿子(12 条数据 ≤ ~70s)
-    //     永远碰不到,只拦 TTS 抽风产出超长音频的极端情况。
+    //   · 有配音 → 真实音频时长 + 0.4s 尾留白,**不设上限**。配音是真理源,视频必须跟完
+    //     整段音频 —— 任何"砍到上限"都会交付念一半戛然而止的废片(60s clamp 时代
+    //     2026-06-11 实测截断)。荒谬值(>600s)已在 STEP 2 TTS 之后显式 fail,
+    //     走到这里的时长一定是合法的,只兜个 3s 下限防 0/负值。
     //   · 无配音 → 用户配置 / 自动估算(clamp[3, 20])
     const durationSec = wantNarration && realDurationSec > 0
-      ? clamp(realDurationSec + 0.4, 3, 180)
+      ? Math.max(3, realDurationSec + 0.4)
       : clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
 
     // 平台基础费预扣(对齐 stock 模式定价口径,单条约 $0.09~$0.18,服务端权威值)。
