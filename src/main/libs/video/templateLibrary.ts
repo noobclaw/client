@@ -174,7 +174,7 @@ function renderRankList(spec: TemplateSpec): string {
 .rank{width:104px;display:flex;align-items:center;justify-content:center}
 .rank b{display:inline-flex;align-items:center;justify-content:center;width:74px;height:74px;border-radius:50%;background:${spec.brandColor}1a;border:2px solid ${spec.brandColor};color:${spec.brandColor};font-size:42px;font-weight:900}
 .coin{flex:1;min-width:0;padding-left:8px}
-.coin .nm{font-size:54px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.coin .nm{font-size:54px;font-weight:800;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.15;word-break:break-word}
 .coin .sb{font-size:28px;color:#848e9c;margin-top:6px}
 .val{font-size:62px;font-weight:900;text-align:right;white-space:nowrap}
 .val.up{color:${accent}} .val.down{color:#f6465d} .val.flat{color:#eaecef}
@@ -298,7 +298,7 @@ function renderCountdown(spec: TemplateSpec): string {
 .row{height:178px;margin-bottom:26px;border-radius:28px;background:linear-gradient(135deg,#181b21,#1f2329);border:1px solid #2b2f36;box-shadow:0 10px 30px rgba(0,0,0,0.35);display:flex;align-items:center;padding:0 46px;position:relative;overflow:hidden}
 .row .big{font-size:120px;font-weight:900;color:${accent};line-height:1;width:160px;text-shadow:0 4px 18px ${accent}40}
 .row .body{flex:1;padding-left:30px;min-width:0}
-.row .nm{font-size:50px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .nm{font-size:50px;font-weight:800;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.15;word-break:break-word}
 .row .sb{font-size:28px;color:#848e9c;margin-top:6px}
 .row .val{font-size:42px;font-weight:800;color:${accent};white-space:nowrap;margin-left:18px}
 `;
