@@ -62,7 +62,9 @@ interface ScenarioViewProps {
   onToggleSidebar?: () => void;
   onNewChat?: () => void;
   updateBadge?: React.ReactNode;
-  /** v4.31.44: 主页涨粉标签传入,初始选中对应 platform tab。undefined 时默认 binance */
+  /** v4.31.44: 主页涨粉标签传入,初始选中对应 platform tab。undefined 时默认 video
+   *  (多平台视频创作)—— 视频创作是当下主推入口,直接进 3 个菜单(新建/我的/运行记录)
+   *  时落在它上面,比早期落在「币安广场」更贴当前产品方向。 */
   initialPlatform?: PlatformId;
   /** v1.x: 顶栏右上角"分享给好友"按钮点击 → 跳邀请返佣页 */
   onShowInvite?: () => void;
@@ -119,7 +121,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
   //   create 模式落在 'create'(新建页);manage 模式落在 'tasks'(我的涨粉任务)。
   const baseSection: SectionId = mode === 'create' ? 'create' : mode === 'runs' ? 'history' : 'tasks';
-  const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'binance' });
+  const [view, setView] = useState<ViewState>({ kind: 'main', section: baseSection, platform: initialPlatform || 'video' });
 
   // Seed scenarios from the bundled snapshot so the "立即开始" buttons in
   // every WorkflowsPage are clickable from first paint, not greyed out
