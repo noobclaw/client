@@ -961,9 +961,10 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   if (input.engine === 'template') {
     const t = input.template;
     const { count: dataCount, preview: dataPreview } = templateDataPreview(t?.dataText, isZh);
+    // 时长不再由用户调:配音 ON 由真实音频决定;OFF 由 pipeline.autoDuration 按数据行数估算。
     const durationDesc = t?.narration
-      ? (isZh ? '配音模式 · 由真实音频时长决定' : 'Voice mode · driven by audio')
-      : `${t?.durationSec || 6}s`;
+      ? (isZh ? '由 AI 口播稿决定' : 'driven by voice script')
+      : (isZh ? '按数据行数自动估算' : 'auto from row count');
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`⚡ ${isZh ? '版式' : 'Style'}`}>{templateStyleLabel(t?.style, isZh)}</Row>
@@ -1046,8 +1047,8 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     const t = input.template;
     const { count: dataCount, preview: dataPreview } = templateDataPreview(t?.dataText, isZh);
     const durationDesc = t?.narration
-      ? (isZh ? '配音模式 · 由真实音频时长决定' : 'Voice mode · driven by audio')
-      : `${t?.durationSec || 6}s`;
+      ? (isZh ? '由 AI 口播稿决定' : 'driven by voice script')
+      : (isZh ? '按数据行数自动估算' : 'auto from row count');
     return (
       <>
         <div>⚡ {isZh ? '版式' : 'Style'}：{templateStyleLabel(t?.style, isZh)}</div>
@@ -1737,13 +1738,6 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
-          tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
-          titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
-          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成全新画面、自动配音+字幕,现实里拍不到的镜头也能生出来,还能传参考图锁画风。脑洞 / 概念 / 想象类内容的最强搭子。"
-          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film. Add reference images to lock the style."
-          costZh="按秒计费 · 约 $0.04/秒(720p)" costEn="Per-second · ~$0.04/s (720p)"
-          btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -1751,6 +1745,13 @@ const VideoCreateFlow: React.FC<{
           descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 5 differently-cut videos per run. TTS / subtitles / compositing are free."
           costZh="单条约 $0.02~$0.04(写稿/素材/合成)" costEn="~$0.02–0.04 per clip (script / stock / compose)"
           btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
+        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
+          titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
+          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成全新画面、自动配音+字幕,现实里拍不到的镜头也能生出来,还能传参考图锁画风。脑洞 / 概念 / 想象类内容的最强搭子。"
+          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film. Add reference images to lock the style."
+          costZh="按秒计费 · 约 $0.04/秒(720p)" costEn="Per-second · ~$0.04/s (720p)"
+          btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
@@ -3625,10 +3626,10 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const bgmIsLibrary = bgmIsBuiltin || bgmIsRemote;
   const bgmIsUpload = !!bgmPath && !bgmIsLibrary;
   // ── Step 4:出片 ──
-  // 赛道字段对模板速生没实际用处(AI 排版按 style + 数据,不参考 track;
-  // 任务名也只看 title)—— 2026-06-12 删除入口,沿用编辑态老任务可能存在的旧值。
+  // 赛道字段对模板速生没实际用处 —— 2026-06-12 删除入口。
+  // 时长滑块也删了:配音 ON 时被音频时长覆盖、配音 OFF 时 pipeline 用 autoDuration
+  // 按数据行数估算,用户手动调没意义 —— 2026-06-12 删除入口。
   const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
-  const [durationSec, setDurationSec] = useState<number>(typeof et?.durationSec === 'number' ? et.durationSec : 6);
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -3658,7 +3659,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         bgmPath: bgmPath || undefined,
         bgmVolume: bgmPath ? bgmVolume : undefined,
         template: {
-          style, title: title.trim() || undefined, dataText: dataText.trim(), durationSec, brandColor,
+          // durationSec 不传:配音 ON 由真实音频决定,配音 OFF 由 pipeline.autoDuration 估算。
+          style, title: title.trim() || undefined, dataText: dataText.trim(), brandColor,
           narration,
           voice: narration ? voice : undefined,
           voiceRate: narration && voiceRate !== 0 ? voiceRate : undefined,
@@ -3857,23 +3859,24 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           )}
           {step === 4 && (
             <>
-              <Field label={isZh ? '主品牌色' : 'Brand color'}>
+              <Field label={isZh ? '主品牌色' : 'Brand color'} hint={isZh ? '画面整体主色调:标题字色、装饰元素、数字高亮都用它' : 'Drives the title color, accent bars, and number highlights'}>
                 <div className="flex items-center gap-2">
                   <input type="color" value={brandColor} onChange={(e) => setBrandColor(e.target.value)}
                     className="h-9 w-14 rounded border border-gray-300 dark:border-gray-700 bg-transparent" />
                   <span className="text-xs text-gray-500">{brandColor}</span>
                 </div>
               </Field>
-              <Field label={narration ? (isZh ? `时长(配音模式下被音频长度覆盖,这里仅作为后备)· ${durationSec}s` : `Duration (overridden by audio when voice on) · ${durationSec}s`) : `${isZh ? '时长' : 'Duration'} · ${durationSec}s`}>
-                <input type="range" min={3} max={20} step={1} value={durationSec}
-                  onChange={(e) => setDurationSec(Number(e.target.value))} className="w-full accent-fuchsia-500" />
-              </Field>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>
                 <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
               </Field>
-              <div className="text-[11px] text-gray-400">{isZh
-                ? `单条约 $0.02~$0.04(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
-                : `~$0.02–0.04 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
+              <div className="text-[11px] text-gray-400 space-y-0.5">
+                <div>{isZh
+                  ? `单条约 $0.02~$0.04(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
+                  : `~$0.02–0.04 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
+                <div>{isZh
+                  ? `时长 ${narration ? '由 AI 口播稿决定' : '按数据行数自动估算(每行约 0.9s,clamp 4–14s)'}`
+                  : `Duration ${narration ? 'driven by AI voice script' : 'auto-estimated from row count'}`}</div>
+              </div>
             </>
           )}
           {err && <div className="text-xs text-red-500">{err}</div>}
