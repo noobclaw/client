@@ -177,6 +177,21 @@ export async function runTemplatePipeline(
       realDurationSec = r.durationSec;
       // 字幕开关:默认 true,显式 false 时关
       if (tpl.subtitleEnabled !== false) captionCues = r.cues;
+      // 把口播稿存一份到任务目录(对齐 stock pipeline 的「文案.txt」)。失败不阻塞出片 ——
+      //   只是供用户事后查看 / 复用稿子。voiceSegments 有就一并列出,标明每段对应哪一页画面。
+      try {
+        const segs = data.voiceSegments;
+        const lines: string[] = [
+          `📝 模板速生口播稿(共 ${script.length} 字 / 配音时长 ${realDurationSec.toFixed(1)}s)`,
+          '',
+          script,
+        ];
+        if (Array.isArray(segs) && segs.length > 0) {
+          lines.push('', `── 分页朗读分段(共 ${segs.length} 页) ──`);
+          segs.forEach((s, i) => lines.push(`[第 ${i + 1} 页] ${s}`));
+        }
+        fs.writeFileSync(path.join(destDir, '文案.txt'), lines.join('\n'), 'utf8');
+      } catch { /* 写文案 txt 失败不影响出片 */ }
       tracker.done('voice', `✅ 配音已生成 · ${realDurationSec.toFixed(1)}s${captionCues ? ` · ${captionCues.length} 句字幕` : ''}`);
     } else {
       // 跳过这一步(UI 上仍显示但直接 done)
