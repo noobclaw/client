@@ -2189,20 +2189,6 @@ function buildContext(
         return { ok: false, reason: 'writeFile_failed:' + String(e?.message || e).slice(0, 150) };
       }
     },
-    // 本地语音转写(faster-whisper,模型按需下)。视频/音频均可,返回 {ok,lang,segments,text}。
-    transcribe: async (mediaPath: string, opts?: { model?: string; language?: string }) => {
-      try {
-        const { transcribe } = require('../video/asr');
-        return await transcribe(mediaPath, {
-          model: opts?.model,
-          language: opts?.language,
-          onProgress: (m: string) => ctx.report(m),
-        });
-      } catch (e: any) {
-        return { ok: false, reason: 'transcribe_exception:' + String(e?.message || e).slice(0, 200) };
-      }
-    },
-
     // 发文成功后调,服务端把当前钱包追加到 viral_library.used_by_wallets,
     // 下次同钱包不会再选中这篇。
     markViralUsed: async (viralId: string) => {

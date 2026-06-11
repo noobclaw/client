@@ -240,11 +240,6 @@ function initProgress(taskId: string, scenarioId?: string): void {
       'AI 生成内容图，保存到本地',
       '发布到头条号（微头条，上传图 + 正文，存草稿 / 发布）。请勿切换浏览器标签页。',
     ],
-    // 视频搬运·二创 = 2 步:选品/收集链接 → 下载·转写·翻译·合成。请勿切换浏览器标签页。
-    video_repost_remix: [
-      '选品 / 收集链接。请勿切换浏览器标签页。',
-      '逐条:下载无水印源 → 本地转写 → 翻译 → 遮字幕+二创合成，存本地。请勿切换浏览器标签页。',
-    ],
   };
   const stepNames = (scenarioId && SCENARIO_STEP_NAMES[scenarioId]) || [
     '采集爆款文章。请勿切换浏览器标签页。',

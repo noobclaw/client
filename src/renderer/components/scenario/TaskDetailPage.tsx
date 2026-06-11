@@ -568,9 +568,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'toutiao_reply_fans_comment') return replyStepNames(isZh, '头条号创作者中心', 'Toutiao Creator Center');
     if (sid === 'kuaishou_video_download') return videoDownloadStepNames(isZh, '快手', 'Kuaishou');
     if (sid === 'bilibili_video_download') return videoDownloadStepNames(isZh, '哔哩哔哩', 'Bilibili');
-    if (sid === 'video_repost_remix') return isZh
-      ? ['选品 / 收集链接', '逐条:下载源 → 本地转写 → 翻译 → 遮字幕+二创合成,存本地']
-      : ['Pick / collect links', 'Per video: download → transcribe → translate → cover-subs + remix compose, save'];
     return isAutoReplyTask
       ? (isZh ? STEP_NAMES_AUTOREPLY_ZH : STEP_NAMES_AUTOREPLY_EN)
       : (isZh ? STEP_NAMES_ZH : STEP_NAMES_EN);
@@ -947,7 +944,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
     if (sid === 'xhs_video_download')             return { icon: '⬇️', label: isZh ? '小红书 · 视频无水印下载' : 'XHS Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'douyin_video_download')          return { icon: '⬇️', label: isZh ? '抖音 · 视频无水印下载' : 'Douyin Video Download', color: 'text-sky-500 bg-sky-500/10 border-sky-500/30' };
     if (sid === 'tiktok_video_download')          return { icon: '⬇️', label: isZh ? 'TikTok · 视频无水印下载' : 'TikTok Video Download', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
-    if (sid === 'video_repost_remix')             return { icon: '🎬', label: isZh ? '视频搬运 · 二创' : 'Video Repost · Remix', color: 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30' };
     if (sid === 'kuaishou_auto_engage')           return { icon: '⚡', label: isZh ? '快手 · 互动涨粉' : 'Kuaishou Engage & Grow', color: 'text-orange-500 bg-orange-500/10 border-orange-500/30' };
     if (sid === 'kuaishou_video_download')        return { icon: '⬇️', label: isZh ? '快手 · 视频无水印下载' : 'Kuaishou Video Download', color: 'text-blue-500 bg-blue-500/10 border-blue-500/30' };
     if (sid === 'kuaishou_reply_fans_comment')    return { icon: '💬', label: isZh ? '快手 · 自动回复粉丝' : 'Kuaishou Reply Fan Comments', color: 'text-cyan-500 bg-cyan-500/10 border-cyan-500/30' };
@@ -1211,30 +1207,6 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           : mf === 'video_only' ? (isZh ? '仅视频(严格)' : 'Videos only (strict)')
                           : (isZh ? '全部(图文 + 视频)' : 'All (images + videos)');
                         return <div>{isZh ? '搬运类型' : 'Media filter'}: 🎞 {lab}</div>;
-                      })()}
-                      {/* 视频翻译二创(video_repost_remix):把向导里填的源/目标平台、翻译方向、
-                          翻译模式、最低播放量也展示出来(详情页之前太简单,只有赛道/关键词)。 */}
-                      {task.scenario_id === 'video_repost_remix' && (() => {
-                        const t = task as any;
-                        const PN: Record<string, string> = { douyin: '抖音', kuaishou: '快手', bilibili: 'B站', xhs: '小红书', tiktok: 'TikTok' };
-                        const LN: Record<string, string> = { zh: '中文', en: '英文', ja: '日语', ko: '韩语', es: '西班牙语', vi: '越南语', th: '泰语' };
-                        const TM: Record<string, string> = { auto: '自动(同语不译)', none: '不翻译', sub: '翻译字幕', sub_dub: '翻译字幕 + 配音' };
-                        const pn = (p: string) => PN[p] || p;
-                        const ln = (l: string) => LN[String(l || '').slice(0, 2).toLowerCase()] || l || '-';
-                        const src = Array.isArray(t.source_platforms) && t.source_platforms.length ? t.source_platforms.map(pn).join('/') : '-';
-                        const tgt = Array.isArray(t.target_platforms) && t.target_platforms.length ? t.target_platforms.map(pn).join('/') : (t.target_platform ? pn(t.target_platform) : '-');
-                        const isManual = t.source_mode === 'manual';
-                        return (
-                          <>
-                            <div>{isZh ? '来源' : 'Source'}: {isManual ? (isZh ? '📋 手动贴链接' : '📋 manual links') : (isZh ? `🔎 自动选品 · ${src}` : `🔎 auto · ${src}`)}</div>
-                            <div>{isZh ? '目标平台' : 'Targets'}: 🎯 {tgt}</div>
-                            <div>{isZh ? '翻译方向' : 'Translation'}: 🌐 {ln(t.source_lang)} → {ln(t.target_lang)}{t.translate_mode ? ` · ${isZh ? (TM[t.translate_mode] || t.translate_mode) : t.translate_mode}` : ''}</div>
-                            {!isManual && (t.min_play !== undefined && t.min_play !== null) && (
-                              <div>{isZh ? '最低播放量' : 'Min plays'}: 📊 {Number(t.min_play).toLocaleString()}</div>
-                            )}
-                            <div>{isZh ? '处理' : 'Processing'}: {t.originality_enhance !== false ? (isZh ? '✅ 原创度增强' : '✅ originality') : (isZh ? '—' : '—')}{t.saturation_check !== false ? (isZh ? ' · 发前查饱和' : ' · saturation check') : ''}</div>
-                          </>
-                        );
                       })()}
                       <div>{isZh ? '频次' : 'Schedule'}: ⏰ {(() => {
                         // v6.x: 详情页频次显示加上随机时间信息 — 短间隔展示 jitter 范围,
@@ -1828,9 +1800,9 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
           : sid.startsWith('toutiao_') ? 'toutiao'
           : 'xhs';
         const sp = scenario?.platform;
-        // 视频二创(platform='video',如 video_repost_remix):登录检查认
-        // 【源平台】(去那下载无水印源),不是 xhs。auto 模式取 source_platforms[0];
-        // 手动贴链接(无 source_platforms)兜底抖音(最常见源)。
+        // 视频 platform 的 scenario task(2026-06 翻译二创删除后暂无,保留分支
+        // 以防后续再加 video 平台 scenario):登录检查认【源平台】(去那下载无水印源),
+        // 不是 xhs。auto 模式取 source_platforms[0];手动贴链接兜底抖音(最常见源)。
         const LP_SET: LP[] = ['x', 'xhs', 'binance', 'tiktok', 'youtube', 'douyin', 'kuaishou', 'bilibili', 'shipinhao', 'toutiao'];
         const videoSrc = String(
           (Array.isArray((task as any).source_platforms) && (task as any).source_platforms[0])

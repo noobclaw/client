@@ -27,8 +27,7 @@ export type ScenarioWorkflowType =
   | 'shipinhao_image_text_creation'
   | 'shipinhao_reply_fans_comment'
   | 'toutiao_image_text_creation'
-  | 'toutiao_reply_fans_comment'
-  | 'video_repost_remix';
+  | 'toutiao_reply_fans_comment';
 
 export interface ScenarioRiskCapsIPC {
   max_daily_runs: number;
