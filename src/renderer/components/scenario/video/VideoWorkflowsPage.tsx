@@ -1589,7 +1589,7 @@ const VideoCreateFlow: React.FC<{
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
           descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成全新画面、自动配音+字幕,现实里拍不到的镜头也能生出来,还能传参考图锁画风。脑洞 / 概念 / 想象类内容的最强搭子。"
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film. Add reference images to lock the style."
-          costZh="按秒计费 · 约 $0.04/秒(720p)· 失败镜头自动退" costEn="Per-second · ~$0.04/s (720p) · auto-refund on failed shots"
+          costZh="按秒计费 · 约 $0.04/秒(720p)" costEn="Per-second · ~$0.04/s (720p)"
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
@@ -1601,9 +1601,9 @@ const VideoCreateFlow: React.FC<{
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
-          descZh="把榜单、资讯、数据、金句一键变成带动效的竖屏短视频 —— AI 现编动画页面、本地逐帧渲染,画面零成本、秒级出片、稳定可控。币安行情榜、热点快讯、Top 盘点最合适。"
-          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame. Zero-cost visuals, seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
-          costZh="画面免费 · 仅 AI 写稿几分钱" costEn="Visuals free · only a few cents for the AI script"
+          descZh="把榜单、资讯、数据、金句一键变成带动效的竖屏短视频 —— AI 现编动画页面、本地逐帧渲染、可选 AI 配音 + 字幕。秒级出片、稳定可控,币安行情榜、热点快讯、Top 盘点最合适。"
+          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame, optional AI voice-over + subtitles. Seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
+          costZh="单条约 $0.02~$0.04(数据/写稿/合成)" costEn="~$0.02–0.04 per clip (data / script / compose)"
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
         <RemixEntryCard isZh={isZh} onOpen={() => setRemixOpen(true)} onGoTasks={onGoTasks} />
       </section>
@@ -2392,8 +2392,8 @@ const VideoConfigModal: React.FC<{
                     title={isZh ? '✨ 纯 AI 生成（Seedance）' : '✨ Pure AI (Seedance)'}
                     desc={isZh ? '想要的画面,AI 直接造 —— 不用拍摄、不用找素材、不用露脸。给个主题,Seedance 逐镜生成全新画面,自动配 AI 配音 + 字幕,一条成片直接出炉。脑洞 / 概念 / 想象类内容的最强搭子,现实里拍不到的画面也能生出来;还能传参考图锁定画风与人设。' : 'Whatever you picture, AI makes it — no filming, no stock, no face on camera. Give a topic and Seedance generates brand-new footage shot by shot, auto-adds AI voice-over + subtitles, and outputs a finished video. The best fit for creative / concept / imaginative content — even shots you could never film; add reference images to lock the style & character.'}
                     cost={isZh
-                      ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})· 失败镜头自动退`
-                      : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution}) · auto-refund on failed shots`}
+                      ? `按秒计费 · 约 $${(aiUsdPerSec ?? 0.04).toFixed(2)}/秒(${seedanceResolution})`
+                      : `Per-second · ~$${(aiUsdPerSec ?? 0.04).toFixed(2)}/s (${seedanceResolution})`}
                     costTag={isZh ? '最贴近文案 / 画质最佳' : 'Closest to script / Best quality'}
                   />
                 </div>
@@ -2529,7 +2529,7 @@ const VideoConfigModal: React.FC<{
                   <div className="mt-3 rounded-lg border border-fuchsia-500/30 bg-fuchsia-500/5 px-3 py-2.5 text-sm">
                     <span className="text-fuchsia-600 dark:text-fuchsia-400 font-semibold">💎 {isZh ? '预估费用' : 'Est. cost'}</span>
                     <span className="ml-2 dark:text-gray-200">{isZh ? `约 ${estCredits.toLocaleString()} 积分(≈$${estUsd.toFixed(2)})` : `~${estCredits.toLocaleString()} credits (≈$${estUsd.toFixed(2)})`}</span>
-                    <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣,失败镜头自动退` : `${seedanceResolution} · ~${estSec}s · charged per real shot length, auto-refund on failures`}</div>
+                    <div className="text-[11px] text-gray-400 mt-1">{isZh ? `${seedanceResolution} · 约 ${estSec}s · 实际按真实时长逐镜扣` : `${seedanceResolution} · ~${estSec}s · charged per real shot length`}</div>
                   </div>
                 );
               })()}
@@ -3716,8 +3716,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                 <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
               </Field>
               <div className="text-[11px] text-gray-400">{isZh
-                ? `画面零 AI 成本(本地渲染);${narration ? 'AI 写稿 + 数据解析 ~ 几分钱' : '仅 AI 数据解析 ~ 几分钱'}`
-                : `Zero画面 cost (local render); ${narration ? '~few cents AI for script + data' : '~few cents AI for data'}`}</div>
+                ? `单条约 $0.02~$0.04(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
+                : `~$0.02–0.04 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
             </>
           )}
           {err && <div className="text-xs text-red-500">{err}</div>}

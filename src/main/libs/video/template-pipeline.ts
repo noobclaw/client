@@ -30,6 +30,7 @@ import { renderTemplate, type TemplateSpec } from './templateLibrary';
 import { renderHtmlToVideo, resolveHeadlessBrowser } from './htmlVideoRenderer';
 import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
 import { getTtsVoice } from './config';
+import { chargeMode1Video, refundMode1Video } from './billing';
 import type { CaptionCue } from './templateAnim';
 
 const TEMPLATE_STEPS = [
@@ -115,6 +116,10 @@ export async function runTemplatePipeline(
   const tmpAudioDir = fs.mkdtempSync(path.join(os.tmpdir(), 'noobclaw-tpl-audio-'));
   const narrationPath = path.join(tmpAudioDir, 'narration.mp3');
 
+  // 平台基础费(预扣);失败时 refund。对齐 stock 模式定价口径,口径在 billing.chargeMode1Video。
+  let chargeId: string | undefined;
+  let refundOnExit = false;
+
   try {
     // ── STEP 1:AI 产数据 + 可选口播稿 ──────────────────────────────────
     throwIfAborted(signal);
@@ -177,6 +182,25 @@ export async function runTemplatePipeline(
       ? clamp(realDurationSec + 0.4, 3, 30)
       : clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
 
+    // 平台基础费预扣(对齐 stock 模式定价口径,单条约 $0.09~$0.18,服务端权威值)。
+    // 在 AI 数据/配音已经实扣 token 之后、渲染【真起 ffmpeg】之前调:
+    //   · 失败 → return + 不渲染(AI 部分已实扣无法退,与 stock 同行为)
+    //   · 渲染失败 → catch 里 refundMode1Video 退回这笔(幂等)
+    //   · videoCount=1(模板速生当前只出 1 条),aiCostUsd=本次 AI 已扣总额
+    const charge = await chargeMode1Video(durationSec, { videoCount: 1, aiCostUsd: data.costUsd });
+    if (!charge.ok) {
+      let err: string;
+      if (charge.reason === 'insufficient') err = '余额不足,无法生成(需先预扣平台基础费,请充值后重试)';
+      else if (charge.reason === 'no_auth') err = '未登录 NoobClaw,无法生成';
+      else err = '平台基础费预扣失败,请稍后重试';
+      tracker.fail('render', err);
+      return { ok: false, error: err };
+    }
+    chargeId = charge.chargeId;
+    refundOnExit = true;
+    tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
+    tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
+
     const spec: TemplateSpec = {
       style: tpl.style,
       title: data.title || tpl.title,
@@ -216,6 +240,8 @@ export async function runTemplatePipeline(
     });
 
     tracker.progress(`✅ 已生成 ${path.basename(outPath)}`);
+    // 渲染编码成功 = 不再退款(用户拿到了成片,平台费名正言顺收下)
+    refundOnExit = false;
     tracker.finish(outPath, 1);
     return { ok: true, outputPath: outPath, outputPaths: [outPath] };
   } catch (err) {
@@ -226,6 +252,15 @@ export async function runTemplatePipeline(
     tracker.fail(null, msg);
     return { ok: false, error: msg };
   } finally {
+    // 平台基础费失败退款(成片失败时;成功路径走完 refundOnExit=false 不退)。幂等,失败仅记日志。
+    if (refundOnExit && chargeId) {
+      try {
+        const refunded = await refundMode1Video(chargeId);
+        tracker.progress(refunded
+          ? '↩️ 成片失败，已退回预扣的平台基础费'
+          : '⚠️ 成片失败，平台基础费退回请求未成功（稍后可联系客服核对）');
+      } catch { /* 退款失败不抛,仅日志 */ }
+    }
     try { fs.rmSync(tmpAudioDir, { recursive: true, force: true }); } catch { /* ignore */ }
   }
 }
