@@ -78,8 +78,14 @@ export interface VideoCreationInput {
   localVideos?: string[];
   /** 画幅,默认竖屏 9:16。 */
   aspect: VideoAspect;
-  /** 发布去向。一期只支持 'local';其余为占位。 */
+  /** 发布去向(老字段,保留兼容)。一期只用了 'local';实际多平台发布看 publishPlatforms。 */
   publishTarget: VideoPublishTarget;
+  /**
+   * 出片完成后要发到哪几个平台(9 选 N):
+   *   'douyin' | 'xhs' | 'tiktok' | 'binance' | 'x' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao'
+   * 空数组 / undefined = 仅存本地不发。pipeline iterator forEach 调对应 driver,未登录的会跳过。
+   */
+  publishPlatforms?: string[];
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
   /** BGM 音量(0~1),默认 0.18。 */

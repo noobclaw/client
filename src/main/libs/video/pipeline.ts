@@ -165,7 +165,14 @@ export interface VideoCreationInput {
    */
   localVideos?: string[];
   aspect: VideoAspect;
+  /**
+   * 老字段,保留兼容(数据库 / 老任务可能还有 publishTarget:'local')。
+   * 新字段 publishPlatforms 才是【实际发哪几个平台】的来源 —— pipeline 出片完成后
+   * iterator forEach 它,对每个平台 driver 调 upload(不在数组里的不发,数组空 = 仅存本地)。
+   * 用户在向导里勾选 9 平台中的 N 个,持久化到这里(空数组等价于以前的 'local')。
+   */
   publishTarget: VideoPublishTarget;
+  publishPlatforms?: string[];
   /** 可选背景音乐本地路径。空 = 不加 BGM。 */
   bgmPath?: string;
   /** BGM 音量(0~1),默认 0.18。 */
