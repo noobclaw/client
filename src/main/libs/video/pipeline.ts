@@ -29,6 +29,7 @@ import { resolveBgmPath } from './bgm';
 import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
 import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
+import { generateStoryboardAnchor } from './storyboardAnchor';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -772,12 +773,34 @@ async function runVideoPipeline(
       //   首帧也存一份到本次输出目录的「故事板」文件夹(用户要的本地存档)。
       //   故事板失败/未配置 → 退化为纯文生视频(不挂首帧),不阻塞。
       try {
+        // 视觉锚生成(纯 AI 模式专用,有参考图时跳过 —— 用户参考图本身就是最强锚)。
+        //   把 character 字段从「persona · track」两词拼接(导致 Seedream 出套路图,如「亚洲女性看
+        //   手机」)升级为【LLM 5 字段结构化视觉描述】(shot_type / subject / environment /
+        //   lighting / style)。这是抄市面 image2 主流做法(Higgsfield 6 要素 + MoneyPrinterTurbo
+        //   verbatim prompt 思路),让第 1 帧锚的方向具体到「东京涩谷木质装潢咖啡馆,午后暖琥珀
+        //   侧光,35mm Kodak Portra 400」,后续每镜跟着这个 anchor 走质量就稳。
+        //   失败兜底:返回 null 时降级到老的 persona+track 拼接(绝不阻塞出片)。
+        let anchorCharacter = [input.persona, input.track].filter(Boolean).join(' · ');
+        if (refImagesAi.length === 0) {
+          tracker.progress('🎯 生成视觉锚(LLM 5 字段结构化描述,锁电影感)…');
+          const anchor = await generateStoryboardAnchor({
+            script, persona: input.persona, track: input.track, lang: contentLang,
+          });
+          if (anchor) {
+            anchorCharacter = anchor.character;
+            tracker.addTokens(anchor.tokens, anchor.costUsd);
+            tracker.progress(`✅ 视觉锚就绪 · ${anchor.fields.shot_type} · ${anchor.fields.style.slice(0, 30)}…`);
+          } else {
+            tracker.progress('⚠️ 视觉锚生成失败,降级到 persona+track');
+          }
+        }
+
         tracker.progress(`🎨 生成故事板首帧(逐张出 ${aiScenes.length} 张,保持角色一致)…`);
         // 逐张生成:每张独立短请求(绕开 Cloudflare 100s/HTTP524),并逐张回进度。
         const storyboard = await generateStoryboard(
           {
             shots: aiScenes.map((sc) => sc.prompt),
-            character: [input.persona, input.track].filter(Boolean).join(' · '),
+            character: anchorCharacter,
             count: aiScenes.length,
           },
           (done, total) => { if (done < total) tracker.progress(`🎨 故事板生成中… ${done + 1}/${total} 张`); },
