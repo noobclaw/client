@@ -1801,11 +1801,11 @@ type GenMode = 'stock' | 'pure_ai';
 type OutputMode = 'local' | 'upload';
 // 9 个发布平台,跟 src/main/libs/video/publishers/types.VideoPlatform 严格对齐 ——
 // 改这一行必须同步改 publishers/types.ts,否则 pipeline 运行期收不到对应 platform id。
-type Platform = 'douyin' | 'xhs' | 'tiktok' | 'binance' | 'x' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao';
+// TikTok / YouTube 暂不支持视频发布,从可选平台里去掉(driver/枚举保留,以后支持再加回 UI)。
+type Platform = 'douyin' | 'xhs' | 'binance' | 'x' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao';
 const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: string }> = [
   { id: 'douyin',    zh: '抖音',     en: 'Douyin',      emoji: '🎵' },
   { id: 'xhs',       zh: '小红书',   en: 'Xiaohongshu', emoji: '📕' },
-  { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
   { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
   { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
   { id: 'bilibili',  zh: 'B 站',     en: 'Bilibili',    emoji: '📺' },
@@ -2205,7 +2205,7 @@ const VideoConfigModal: React.FC<{
   // 新建默认勾抖音 + 小红书(国内最大两个);编辑老任务从 input.publishPlatforms 反推。
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
-      douyin: false, xhs: false, tiktok: false, binance: false, x: false,
+      douyin: false, xhs: false, binance: false, x: false,
       bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
     };
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
@@ -3559,7 +3559,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // ── Step 5:出片 —— 发布平台(可选,默认不勾=仅本地)+ 自定义发布文案 ──
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
-      douyin: false, xhs: false, tiktok: false, binance: false, x: false,
+      douyin: false, xhs: false, binance: false, x: false,
       bilibili: false, kuaishou: false, shipinhao: false, toutiao: false,
     };
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
