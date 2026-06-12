@@ -13,7 +13,7 @@ import { ExclamationTriangleIcon } from '@heroicons/react/24/outline';
 interface SidebarProps {
   onShowSettings: () => void;
   onShowLogin?: () => void;
-  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'partners' | 'personality';
+  activeView: 'cowork' | 'skills' | 'scheduledTasks' | 'mcp' | 'wallet' | 'invite' | 'quickuse' | 'scenarioCreate' | 'scenarioRuns' | 'web3news' | 'hotsearch' | 'partners' | 'personality';
   onShowSkills: () => void;
   onShowCowork: () => void;
   onShowScheduledTasks: () => void;
@@ -24,6 +24,7 @@ interface SidebarProps {
   onShowScenarioRuns: () => void;
   onShowScenarioCreate: () => void;
   onShowWeb3News: () => void;
+  onShowHotSearch: () => void;
   onShowPersonality: () => void;
   onShowPartners: () => void;
   onNewChat: () => void;
@@ -45,6 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   onShowScenarioRuns,
   onShowScenarioCreate,
   onShowWeb3News,
+  onShowHotSearch,
   onShowPersonality,
   onShowPartners,
   onNewChat,
@@ -210,6 +212,22 @@ const Sidebar: React.FC<SidebarProps> = ({
             <span className="text-sm">{'📊'}</span>
             {i18nService.t('fanRunHistory')}
           </button>
+
+          {/* 全网热搜 — 仅简体/繁体中文显示(知乎/微博/百度/雪球/抖音/B站热榜) */}
+          {(i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW') && (
+            <button
+              type="button"
+              onClick={() => { setIsSearchOpen(false); onShowHotSearch(); }}
+              className={`w-full inline-flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors ${
+                activeView === 'hotsearch'
+                  ? 'bg-claude-accent/10 text-claude-accent hover:bg-claude-accent/20'
+                  : 'dark:text-claude-darkTextSecondary text-claude-textSecondary hover:text-claude-text dark:hover:text-claude-darkText hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'
+              }`}
+            >
+              <span className="text-sm">{'🔥'}</span>
+              {i18nService.t('globalHotSearch')}
+            </button>
+          )}
 
           {/* 4. AI对话 — 折叠二级菜单：新建对话 / web3连接 / 行业热点 */}
           <button
