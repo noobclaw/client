@@ -157,6 +157,75 @@ export async function uploadFileToInput(opts: {
   }
 }
 
+/**
+ * uploadVideoToInputDeep —— 把本地视频注入【wujie shadowRoot 里】的 file input(视频号专用)。
+ *
+ * 为什么单独一条:视频号发表页表单挂在 <wujie-app> 的 open shadowRoot 里,扩展的
+ * upload_file_from_url 用 document.querySelector 找 input【不穿 shadowRoot】→ 在视频号
+ * 必失败。这里改走 cdp_eval(isolated world,可能豁免页面 CSP):
+ *   1. 复用 sidecar localFileServer 把视频注册成 http://localhost:<port>/<token>(大文件走 HTTP,
+ *      不把 base64 inline 进 cdp_eval 表达式 —— 几十 MB 会撑爆 CDP 通道)。
+ *   2. cdp_eval 里【三层深遍历(顶层 + 同源 iframe + open shadowRoot)】定位 video file input,
+ *      在页面里 fetch 那个本地 URL 拿 blob → 构造 File → input.files → 派 change/input。
+ *
+ * ⚠️ fetch localhost 可能被页面 CSP(connect-src)拦;cdp_eval 跑 isolated world 有望豁免,
+ *   但需真机验证。失败时 reason 会带 fetch_/inject_ 前缀便于定位。
+ */
+export async function uploadVideoToInputDeep(opts: {
+  platform: VideoPlatform;
+  filePath: string;
+  /** 可选:进一步收窄到某个 file input;缺省取 accept 含 video 的、否则第一个。 */
+  acceptHint?: string;
+  mimeType?: string;
+  ttlMs?: number;
+  tabId?: number;
+}): Promise<{ ok: boolean; reason?: string }> {
+  if (!fs.existsSync(opts.filePath)) return { ok: false, reason: 'file_not_found' };
+  const { registerFile, buildUrl, unregister } = require('../../localFileServer');
+  const fileName = path.basename(opts.filePath);
+  const mime = opts.mimeType || 'video/mp4';
+  const ttl = opts.ttlMs || 10 * 60 * 1000;
+  const token = registerFile(opts.filePath, { mimeType: mime, fileName, ttlMs: ttl });
+  const port = parseInt(process.env.NOOBCLAW_SIDECAR_PORT || '18800', 10);
+  const fileUrl = buildUrl(token, port);
+  // 三层深遍历底座(同生产 shipinhao_image_text 的 nbDeepAll)。
+  const DEEP = 'function nbDeepAll(sel){var out=[];function walk(root,d){if(!root||d>6)return;'
+    + 'try{var m=root.querySelectorAll(sel);for(var i=0;i<m.length;i++)out.push(m[i]);}catch(e){}'
+    + 'var all=[];try{all=root.querySelectorAll("*");}catch(e){}'
+    + 'for(var k=0;k<all.length;k++){var sr=null;try{sr=all[k].shadowRoot;}catch(e){}if(sr)walk(sr,d+1);}'
+    + 'var fr=[];try{fr=root.querySelectorAll("iframe,frame");}catch(e){}'
+    + 'for(var j=0;j<fr.length;j++){var idoc=null;try{idoc=fr[j].contentDocument;}catch(e){}if(idoc)walk(idoc,d+1);}}'
+    + 'walk(document,0);return out;}';
+  const expr = '(async function(){' + DEEP
+    + 'var ins=nbDeepAll(\'input[type="file"]\');var input=null;'
+    + 'for(var i=0;i<ins.length;i++){var ac=ins[i].getAttribute("accept")||"";if(ac.indexOf("video")>=0){input=ins[i];break;}}'
+    + 'if(!input&&ins.length)input=ins[0];'
+    + 'if(!input)return {ok:false,reason:"no_input(deep="+ins.length+")"};'
+    + 'try{var resp=await fetch(' + JSON.stringify(fileUrl) + ');'
+    + 'if(!resp||!resp.ok)return {ok:false,reason:"fetch_"+(resp&&resp.status)};'
+    + 'var blob=await resp.blob();'
+    + 'var win=(input.ownerDocument&&input.ownerDocument.defaultView)||window;'
+    + 'var file=new win.File([blob],' + JSON.stringify(fileName) + ',{type:' + JSON.stringify(mime) + '});'
+    + 'var dt=new win.DataTransfer();dt.items.add(file);input.files=dt.files;'
+    + 'input.dispatchEvent(new win.Event("change",{bubbles:true}));'
+    + 'input.dispatchEvent(new win.Event("input",{bubbles:true}));'
+    + 'return {ok:true,bytes:blob.size};'
+    + '}catch(e){return {ok:false,reason:"inject_"+String(e&&e.message||e).slice(0,80)};}})()';
+  try {
+    const r: any = await pubCmd(opts.platform, 'cdp_eval', { expression: expr, awaitPromise: true }, ttl, opts.tabId);
+    // cdp_eval 返回 { ok:true, value:<上面 return 的对象> }(或裹 data 一层)。
+    const outer = (r && r.value !== undefined) ? r : (r && r.data) ? r.data : r;
+    if (!outer || outer.ok === false) return { ok: false, reason: 'cdp_eval_failed:' + ((outer && outer.error) || 'unknown') };
+    const v = outer.value;
+    if (!v || v.ok !== true) return { ok: false, reason: (v && v.reason) || 'inject_no_result' };
+    return { ok: true };
+  } catch (e: any) {
+    return { ok: false, reason: 'deep_upload_threw:' + String(e?.message || e).slice(0, 100) };
+  } finally {
+    try { unregister(token); } catch { /* ignore */ }
+  }
+}
+
 /** 轮询直到 selector 出现(或超时)。返回 true / false,不抛。 */
 export async function waitForSelector(
   platform: VideoPlatform,

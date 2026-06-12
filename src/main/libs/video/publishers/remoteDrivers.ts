@@ -35,7 +35,7 @@
 import { coworkLog } from '../../coworkLogger';
 import type { VideoPlatform, PublishInput, PublishResult, PublishCtx } from './types';
 import {
-  pubCmd, uploadFileToInput, waitForSelector, clickWithText,
+  pubCmd, uploadFileToInput, uploadVideoToInputDeep, waitForSelector, clickWithText,
   insertEditorText, setInputValue, mainWorldClick, sleep,
 } from './publisherUtils';
 
@@ -103,6 +103,17 @@ function buildDriverCtx(
         platform,
         filePath: input.videoPath,
         targetSelector,
+        mimeType: opts?.mimeType,
+        ttlMs: opts?.ttlMs,
+        tabId,
+      }),
+    // 视频号专用:把视频注入【wujie shadowRoot 里】的 file input(扩展 upload_file_from_url
+    // 不穿 shadow → 必须走 cdp_eval 深遍历 + fetch 注入)。普通平台用上面的 uploadVideo 即可。
+    uploadVideoDeep: (opts?: { acceptHint?: string; mimeType?: string; ttlMs?: number }) =>
+      uploadVideoToInputDeep({
+        platform,
+        filePath: input.videoPath,
+        acceptHint: opts?.acceptHint,
         mimeType: opts?.mimeType,
         ttlMs: opts?.ttlMs,
         tabId,
