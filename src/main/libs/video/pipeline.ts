@@ -1375,8 +1375,10 @@ async function runVideoPipeline(
         summary: script || input.script || '',
         // 标题参考也用 AI 重写后的 script 首句(不用 input.script —— 否则 AI 降级时兜底标题又文不对题)。
         title: script ? script.split(/[。！？\n]/).filter(Boolean)[0]?.slice(0, 40) : undefined,
-        keywords: input.keywords,
-        track: input.track,
+        // 有参考文案时不传赛道关键词(否则话题标签/正文跟着美食走、跟 spacex 口播打架);
+        // 发布文案纯按上面 summary(=实际口播内容)生成,跟口播/画面保持一致。
+        keywords: userText ? undefined : input.keywords,
+        track: userText ? undefined : input.track,
         lang: contentLang,
         userTitle: input.publishTitle,
         userCaption: input.publishCaption,
