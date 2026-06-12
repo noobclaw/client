@@ -1005,12 +1005,16 @@ async function runVideoPipeline(
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
     // A:把整条视频的主题/赛道/人设/关键词当语境喂给映射模型,让每镜的词锁定选题。
-    const termsTopic = (input.keywords || []).filter(Boolean).join('、') || input.track || '';
-    const termsResult = await generateSearchTerms(sentences, input.keywords, vcfg.termsSystemPrompt, {
+    //   但【有参考文案时】:口播已按参考文案写(可能跟原赛道不同领域,如美食赛道+spacex 文案),
+    //   搜索词语境也不能再用原赛道/关键词,否则画面跟着美食走、跟实际口播打架 —— 改成纯按
+    //   实际口播句子(sentences)配词。
+    const usingReference = !!userText;
+    const termsTopic = usingReference ? '' : ((input.keywords || []).filter(Boolean).join('、') || input.track || '');
+    const termsResult = await generateSearchTerms(sentences, usingReference ? [] : (input.keywords || []), vcfg.termsSystemPrompt, {
       topic: termsTopic,
       persona: input.persona,
-      track: input.track,
-      keywords: input.keywords,
+      track: usingReference ? undefined : input.track,
+      keywords: usingReference ? undefined : input.keywords,
       lang: contentLang,  // 让人物镜头按内容语言加地区人种倾向(中文→asian),免得搜出全是老外
     });
     const perSceneTerms = termsResult.terms.map((arr) => (arr || []).map((s) => s.toLowerCase()));
@@ -1026,7 +1030,8 @@ async function runVideoPipeline(
     const HARD_TERM_CAP = 24;
     const effectiveTermCap = Math.max(vcfg.maxSearchTerms, Math.min(primaryTerms.length, HARD_TERM_CAP));
     let searchTerms = [...primaryTerms, ...extraTerms].slice(0, effectiveTermCap);
-    if (searchTerms.length === 0) {
+    // 有参考文案时不退回原赛道关键词(否则又跑回美食);搜索词空就靠图片补位/全局兜底。
+    if (searchTerms.length === 0 && !usingReference) {
       searchTerms = (input.keywords || []).map((s) => s.toLowerCase()).filter(Boolean);
     }
     if (searchTerms.length > 0) {

@@ -237,31 +237,42 @@ export async function generateScript(
     ? `1. 围绕主题写一段【连贯的口播旁白】,目标约 ${targetChars} 个中文字符(对应约 ${targetSec} 秒)。`
     : `1. Write one coherent voice-over narration of about ${targetSec} seconds when read aloud.`;
 
+  // 参考文案:有它时【以它为内容主题】,赛道/关键词只决定口吻风格。
+  //   2026-06 修(用户实测:选美食赛道 + 填 spacex 参考文案,AI 仍写美食)——根因是赛道
+  //   是【强内容指令】,参考文案被降级成"仅供参考、别照搬",冲突时 AI 听赛道写了原赛道
+  //   题材。反过来:有参考文案就以它为内容主导,赛道转成"用某类博主的口吻",不绑题材。
+  const ref = (input.referenceScript || '').trim();
+
   // system prompt 走模板(服务端可调措辞),只认 4 个占位符;空的人设/赛道行替换后被 filter 掉。
   const tpl = scriptSystemTemplate || DEFAULT_VIDEO_CONFIG.scriptSystemTemplate;
   const system = interpolate(tpl, {
     LANG_NAME: ln,
     PERSONA_LINE: input.persona ? `账号人设:${input.persona}。` : '',
-    TRACK_LINE: input.track ? `内容赛道:${input.track}。` : '',
+    // 有参考文案时赛道只作口吻(不绑题材),避免跟参考文案的实际选题打架。
+    TRACK_LINE: input.track
+      ? (ref ? `讲述口吻可参考「${input.track}」类博主的风格(只影响语气,不决定题材)。` : `内容赛道:${input.track}。`)
+      : '',
     LENGTH_LINE: lengthLine,
   }).split('\n').map((s) => s.trim()).filter(Boolean).join('\n');
 
-  // 参考文案:作为方向/素材给 AI 参考,明确告知"可借鉴但不要逐字照搬",
-  // 让 AI 重新组织成更适合口播的版本。
-  const ref = (input.referenceScript || '').trim();
   // 叙事视角池 — 每次随机选一个塞进 user message,强行打破「同主题=同结构」的套路。
   //   不放进 system template 是因为 system template 是服务端可调的,改这事跟模板措辞无关;
   //   而且视角是「每次创作变一次」的运行期行为,本该在每次调用处现 roll。
   const angle = pickNarrationAngle(lang);
-  const user = [
+  const user = (ref ? [
+    // 有参考文案:它就是本视频的【内容主题】,据此创作口播;赛道/关键词不作内容,只在 system 作口吻。
+    lang === 'zh'
+      ? `【本视频内容主题 —— 就讲这篇,可精炼/重组织成更顺口的口播版,但题材必须忠于这篇,不要改成别的领域】:\n${ref.slice(0, 1500)}`
+      : `【Video topic — base the narration on THIS content; you may tighten/restructure for speech, but keep the subject faithful to it, do NOT switch to another niche】:\n${ref.slice(0, 1500)}`,
+  ] : [
     `主题:${input.topic}`,
     kw ? `关键词:${kw}` : '',
-    ref ? `【用户参考文案,仅供参考方向,请重新创作、不要逐字照搬】:\n${ref.slice(0, 1500)}` : '',
+  ]).concat([
     angle ? (lang === 'zh' ? `本次创作请采用「${angle}」,跟该主题/赛道的常见写法明显错开。` : `Use the "${angle}" angle this time — deliberately avoid the most common framing for this topic.`) : '',
     lang === 'zh'
       ? `请直接输出约 ${targetChars} 字的口播旁白正文。`
       : `Now output ONLY the ${ln} narration body (about ${targetSec}s when read aloud).`,
-  ].filter(Boolean).join('\n');
+  ]).filter(Boolean).join('\n');
 
   // 旁白创作走 Pro(reasoner),质量明显优于 flash;服务端按 ~3x 计费,故仅此一处用。
   // temperature=1.2:reasoner 默认偏低导致同 prompt 输出趋同,创作场景显式拉高让文案更
