@@ -2,24 +2,91 @@
  * runPublish —— 给 pipeline 调用的统一 publish step。
  *
  * 用户硬约束(写在 PublisherDriver 契约里 + 这里再实现一遍):
- *   · 单平台未登录 → 跳过,日志推一条「⚠️ 抖音未登录,跳过(登录后下次跑会补传)」
+ *   · 单平台未登录 → 跳过,日志推一条「⚠️ 抖音未登录,跳过(本条视频不再补传)」
  *   · 单平台上传失败 → 跳过,日志推 reason,继续下一个
  *   · 全部跳过/失败 → 任务仍 done(本地 mp4 还在),不杀任务
  *
  * pipeline.ts 和 template-pipeline.ts 都调这个函数 → 行为一致,Bug 修一处全好。
+ *
+ * v6.13 单 tab 复用(本次改动核心):
+ *   旧版每个平台调 openCreatorCenter/openPlatformLogin,各开一个【独立窗口】(一平台一
+ *   子域一窗口一 tab),9 个平台 = 9 个窗口爆炸。现在改成开【一个专用 video_publish 窗口
+ *   的固定 tab】,9 个平台【共用这一个 tab】靠 navigate 串行切上传页,命令全部按 tabId 钉
+ *   到这个 tab(extension chrome.tabs.get 直接寻址,绕过 tabPattern)。
+ *
+ *   未登录的:在进度里提醒,反复检测,【最多等 3 分钟】仍未登录 → 跳过该平台,且【只针对
+ *   本条视频不补传】(下次出新片是新 run,照常重试所有平台 —— 不持久化任何"放弃"标记)。
+ *
+ *   向后兼容:旧扩展(无 window_registry_v6 能力)/开窗失败时,tabId 拿不到 → 自动回退到
+ *   旧的「每平台独立窗口」模式(ensureLoggedInTab + driver.upload 不带 tabId),行为不变。
  */
 
-import type { VideoPlatform, PublishInput } from './types';
+import type { VideoPlatform, PublishInput, PublishCtx } from './types';
 import { VIDEO_PLATFORMS } from './types';
 import { getDriver } from './registry';
+import { fetchPublishDrivers, runRemoteDriver } from './remoteDrivers';
 import {
   openCreatorCenter, openPlatformLogin, platformHasCreatorCenter,
   checkCreatorCenter, checkPlatformLogin, type LoginPlatform,
 } from '../../scenario/platformLoginDriver';
-import { sendBrowserCommand } from '../../browserBridge';
+import { sendBrowserCommand, connectionHasCapability } from '../../browserBridge';
+import { groupTitle as buildGroupTitle, getStandardBounds } from '../../scenario/subPlatformRegistry';
 import { PUBLISHER_ANCHOR_URL, bridgeOptsFor } from './publisherUtils';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** 未登录的等待上限:3 分钟(用户要求 —— 反复检测,超时跳过本条视频不补传)。 */
+const LOGIN_WAIT_MS = 3 * 60 * 1000;
+
+/** 专用发布窗口的 sub_platform / windowKey(见 subPlatformRegistry.video_publish)。 */
+const PUBLISH_SUB_PLATFORM = 'video_publish';
+const PUBLISH_WINDOW_KEY = `${PUBLISH_SUB_PLATFORM}::default`;
+
+/**
+ * 开【一个】专用 video_publish 窗口的固定 tab,返回它的 tabId。9 个平台共用这一个 tab。
+ *
+ * 走 v6 windowRegistry(task_open_tab + windowKey):同 windowKey 幂等,这里第一次开就建
+ * 一个新窗口。返回 res.tabId 给后续 navigate/upload 钉用。
+ *
+ * 拿不到 tabId(旧扩展无 v6 能力 / 开窗超时)→ 返回 undefined,调用方回退「每平台独立窗口」。
+ */
+async function openPublishTab(
+  firstUrl: string,
+  onLog: (m: string) => void,
+): Promise<number | undefined> {
+  if (!connectionHasCapability(undefined, 'window_registry_v6')) {
+    onLog('ℹ️ 当前扩展无 v6 窗口注册表,回退「每平台独立窗口」模式');
+    return undefined;
+  }
+  const idleTitle = buildGroupTitle(PUBLISH_SUB_PLATFORM, 'default', null);
+  const bounds = getStandardBounds(PUBLISH_SUB_PLATFORM, 'default');
+  try {
+    const res: any = await sendBrowserCommand(
+      'task_open_tab',
+      {
+        windowKey: PUBLISH_WINDOW_KEY,
+        groupTitle: idleTitle,
+        role: 'publisher',
+        url: firstUrl,
+        bounds,
+        // taskId omitted —— video publish 不是 scenario 任务,不进 taskTabRegistry。
+      },
+      12000,
+    );
+    const tabId = res?.tabId ?? res?.data?.tabId;
+    if (typeof tabId === 'number') return tabId;
+    onLog('ℹ️ 开发布窗口未返回 tabId,回退「每平台独立窗口」模式');
+    return undefined;
+  } catch {
+    onLog('ℹ️ 开发布窗口失败,回退「每平台独立窗口」模式');
+    return undefined;
+  }
+}
+
+/** 把固定发布 tab 导航到指定 URL(按 tabId 直接寻址,不走 tabPattern)。 */
+async function navigateTab(url: string, tabId: number): Promise<void> {
+  await sendBrowserCommand('navigate', { url, tabId }, 30_000);
+}
 
 /**
  * 登录成功后,把该平台的 tab 导航到【上传页】(PUBLISHER_ANCHOR_URL)。
@@ -29,6 +96,8 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
  * 已存在且 tabPattern(如 creator\.douyin\.com)宽泛匹配它,预检不会导航到上传页 →
  * driver 在首页找不到 file input。所以这里显式 navigate 到精确上传页。失败不阻塞(driver
  * 内部 waitForSelector 还会再等;真不行就 upload 失败,不影响其它平台)。
+ *
+ * (回退模式专用 —— 单 tab 模式直接 navigateTab,见下。)
  */
 async function navigateToUploadPage(platform: VideoPlatform, onLog: (m: string) => void): Promise<void> {
   const url = PUBLISHER_ANCHOR_URL[platform];
@@ -42,26 +111,70 @@ async function navigateToUploadPage(platform: VideoPlatform, onLog: (m: string) 
 }
 
 /**
- * 发布前置:打开浏览器对应平台的 tab(创作中心 / 主站)+ 轮询等登录态 OK。
+ * 【单 tab 模式】登录前置:把【固定发布 tab】导航到该平台上传页 + 轮询等登录态 OK。
  *
- * 这是修「发布永远跳过」的根因 —— 以前 driver 直接 checkLogin 查 tab_list,但从没
- * 先把创作中心 tab 打开,所以列表里永远没有对应 tab → 恒「未登录」。对齐 scenario 任务:
- * scenario 靠 LoginRequiredModal 让用户手点「打开创作中心」开 tab,视频发布跑在 pipeline
- * 末尾没这个 gate,所以这里【自动开 tab + 轮询等用户登录】,把那套手动流程自动化。
+ * 跟旧 ensureLoggedInTab 的区别:不再 openCreatorCenter/openPlatformLogin 开【新窗口】,
+ * 而是 navigate【同一个 video_publish tab】过去 —— 用户就在这一个窗口里扫码 / 登录各平台,
+ * 不会窗口爆炸。登录态检测仍走 checkCreatorCenter/checkPlatformLogin(扫全局 tab_list,
+ * navigate 过去后这个 tab 的 URL 就匹配上,所以现成函数直接复用,不需要 tabId)。
  *
- * 流程:
- *   1. 有 creator 子域(抖音/小红书/快手/B站)→ openCreatorCenter;否则(币安/推特/TikTok/
- *      头条号/视频号)→ openPlatformLogin(主站发布)。
- *   2. 轮询 checkCreatorCenter / checkPlatformLogin,直到 loggedIn 或超时(给扫码留时间)。
- *   3. 返回 'logged_in' / 'not_logged_in'(超时)/ 'browser_not_connected'(浏览器没开)。
- *
- * 绝不抛。浏览器没开时快速返回(不傻等满超时)。
+ * 绝不抛。返回 'logged_in' / 'not_logged_in'(超时)/ 'browser_not_connected'。
+ */
+async function ensureLoggedInOnTab(
+  platform: VideoPlatform,
+  tabId: number,
+  onLog: (m: string) => void,
+  signal?: AbortSignal,
+  timeoutMs = LOGIN_WAIT_MS,
+): Promise<'logged_in' | 'not_logged_in' | 'browser_not_connected'> {
+  const p = platform as unknown as LoginPlatform;
+  const hasCreator = platformHasCreatorCenter(p);
+  const check = () => (hasCreator ? checkCreatorCenter(p) : checkPlatformLogin(p));
+  const anchor = PUBLISHER_ANCHOR_URL[platform];
+
+  // 先把发布 tab 切到该平台上传页(创作中心 / 主站发布页)。
+  onLog(`🌐 切到${hasCreator ? '创作中心' : '平台'}上传页…`);
+  try { await navigateTab(anchor, tabId); } catch { /* 继续,下面轮询会再等 */ }
+  await sleep(1500);
+
+  // 先探一次:用户可能早就登录了(cookie 在),navigate 过去直接就是登录态。
+  let st = await check().catch(() => ({ loggedIn: false, reason: 'check_threw' } as any));
+  if (st.loggedIn) return 'logged_in';
+  if (st.reason === 'browser_not_connected') {
+    onLog('🔌 浏览器未连接(请先打开装了 NoobClaw 插件的 Chrome/Edge)');
+    return 'browser_not_connected';
+  }
+
+  onLog('⏳ 未登录 · 请在发布窗口里登录该平台(最多等 3 分钟,超时跳过本条视频)…');
+  const deadline = Date.now() + timeoutMs;
+  let lastBeat = 0;
+  while (Date.now() < deadline) {
+    if (signal?.aborted) return 'not_logged_in';
+    await sleep(2500);
+    st = await check().catch(() => ({ loggedIn: false } as any));
+    if (st.loggedIn) return 'logged_in';
+    if (st.reason === 'browser_not_connected') {
+      onLog('🔌 浏览器连接断开,放弃该平台');
+      return 'browser_not_connected';
+    }
+    const elapsed = timeoutMs - (deadline - Date.now());
+    if (elapsed - lastBeat >= 15_000) {
+      lastBeat = elapsed;
+      onLog(`⏳ 仍在等登录… ${Math.round(elapsed / 1000)}s(请在发布窗口扫码 / 登录)`);
+    }
+  }
+  return 'not_logged_in';
+}
+
+/**
+ * 【回退模式】登录前置:自动开浏览器对应平台的 tab(创作中心 / 主站)+ 轮询等登录态 OK。
+ * 只在 tabId 拿不到(旧扩展)时走这条 —— 每平台开一个独立窗口(老行为)。
  */
 async function ensureLoggedInTab(
   platform: VideoPlatform,
   onLog: (m: string) => void,
   signal?: AbortSignal,
-  timeoutMs = 90_000,
+  timeoutMs = LOGIN_WAIT_MS,
 ): Promise<'logged_in' | 'not_logged_in' | 'browser_not_connected'> {
   const p = platform as unknown as LoginPlatform;
   const hasCreator = platformHasCreatorCenter(p);
@@ -140,6 +253,8 @@ function platformLabel(id: string): string {
 /**
  * 跑 publish step:iterate 用户勾选的平台 → 对每个调 driver(已登录就上传,未登录跳过)。
  * 任何单平台异常都吞掉、记日志、继续下一个。绝不抛。
+ *
+ * v6.13:开头开【一个】专用发布窗口,9 平台共用其 tab 串行 navigate + 上传(见文件头注释)。
  */
 export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublishResult> {
   const list = Array.isArray(opts.platforms) ? opts.platforms.filter(Boolean) : [];
@@ -154,26 +269,41 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
 
   opts.onLog?.(`🚀 准备发布到 ${list.length} 个平台:${list.map(platformLabel).join(' / ')}`);
 
+  // v6.14:拉服务端下发的 driver 脚本(热更新 selector,不发版)。fetch 失败 →
+  //   remotePack=null,全部走编译内置 driver(离线/老 backend 兼容)。
+  const remotePack = await fetchPublishDrivers();
+  if (remotePack && Object.keys(remotePack.drivers).length > 0) {
+    opts.onLog?.(`☁️ 已拉取云端发布脚本(${Object.keys(remotePack.drivers).length} 个平台)`);
+  }
+
+  // 开一个专用发布窗口的固定 tab(9 平台共用)。拿不到 tabId → 回退每平台独立窗口模式。
+  const firstUrl = PUBLISHER_ANCHOR_URL[list[0] as VideoPlatform] || 'about:blank';
+  const publishTabId = await openPublishTab(firstUrl, (m) => opts.onLog?.(m));
+  if (typeof publishTabId === 'number') {
+    opts.onLog?.('🪟 已开【单个】发布窗口,所有平台将在同一窗口依次上传(不再每平台开窗)');
+  }
+
   for (const id of list) {
     if (opts.signal?.aborted) {
       opts.onLog?.('⏹ 已停止 · 后续平台跳过');
       break;
     }
     const label = platformLabel(id);
+    // 该平台的执行体:优先云端下发脚本;没有(fetch 失败/backend 未配)→ 编译内置 driver。
+    const remoteCode = remotePack?.drivers?.[id];
     const driver = getDriver(id as VideoPlatform);
-    if (!driver) {
-      // driver 文件还没实装(比如 9 平台分批 land,本期还没做的那几个)
+    if (!remoteCode && !driver) {
+      // 云端没下发 + 本地也没实装 → 跳过
       opts.onLog?.(`⚠️ ${label} driver 未实装 · 跳过(后续版本会补)`);
       result.skippedCount++;
       result.details.push({ platform: id, status: 'skipped', reason: 'driver_not_implemented' });
       continue;
     }
 
-    // 登录前置:自动开浏览器对应平台 tab(创作中心/主站)+ 轮询等登录态 OK。
-    //   这是修「发布永远跳过」的根因 —— 以前直接 driver.checkLogin 查 tab_list,但从没先
-    //   把 tab 开出来,所以恒「未登录」。现在对齐 scenario 任务的「开 tab → 等登录」流程
-    //   (只是把 scenario 的 LoginRequiredModal 手动 gate 自动化成 pipeline 自动开 tab + 轮询)。
-    const loginStatus = await ensureLoggedInTab(id as VideoPlatform, (m) => opts.onLog?.(`   ${m}`), opts.signal);
+    // 登录前置:单 tab 模式 navigate 同一发布 tab;回退模式开独立窗口。两者都轮询等登录(最多 3 分钟)。
+    const loginStatus = typeof publishTabId === 'number'
+      ? await ensureLoggedInOnTab(id as VideoPlatform, publishTabId, (m) => opts.onLog?.(`   ${m}`), opts.signal)
+      : await ensureLoggedInTab(id as VideoPlatform, (m) => opts.onLog?.(`   ${m}`), opts.signal);
     if (loginStatus === 'browser_not_connected') {
       opts.onLog?.(`⚠️ ${label} 跳过 · 浏览器未连接(请打开装了 NoobClaw 插件的 Chrome/Edge 再跑)`);
       result.skippedCount++;
@@ -181,28 +311,50 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
       continue;
     }
     if (loginStatus !== 'logged_in') {
-      opts.onLog?.(`⚠️ ${label} 未登录(等了 90s 仍未登录)· 跳过,下次运行会补传`);
+      // 决策②:只针对本条视频不补传 —— 不写"下次补传",也不持久化任何放弃标记。
+      opts.onLog?.(`⚠️ ${label} 未登录(等了 3 分钟仍未登录)· 跳过本条视频(不再补传)`);
       result.skippedCount++;
       result.details.push({ platform: id, status: 'skipped', reason: 'not_logged_in' });
       continue;
     }
     opts.onLog?.(`✅ ${label} 已登录,准备上传`);
     // 导航到精确上传页(创作中心首页 → 上传页),否则 driver 在首页找不到 file input。
-    await navigateToUploadPage(id as VideoPlatform, (m) => opts.onLog?.(`   ${m}`));
+    if (typeof publishTabId === 'number') {
+      const anchor = PUBLISHER_ANCHOR_URL[id as VideoPlatform];
+      if (anchor) { try { await navigateTab(anchor, publishTabId); await sleep(1500); } catch { /* driver 内部还会等 */ } }
+    } else {
+      await navigateToUploadPage(id as VideoPlatform, (m) => opts.onLog?.(`   ${m}`));
+    }
 
-    // 上传 —— 单平台异常吞掉,继续下一个
+    // 上传 —— 单平台异常吞掉,继续下一个。单 tab 模式把 tabId 透传给 driver(命令钉到该 tab)。
+    //   优先云端下发脚本(热更新);编译失败(语法错,零副作用)→ 安全 fallback 内置 driver;
+    //   运行中失败/抛错 → 算该平台失败,绝不再跑内置(可能已传一半,重跑会重复发文)。
     opts.onLog?.(`📤 ${label} · 开始上传…`);
+    const ctx: PublishCtx | undefined = typeof publishTabId === 'number' ? { tabId: publishTabId } : undefined;
+    const input: PublishInput = {
+      videoPath: opts.videoPath,
+      title: opts.title,
+      description: opts.description,
+      tags: opts.tags,
+    };
+    const driverLog = (msg: string) => opts.onLog?.(`   ${msg}`);
     let pr: { ok: boolean; reason?: string };
-    try {
-      const input: PublishInput = {
-        videoPath: opts.videoPath,
-        title: opts.title,
-        description: opts.description,
-        tags: opts.tags,
-      };
-      pr = await driver.upload(input, (msg) => opts.onLog?.(`   ${msg}`));
-    } catch (e: any) {
-      pr = { ok: false, reason: 'driver_threw:' + String(e?.message || e).slice(0, 120) };
+    if (remoteCode) {
+      pr = await runRemoteDriver(id as VideoPlatform, remoteCode, input, driverLog, ctx);
+      if (!pr.ok && pr.reason?.startsWith('remote_compile_failed') && driver) {
+        opts.onLog?.(`   ☁️→💾 云端脚本编译失败,改用内置 driver`);
+        try {
+          pr = await driver.upload(input, driverLog, ctx);
+        } catch (e: any) {
+          pr = { ok: false, reason: 'driver_threw:' + String(e?.message || e).slice(0, 120) };
+        }
+      }
+    } else {
+      try {
+        pr = await driver!.upload(input, driverLog, ctx);
+      } catch (e: any) {
+        pr = { ok: false, reason: 'driver_threw:' + String(e?.message || e).slice(0, 120) };
+      }
     }
     if (pr.ok) {
       opts.onLog?.(`✅ ${label} 发布完成`);

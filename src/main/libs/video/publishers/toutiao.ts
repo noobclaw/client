@@ -8,10 +8,9 @@
  *   - 「发布」按钮
  */
 
-import { sendBrowserCommand } from '../../browserBridge';
 import { checkPlatformLogin } from '../../scenario/platformLoginDriver';
-import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult } from './types';
-import { uploadFileToInput, bridgeOptsFor, sleep, waitForSelector, setInputValue } from './publisherUtils';
+import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult, PublishCtx } from './types';
+import { uploadFileToInput, pubCmd, sleep, waitForSelector, setInputValue } from './publisherUtils';
 
 const PLATFORM = 'toutiao' as const;
 
@@ -22,14 +21,15 @@ async function checkLogin(): Promise<PublisherLoginStatus> {
   } catch { return 'unknown'; }
 }
 
-async function upload(input: PublishInput, onLog?: (msg: string) => void): Promise<PublishResult> {
+async function upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: PublishCtx): Promise<PublishResult> {
   const log = (m: string) => { try { onLog && onLog(m); } catch { /* ignore */ } };
+  const tabId = ctx?.tabId;
 
   try {
     log('🟠 [头条号] 等创作中心…');
     const ready = await waitForSelector(PLATFORM,
       'input[type="file"][accept*="video"], .byte-upload input[type="file"], input[type="file"]',
-      { timeoutMs: 15000 });
+      { timeoutMs: 15000, tabId });
     if (!ready) return { ok: false, reason: 'upload_input_not_found' };
 
     log('📤 上传视频…');
@@ -38,30 +38,31 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
       filePath: input.videoPath,
       targetSelector: 'input[type="file"][accept*="video"], .byte-upload input[type="file"], input[type="file"]',
       mimeType: 'video/mp4',
+      tabId,
     });
     if (!upR.ok) return { ok: false, reason: 'video_upload_failed:' + upR.reason };
     log('✓ 视频已上传,等头条号处理…');
 
     // 等标题输入框
     const titleSel = '.title-input input, input[placeholder*="标题"], input.byte-input';
-    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000 });
+    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000, tabId });
     if (!titleReady) return { ok: false, reason: 'title_input_not_appearing' };
 
     // 标题(必填,30 字符上限)
     const title = (input.title || input.description || '小视频').slice(0, 30);
     log(`✏️ 填标题:${title.slice(0, 20)}…`);
-    await setInputValue(PLATFORM, titleSel, title);
+    await setInputValue(PLATFORM, titleSel, title, tabId);
 
     // 简介(rich editor;头条号是 Slate 派生编辑器)
     const descSel = '.editor-content [contenteditable="true"], div[contenteditable="true"][data-slate-editor], .ck-editor__editable';
     if (input.description) {
       log(`✏️ 填简介(${input.description.length} 字符)…`);
       try {
-        await sendBrowserCommand('main_world_click', { selector: descSel }, 5000, bridgeOptsFor(PLATFORM));
+        await pubCmd(PLATFORM, 'main_world_click', { selector: descSel }, 5000, tabId);
         await sleep(400);
-        await sendBrowserCommand('editor_insert_text', {
+        await pubCmd(PLATFORM, 'editor_insert_text', {
           selector: descSel, text: input.description.slice(0, 1000),
-        }, 10000, bridgeOptsFor(PLATFORM));
+        }, 10000, tabId);
       } catch { log('⚠️ 简介填入失败,继续'); }
     }
 
@@ -74,12 +75,12 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
         const clean = tag.replace(/[#\s,，]+/g, '').slice(0, 20);
         if (!clean) continue;
         try {
-          await sendBrowserCommand('main_world_click', { selector: tagInputSel }, 5000, bridgeOptsFor(PLATFORM));
+          await pubCmd(PLATFORM, 'main_world_click', { selector: tagInputSel }, 5000, tabId);
           await sleep(200);
-          await setInputValue(PLATFORM, tagInputSel, clean);
+          await setInputValue(PLATFORM, tagInputSel, clean, tabId);
           await sleep(200);
-          await sendBrowserCommand('press_key',
-            { selector: tagInputSel, key: 'Enter' }, 5000, bridgeOptsFor(PLATFORM));
+          await pubCmd(PLATFORM, 'press_key',
+            { selector: tagInputSel, key: 'Enter' }, 5000, tabId);
           await sleep(300);
         } catch { /* 单 tag 失败继续 */ }
       }
@@ -90,11 +91,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     for (let i = 0; i < 6; i++) {
       if (i > 0) await sleep(1500);
       try {
-        const r: any = await sendBrowserCommand('click_with_text', {
+        const r: any = await pubCmd(PLATFORM, 'click_with_text', {
           containerSel: 'body',
           acceptedTexts: ['发布', '立即发布', '发表', 'Publish'],
           opts: { fuzzy: true, skipInactive: true, returnDebug: true },
-        }, 8000, bridgeOptsFor(PLATFORM));
+        }, 8000, tabId);
         if (r && r.ok) { posted = true; break; }
       } catch { /* retry */ }
     }

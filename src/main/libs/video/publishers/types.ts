@@ -80,6 +80,23 @@ export interface PublishResult {
   publishedUrl?: string;
 }
 
+/**
+ * 单次发布【运行期上下文】。
+ *
+ * v6.13 单 tab 复用方案:runPublish 开一个【专用 video_publish 窗口的固定 tab】,
+ * 9 个平台【共用这一个 tab】靠 navigate 串行切上传页(不再每平台开一个窗口)。
+ * driver 上传时所有 sendBrowserCommand 都要把命令钉到这个 tab —— extension 按
+ * `params.tabId` 直接 chrome.tabs.get 寻址,绕过 tabPattern/tabGroup 路由(phaseRunner
+ * ScopedTab v5.27+ 同款机制)。
+ *
+ * 【向后兼容】tabId 缺省(老调用方 / 单测 / 无 window_registry_v6 能力的旧扩展)时,
+ * driver 退回原 bridgeOptsFor 的 tabPattern 路由,行为与本次改动前完全一致。
+ */
+export interface PublishCtx {
+  /** 复用的固定发布 tab id。runPublish 开窗后拿到,透传给每个 driver。 */
+  tabId?: number;
+}
+
 /** 单平台 driver 契约。pipeline 不关心实现细节,只调这 2 个方法。 */
 export interface PublisherDriver {
   /** 平台 id。 */
@@ -88,8 +105,10 @@ export interface PublisherDriver {
    * 检查登录态。绝不抛,不确定就返 'unknown'(pipeline 当未登录处理 → 跳过)。
    * 实现建议:走 platformLoginDriver.checkPlatformLogin(同平台 id),它已经按 tab pattern
    * 检测过登录态;driver 只是包一层。
+   * @param ctx 可选运行期上下文(tabId);checkLogin 走全局 tab_list 扫描,通常不需要,
+   *   接口对称保留。
    */
-  checkLogin(): Promise<PublisherLoginStatus>;
+  checkLogin(ctx?: PublishCtx): Promise<PublisherLoginStatus>;
   /**
    * 上传视频 + 填正文 + 发布。绝不抛,失败返 { ok:false, reason }。
    * 实现建议:走 sendBrowserCommand(browserBridge.ts)直接驱动 chrome-extension,
@@ -97,6 +116,8 @@ export interface PublisherDriver {
    * + main_world_click + editor_insert_text + click_with_text)。
    * @param onLog 日志回调,driver 推「⏳ 等视频处理…」「✓ 已发布」之类,pipeline 把它
    *   塞到 tracker.progress 让 UI 看到实时进度。
+   * @param ctx 运行期上下文。ctx.tabId 存在时,driver 内所有命令钉到该 tab(单 tab 复用);
+   *   缺省时退回 bridgeOptsFor 路由(向后兼容)。
    */
-  upload(input: PublishInput, onLog?: (msg: string) => void): Promise<PublishResult>;
+  upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: PublishCtx): Promise<PublishResult>;
 }

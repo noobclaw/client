@@ -16,6 +16,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { i18nService } from '../../../services/i18n';
 import { CardActionRow } from '../CardActionRow';
+import { VideoLoginCheckModal } from './VideoLoginCheckModal';
 import { noobClawAuth } from '../../../services/noobclawAuth';
 import { noobClawApi } from '../../../services/noobclawApi';
 import { getBackendApiUrl } from '../../../services/endpoints';
@@ -1290,6 +1291,22 @@ const VideoTaskDetail: React.FC<{
   // 输出目录:优先本次运行的目录,否则从成片路径推(配置卡「输出目录」链接用)。
   const outDir = latestRun?.outputDir || dirOf(latestRun?.outputPath) || dirOf(task.lastOutputPath);
 
+  // 任务配置的发布平台(空 = 仅存本地,运行前无需登录校验)。
+  const publishPlatforms: string[] = Array.isArray((task.input as any).publishPlatforms)
+    ? ((task.input as any).publishPlatforms as string[]) : [];
+  // 手动运行前的多平台登录校验(对齐创建期 gate):勾了发布平台就先弹,全登录才开跑。
+  // 定时调度(videoQueue.onScheduleDue)不走这里 —— 无人值守弹框没人点,靠运行期
+  // 「等 3 分钟超时跳过」兜底。
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+
+  // 真正开跑(余额 + 登录校验都过了之后)。
+  const startRun = () => {
+    // 抢占式:空闲立即开跑;已有视频在生成则不排队,提示稍后再试。
+    if (!videoQueue.tryRun('local', task.id, task.title)) {
+      setActionError(isZh ? '已有视频正在生成,请等它完成后再开始。' : 'A video is generating. Please wait until it finishes.');
+    }
+  };
+
   const handleRerun = async () => {
     setActionError(null);
     // 「重新跑」对齐向导首跑的资金安全预检:模式一(在线素材,无本地上传)成片后会扣
@@ -1309,10 +1326,9 @@ const VideoTaskDetail: React.FC<{
       // 本地上传任务不收平台费,但 AI 写稿仍可能实时扣 token → 保留一次轻量余额校验。
       return;
     }
-    // 抢占式:空闲立即开跑;已有视频在生成则不排队,提示稍后再试。
-    if (!videoQueue.tryRun('local', task.id, task.title)) {
-      setActionError(isZh ? '已有视频正在生成,请等它完成后再开始。' : 'A video is generating. Please wait until it finishes.');
-    }
+    // 勾了发布平台 → 先过多平台登录校验(全绿才真正开跑);仅存本地 → 直接跑。
+    if (publishPlatforms.length > 0) { setShowLoginCheck(true); return; }
+    startRun();
   };
 
   // 删除流程:对齐 scenario TaskDetailPage —— 运行中拒绝(先停);首次点击亮红 3 秒,
@@ -1549,6 +1565,14 @@ const VideoTaskDetail: React.FC<{
 
       {/* 历史运行不再内嵌在任务详情里(对齐币安:详情页只看「当前运行明细」,
           往期记录走侧栏「运行记录」tab)。「上次运行」卡片可点进最近一条记录。 */}
+
+      {showLoginCheck && (
+        <VideoLoginCheckModal
+          platforms={publishPlatforms}
+          onCancel={() => setShowLoginCheck(false)}
+          onConfirmed={() => { setShowLoginCheck(false); startRun(); }}
+        />
+      )}
     </div>
   );
 };
@@ -2392,6 +2416,14 @@ const VideoConfigModal: React.FC<{
 
   // 用户勾选的发布平台 id 数组 —— 写到 input.publishPlatforms,pipeline 据此 forEach 调 driver。
   const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+
+  // 决策①:要发布(upload 模式 + 勾了平台)时,保存前必须先过【全平台登录校验】(全登录才放行)。
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+  const needPublishLoginCheck = outputMode === 'upload' && selectedPlatformIds.length > 0;
+  const handleFinalClick = () => {
+    if (needPublishLoginCheck) { setSubmitError(null); setShowLoginCheck(true); }
+    else { void handleSubmit(); }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -3269,7 +3301,7 @@ const VideoConfigModal: React.FC<{
           ) : (
             <button
               type="button"
-              onClick={handleSubmit}
+              onClick={handleFinalClick}
               disabled={submitting}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-rose-500 text-white hover:bg-rose-600 disabled:opacity-50"
             >
@@ -3279,6 +3311,13 @@ const VideoConfigModal: React.FC<{
             </button>
           )}
         </div>
+        {showLoginCheck && (
+          <VideoLoginCheckModal
+            platforms={selectedPlatformIds}
+            onCancel={() => setShowLoginCheck(false)}
+            onConfirmed={() => { setShowLoginCheck(false); void handleSubmit(); }}
+          />
+        )}
       </div>
     </div>
   );
@@ -3586,6 +3625,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
     }
   };
 
+  // 决策①:勾了发布平台时,保存前必须先过【全平台登录校验】(全登录才放行)。
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+  const handleFinalClick = () => {
+    if (selectedPlatformIds.length > 0) { setErr(null); setShowLoginCheck(true); }
+    else { void handleCreate(); }
+  };
+
   // 「下一步」按 step 路由 + 必填校验。
   const goNext = () => {
     // Step 2 = 内容/数据,必填校验放这里(版式默认 rank_list,不会缺)。
@@ -3846,7 +3892,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               {isZh ? '下一步 →' : 'Next →'}
             </button>
           ) : (
-            <button type="button" onClick={handleCreate} disabled={submitting}
+            <button type="button" onClick={handleFinalClick} disabled={submitting}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600 disabled:opacity-50">
               {submitting
                 ? (isEdit ? (isZh ? '保存中...' : 'Saving...') : (isZh ? '创建中...' : 'Creating...'))
@@ -3854,6 +3900,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
             </button>
           )}
         </div>
+        {showLoginCheck && (
+          <VideoLoginCheckModal
+            platforms={selectedPlatformIds}
+            onCancel={() => setShowLoginCheck(false)}
+            onConfirmed={() => { setShowLoginCheck(false); void handleCreate(); }}
+          />
+        )}
       </div>
     </div>
   );

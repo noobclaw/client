@@ -11,10 +11,9 @@
  *   - 「发表」按钮
  */
 
-import { sendBrowserCommand } from '../../browserBridge';
 import { checkPlatformLogin } from '../../scenario/platformLoginDriver';
-import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult } from './types';
-import { uploadFileToInput, bridgeOptsFor, sleep, waitForSelector, setInputValue } from './publisherUtils';
+import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult, PublishCtx } from './types';
+import { uploadFileToInput, pubCmd, sleep, waitForSelector, setInputValue } from './publisherUtils';
 
 const PLATFORM = 'shipinhao' as const;
 
@@ -25,14 +24,15 @@ async function checkLogin(): Promise<PublisherLoginStatus> {
   } catch { return 'unknown'; }
 }
 
-async function upload(input: PublishInput, onLog?: (msg: string) => void): Promise<PublishResult> {
+async function upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: PublishCtx): Promise<PublishResult> {
   const log = (m: string) => { try { onLog && onLog(m); } catch { /* ignore */ } };
+  const tabId = ctx?.tabId;
 
   try {
     log('🟢 [视频号] 等创作助手…');
     const ready = await waitForSelector(PLATFORM,
       'input[type="file"][accept*="video"], .post-create input[type="file"], input[type="file"]',
-      { timeoutMs: 15000 });
+      { timeoutMs: 15000, tabId });
     if (!ready) return { ok: false, reason: 'upload_input_not_found' };
 
     log('📤 上传视频…');
@@ -41,19 +41,20 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
       filePath: input.videoPath,
       targetSelector: 'input[type="file"][accept*="video"], .post-create input[type="file"], input[type="file"]',
       mimeType: 'video/mp4',
+      tabId,
     });
     if (!upR.ok) return { ok: false, reason: 'video_upload_failed:' + upR.reason };
     log('✓ 视频已上传,等微信处理…');
 
     // 等短标题输入框(必填,转码完成信号)
     const titleSel = 'input[placeholder*="标题"], input[placeholder*="短标题"], .short-title-input input';
-    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000 });
+    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000, tabId });
     if (!titleReady) return { ok: false, reason: 'title_input_not_appearing' };
 
     // 短标题(6-16 字必填)
     const shortTitle = (input.title || input.description || '小视频').slice(0, 16).padEnd(6, ' ').trim();
     log(`✏️ 填短标题:${shortTitle}`);
-    await setInputValue(PLATFORM, titleSel, shortTitle);
+    await setInputValue(PLATFORM, titleSel, shortTitle, tabId);
 
     // 描述(contentEditable)
     const descSel = '.input-editor [contenteditable="true"], div[contenteditable="true"][data-placeholder*="描述"]';
@@ -70,11 +71,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     if (desc) {
       log(`✏️ 填描述(${desc.length} 字符)…`);
       try {
-        await sendBrowserCommand('main_world_click', { selector: descSel }, 5000, bridgeOptsFor(PLATFORM));
+        await pubCmd(PLATFORM, 'main_world_click', { selector: descSel }, 5000, tabId);
         await sleep(400);
-        await sendBrowserCommand('editor_insert_text', {
+        await pubCmd(PLATFORM, 'editor_insert_text', {
           selector: descSel, text: desc,
-        }, 10000, bridgeOptsFor(PLATFORM));
+        }, 10000, tabId);
       } catch { log('⚠️ 描述填入失败,继续'); }
     }
 
@@ -83,11 +84,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     for (let i = 0; i < 6; i++) {
       if (i > 0) await sleep(1500);
       try {
-        const r: any = await sendBrowserCommand('click_with_text', {
+        const r: any = await pubCmd(PLATFORM, 'click_with_text', {
           containerSel: 'body',
           acceptedTexts: ['发表', '发布', 'Publish'],
           opts: { fuzzy: true, skipInactive: true, returnDebug: true },
-        }, 8000, bridgeOptsFor(PLATFORM));
+        }, 8000, tabId);
         if (r && r.ok) { posted = true; break; }
       } catch { /* retry */ }
     }

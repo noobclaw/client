@@ -80,6 +80,31 @@ export function bridgeOptsFor(platform: VideoPlatform): {
 }
 
 /**
+ * 把 tabId 塞进命令 params —— v6.13 单 tab 复用的核心。
+ * extension 见到 params.tabId 就 chrome.tabs.get(tabId) 直接寻址,绕过 tabPattern。
+ * tabId 缺省(null/undefined)时原样返回 params,走 bridgeOptsFor 的 tabPattern 路由(向后兼容)。
+ */
+function withTabId(params: any, tabId?: number): any {
+  return typeof tabId === 'number' ? { ...params, tabId } : params;
+}
+
+/**
+ * 统一的 driver → extension 命令入口。所有 driver 内部的 sendBrowserCommand 都改走这里:
+ *   · 有 tabId → 命令钉到那个固定 tab(单 tab 复用,9 平台共用一个 video_publish tab)
+ *   · 无 tabId → 退回 bridgeOptsFor(platform) 的 tabPattern 路由(行为同改动前)
+ * envelope 始终带 bridgeOptsFor(tabGroup/anchor_url 等元信息),extension 在有 tabId 时优先 tabId。
+ */
+export function pubCmd(
+  platform: VideoPlatform,
+  command: string,
+  params: any,
+  timeout: number,
+  tabId?: number,
+): Promise<any> {
+  return sendBrowserCommand(command, withTabId(params, tabId), timeout, bridgeOptsFor(platform));
+}
+
+/**
  * 上传本地 mp4 到指定 file input —— 抄 phaseRunner.uploadVideoFromDisk:
  *   1. 通过 localFileServer.registerFile() 在 sidecar 注册一个临时 HTTP URL
  *   2. sendBrowserCommand('upload_file_from_url', { selector, fileUrl, ... })
@@ -95,6 +120,8 @@ export async function uploadFileToInput(opts: {
   mimeType?: string;
   /** 单次上传超时(ms),默认 5 分钟。 */
   ttlMs?: number;
+  /** v6.13 单 tab 复用:固定发布 tab id;给了就钉到该 tab,不走 tabPattern。 */
+  tabId?: number;
 }): Promise<{ ok: boolean; reason?: string }> {
   if (!fs.existsSync(opts.filePath)) return { ok: false, reason: 'file_not_found' };
   const { registerFile, buildUrl, unregister } = require('../../localFileServer');
@@ -110,12 +137,12 @@ export async function uploadFileToInput(opts: {
   try {
     const r: any = await sendBrowserCommand(
       'upload_file_from_url',
-      {
+      withTabId({
         selector: opts.targetSelector,
         fileUrl,
         fileName,
         mimeType: opts.mimeType || 'video/mp4',
-      },
+      }, opts.tabId),
       ttl,
       bridgeOptsFor(opts.platform),
     );
@@ -132,15 +159,15 @@ export async function uploadFileToInput(opts: {
 export async function waitForSelector(
   platform: VideoPlatform,
   selector: string,
-  opts?: { timeoutMs?: number; intervalMs?: number },
+  opts?: { timeoutMs?: number; intervalMs?: number; tabId?: number },
 ): Promise<boolean> {
   const deadline = Date.now() + (opts?.timeoutMs || 15000);
   const interval = opts?.intervalMs || 500;
   while (Date.now() < deadline) {
     try {
-      const r: any = await sendBrowserCommand('query_selector', {
+      const r: any = await pubCmd(platform, 'query_selector', {
         selector, limit: 1,
-      }, 5000, bridgeOptsFor(platform));
+      }, 5000, opts?.tabId);
       const els = (r && r.elements) || (r && r.data && r.data.elements) || [];
       if (els.length > 0) return true;
     } catch { /* keep polling */ }
@@ -157,17 +184,19 @@ export async function clickWithText(
     acceptedTexts: string[];
     /** 失败重试次数(每次间隔 1.5s)。默认 6。 */
     retries?: number;
+    /** v6.13 单 tab 复用:固定发布 tab id。 */
+    tabId?: number;
   },
 ): Promise<{ ok: boolean; reason?: string }> {
   const retries = opts.retries || 6;
   for (let i = 0; i < retries; i++) {
     if (i > 0) await sleep(1500);
     try {
-      const r: any = await sendBrowserCommand('click_with_text', {
+      const r: any = await pubCmd(platform, 'click_with_text', {
         containerSel: opts.containerSel,
         acceptedTexts: opts.acceptedTexts,
         opts: { fuzzy: true, skipInactive: true, returnDebug: true },
-      }, 8000, bridgeOptsFor(platform));
+      }, 8000, opts.tabId);
       if (r && r.ok) return { ok: true };
       if (r && r.error && !/inactive/i.test(String(r.error))) {
         return { ok: false, reason: String(r.error).slice(0, 100) };
@@ -178,9 +207,9 @@ export async function clickWithText(
 }
 
 /** 主世界 click(穿透 React 合成事件,适合 modal 触发按钮)。 */
-export async function mainWorldClick(platform: VideoPlatform, selector: string): Promise<boolean> {
+export async function mainWorldClick(platform: VideoPlatform, selector: string, tabId?: number): Promise<boolean> {
   try {
-    await sendBrowserCommand('main_world_click', { selector }, 8000, bridgeOptsFor(platform));
+    await pubCmd(platform, 'main_world_click', { selector }, 8000, tabId);
     return true;
   } catch { return false; }
 }
@@ -190,14 +219,15 @@ export async function insertEditorText(
   platform: VideoPlatform,
   editorSel: string,
   text: string,
+  tabId?: number,
 ): Promise<{ ok: boolean; reason?: string }> {
   try {
     // 先点一下让 editor 获得焦点
-    await sendBrowserCommand('main_world_click', { selector: editorSel }, 5000, bridgeOptsFor(platform));
+    await pubCmd(platform, 'main_world_click', { selector: editorSel }, 5000, tabId);
     await sleep(400);
-    const r: any = await sendBrowserCommand('editor_insert_text', {
+    const r: any = await pubCmd(platform, 'editor_insert_text', {
       selector: editorSel, text,
-    }, 10000, bridgeOptsFor(platform));
+    }, 10000, tabId);
     if (!r || (r.ok === false && r.error)) {
       return { ok: false, reason: 'editor_insert_failed:' + (r?.error || 'unknown') };
     }
@@ -212,11 +242,12 @@ export async function setInputValue(
   platform: VideoPlatform,
   selector: string,
   value: string,
+  tabId?: number,
 ): Promise<boolean> {
   try {
-    const r: any = await sendBrowserCommand('set_input_value', {
+    const r: any = await pubCmd(platform, 'set_input_value', {
       selector, value,
-    }, 5000, bridgeOptsFor(platform));
+    }, 5000, tabId);
     return !!(r && r.ok !== false);
   } catch { return false; }
 }

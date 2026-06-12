@@ -13,10 +13,9 @@
  * 文字插入用 editor_insert_text(execCommand insertText 路径)能稳。
  */
 
-import { sendBrowserCommand } from '../../browserBridge';
 import { checkPlatformLogin } from '../../scenario/platformLoginDriver';
-import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult } from './types';
-import { uploadFileToInput, bridgeOptsFor, sleep, waitForSelector } from './publisherUtils';
+import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult, PublishCtx } from './types';
+import { uploadFileToInput, pubCmd, sleep, waitForSelector } from './publisherUtils';
 
 const PLATFORM = 'x' as const;
 
@@ -41,8 +40,9 @@ function buildTweetText(input: PublishInput): string {
   return parts.join('\n\n').slice(0, 270); // 留 10 字符 buffer
 }
 
-async function upload(input: PublishInput, onLog?: (msg: string) => void): Promise<PublishResult> {
+async function upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: PublishCtx): Promise<PublishResult> {
   const log = (m: string) => { try { onLog && onLog(m); } catch { /* ignore */ } };
+  const tabId = ctx?.tabId;
   const text = buildTweetText(input);
 
   try {
@@ -50,17 +50,17 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     log('🐦 [推特] 等 compose 区域…');
     const composeReady = await waitForSelector(PLATFORM,
       'div[data-testid="tweetTextarea_0"], [aria-label*="Post text"], [aria-label*="Tweet text"]',
-      { timeoutMs: 8000 });
+      { timeoutMs: 8000, tabId });
     if (!composeReady) {
       // 没找到 compose,试着点工具栏 "post" 按钮弹 modal
       log('   未见 compose, 尝试点 [Post] 按钮…');
       try {
-        await sendBrowserCommand('main_world_click',
+        await pubCmd(PLATFORM, 'main_world_click',
           { selector: 'a[data-testid="SideNav_NewTweet_Button"], [aria-label*="Post"]' },
-          5000, bridgeOptsFor(PLATFORM));
+          5000, tabId);
         await sleep(800);
       } catch { /* fallthrough — query 再试 */ }
-      const retry = await waitForSelector(PLATFORM, 'div[data-testid="tweetTextarea_0"]', { timeoutMs: 5000 });
+      const retry = await waitForSelector(PLATFORM, 'div[data-testid="tweetTextarea_0"]', { timeoutMs: 5000, tabId });
       if (!retry) return { ok: false, reason: 'compose_not_found' };
     }
 
@@ -72,6 +72,7 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
       filePath: input.videoPath,
       targetSelector: fileInputSel,
       mimeType: 'video/mp4',
+      tabId,
     });
     if (!upR.ok) return { ok: false, reason: 'video_upload_failed:' + upR.reason };
 
@@ -84,11 +85,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
       log(`✏️ 写入推文(${text.length} 字符)…`);
       const editorSel = 'div[data-testid="tweetTextarea_0"]';
       try {
-        await sendBrowserCommand('main_world_click', { selector: editorSel }, 5000, bridgeOptsFor(PLATFORM));
+        await pubCmd(PLATFORM, 'main_world_click', { selector: editorSel }, 5000, tabId);
         await sleep(400);
-        const ir: any = await sendBrowserCommand('editor_insert_text', {
+        const ir: any = await pubCmd(PLATFORM, 'editor_insert_text', {
           selector: editorSel, text,
-        }, 10000, bridgeOptsFor(PLATFORM));
+        }, 10000, tabId);
         if (!ir || (ir.ok === false && ir.error)) {
           log('⚠️ 写正文失败,继续发推(仅视频)');
         }
@@ -103,20 +104,20 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     for (let i = 0; i < 5; i++) {
       if (i > 0) await sleep(1500);
       try {
-        const r: any = await sendBrowserCommand('click_with_text', {
+        const r: any = await pubCmd(PLATFORM, 'click_with_text', {
           containerSel: 'body',
           acceptedTexts: ['Post', 'Tweet', '发推', '发布', '发送'],
           opts: { fuzzy: true, skipInactive: true, returnDebug: true },
-        }, 8000, bridgeOptsFor(PLATFORM));
+        }, 8000, tabId);
         if (r && r.ok) { posted = true; break; }
       } catch { /* retry */ }
     }
     if (!posted) {
       // 直接试 testid
       try {
-        await sendBrowserCommand('main_world_click',
+        await pubCmd(PLATFORM, 'main_world_click',
           { selector: 'div[data-testid="tweetButton"], button[data-testid="tweetButtonInline"]' },
-          5000, bridgeOptsFor(PLATFORM));
+          5000, tabId);
         posted = true;
       } catch { return { ok: false, reason: 'post_button_not_found' }; }
     }

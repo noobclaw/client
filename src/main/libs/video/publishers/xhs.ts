@@ -20,10 +20,9 @@
  *   7. 点 [发布]
  */
 
-import { sendBrowserCommand } from '../../browserBridge';
 import { checkPlatformLogin } from '../../scenario/platformLoginDriver';
-import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult } from './types';
-import { uploadFileToInput, bridgeOptsFor, sleep, waitForSelector } from './publisherUtils';
+import type { PublisherDriver, PublisherLoginStatus, PublishInput, PublishResult, PublishCtx } from './types';
+import { uploadFileToInput, pubCmd, sleep, waitForSelector } from './publisherUtils';
 
 const PLATFORM = 'xhs' as const;
 
@@ -34,25 +33,26 @@ async function checkLogin(): Promise<PublisherLoginStatus> {
   } catch { return 'unknown'; }
 }
 
-async function upload(input: PublishInput, onLog?: (msg: string) => void): Promise<PublishResult> {
+async function upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: PublishCtx): Promise<PublishResult> {
   const log = (m: string) => { try { onLog && onLog(m); } catch { /* ignore */ } };
+  const tabId = ctx?.tabId;
 
   try {
     // Step 1: 等创作中心
     log('📕 [小红书] 等创作中心…');
     const pageReady = await waitForSelector(PLATFORM,
       '.creator-tab, .creator-aside, .header-creator, input[type="file"]',
-      { timeoutMs: 15000 });
+      { timeoutMs: 15000, tabId });
     if (!pageReady) return { ok: false, reason: 'creator_page_not_ready' };
 
     // Step 2: 切到「上传视频」tab(可能默认是图文)。失败不阻塞 —— 也许默认就是视频 tab。
     log('🎬 切到「上传视频」tab…');
     try {
-      await sendBrowserCommand('click_with_text', {
+      await pubCmd(PLATFORM, 'click_with_text', {
         containerSel: '.creator-tab, .header-tabs, body',
         acceptedTexts: ['上传视频', '视频', 'Video'],
         opts: { fuzzy: true, skipInactive: true },
-      }, 6000, bridgeOptsFor(PLATFORM));
+      }, 6000, tabId);
       await sleep(800);
     } catch { /* 也许已经在视频 tab */ }
 
@@ -64,13 +64,14 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
       filePath: input.videoPath,
       targetSelector: fileInputSel,
       mimeType: 'video/mp4',
+      tabId,
     });
     if (!upR.ok) return { ok: false, reason: 'video_upload_failed:' + upR.reason };
     log('✓ 视频已注入,等小红书解析…');
 
     // Step 4: 等标题输入框出现(转码完成信号)
     const titleSel = '.title-input input, input[placeholder*="标题"], input[placeholder*="填写标题"]';
-    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000 });
+    const titleReady = await waitForSelector(PLATFORM, titleSel, { timeoutMs: 5 * 60 * 1000, intervalMs: 2000, tabId });
     if (!titleReady) return { ok: false, reason: 'title_input_not_appearing' };
     log('✓ 解析完成,准备填表');
 
@@ -78,9 +79,9 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     if (input.title) {
       log(`✏️ 填标题(${input.title.length} 字符)…`);
       try {
-        await sendBrowserCommand('set_input_value', {
+        await pubCmd(PLATFORM, 'set_input_value', {
           selector: titleSel, value: input.title.slice(0, 20), // 小红书标题 20 字符上限
-        }, 5000, bridgeOptsFor(PLATFORM));
+        }, 5000, tabId);
       } catch { log('⚠️ 标题填入失败,继续'); }
     }
 
@@ -99,12 +100,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     if (desc) {
       log(`✏️ 填描述(${desc.length} 字符)…`);
       try {
-        await sendBrowserCommand('main_world_click',
-          { selector: editorSel }, 5000, bridgeOptsFor(PLATFORM));
+        await pubCmd(PLATFORM, 'main_world_click', { selector: editorSel }, 5000, tabId);
         await sleep(400);
-        await sendBrowserCommand('editor_insert_text', {
+        await pubCmd(PLATFORM, 'editor_insert_text', {
           selector: editorSel, text: desc,
-        }, 10000, bridgeOptsFor(PLATFORM));
+        }, 10000, tabId);
       } catch { log('⚠️ 描述填入失败,继续'); }
     }
 
@@ -114,11 +114,11 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void): Promi
     for (let i = 0; i < 6; i++) {
       if (i > 0) await sleep(1500);
       try {
-        const r: any = await sendBrowserCommand('click_with_text', {
+        const r: any = await pubCmd(PLATFORM, 'click_with_text', {
           containerSel: 'body',
           acceptedTexts: ['发布', '发布笔记', 'Publish'],
           opts: { fuzzy: true, skipInactive: true, returnDebug: true },
-        }, 8000, bridgeOptsFor(PLATFORM));
+        }, 8000, tabId);
         if (r && r.ok) { posted = true; break; }
       } catch { /* retry */ }
     }

@@ -71,6 +71,11 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   // 所以只登记一个 *_main,不设 *_creator。
   shipinhao_main:   { label: '视频号',  emoji: '📱', domain: 'channels.weixin.qq.com' },
   toutiao_main:     { label: '头条号',  emoji: '📰', domain: 'mp.toutiao.com' },
+  // 视频自动发布【专用复用窗口】—— 跟上面那些「一平台一子域一窗口」不同:video
+  // publish 流程刻意把【所有勾选平台】塞进这一个 windowKey 的【同一个 tab】里,靠
+  // navigate 串行切换上传页(douyin→xhs→tiktok…),避免 9 平台开 9 窗口爆炸。domain
+  // 只是占位(运行期会被 navigate 反复改写),不参与 urlToSubPlatform 推断。
+  video_publish:    { label: '发布',    emoji: '🚀', domain: '(multi — navigated per platform)' },
 };
 
 /** Lookup set for fast enum validation. Derived from the registry. */
