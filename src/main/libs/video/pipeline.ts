@@ -843,7 +843,9 @@ async function runVideoPipeline(
       const resolution = input.seedanceResolution;
       const aiScenes = sentences.map((s, i) => ({
         prompt: buildSeedancePrompt(s, {
-          track: input.track, persona: input.persona,
+          // 有参考文案时不把赛道当画面风格(避免给跨领域参考文案的画面带原赛道倾向);
+          // 画面内容本就贴合口播句子(=参考文案内容),这里只去掉"风格贴合美食"的干扰。
+          track: userText ? undefined : input.track, persona: input.persona,
           lang: contentLang, isI2V: refImagesAi.length > 0, shotIndex: i,
         }),
         // Seedance 单镜上限 12s(1.x/lite),大分镜合并后某段可能超过 → clamp 到 [4,12]。
