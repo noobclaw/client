@@ -679,67 +679,66 @@ async function runVideoPipeline(
     const audios: { audioPath: string; durationSec: number }[] = [];
     const subtitleCues: SubtitleCue[] = [];
     if (wantNarration) {
-      // Voice fallback 整片重做:edge-tts 2026-04 起上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
-      //   单 voice 内 5 次重试仍败 → 切同语种同性别备用 voice 重头合所有句,音色统一不跳变。
-      //   全 fallback voice 都败才真正失败退费;fallback 表见 tts.ts getVoiceFallbacks。
+      // Voice fallback —— 句级 sticky:edge-tts 2026-04 起上游【按 voice 间歇性拒发音频】
+      //   (rany2/edge-tts#473,单次请求随机失败)。每句独立配,某句 5 次重试仍败 → 【只对这句】
+      //   顺着同语种同性别 voiceChain 换备用音色重配,成功的句子全部保留;换成功后【粘住】该音色,
+      //   后续句优先沿用 → 整片音色基本统一,只在被迫切换的那一两句有同性别同语种的细微差异。
+      //   仅当某一句把链上所有 voice 都试败,才整体失败退费。fallback 表见 tts.ts getVoiceFallbacks。
+      //
+      //   ⚠️ 为何不再「整片重做」(7118575 旧逻辑):那版任意一句失败就丢弃已成功句、切 voice 从
+      //   第 0 句重配全部。句子越多,「整片至少一句撞上间歇性拒发」概率越高 → 22 句长文案几乎
+      //   必然触发整片重来 → 三个 voice 轮完耗尽彻底失败。句级 fallback 把失败隔离到单句,救场率高。
       const primary = input.voice || getTtsVoice();
       const voiceChain = getVoiceFallbacks(primary);
-      let succeeded = false;
-      let lastFailIdx = 0;
+      let stickyVoice = voiceChain[0];
+      let timelineOffset = 0;
+      let synthCount = 0;
+      let failIdx = -1;
       let lastReason = '';
-      let finalSynthCount = 0;
 
-      for (let vIdx = 0; vIdx < voiceChain.length; vIdx++) {
-        const useVoice = voiceChain[vIdx];
-        if (vIdx > 0) {
-          tracker.progress(`配音失败,切换备用音色 ${useVoice} 重新合成全部 ${sentences.length} 句`);
-          audios.length = 0;
-          sceneDurations.length = 0;
-          subtitleCues.length = 0;
+      for (let i = 0; i < sentences.length; i++) {
+        throwIfAborted(signal);
+        const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
+        // 先试粘住的音色,再按 chain 顺序试其余(去重)。同性别同语种,切换不突兀。
+        const tryOrder = [stickyVoice, ...voiceChain.filter((v) => v !== stickyVoice)];
+        let got: Awaited<ReturnType<typeof synthesize>> | null = null;
+        let usedVoice = stickyVoice;
+        for (const v of tryOrder) {
+          const r = await synthesize(sentences[i], outMp3, v, input.voiceRate);
+          if (r.synthesized) { got = r; usedVoice = v; break; }
+          lastReason = getLastTtsError() || lastReason;
         }
-        let timelineOffset = 0;
-        let synthCount = 0;
-        let thisVoiceFailed = false;
-        for (let i = 0; i < sentences.length; i++) {
-          const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
-          const r = await synthesize(sentences[i], outMp3, useVoice, input.voiceRate);
-          if (!r.synthesized) {
-            lastReason = getLastTtsError() || '';
-            lastFailIdx = i;
-            thisVoiceFailed = true;
-            break;
+        if (!got) { failIdx = i; break; }
+        if (usedVoice !== stickyVoice) {
+          stickyVoice = usedVoice; // 粘住:后续句先试它,音色保持连续
+          tracker.progress(`第 ${i + 1} 句主音色被拒,已切备用音色 ${usedVoice} 继续(已配好的句保留)`);
+        }
+        audios.push({ audioPath: got.audioPath, durationSec: got.durationSec });
+        sceneDurations.push(got.durationSec);
+        if (got.cues && got.cues.length > 0) {
+          for (const c of got.cues) {
+            subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
           }
-          audios.push({ audioPath: r.audioPath, durationSec: r.durationSec });
-          sceneDurations.push(r.durationSec);
-          synthCount++;
-          if (r.cues && r.cues.length > 0) {
-            for (const c of r.cues) {
-              subtitleCues.push({ text: c.text, start: c.start + timelineOffset, end: c.end + timelineOffset });
-            }
-          }
-          timelineOffset += r.durationSec;
-          tracker.progress(`配音 ${i + 1}/${sentences.length}${vIdx > 0 ? ` · 备用音色 ${vIdx + 1}/${voiceChain.length}` : ''}`);
         }
-        if (!thisVoiceFailed) {
-          succeeded = true;
-          finalSynthCount = synthCount;
-          break;
-        }
+        timelineOffset += got.durationSec;
+        synthCount++;
+        const altTag = stickyVoice !== voiceChain[0] ? ` · 备用音色 ${stickyVoice}` : '';
+        tracker.progress(`配音 ${i + 1}/${sentences.length}${altTag}`);
       }
 
-      if (!succeeded) {
-        // 硬约束:必须有真人配音。全部 voice 都败 → 终止出片,平台基础费由 finally 退回(不交付无配音视频)。
+      if (failIdx >= 0) {
+        // 硬约束:必须有真人配音。某句把所有 voice 都试败 → 终止出片,平台基础费由 finally 退回。
         const triedMsg = voiceChain.length > 1
-          ? ` · 已尝试 ${voiceChain.length} 个备用音色,均合成失败`
+          ? ` · 已对该句尝试全部 ${voiceChain.length} 个备用音色,均合成失败`
           : '';
-        const err = `配音失败:第 ${lastFailIdx + 1}/${sentences.length} 句无法合成语音${triedMsg}`
+        const err = `配音失败:第 ${failIdx + 1}/${sentences.length} 句无法合成语音${triedMsg}`
           + (lastReason ? `(${lastReason.slice(0, 160)})` : '')
           + '。已终止出片,不会生成无配音的视频;平台基础费将自动退回。'
           + '常见原因:网络无法访问微软在线 TTS 接口,或当前为微软上游限流期(2026-04 起已知问题),请检查网络/代理后重试。';
         tracker.fail('tts', err);
         return { ok: false, error: err };
       }
-      tracker.done('tts', `配音完成(${finalSynthCount} 句全部真人语音)`);
+      tracker.done('tts', `配音完成(${synthCount} 句全部真人语音${stickyVoice !== voiceChain[0] ? `,含备用音色 ${stickyVoice}` : ''})`);
     } else {
       // 纯画面:每镜时长 = clamp(字数 / 4.5, 5, 10) 秒,跟着分镜稿内容走。
       for (let i = 0; i < sentences.length; i++) {
