@@ -52,7 +52,9 @@ const PUBLISHER_TAB_PATTERN: Record<VideoPlatform, string> = {
 
 /** 创作者中心的 anchor URL —— driver 发现 tab 不在时 sendBrowserCommand('tab_create') 打开它。 */
 export const PUBLISHER_ANCHOR_URL: Record<VideoPlatform, string> = {
-  douyin:    'https://creator.douyin.com/creator-micro/content/upload?default-tab=3',
+  // 2026-06-12 CDP 实测:?default-tab=3 落在【发布图文】tab(只有 image input,视频
+  // driver 必失败);裸 /content/upload 默认就是【发布视频】tab(input accept=video/*)。
+  douyin:    'https://creator.douyin.com/creator-micro/content/upload',
   xhs:       'https://creator.xiaohongshu.com/publish/publish?source=official',
   tiktok:    'https://www.tiktok.com/tiktokstudio/upload',
   binance:   'https://www.binance.com/en/square',
