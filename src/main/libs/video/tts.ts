@@ -28,13 +28,11 @@ import {
 import { getUserDataPath } from '../platformAdapter';
 import { runFfmpeg, probeDuration } from './ffmpegRuntime';
 import { getTtsVoice } from './config';
+import { parseSubtitleText, type TtsCue } from './ttsAlign';
 
-/** 一条字幕 cue(时间相对【本句配音】起点,秒)。 */
-export interface TtsCue {
-  text: string;
-  start: number;
-  end: number;
-}
+// TtsCue 定义已移到 ttsAlign(纯模块,便于测试);这里 re-export 保持既有 import 路径不变。
+export type { TtsCue } from './ttsAlign';
+export { alignSentencesToCues } from './ttsAlign';
 
 export interface TtsResult {
   ok: boolean;
@@ -228,36 +226,14 @@ function normalizeRate(rate?: number): string | null {
 function parseSubtitleFile(filePath: string): TtsCue[] {
   let raw: string;
   try { raw = fs.readFileSync(filePath, 'utf8'); } catch { return []; }
-  const lines = raw.split(/\r?\n/);
-  // 毫秒分隔符 [.,] 同时吃 VTT 的点和 SRT 的逗号。
-  const re = /(\d{2}):(\d{2}):(\d{2})[.,](\d{1,3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[.,](\d{1,3})/;
-  const cues: TtsCue[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    const m = lines[i].match(re);
-    if (!m) continue;
-    const toSec = (h: string, mi: string, s: string, ms: string) =>
-      Number(h) * 3600 + Number(mi) * 60 + Number(s) + Number(ms.padEnd(3, '0')) / 1000;
-    const start = toSec(m[1], m[2], m[3], m[4]);
-    const end = toSec(m[5], m[6], m[7], m[8]);
-    // 时间行之后到空行之间都是文本(通常一行一个词)。
-    const textLines: string[] = [];
-    let j = i + 1;
-    for (; j < lines.length; j++) {
-      if (!lines[j].trim()) break;
-      textLines.push(lines[j].trim());
-    }
-    i = j;
-    const text = textLines.join(' ').replace(/\s+/g, ' ').trim();
-    if (text && end > start) cues.push({ text, start, end });
-  }
-  return cues;
+  return parseSubtitleText(raw); // 解析逻辑已抽到 ttsAlign(纯函数,可单测)
 }
 
 /**
  * 把逐词 cue 攒成 ~maxChars 字一段的短语 cue(用真实词级时间戳,不估算)。
  * 短语 start = 首词 start,end = 末词 end。中文按字,英文按词长累加。
  */
-function groupWordCues(words: TtsCue[], maxChars = 12): TtsCue[] {
+export function groupWordCues(words: TtsCue[], maxChars = 12): TtsCue[] {
   const out: TtsCue[] = [];
   let buf = '';
   let start: number | null = null;
@@ -420,4 +396,56 @@ export function getVoiceFallbacks(primary: string): string[] {
     //   ja/ko/fr/es-MX/pt-BR/id/vi/ar 各只配了一对 voice,跨性别会让音色跳变,体验不如失败退费让用户重试。
   };
   return M[primary] || [primary];
+}
+
+// ─────────────────────── 整段「一口气」合成 + 切句对齐 ───────────────────────
+//
+// 背景:stock/ai pipeline 把文案拆成 N 句、逐句合成(N 次 edge-tts 网络请求),每句对一个
+//   画面镜头。N 越大,越容易撞上 edge-tts 2026-04 的「按 voice 间歇性拒发」(rany2/edge-tts#473)。
+//   「一口气」= 整段只发 1 次请求合成,再用 edge-tts 自带的【词/句边界时间戳】把整段音频切回
+//   N 段喂回分镜流程。请求数 N→1,被拒概率从根上降下来(对齐 template-pipeline 的单次合成)。
+//
+//   切句对齐是关键且唯一的风险点:edge-tts 整段的分句/cue 粒度不可控,不能假设 cue 数==句数。
+//   这里用【去标点空格的字符流累计映射】把每句的字符区间锚到 cue 的真实时间戳,逐句边界都有
+//   真实时间锚点 → 不累积误差。字符流严重对不上(数字/英文被 edge-tts 规整)时返回 null,
+//   调用方安全回退到逐句合成,绝不交付错位片。
+
+export interface WholeTtsResult {
+  ok: boolean;
+  audioPath: string;
+  durationSec: number;
+  /** 原始逐条 cue(未 group,相对整段起点),切句对齐 + 字幕都用它。 */
+  rawCues: TtsCue[];
+}
+
+/**
+ * 整段合成一次(单 voice;voice fallback 由调用方控制 —— 整段失败换 voice 重合,1 次请求不浪费)。
+ * 失败把原因写进 _lastTtsError,返回 ok:false。
+ */
+export async function synthesizeWhole(text: string, outPath: string, voice: string, rate?: number): Promise<WholeTtsResult> {
+  const clean = (text || '').trim();
+  const fail = (): WholeTtsResult => ({ ok: false, audioPath: outPath, durationSec: 0, rawCues: [] });
+  if (!clean) return fail();
+  let pyExe: string | null = null;
+  try { pyExe = await resolveTtsPython(); } catch (e) { _lastTtsError = e instanceof Error ? e.message : String(e); }
+  if (!pyExe) return fail();
+  const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
+  const MAX_ATTEMPTS = 5;
+  let lastDetail = '';
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const run = await runEdgeTts(pyExe, clean, voice, outPath, rate, subPath);
+    if (run.ok) {
+      const dur = await probeDuration(outPath);
+      let rawCues: TtsCue[] = [];
+      try { rawCues = parseSubtitleFile(subPath); } catch { /* 对齐侧会 fallback */ }
+      try { fs.unlinkSync(subPath); } catch {}
+      return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estimateDuration(clean), rawCues };
+    }
+    lastDetail = run.detail || lastDetail;
+    if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
+  }
+  _lastTtsError = lastDetail
+    ? `edge-tts 整段合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`
+    : `edge-tts 整段合成无有效输出(已重试 ${MAX_ATTEMPTS} 次)`;
+  return fail();
 }

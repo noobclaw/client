@@ -17,8 +17,11 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
-import { isFfmpegAvailable, setVideoAbortSignal } from './ffmpegRuntime';
-import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
+import { isFfmpegAvailable, setVideoAbortSignal, runFfmpeg } from './ffmpegRuntime';
+import {
+  synthesize, synthesizeWhole, getLastTtsError, getVoiceFallbacks,
+  alignSentencesToCues, groupWordCues,
+} from './tts';
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
@@ -690,6 +693,59 @@ async function runVideoPipeline(
       //   必然触发整片重来 → 三个 voice 轮完耗尽彻底失败。句级 fallback 把失败隔离到单句,救场率高。
       const primary = input.voice || getTtsVoice();
       const voiceChain = getVoiceFallbacks(primary);
+
+      // ── 「一口气」优先路径:整段只发 1 次 edge-tts 请求,再按 cue 时间戳切回每句 ──
+      //   请求数 N→1,从根上躲过 edge-tts「按 voice 间歇拒发」(N 句里中任一即失败 vs 单次)。
+      //   整段合成也带 voice fallback(失败换音色重合,仍 1 次/音色)。切句对齐见 ttsAlign.ts:
+      //   按【去标点字符流】把每句锚到 cue 真实时间戳,不累积误差;对不齐 → 回退下面的逐句路径。
+      //   字幕直接用整段 cue(全局时间轴,比逐句拼接更准)。下游 audios/sceneDurations/subtitleCues
+      //   形状与逐句路径完全一致 —— 分镜/compose 无感知。
+      let wholeDone = false;
+      try {
+        const masterMp3 = path.join(assetDir, 'narr_master.mp3');
+        let whole: Awaited<ReturnType<typeof synthesizeWhole>> | null = null;
+        let usedWholeVoice = voiceChain[0];
+        for (const v of voiceChain) {
+          throwIfAborted(signal);
+          const w = await synthesizeWhole(sentences.join('\n'), masterMp3, v, input.voiceRate);
+          if (w.ok) { whole = w; usedWholeVoice = v; break; }
+        }
+        if (whole) {
+          const spans = alignSentencesToCues(sentences, whole.rawCues, whole.durationSec);
+          if (spans && spans.length === sentences.length) {
+            const cutAudios: { audioPath: string; durationSec: number }[] = [];
+            let cutOk = true;
+            for (let i = 0; i < spans.length; i++) {
+              throwIfAborted(signal);
+              const outMp3 = path.join(assetDir, `narr_${String(i).padStart(3, '0')}.mp3`);
+              const r = await runFfmpeg([
+                '-y', '-i', masterMp3,
+                '-ss', spans[i].start.toFixed(3), '-to', spans[i].end.toFixed(3),
+                '-c:a', 'libmp3lame', '-q:a', '4', outMp3,
+              ], { timeoutMs: 30_000, signal });
+              if (!r.ok || !fs.existsSync(outMp3)) { cutOk = false; break; }
+              cutAudios.push({ audioPath: outMp3, durationSec: Math.max(0.3, spans[i].end - spans[i].start) });
+            }
+            if (cutOk) {
+              for (const a of cutAudios) { audios.push(a); sceneDurations.push(a.durationSec); }
+              // 整段 cue 本就是全局时间轴,group 成短语后直接用(无逐句累计误差)。
+              for (const c of groupWordCues(whole.rawCues)) {
+                subtitleCues.push({ text: c.text, start: c.start, end: c.end });
+              }
+              wholeDone = true;
+              const vTag = usedWholeVoice !== voiceChain[0] ? `,备用音色 ${usedWholeVoice}` : '';
+              tracker.done('tts', `配音完成(整段 1 次合成 + 切 ${sentences.length} 段,省 ${sentences.length - 1} 次请求${vTag})`);
+            }
+          }
+        }
+        if (!wholeDone) tracker.progress('整段配音不可用(合成失败/切句对不齐),回退逐句合成…');
+      } catch (e) {
+        if (signal?.aborted) throw e;
+        tracker.progress('整段配音异常,回退逐句合成…');
+      }
+
+      // ── 逐句 sticky fallback(整段路径不可用时;成功句保留、被拒就地换音色) ──
+      if (!wholeDone) {
       let stickyVoice = voiceChain[0];
       let timelineOffset = 0;
       let synthCount = 0;
@@ -739,6 +795,7 @@ async function runVideoPipeline(
         return { ok: false, error: err };
       }
       tracker.done('tts', `配音完成(${synthCount} 句全部真人语音${stickyVoice !== voiceChain[0] ? `,含备用音色 ${stickyVoice}` : ''})`);
+      } // end if (!wholeDone) — 逐句 fallback
     } else {
       // 纯画面:每镜时长 = clamp(字数 / 4.5, 5, 10) 秒,跟着分镜稿内容走。
       for (let i = 0; i < sentences.length; i++) {
