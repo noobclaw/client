@@ -207,20 +207,22 @@ export interface ResolvedCaption {
   tags: string[];
 }
 
-/** summary 取首句(≤40 字)做兜底标题/正文。 */
-function firstSentence(s: string): string {
-  const first = (s || '').split(/[。！？\n.!?]/).map((x) => x.trim()).filter(Boolean)[0] || '';
-  return first.slice(0, 40);
-}
-
 /**
  * 决策最终发布文案:用户填的 > AI 生成的 > 兜底(首句 + keywords)。
  * 绝不抛。不发布时不调 AI。
  */
 export async function resolvePublishCaption(input: ResolveCaptionInput): Promise<ResolvedCaption> {
   const kwTags = (input.keywords || []).filter(Boolean).slice(0, 6);
-  const fbTitle = input.userTitle?.trim() || input.title?.trim() || firstSentence(input.summary);
-  const fbDesc = input.userCaption?.trim() || firstSentence(input.summary) || fbTitle;
+  // 兜底文案【绝不用口播稿原文 / 视频标题首句】(用户要求:发布文案不能跟口播稿一样)——
+  // 改用关键词 + 通用引导钩子。AI 正常生成时不走这里;只有 AI 失败 / 不发布才用到。
+  const zh = (input.lang || 'zh') === 'zh';
+  const kwHead = kwTags[0] || '';
+  const fbTitle = input.userTitle?.trim()
+    || (zh ? (kwHead ? `${kwHead}｜完整版在视频里 👀` : '完整内容,都在视频里 👀')
+           : (kwHead ? `${kwHead} — full clip inside 👀` : 'Full clip inside 👀'));
+  const fbDesc = input.userCaption?.trim()
+    || (zh ? '完整内容都在视频里,觉得有用就关注我,每天持续更新~'
+           : 'Full story is in the clip — follow for daily updates.');
 
   // 不发布 → 不浪费 AI,返兜底(下游也不会真用)。
   if (!input.wantPublish) {
