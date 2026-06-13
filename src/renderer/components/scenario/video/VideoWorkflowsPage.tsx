@@ -1769,7 +1769,7 @@ const VideoCreateFlow: React.FC<{
           titleZh="热搜成片 · 热点全自动" titleEn="Hotspot · Auto Trend Video"
           descZh="勾选热搜榜 / Web3 / 科技源,定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配图片成片并发布。真·一次设置、每天自动蹭热点出片。"
           descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
-          costZh="单条约 $0.02~$0.05(写稿/联网/配图/合成)" costEn="~$0.02–0.05 per clip (script / web / images / compose)"
+          costZh="单条约 $0.02~$0.15(写稿/联网/配图/合成)" costEn="~$0.02–0.15 per clip (script / web / images / compose)"
           btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
         )}
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}

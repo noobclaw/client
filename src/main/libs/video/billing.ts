@@ -90,6 +90,39 @@ export async function chargeMode1Video(
 }
 
 /**
+ * 热搜成片按【下载图片数】计费(替代 stock 的按条平台费)。服务端公式:每张 $0.001、至少 $0.02、
+ * 用到服务端代下则整单 ×2(细节服务端算,客户端只上报 imageCount + cloudProxied)。绝不抛错。
+ */
+export async function chargeHotspotImages(imageCount: number, cloudProxied: boolean): Promise<VideoChargeResult> {
+  const token = getNoobClawAuthToken();
+  if (!token) return { ok: false, reason: 'no_auth' };
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 15_000);
+  try {
+    const resp = await fetch(`${apiBase()}/api/video/charge`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ mode: 'hotspot', imageCount: Math.max(0, Math.round(imageCount)), cloudProxied: !!cloudProxied }),
+      signal: ctrl.signal,
+    });
+    if (resp.status === 402) return { ok: false, reason: 'insufficient' };
+    if (!resp.ok) return { ok: false, reason: 'error' };
+    const json: any = await resp.json().catch((): null => null);
+    return {
+      ok: true,
+      chargeId: typeof json?.chargeId === 'string' ? json.chargeId : undefined,
+      chargedTokens: Number(json?.chargedTokens) || 0,
+      feeUsd: Number(json?.feeUsd) || 0,
+      balanceAfter: Number(json?.balanceAfter) || 0,
+    };
+  } catch {
+    return { ok: false, reason: 'error' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * 退回此前预扣的平台基础费(成片失败时调)。绝不抛错 —— 失败仅返回 false。
  * 幂等:服务端按 chargeId 防重复退,客户端可安全重试。
  */

@@ -28,7 +28,7 @@ import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, download
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
-import { chargeMode1Video, refundMode1Video } from './billing';
+import { chargeMode1Video, chargeHotspotImages, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
 import { generateSeedanceClips, generateStoryboard, type SeedanceClipResult, type SeedanceSceneSpec } from './seedanceProvider';
 import type { TemplateOptions } from './templateHtmlWriter';
@@ -641,6 +641,9 @@ async function runVideoPipeline(
     // 本任务【写稿 + 搜索词】已扣的权威 USD 之和(含 reasoner ×3),供下面平台费预扣时
     // 按 videoCount 让服务端补收剩余 (count-1) 份 AI 费。AI 只调一次,各步累加进来。
     let aiCostUsd = 0;
+    // 热搜成片计费(按下载图片数,云端代下则 ×2):由 buildHotspotImagePool 填,charge 时读。
+    let hotspotImageCount = 0;
+    let hotspotUsedCloud = false;
     let script = userText;
     if (scriptMode === 'ai') {
       const isHotspot = input.engine === 'hotspot';
@@ -1316,7 +1319,14 @@ async function runVideoPipeline(
       if (diag.serperError) tracker.progress(`   ⚠️ serper 报错:${diag.serperError}`);
 
       // 落地两阶段:客户端优先下大图 → 缺口转后端代下 base64;两端都按下发黑名单过滤。下到 want 即停。
-      const localImgs = await downloadHotspotImages(images, assetDir, want, diag.blacklist);
+      tracker.progress(`⬇️ 开始下图（目标 ${want} 张）…`);
+      const dl = await downloadHotspotImages(images, assetDir, want, diag.blacklist, (stage) => {
+        if (stage === 'cloud') tracker.progress('☁️ 本地下不动，委托云端下图…');
+      });
+      const localImgs = dl.paths;
+      hotspotImageCount = localImgs.length;
+      hotspotUsedCloud = dl.usedCloud;
+      if (dl.usedCloud) tracker.progress('☁️ 本条用到云端下图，会收少量流量费用');
 
       // 没出图时把真因打到进度里(不再静默只剩 1 张)。
       if (localImgs.length === 0) {
@@ -1385,7 +1395,10 @@ async function runVideoPipeline(
     // 费用预扣:开跑前【一次性】整笔预扣(在线模式),金额由服务端按 videoCount + aiCostUsd 算
     // (平台费向上限靠拢 + AI 费按条数叠加)。全部条目都失败时才在 finally 按 chargeId 整笔退回(幂等)。
     if (isMode1) {
-      const charge = await chargeMode1Video(input.targetSeconds ?? 45, { videoCount, aiCostUsd });
+      // 热搜成片按【实下图片数】计费(云端代下则 ×2,均由服务端算);其它在线模式按条数+AI 费。
+      const charge = input.engine === 'hotspot'
+        ? await chargeHotspotImages(hotspotImageCount, hotspotUsedCloud)
+        : await chargeMode1Video(input.targetSeconds ?? 45, { videoCount, aiCostUsd });
       if (!charge.ok) {
         let err: string;
         if (charge.reason === 'insufficient') err = '余额不足,无法生成(模式一需先预扣平台基础费,请充值后重试)';

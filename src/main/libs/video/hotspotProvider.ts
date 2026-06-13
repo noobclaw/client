@@ -132,7 +132,7 @@ export async function fetchHotspotImagePlan(
   const images: HotspotImage[] = raw
     .map((im: any): HotspotImage => (typeof im === 'string' ? { url: im } : { url: im?.url ? String(im.url) : undefined }))
     .filter((im: HotspotImage) => typeof im.url === 'string' && /^https?:\/\//.test(im.url));
-  const want = Number(json?.want) || Math.max(8, Math.min(40, Math.ceil(targetSeconds / 4) + 2));
+  const want = Number(json?.want) || Math.max(8, Math.min(100, Math.ceil(targetSeconds / 4) + 2));
   return { images, want, diag };
 }
 
@@ -147,23 +147,28 @@ export async function fetchHotspotProxyImages(urls: string[], want: number): Pro
 }
 
 /**
- * 两阶段把后端返回的大图 URL 落地到本地,下到 want 张即停。返回本地路径。
+ * 两阶段把后端返回的大图 URL 落地到本地,下到 want 张即停。返回本地路径 + 是否动用了云端代下。
  *   阶段1:客户端优先自己下(省服务端流量;海外客户端能直连)。
  *   阶段2:没凑够 → 把还没用过的 URL 交服务端代下 base64(国内客户端主走这条,服务端出海外稳)。
  *   两端都用【服务端下发的黑名单】再过滤一遍(双保险)。
+ *   usedCloud:阶段2真写下了至少 1 张 → true(计费侧据此 ×2,且提示用户「会收少量流量费用」)。
+ *   onProgress:'local'(开始客户端自下)/ 'cloud'(转云端代下)回调,供上层刷新进度文案。
  */
 export async function downloadHotspotImages(
   images: HotspotImage[], destDir: string, want: number, blacklist: string[] = [],
-): Promise<string[]> {
+  onProgress?: (stage: 'local' | 'cloud') => void,
+): Promise<{ paths: string[]; usedCloud: boolean }> {
   const bl = blacklist.map((b) => b.toLowerCase());
   const urls = images
     .map((im) => im.url)
     .filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)
       && !bl.some((b) => u.toLowerCase().includes(b)));
-  if (urls.length === 0) return [];
+  if (urls.length === 0) return { paths: [], usedCloud: false };
 
   const results: string[] = [];
+  let usedCloud = false;
   // 阶段1:客户端下前半(至少 want 个);海外客户端基本成功,国内大概率失败(下不动)。
+  onProgress?.('local');
   const firstBatch = urls.slice(0, Math.max(want, Math.ceil(urls.length / 2)));
   const local = await downloadImagesFromUrls(firstBatch, destDir, 200, want);
   results.push(...local);
@@ -173,6 +178,7 @@ export async function downloadHotspotImages(
     const need = want - results.length;
     const rest = urls.slice(firstBatch.length);
     const proxyUrls = rest.length >= need ? rest : urls;
+    if (proxyUrls.length > 0) onProgress?.('cloud');
     const proxied = await fetchHotspotProxyImages(proxyUrls, need);
     let idx = results.length;
     for (const im of proxied) {
@@ -180,8 +186,8 @@ export async function downloadHotspotImages(
       const mt = im.mimeType || '';
       const ext = mt.includes('png') ? 'png' : mt.includes('webp') ? 'webp' : 'jpg';
       const dest = path.join(destDir, `hotspot_p${String(idx).padStart(3, '0')}.${ext}`);
-      try { fs.writeFileSync(dest, Buffer.from(im.base64, 'base64')); results.push(dest); idx++; } catch { /* 写失败跳过 */ }
+      try { fs.writeFileSync(dest, Buffer.from(im.base64, 'base64')); results.push(dest); idx++; usedCloud = true; } catch { /* 写失败跳过 */ }
     }
   }
-  return results;
+  return { paths: results, usedCloud };
 }
