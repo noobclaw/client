@@ -889,6 +889,25 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       </div>
     );
   }
+  // 热搜成片:展示热点源/时长/配音/画面/发布,不展示赛道/人设/关键词(对它无意义)。
+  if (input.engine === 'hotspot') {
+    const srcMap: Record<string, string> = { weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu', baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu', web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI' };
+    const srcs = (((input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join('、') || '-';
+    const voiceLabel = (() => {
+      const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === input.voice);
+      return v ? (isZh ? v.zh : v.en) : (input.voice || (isZh ? '默认音色' : 'Default'));
+    })();
+    const pubN = Array.isArray(input.publishPlatforms) ? input.publishPlatforms.length : 0;
+    return (
+      <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
+        <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
+        <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
+        <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
+        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns'}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</Row>
+      </div>
+    );
+  }
   // 其它 engine(stock / pure_ai / 本地素材)走老的赛道/人设/关键词/文案布局。
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
