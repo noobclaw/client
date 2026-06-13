@@ -358,15 +358,19 @@ export async function generateSearchTerms(
   fallbackKeywords: string[],
   termsSystemPrompt?: string,
   ctx?: SearchTermsContext,
+  outputLang: 'en' | 'zh' = 'en',
 ): Promise<GenerateSearchTermsResult> {
   const fallback = (fallbackKeywords || []).filter(Boolean);
   const fallbackEach = scenes.map(() => fallback.slice(0, 3));
   if (scenes.length === 0) return { terms: [], tokens: 0, costUsd: 0 };
 
-  // 搜索词统一用英文:Pexels/Pixabay 库标注以英文为主,英文词召回最全最稳;
-  // 区域语境靠 locale 参数兜底(由调用方按内容语言传)。
+  // 搜索词默认英文(Pexels/Pixabay 库英文召回最全;stock 模式走这条,不传 outputLang)。
+  // outputLang='zh':热搜成片配图走 serper 谷歌图,中文热点用【中文词】搜更贴、图源更干净
+  //   (维基/新闻/机构),所以热点流中文客户端会要中文词 —— 换一套中文 system,保持 JSON 契约。
   // prompt 走服务端可调(默认见 videoConfig);务必保持 {"terms":[[...]]} 输出契约。
-  const system = termsSystemPrompt || DEFAULT_VIDEO_CONFIG.termsSystemPrompt;
+  const system = outputLang === 'zh'
+    ? '你是配图搜索词助手。为下面每个分镜输出 1-3 个【简体中文】图片搜索关键词(用于谷歌图片搜索),要贴合该镜内容、是真实可搜的词。只输出 JSON 对象:{"terms":[["词1","词2"],...]},其中 terms 数组长度必须等于输入行数,逐行对应。不要解释、不要 markdown 代码块。'
+    : (termsSystemPrompt || DEFAULT_VIDEO_CONFIG.termsSystemPrompt);
 
   // A:整体语境前置 —— 让模型据此消歧、把每镜的词钉在选题上(不再孤立看单句)。
   const ctxLines: string[] = [];
@@ -388,7 +392,8 @@ export async function generateSearchTerms(
     ja: { label: 'Japanese', country: 'japanese', city: 'tokyo' },
     ko: { label: 'Korean', country: 'korean', city: 'seoul' },
   };
-  const r = REGION[String(ctx?.lang || '').slice(0, 2).toLowerCase()];
+  // zh 输出:中文 system 已直接要中文词,不叠加英文 asian/地区指令(会冲突)。
+  const r = outputLang === 'zh' ? undefined : REGION[String(ctx?.lang || '').slice(0, 2).toLowerCase()];
   const regionBlock = r
     ? `IMPORTANT — localize footage for a ${r.label} audience (spoken language is ${r.label}). Stock libraries default to Western faces/places, which mismatch this audience. Localize each line by TYPE:\n`
       + `• PEOPLE shots: the term MUST start with "asian" (e.g. "asian man talking", "asian woman cooking", "asian students"). You may add ONE generic fallback term after it.\n`

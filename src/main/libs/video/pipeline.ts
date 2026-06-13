@@ -1283,36 +1283,40 @@ async function runVideoPipeline(
     //   一次 Serper 查询(1 credit)拿 10-15 张铺满全片,不逐镜搜(省 credit)。
     //   返回形状与 buildStockPool 一致:assign 恒空(无视频)→ compose 走图片运镜。
     async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string> }> {
-      // 配图英文词:复用 generateSearchTerms 把口播句转英文搜索词(Google 索引精准),
-      //   取去重后前几个拼成一个 query 一把搜(热点标题兜底)。
-      tracker.progress('AI 规划配图英文关键词…');
-      const termsResult = await generateSearchTerms(sentences, [], vcfg.termsSystemPrompt, {
-        topic: hotspotTopic?.title || '',
-        // 配图词按热点标题语言定人种倾向:英文话题(web3/科技)走 en 不强行 asian;口播仍中文。
-        lang: detectLang(hotspotTopic?.title || ''),
-      });
-      aiCostUsd += termsResult.costUsd;
-      tracker.addTokens(termsResult.tokens, termsResult.costUsd);
-      const keywords = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()))).slice(0, 8);
-      tracker.progress(`🔤 AI 配图关键词(${keywords.length} 个):${keywords.join(' · ') || '(空,AI 没出词)'}`);
+      // 配图关键词:中文热点【出中文词优先】(serper 谷歌图中文词有图、源更干净:维基/新闻/机构),
+      //   英文热点(web3/科技)出英文词。中文热点同时也出一份英文词作兜底(中文不够时后端用)。
+      tracker.progress('AI 规划配图关键词…');
+      const topicTitle = hotspotTopic?.title || '';
+      const isZhTopic = String(detectLang(topicTitle)).toLowerCase().startsWith('zh');
+      const uniq = (terms: string[][]) => Array.from(new Set(terms.flat().filter(Boolean).map((s) => s.trim()))).filter(Boolean).slice(0, 8);
+      // 英文词(总出:英文热点主用 / 中文热点兜底)
+      const enRes = await generateSearchTerms(sentences, [], vcfg.termsSystemPrompt, { topic: topicTitle, lang: detectLang(topicTitle) }, 'en');
+      aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
+      const kwEn = uniq(enRes.terms).map((s) => s.toLowerCase());
+      // 中文词(仅中文热点才出,多一次 AI;英文热点不出省 token)
+      let kwZh: string[] = [];
+      if (isZhTopic) {
+        const zhRes = await generateSearchTerms(sentences, [], undefined, { topic: topicTitle, lang: 'zh' }, 'zh');
+        aiCostUsd += zhRes.costUsd; tracker.addTokens(zhRes.tokens, zhRes.costUsd);
+        kwZh = uniq(zhRes.terms);
+      }
+      tracker.progress(`🔤 配图关键词 — 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
 
-      // ── 配图编排 + 代下载在【后端】:把关键词 + 时长 + 来源URL 给后端,后端按时长算 want、查
-      //    serper、【并发代下载成 base64】返回。客户端拿 base64 直接写文件,完全不碰海外图
-      //    (国内 / 无 VPN / 系统代理不生效 都能配上图)。→ 调配图策略只改 backend、不打包客户端。
-      const { images, want, diag } = await fetchHotspotImagePlan(keywords, input.targetSeconds ?? 60, hotspotTopic?.url);
-      const b64n = images.filter((im) => !!im.base64).length;
-      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${images.length} 个(后端代下 ${b64n} 张)${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
-      // 逐词明细:每个关键词查没查、serper 返回几张。一眼看出哪些词有图、哪些空。
+      // ── 配图编排在【后端】:中文词优先搜→英文兜底、只大图、剔付费图库,返回大图 URL + 下发黑名单。
+      //    客户端优先自己下大图(省服务端流量),下不动的转后端代下 base64(国内主走这条)。
+      const { images, want, diag } = await fetchHotspotImagePlan(kwZh, kwEn, input.targetSeconds ?? 60, hotspotTopic?.url);
+      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,查 ${diag.queries} 次,候选 ${images.length} 个大图${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
+      // 逐词明细:每个关键词(标语言)查没查、返回几张。一眼看出中/英哪些词有图。
       if (diag.keywordStats.length > 0) {
         const detail = diag.keywordStats
-          .map((s) => `${s.kw}${s.searched ? `→${s.found} 张` : '(未查·候选已够)'}`)
+          .map((s) => `${s.kw}(${s.lang})${s.searched ? `→${s.found}` : '·跳过'}`)
           .join('  |  ');
-        tracker.progress(`   📋 逐词查询明细:${detail}`);
+        tracker.progress(`   📋 逐词明细:${detail}`);
       }
       if (diag.serperError) tracker.progress(`   ⚠️ serper 报错:${diag.serperError}`);
 
-      // 落地:base64 直接写文件(主路径),url 兜底下载;下到 want 张即停。
-      const localImgs = await downloadHotspotImages(images, assetDir, want);
+      // 落地两阶段:客户端优先下大图 → 缺口转后端代下 base64;两端都按下发黑名单过滤。下到 want 即停。
+      const localImgs = await downloadHotspotImages(images, assetDir, want, diag.blacklist);
 
       // 没出图时把真因打到进度里(不再静默只剩 1 张)。
       if (localImgs.length === 0) {

@@ -96,21 +96,24 @@ export interface HotspotImageDiag {
   serperTotal: number;   // serper 累计返回几张候选
   serperError: string;   // serper 报错/网络到不了的信息
   ogCount: number;       // og:image 兜底几张
-  keywords: string[];    // 实际用于检索的英文关键词
-  keywordStats: { kw: string; searched: boolean; found: number }[]; // 逐词明细:查没查 / 返回几张
+  keywordsZh: string[];  // 实际用于检索的中文关键词(中文热点优先)
+  keywordsEn: string[];  // 英文关键词(兜底 / 英文热点)
+  keywordStats: { kw: string; lang: string; searched: boolean; found: number }[]; // 逐词明细
+  blacklist: string[];   // 服务端下发的付费图库黑名单(客户端也用它过滤)
 }
 
 /**
- * 配图编排(后端决策 + 代下载):把【AI 出的英文关键词 + 时长 + 来源URL】给后端,后端按时长算 want,
- * 查 serper 收候选(优先小图),【在后端并发代下载成 base64】返回。客户端拿 base64 直接写文件,
- * 完全不碰海外图(国内/无 VPN/系统代理不生效都能配上图)。base64 不足时 url 兜底(海外客户端可下)。
+ * 配图编排(后端决策):把【中英两份关键词 + 时长 + 来源URL】给后端,后端中文词优先搜(英文兜底)、
+ * 只要大图、剔付费图库,返回【大图 URL 列表】+ 下发黑名单。客户端拿 URL 自己下(省服务端流量)。
  */
 export async function fetchHotspotImagePlan(
-  keywords: string[],
+  keywordsZh: string[],
+  keywordsEn: string[],
   targetSeconds: number,
   sourceUrl?: string,
 ): Promise<{ images: HotspotImage[]; want: number; diag: HotspotImageDiag }> {
-  const json = await postJson('/api/video/hotspot/images', { keywords, targetSeconds, sourceUrl });
+  const json = await postJson('/api/video/hotspot/images', { keywordsZh, keywordsEn, targetSeconds, sourceUrl });
+  const arr = (a: any): string[] => (Array.isArray(a) ? a.map((k: any) => String(k)) : []);
   const diag: HotspotImageDiag = {
     reached: !!json,
     hasKey: !!json?.hasKey,
@@ -118,46 +121,67 @@ export async function fetchHotspotImagePlan(
     serperTotal: Number(json?.serperTotal) || 0,
     serperError: String(json?.serperError || ''),
     ogCount: Number(json?.ogCount) || 0,
-    keywords: Array.isArray(json?.keywords) ? json.keywords.map((k: any) => String(k)) : [],
+    keywordsZh: arr(json?.keywordsZh),
+    keywordsEn: arr(json?.keywordsEn),
     keywordStats: Array.isArray(json?.keywordStats)
-      ? json.keywordStats.map((s: any) => ({ kw: String(s?.kw || ''), searched: !!s?.searched, found: Number(s?.found) || 0 }))
+      ? json.keywordStats.map((s: any) => ({ kw: String(s?.kw || ''), lang: String(s?.lang || ''), searched: !!s?.searched, found: Number(s?.found) || 0 }))
       : [],
+    blacklist: arr(json?.blacklist),
   };
   const raw = Array.isArray(json?.images) ? json.images : [];
   const images: HotspotImage[] = raw
-    .map((im: any): HotspotImage => (typeof im === 'string'
-      ? { url: im }
-      : { base64: im?.base64 ? String(im.base64) : undefined, mimeType: im?.mimeType ? String(im.mimeType) : undefined, url: im?.url ? String(im.url) : undefined }))
-    .filter((im: HotspotImage) => !!im.base64 || (typeof im.url === 'string' && /^https?:\/\//.test(im.url)));
+    .map((im: any): HotspotImage => (typeof im === 'string' ? { url: im } : { url: im?.url ? String(im.url) : undefined }))
+    .filter((im: HotspotImage) => typeof im.url === 'string' && /^https?:\/\//.test(im.url));
   const want = Number(json?.want) || Math.max(8, Math.min(40, Math.ceil(targetSeconds / 4) + 2));
   return { images, want, diag };
 }
 
+/** 服务端代下兜底:把客户端下不动的大图 URL 交给后端代下成 base64。返回 [{base64,mimeType,url}]。 */
+export async function fetchHotspotProxyImages(urls: string[], want: number): Promise<{ base64: string; mimeType: string; url: string }[]> {
+  if (!Array.isArray(urls) || urls.length === 0) return [];
+  const json = await postJson('/api/video/hotspot/fetch-images', { urls, want });
+  const raw = Array.isArray(json?.images) ? json.images : [];
+  return raw
+    .filter((im: any) => im?.base64)
+    .map((im: any) => ({ base64: String(im.base64), mimeType: String(im.mimeType || 'image/jpeg'), url: String(im.url || '') }));
+}
+
 /**
- * 把后端返回的图落地到本地,下到 want 张即停。返回本地路径。
- *   · base64(后端代下,主路径)→ 直接写文件,不碰网络。
- *   · url(兜底)→ 走 downloadImagesFromUrls(海外客户端 / 后端代下不足时)。
+ * 两阶段把后端返回的大图 URL 落地到本地,下到 want 张即停。返回本地路径。
+ *   阶段1:客户端优先自己下(省服务端流量;海外客户端能直连)。
+ *   阶段2:没凑够 → 把还没用过的 URL 交服务端代下 base64(国内客户端主走这条,服务端出海外稳)。
+ *   两端都用【服务端下发的黑名单】再过滤一遍(双保险)。
  */
-export async function downloadHotspotImages(images: HotspotImage[], destDir: string, want: number): Promise<string[]> {
-  if (!Array.isArray(images) || images.length === 0) return [];
+export async function downloadHotspotImages(
+  images: HotspotImage[], destDir: string, want: number, blacklist: string[] = [],
+): Promise<string[]> {
+  const bl = blacklist.map((b) => b.toLowerCase());
+  const urls = images
+    .map((im) => im.url)
+    .filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)
+      && !bl.some((b) => u.toLowerCase().includes(b)));
+  if (urls.length === 0) return [];
+
   const results: string[] = [];
-  const urlOnly: string[] = [];
-  let idx = 0;
-  for (const im of images) {
-    if (results.length >= want) break;
-    if (im.base64) {
+  // 阶段1:客户端下前半(至少 want 个);海外客户端基本成功,国内大概率失败(下不动)。
+  const firstBatch = urls.slice(0, Math.max(want, Math.ceil(urls.length / 2)));
+  const local = await downloadImagesFromUrls(firstBatch, destDir, 200, want);
+  results.push(...local);
+
+  // 阶段2:缺口 → 服务端代下。优先用客户端没碰过的后半 URL(避免重复);不够就全量。
+  if (results.length < want) {
+    const need = want - results.length;
+    const rest = urls.slice(firstBatch.length);
+    const proxyUrls = rest.length >= need ? rest : urls;
+    const proxied = await fetchHotspotProxyImages(proxyUrls, need);
+    let idx = results.length;
+    for (const im of proxied) {
+      if (results.length >= want) break;
       const mt = im.mimeType || '';
       const ext = mt.includes('png') ? 'png' : mt.includes('webp') ? 'webp' : 'jpg';
-      const dest = path.join(destDir, `hotspot_${String(idx).padStart(3, '0')}.${ext}`);
+      const dest = path.join(destDir, `hotspot_p${String(idx).padStart(3, '0')}.${ext}`);
       try { fs.writeFileSync(dest, Buffer.from(im.base64, 'base64')); results.push(dest); idx++; } catch { /* 写失败跳过 */ }
-    } else if (im.url) {
-      urlOnly.push(im.url);
     }
-  }
-  // base64 没凑够 want → url 兜底下载(海外客户端能直连;国内大概率也下不动,但不阻塞)。
-  if (results.length < want && urlOnly.length > 0) {
-    const more = await downloadImagesFromUrls(urlOnly, destDir, 200, want - results.length);
-    results.push(...more);
   }
   return results;
 }
