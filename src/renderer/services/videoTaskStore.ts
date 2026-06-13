@@ -568,7 +568,7 @@ class VideoTaskStore {
             // 兜底用配置里的请求数;计入「累计/上次完成」的视频条数统计。
             const n = res.videoCount && res.videoCount > 0
               ? res.videoCount
-              : Math.max(1, Math.min(5, Math.round(r.input.videoCount ?? 1)));
+              : Math.max(1, Math.min(100, Math.round(r.input.videoCount ?? 1)));
             r.videoCount = n;
             // 批量出片(n>1):全部成片都落在同一输出目录,点「打开文件夹」可见;
             // outputPath 仍指向首条(详情页快捷打开用)。

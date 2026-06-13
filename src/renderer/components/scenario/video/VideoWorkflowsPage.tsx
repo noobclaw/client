@@ -1717,8 +1717,8 @@ const VideoCreateFlow: React.FC<{
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
-          descZh="低成本批量日更的利器:给个主题,AI 自动写口播稿+配音+字幕,海量正版素材库一键凑齐画面,一次最多出 5 条不同画面的成片。知识科普 / 资讯解说 / 好物种草,配音字幕合成全免费。"
-          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 5 differently-cut videos per run. TTS / subtitles / compositing are free."
+          descZh="低成本批量日更的利器:给个主题,AI 自动写口播稿+配音+字幕,海量正版素材库一键凑齐画面,一次最多出 100 条(每条 AI 独立写稿+配音,失败自动跳过)。知识科普 / 资讯解说 / 好物种草,配音字幕合成全免费。"
+          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each with its own fresh AI script + voice; failures auto-skipped). TTS / subtitles / compositing are free."
           costZh="单条约 $0.02~$0.04(写稿/素材/合成)" costEn="~$0.02–0.04 per clip (script / stock / compose)"
           btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
@@ -2072,7 +2072,8 @@ const SUB_FONT_OPTIONS: { v: string; zh: string; en: string }[] = [
   { v: 'SmileySans-Oblique.ttf', zh: '得意黑', en: 'Smiley Sans' },
 ];
 
-// 一次出片条数(抄 MPT video_count):1~5 条,复用脚本/配音、每条不同画面组合。
+// 一次出片条数:stock 在 main.ts 外层循环 1~100 条(每条 AI 独立写稿+配音,失败跳过,按条计费);
+//   AI(Seedance)/模板/热搜维持单条。pipeline 内部的 composeOne 批量(复用脚本换画面)已不再走。
 
 // 换镜节奏:每段素材最长秒数,越小切得越快。
 const PACE_OPTIONS: { v: number; zh: string; en: string }[] = [
@@ -2502,7 +2503,11 @@ const VideoConfigModal: React.FC<{
         <div className="px-6 pt-6 pb-3 border-b border-gray-100 dark:border-gray-800 flex items-start justify-between">
           <div>
             <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
-              🎬 {isEdit ? (isZh ? '编辑视频任务' : 'Edit video task') : (isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video')}
+              🎬 {isEdit
+                ? (isZh ? '编辑视频任务' : 'Edit video task')
+                : mode === 'stock' ? (isZh ? '在线素材 · AI 口播日更' : 'Stock · AI Voice-over')
+                : mode === 'pure_ai' ? (isZh ? '电影级 · 纯 AI 生成' : 'Cinematic · Pure AI')
+                : (isZh ? '原创短视频 · AI自动成片' : 'Original Short · AI Auto-Video')}
             </h3>
             <div className="flex items-center gap-2 mt-3">
               {!forcedMode && (
@@ -3194,11 +3199,13 @@ const VideoConfigModal: React.FC<{
           {/* ── 步骤 7:出片(生成数量 + 定时运行 + 出片后处理)── */}
           {step === 7 && (
             <>
-              {/* 生成数量:拖拽滑块 1-10(默认 2)。复用脚本/配音,每条画面组合不同,平台费按条计。 */}
-              <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh ? '复用同一脚本与配音，每条画面组合不同' : 'reuse script & voice, vary clips'}>
+              {/* 生成数量:stock 1-100(每条 AI 独立写稿+配音,失败跳过,按条计费);其它模式 1-10。 */}
+              <Field label={isZh ? '生成数量' : 'Number of videos'} hint={isZh
+                ? (mode === 'stock' ? '每条 AI 独立写稿 + 配音,各不相同(失败自动跳过)' : '复用同一脚本与配音，每条画面组合不同')
+                : (mode === 'stock' ? 'each clip: fresh AI script + voice (failures skipped)' : 'reuse script & voice, vary clips')}>
                 <div className="flex items-center gap-3">
                   <input
-                    type="range" min={1} max={10} step={1}
+                    type="range" min={1} max={mode === 'stock' ? 100 : 10} step={1}
                     value={videoCount}
                     onChange={(e) => setVideoCount(Number(e.target.value) || 1)}
                     className="flex-1 accent-rose-500"
@@ -3210,7 +3217,9 @@ const VideoConfigModal: React.FC<{
                 <div className="text-[11px] text-gray-400 mt-1">{
                   mode === 'pure_ai'
                     ? (isZh ? '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)' : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
-                    : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
+                    : mode === 'stock'
+                      ? (isZh ? '1-100 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-100 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
+                      : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
                 }</div>
               </Field>
 
