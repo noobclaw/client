@@ -574,7 +574,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           模板速生展示 赛道/版式/标题/数据/配音/BGM(用户真正填的)。 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
         {task.input.engine === 'hotspot' ? (() => {
-          const srcMap: Record<string, string> = { hotsearch: isZh ? '全网热搜' : 'Hot Search', web3: 'Web3', tech: isZh ? '科技/AI' : 'Tech/AI' };
+          const srcMap: Record<string, string> = { weibo: isZh ? '微博' : 'Weibo', douyin: isZh ? '抖音' : 'Douyin', zhihu: isZh ? '知乎' : 'Zhihu', baidu: isZh ? '百度' : 'Baidu', bilibili: 'B站', xueqiu: isZh ? '雪球' : 'Xueqiu', web3: 'Web3', tech: isZh ? '科技' : 'Tech' };
           const srcs = (((task.input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join(' · ') || '-';
           const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
           return (
@@ -3543,10 +3543,17 @@ type TplStep = 1 | 2 | 3 | 4 | 5;
 //   跟其它视频卡不同:不填赛道/关键词/稿子,只勾「热点源」。每次运行从勾选源最新 20 条
 //   随机 1 条选题 → 服务端联网取材 → AI 紧贴资料写口播 → Serper 配图 → 合成 → 发布。
 //   出片/发布/定时/登录校验全复用既有 video task 基础设施(差别只在 engine='hotspot')。
-const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string; descZh: string; descEn: string }> = [
-  { id: 'hotsearch', zh: '全网热搜', en: 'Hot Search', emoji: '🔥', descZh: '微博 / 抖音 / 知乎 / 百度 / B站 / 雪球 热榜', descEn: 'Weibo / Douyin / Zhihu / Baidu / Bilibili / Xueqiu' },
-  { id: 'web3',      zh: 'Web3 资讯', en: 'Web3',       emoji: '🌐', descZh: '行业新闻 / 快讯 / 深度分析', descEn: 'Industry news / flash / analysis' },
-  { id: 'tech',      zh: '科技 / AI', en: 'Tech / AI',  emoji: '🤖', descZh: 'AI 精选 + 科技通用资讯', descEn: 'AI picks + general tech' },
+// 热点源:热搜榜按【具体榜】分开选(对齐 backend HOTSPOT_SOURCE_MAP 的 key),web3/科技按分类。
+// def=true 的新建时默认勾选。
+const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string; def: boolean }> = [
+  { id: 'weibo',    zh: '微博热搜',   en: 'Weibo',    emoji: '🔥', def: true },
+  { id: 'douyin',   zh: '抖音热搜',   en: 'Douyin',   emoji: '🎵', def: true },
+  { id: 'zhihu',    zh: '知乎热榜',   en: 'Zhihu',    emoji: '💭', def: true },
+  { id: 'baidu',    zh: '百度热搜',   en: 'Baidu',    emoji: '🔍', def: true },
+  { id: 'bilibili', zh: 'B站热搜',    en: 'Bilibili', emoji: '📺', def: true },
+  { id: 'xueqiu',   zh: '雪球热门股', en: 'Xueqiu',   emoji: '📈', def: false },
+  { id: 'web3',     zh: 'Web3 资讯',  en: 'Web3',     emoji: '🌐', def: true },
+  { id: 'tech',     zh: '科技 / AI',  en: 'Tech/AI',  emoji: '🤖', def: false },
 ];
 
 export const HotspotVideoModal: React.FC<{
@@ -3560,7 +3567,9 @@ export const HotspotVideoModal: React.FC<{
   const ei = editTask?.input || {};
   const [title, setTitle] = useState<string>(editTask?.title || '');
   const [sources, setSources] = useState<Record<string, boolean>>(() => {
-    const saved: string[] = Array.isArray(ei.hotspotSources) && ei.hotspotSources.length ? ei.hotspotSources : ['hotsearch'];
+    const saved: string[] = Array.isArray(ei.hotspotSources) && ei.hotspotSources.length
+      ? ei.hotspotSources
+      : HOTSPOT_SOURCES.filter((s) => s.def).map((s) => s.id);  // 新建默认勾选常用榜
     const init: Record<string, boolean> = {};
     HOTSPOT_SOURCES.forEach((s) => { init[s.id] = saved.includes(s.id); });
     return init;
@@ -3657,21 +3666,18 @@ export const HotspotVideoModal: React.FC<{
               className="w-full px-3 py-2 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
           </Field>
 
-          <Field label={isZh ? '热点源(可多选)' : 'Hot sources (multi)'} hint={isZh ? '选题从这些源来' : ''}>
-            <div className="space-y-2">
+          <Field label={isZh ? '热点源(可多选,默认已勾常用)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : ''}>
+            <div className="grid grid-cols-2 gap-2">
               {HOTSPOT_SOURCES.map((s) => {
                 const on = !!sources[s.id];
                 return (
                   <button key={s.id} type="button"
                     onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
-                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
                       on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
-                    <span className="text-xl">{s.emoji}</span>
-                    <span className="flex-1 min-w-0">
-                      <span className="block text-sm font-semibold dark:text-gray-100">{isZh ? s.zh : s.en}</span>
-                      <span className="block text-[11px] text-gray-400 truncate">{isZh ? s.descZh : s.descEn}</span>
-                    </span>
-                    <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-[11px] ${on ? 'bg-amber-500 border-amber-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>{on ? '✓' : ''}</span>
+                    <span>{s.emoji}</span>
+                    <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                    {on && <span className="text-amber-500">✓</span>}
                   </button>
                 );
               })}
