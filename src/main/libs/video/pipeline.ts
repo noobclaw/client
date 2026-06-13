@@ -26,7 +26,7 @@ import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
+import { generateScript, generateSearchTerms, generateHotspotKeywords, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, chargeHotspotImages, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
@@ -1061,14 +1061,15 @@ async function runVideoPipeline(
       assignVisuals = (videoIdx: number) => ({
         sceneClips: pool.assign(videoIdx > 0),
         imagePool: pool.imagePool,
-        imageByScene: pool.imageByScene,
+        // hotspot 提供 imageBySceneFor → 每条按 videoIdx 错开图序(多条各不同);其它模式用固定 map。
+        imageByScene: pool.imageBySceneFor ? pool.imageBySceneFor(videoIdx) : pool.imageByScene,
       });
     }
 
     // 在线素材库分支:AI 搜索词 → 逐词拉视频 → 图片补位 → 返回 { assign, imagePool }。
     // 抽成闭包是为了让本地上传时整段跳过(省时间 + 省 DeepSeek token);
     // assign(shuffle) 可被批量出片重复调用,每次用 fresh usedVideo 集分配。
-    async function buildStockPool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string> }> {
+    async function buildStockPool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string>; imageBySceneFor?: (videoIdx: number) => Map<number, string> }> {
     // 3a. 让 DeepSeek 给每个分镜配 1-3 个英文搜索词(画面跟着内容走)
     tracker.progress('AI 规划每镜画面关键词…');
     // A:把整条视频的主题/赛道/人设/关键词当语境喂给映射模型,让每镜的词锁定选题。
@@ -1285,25 +1286,30 @@ async function runVideoPipeline(
     // 热搜成片:用 Serper /images(英文配图词)+ og:image 建图池(纯图 Ken Burns)。
     //   一次 Serper 查询(1 credit)拿 10-15 张铺满全片,不逐镜搜(省 credit)。
     //   返回形状与 buildStockPool 一致:assign 恒空(无视频)→ compose 走图片运镜。
-    async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string> }> {
-      // 配图关键词:中文热点【出中文词优先】(serper 谷歌图中文词有图、源更干净:维基/新闻/机构),
-      //   英文热点(web3/科技)出英文词。中文热点同时也出一份英文词作兜底(中文不够时后端用)。
-      tracker.progress('AI 规划配图关键词…');
+    async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string>; imageBySceneFor?: (videoIdx: number) => Map<number, string> }> {
+      // 配图关键词【基于热搜标题】:都是热榜,配图紧扣标题主体最准 —— 取「标题原句 + 标题里拆出的
+      //   核心实体/概念词」,而不是从整篇口播稿逐镜抽(那样词又多又散)。例「花小龙带黄晓明自律的
+      //   一天」→ 标题原句 + 花小龙 / 黄晓明 / 自律。中文热点出中文这组(serper 谷歌图中文词源更干净:
+      //   维基/新闻/机构)+ 一份英文兜底;英文热点(web3/科技)只出英文。
+      tracker.progress('AI 按标题规划配图关键词…');
       const topicTitle = hotspotTopic?.title || '';
       const isZhTopic = String(detectLang(topicTitle)).toLowerCase().startsWith('zh');
-      const uniq = (terms: string[][]) => Array.from(new Set(terms.flat().filter(Boolean).map((s) => s.trim()))).filter(Boolean).slice(0, 8);
-      // 英文词(总出:英文热点主用 / 中文热点兜底)
-      const enRes = await generateSearchTerms(sentences, [], vcfg.termsSystemPrompt, { topic: topicTitle, lang: detectLang(topicTitle) }, 'en');
-      aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
-      const kwEn = uniq(enRes.terms).map((s) => s.toLowerCase());
-      // 中文词(仅中文热点才出,多一次 AI;英文热点不出省 token)
+      const dedup = (list: string[]): string[] => Array.from(new Set(list.map((s) => s.trim()).filter(Boolean))).slice(0, 6);
       let kwZh: string[] = [];
+      let kwEn: string[] = [];
       if (isZhTopic) {
-        const zhRes = await generateSearchTerms(sentences, [], undefined, { topic: topicTitle, lang: 'zh' }, 'zh');
+        const zhRes = await generateHotspotKeywords(topicTitle, 'zh');
         aiCostUsd += zhRes.costUsd; tracker.addTokens(zhRes.tokens, zhRes.costUsd);
-        kwZh = uniq(zhRes.terms);
+        kwZh = dedup([topicTitle, ...zhRes.terms]);
+        const enRes = await generateHotspotKeywords(topicTitle, 'en');
+        aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
+        kwEn = dedup(enRes.terms.map((s) => s.toLowerCase()));
+      } else {
+        const enRes = await generateHotspotKeywords(topicTitle, 'en');
+        aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
+        kwEn = dedup([topicTitle, ...enRes.terms].map((s) => s.toLowerCase()));
       }
-      tracker.progress(`🔤 配图关键词 — 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
+      tracker.progress(`🔤 配图关键词(基于标题)— 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
 
       // ── 配图编排在【后端】:中文词优先搜→英文兜底、只大图、剔付费图库,返回大图 URL + 下发黑名单。
       //    客户端优先自己下大图(省服务端流量),下不动的转后端代下 base64(国内主走这条)。
@@ -1342,6 +1348,16 @@ async function runVideoPipeline(
       if (localImgs.length > 0) {
         sentences.forEach((_, i) => imageByScene.set(i, localImgs[i % localImgs.length]));
       }
+      // 批量出片:每条按 videoIdx 错开图片起始位 → 同一批图排出不同顺序的片子(否则多条完全一样:
+      //   hotspot 的 assign 恒空、配图全靠 imageByScene)。第 0 条 offset=0(原序),之后逐条右移。
+      const imageBySceneFor = (videoIdx: number): Map<number, string> => {
+        const m = new Map<number, string>();
+        if (localImgs.length > 0) {
+          const offset = ((videoIdx % localImgs.length) + localImgs.length) % localImgs.length;
+          sentences.forEach((_, i) => m.set(i, localImgs[(i + offset) % localImgs.length]));
+        }
+        return m;
+      };
       const imagePool = [...localImgs];
 
       // 留档到「素材」子目录(对齐 buildStockPool)。
@@ -1360,7 +1376,7 @@ async function runVideoPipeline(
         : '未取到配图,使用文字卡');
 
       const assign = (_shuffle: boolean): string[][] => sentences.map(() => [] as string[]);
-      return { assign, imagePool, imageByScene };
+      return { assign, imagePool, imageByScene, imageBySceneFor };
     }
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。

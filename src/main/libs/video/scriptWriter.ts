@@ -429,3 +429,32 @@ export async function generateSearchTerms(
     return { terms: fallbackEach, tokens: 0, costUsd: 0 };
   }
 }
+
+/**
+ * 热搜成片专用:从【热搜标题】抽配图搜索词(替代从整篇口播稿逐镜抽 —— 都是热榜,配图紧扣
+ * 标题主体最准、词也更少)。返回标题里的核心实体(人名/明星/机构/地名/作品)+ 1-2 个概念词;
+ * 调用方通常再把【标题原句】拼到最前,组成 [标题, 实体1, 实体2, …]。失败返空数组(不抛)。
+ * 例:「花小龙带黄晓明自律的一天」→ ["花小龙","黄晓明","自律"](调用方再补标题原句到最前)。
+ */
+export async function generateHotspotKeywords(
+  title: string,
+  outputLang: 'zh' | 'en',
+): Promise<{ terms: string[]; tokens: number; costUsd: number }> {
+  const t = (title || '').trim();
+  if (!t) return { terms: [], tokens: 0, costUsd: 0 };
+  const system = outputLang === 'zh'
+    ? '你从一条热搜标题里提取【图片搜索关键词】,用于谷歌图片搜索给视频配图。规则:提取标题中出现的具体实体(人名、明星、机构、品牌、地名、作品名)和 1-2 个核心概念词,共 3-5 个【简体中文】短词;每个必须是真实可搜、能搜到相关图片的词;不要整句、不要标点符号、不要话题号。只输出 JSON:{"terms":["词1","词2"]}。不要解释、不要 markdown。'
+    : 'Extract image-search keywords from a trending news headline, to illustrate a video via Google Images. Pull the concrete entities (person/celebrity names, organizations, brands, places, work titles) plus 1-2 core concept words — 3-5 English keywords total. Each must be a real, searchable short term; no full sentences, no punctuation, no hashtags. Output ONLY JSON: {"terms":["term1","term2"]}. No explanation, no markdown.';
+  const user = `Headline: ${t}\n\nReturn ONLY the raw JSON object now (no markdown fences, no explanation).`;
+  try {
+    // 标题抽词是简单确定性任务 → 走普通 chat(省钱),不上 reasoner。
+    const { content, tokens, costUsd } = await callDeepSeek(system, user, true, 30_000);
+    const parsed = JSON.parse(extractJsonObject(content));
+    const terms = Array.isArray(parsed?.terms)
+      ? parsed.terms.filter((x: any) => typeof x === 'string' && x.trim()).map((x: string) => x.trim()).slice(0, 5)
+      : [];
+    return { terms, tokens, costUsd };
+  } catch {
+    return { terms: [], tokens: 0, costUsd: 0 };
+  }
+}
