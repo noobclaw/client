@@ -2317,7 +2317,13 @@ const VideoConfigModal: React.FC<{
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
   // 视频任务已去掉「每日定时」选项,dailyTime 仅作占位默认值(不再可编辑)。
   const [dailyTime] = useState<string>(editTask?.dailyTime || '08:00');
-  const [outputMode, setOutputMode] = useState<OutputMode>('local');
+  // 编辑态必须从 input.publishPlatforms 反推 outputMode:否则编辑一个「上传」任务时
+  // outputMode 恒为 'local' → 平台勾选区被隐藏、buildInput 又把 publishPlatforms 写成 []
+  // → 保存后任务被悄悄改回「仅存本地」(详情页看不见发布信息、运行也只存本地)。
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    const pub = (editTask?.input as any)?.publishPlatforms;
+    return Array.isArray(pub) && pub.length > 0 ? 'upload' : 'local';
+  });
   // 新建默认勾抖音 + 小红书(国内最大两个);编辑老任务从 input.publishPlatforms 反推。
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
