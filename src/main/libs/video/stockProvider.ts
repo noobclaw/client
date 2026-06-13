@@ -169,18 +169,30 @@ export async function downloadImagesFromUrls(
   minEdge = 200,        // 放宽:容 google 缩略图(~225px)+ 多数新闻图;卡太死会把图删光
   maxCount = Infinity,  // 凑够这么多张就停,不必把上百候选全下完(原图在前,够了就不用动缩略图)
 ): Promise<string[]> {
+  // ⚠️ 必须并发,不能串行 for-await:候选里有防盗链原图 / 墙内连不上的 gstatic 缩略图,
+  //   单个 downloadTo 失败要死等满 REQ_TIMEOUT_MS(15s)。串行 60+ 候选 → 最坏十几分钟卡死
+  //   (用户实测「准备画面素材」一直卡)。并发 8 + 下够 maxCount 立即停 → 几秒~几十秒拿够。
+  const valid = urls.filter((u) => typeof u === 'string' && /^https?:\/\//.test(u));
   const results: string[] = [];
-  let idx = 0;
-  for (const url of urls) {
-    if (results.length >= maxCount) break;
-    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) continue;
-    const ext = (url.split('?')[0].match(/\.(jpg|jpeg|png|webp)$/i)?.[1] || 'jpg').toLowerCase();
-    const dest = path.join(destDir, `hotspot_${String(idx).padStart(3, '0')}.${ext}`);
-    idx++;
-    const ok = await downloadTo(url, dest, minEdge);
-    if (ok) results.push(dest);
-  }
-  return results;
+  const CONCURRENCY = 8;
+  let next = 0;
+  let stop = false;
+  const worker = async () => {
+    while (!stop) {
+      const i = next++;
+      if (i >= valid.length || results.length >= maxCount) break;
+      const url = valid[i];
+      const ext = (url.split('?')[0].match(/\.(jpg|jpeg|png|webp)$/i)?.[1] || 'jpg').toLowerCase();
+      const dest = path.join(destDir, `hotspot_${String(i).padStart(3, '0')}.${ext}`);
+      const ok = await downloadTo(url, dest, minEdge);
+      if (ok) {
+        results.push(dest);
+        if (results.length >= maxCount) { stop = true; break; }
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, valid.length) }, worker));
+  return maxCount === Infinity ? results : results.slice(0, maxCount);
 }
 
 // ─────────────────────────── 视频素材 ───────────────────────────

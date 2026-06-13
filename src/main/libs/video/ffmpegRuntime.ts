@@ -242,9 +242,14 @@ function runProbe(filePath: string): Promise<string> {
     }
     const child = spawn(getFfmpegPath(), ['-hide_banner', '-i', filePath], { windowsHide: true });
     let err = '';
-    child.stderr?.on('data', (b: Buffer) => { err += b.toString(); });
-    child.on('error', () => resolve(''));
-    child.on('close', () => {
+    let settled = false;
+    // ⚠️ 必须有超时:`ffmpeg -i` 对【坏文件】(防盗链返回的 HTML / 截断数据 — 下载海外图常见)
+    //   有概率卡住不退出 → 没超时就永不 resolve → probeImageSize / downloadTo 整个卡死
+    //   (热搜成片 / stock 配图都靠它探尺寸,曾表现为「准备画面素材」一直卡)。8s 足够探元数据。
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
       if (mtimeMs >= 0) {
         _probeCache.set(filePath, { mtimeMs, stderr: err });
         // 粗暴限大小:超 256 条删最老的(Map 保留插入序)。
@@ -254,7 +259,11 @@ function runProbe(filePath: string): Promise<string> {
         }
       }
       resolve(err);
-    });
+    };
+    const timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch {} finish(); }, 8000);
+    child.stderr?.on('data', (b: Buffer) => { err += b.toString(); });
+    child.on('error', () => { if (!settled) { settled = true; clearTimeout(timer); resolve(''); } });
+    child.on('close', () => finish());
   });
 }
 
