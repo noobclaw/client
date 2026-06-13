@@ -60,16 +60,15 @@ async function downloadTo(url: string, destPath: string, minEdge = MIN_IMAGE_EDG
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
-    // 带浏览器 UA + Referer:很多图床/新闻站对无 UA 的请求直接 403(热搜成片 Serper 图常踩),
-    //   加上后下载成功率明显提升;Pexels/Pixabay CDN 也接受,无副作用。
-    let referer = '';
-    try { referer = new URL(url).origin + '/'; } catch { /* 非法 URL 下面 fetch 自会失败 */ }
+    // 带浏览器 UA + google Referer:很多图床对无 UA 的请求 403。Referer 用 google(不是图片
+    //   自己的 origin —— 那反而像盗链被拒),多数图床对「从 google 图片点进来」放行(SEO 考量);
+    //   google 缩略图 CDN(gstatic)更是无所谓。Pexels/Pixabay 也接受,无副作用。
     const res = await fetch(url, {
       signal: ctrl.signal,
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
-        ...(referer ? { Referer: referer } : {}),
+        'Referer': 'https://www.google.com/',
       },
     });
     if (!res.ok) return false;
@@ -167,11 +166,13 @@ export async function fetchStockImages(opts: FetchStockOptions): Promise<string[
 export async function downloadImagesFromUrls(
   urls: string[],
   destDir: string,
-  minEdge = 360,
+  minEdge = 200,        // 放宽:容 google 缩略图(~225px)+ 多数新闻图;卡太死会把图删光
+  maxCount = Infinity,  // 凑够这么多张就停,不必把上百候选全下完(原图在前,够了就不用动缩略图)
 ): Promise<string[]> {
   const results: string[] = [];
   let idx = 0;
   for (const url of urls) {
+    if (results.length >= maxCount) break;
     if (typeof url !== 'string' || !/^https?:\/\//.test(url)) continue;
     const ext = (url.split('?')[0].match(/\.(jpg|jpeg|png|webp)$/i)?.[1] || 'jpg').toLowerCase();
     const dest = path.join(destDir, `hotspot_${String(idx).padStart(3, '0')}.${ext}`);

@@ -80,21 +80,31 @@ export async function fetchHotspotMaterial(title: string, lang = 'zh'): Promise<
   return typeof json?.material === 'string' ? json.material : '';
 }
 
-/** 配图:Serper /images(英文词)+ og:image 来源页兜底,返回公开图片 URL 列表。失败返空数组。 */
 export interface HotspotImageDiag {
   reached: boolean;      // 是否成功拿到 backend 响应(false=网络/404/认证挂了)
   hasKey: boolean;       // backend 读到 serper key 没
-  serperCount: number;   // serper /images 返回几张
+  queries: number;       // 后端实际发了几次 serper 请求
+  serperTotal: number;   // serper 累计返回几张候选
   serperError: string;   // serper 报错/网络到不了的信息
   ogCount: number;       // og:image 兜底几张
 }
 
-export async function fetchHotspotImages(queryEn: string, sourceUrl?: string, count = 15): Promise<{ urls: string[]; diag: HotspotImageDiag }> {
-  const json = await postJson('/api/video/hotspot/images', { queryEn, sourceUrl, count });
+/**
+ * 配图编排(后端决策):把【AI 出的英文关键词 + 时长 + 来源URL】给后端,后端按时长决定发几次
+ * serper、要几张,返回【排好序的候选 URL 列表(原图在前→缩略图兜底→og)+ 目标张数 want】。
+ * 客户端只管下载到 want 张。编排在后端 → 以后调配图策略不用打包客户端。
+ */
+export async function fetchHotspotImagePlan(
+  keywords: string[],
+  targetSeconds: number,
+  sourceUrl?: string,
+): Promise<{ urls: string[]; want: number; diag: HotspotImageDiag }> {
+  const json = await postJson('/api/video/hotspot/images', { keywords, targetSeconds, sourceUrl });
   const diag: HotspotImageDiag = {
     reached: !!json,
     hasKey: !!json?.hasKey,
-    serperCount: Number(json?.serperCount) || 0,
+    queries: Number(json?.queries) || 0,
+    serperTotal: Number(json?.serperTotal) || 0,
     serperError: String(json?.serperError || ''),
     ogCount: Number(json?.ogCount) || 0,
   };
@@ -102,17 +112,12 @@ export async function fetchHotspotImages(queryEn: string, sourceUrl?: string, co
   const urls = Array.isArray(imgs)
     ? imgs.map((im: any) => (typeof im === 'string' ? im : im?.url)).filter((u: any): u is string => typeof u === 'string' && /^https?:\/\//.test(u))
     : [];
-  return { urls, diag };
+  const want = Number(json?.want) || Math.max(8, Math.min(40, Math.ceil(targetSeconds / 4) + 2));
+  return { urls, want, diag };
 }
 
-/** 配图一条龙:查 URL → 下载到本地。返回本地路径 + 诊断(透传 backend 的 serper 状态)。 */
-export async function fetchAndDownloadHotspotImages(
-  queryEn: string,
-  sourceUrl: string | undefined,
-  count: number,
-  destDir: string,
-): Promise<{ paths: string[]; diag: HotspotImageDiag }> {
-  const { urls, diag } = await fetchHotspotImages(queryEn, sourceUrl, count);
-  const paths = urls.length === 0 ? [] : await downloadImagesFromUrls(urls, destDir);
-  return { paths, diag };
+/** 下载后端返回的图链接到本地,下到 want 张即停。返回本地路径。 */
+export async function downloadHotspotImages(urls: string[], destDir: string, want: number): Promise<string[]> {
+  if (urls.length === 0) return [];
+  return downloadImagesFromUrls(urls, destDir, 200, want);
 }

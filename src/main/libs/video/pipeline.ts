@@ -24,7 +24,7 @@ import {
 } from './tts';
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
-import { pickHotspotTopic, fetchHotspotMaterial, fetchAndDownloadHotspotImages, type HotspotTopic } from './hotspotProvider';
+import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
@@ -1279,34 +1279,24 @@ async function runVideoPipeline(
       });
       aiCostUsd += termsResult.costUsd;
       tracker.addTokens(termsResult.tokens, termsResult.costUsd);
-      const uniqTerms = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase())));
-      const queryEn = uniqTerms.slice(0, 5).join(' ') || hotspotTopic?.title || '';
-      if (queryEn) tracker.progress(`🔍 配图检索词:${queryEn}`);
+      const keywords = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()))).slice(0, 8);
 
-      // 配图策略(用户定):取最多 5 个【独立】英文关键词,各查一次 Serper /images(每词 10 张),
-      //   凑最多 ~50 张候选 → 够做长视频、画面更丰富(不同词出不同图)。图全部本地留档(见下「素材」)。
-      const terms5 = Array.from(new Set(
-        termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()),
-      )).slice(0, 5);
-      if (terms5.length === 0) terms5.push(queryEn || hotspotTopic?.title || '');
-      const want = Math.max(sentences.length, 8);
-      const localImgs: string[] = [];
-      const seenImg = new Set<string>();
-      let firstDiag: { reached: boolean; hasKey: boolean; serperCount: number; serperError: string } | null = null;
-      for (let i = 0; i < terms5.length; i++) {
-        const q = terms5[i];
-        if (!q) continue;
-        const { paths, diag } = await fetchAndDownloadHotspotImages(q, i === 0 ? hotspotTopic?.url : undefined, 10, assetDir);
-        if (i === 0) firstDiag = diag;
-        for (const p of paths) { if (!seenImg.has(p)) { seenImg.add(p); localImgs.push(p); } }
-        tracker.progress(`🖼️ 配图「${q}」serper 返回 ${diag.serperCount} 张 → 累计下载 ${localImgs.length} 张`);
-      }
-      // serper 没出图时把真因打到进度里(不再静默只剩 og 那张)。
-      if (firstDiag && firstDiag.serperCount === 0) {
-        if (!firstDiag.reached) tracker.progress('⚠️ 配图接口没通(后端没部署最新代码 / 未登录?)');
-        else if (!firstDiag.hasKey) tracker.progress('⚠️ 服务端没读到 serper key — 查 admin 的 serper_api_key + 后端是否已部署最新代码并重启');
-        else if (firstDiag.serperError) tracker.progress(`⚠️ Serper 调用失败:${firstDiag.serperError}(后端到 google.serper.dev 的网络?)`);
-        else tracker.progress('⚠️ Serper 返回 0 图(该英文词无结果)');
+      // ── 配图编排在【后端】:把关键词 + 时长 + 来源URL 给后端,后端按时长决定发几次 serper、
+      //    要几张,返回排好序的候选 URL + 目标张数 want。客户端只管下载 + 组装。
+      //    → 以后调配图策略(几次/几张/兜底)只改 backend、不打包客户端,所有客户端立即一致。
+      const { urls, want, diag } = await fetchHotspotImagePlan(keywords, input.targetSeconds ?? 60, hotspotTopic?.url);
+      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${urls.length} 个`);
+
+      // 下载候选,下到 want 张即停(原图在前、挂的用 gstatic 缩略图补)。
+      const localImgs = await downloadHotspotImages(urls, assetDir, want);
+
+      // 没出图时把真因打到进度里(不再静默只剩 1 张)。
+      if (localImgs.length === 0) {
+        if (!diag.reached) tracker.progress('⚠️ 配图接口没通(后端没部署最新代码 / 未登录?)');
+        else if (!diag.hasKey) tracker.progress('⚠️ 服务端没读到 serper key — 查 admin 的 serper_api_key + 后端是否已部署最新代码并重启');
+        else if (diag.serperError) tracker.progress(`⚠️ Serper 调用失败:${diag.serperError}`);
+        else if (diag.serperTotal === 0) tracker.progress('⚠️ Serper 返回 0 图(关键词无结果?)');
+        else tracker.progress('⚠️ 候选都下载失败(图床防盗链?)');
       }
 
       // 平铺到各镜(轮流复用);assign 恒空(无视频)→ compose 用 imageByScene 的图做 Ken Burns。
