@@ -60,7 +60,18 @@ async function downloadTo(url: string, destPath: string, minEdge = MIN_IMAGE_EDG
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctrl.signal });
+    // 带浏览器 UA + Referer:很多图床/新闻站对无 UA 的请求直接 403(热搜成片 Serper 图常踩),
+    //   加上后下载成功率明显提升;Pexels/Pixabay CDN 也接受,无副作用。
+    let referer = '';
+    try { referer = new URL(url).origin + '/'; } catch { /* 非法 URL 下面 fetch 自会失败 */ }
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'image/avif,image/webp,image/apng,image/*,*/*;q=0.8',
+        ...(referer ? { Referer: referer } : {}),
+      },
+    });
     if (!res.ok) return false;
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.length < 1024) return false; // junk / error page

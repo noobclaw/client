@@ -1283,9 +1283,26 @@ async function runVideoPipeline(
       const queryEn = uniqTerms.slice(0, 5).join(' ') || hotspotTopic?.title || '';
       if (queryEn) tracker.progress(`🔍 配图检索词:${queryEn}`);
 
-      // 一次查询拿 ≥ 分镜数 的图(下载含体积/分辨率校验 + og:image 来源页兜底)。
-      const want = Math.max(sentences.length, 12);
-      const localImgs = await fetchAndDownloadHotspotImages(queryEn, hotspotTopic?.url, want, assetDir);
+      // 目标 = 每镜一张(不够再复用)。图床防盗链下载失败率高,所以:① 每次多要候选(want×4)做冗余;
+      //   ② 首组词凑不够,再用各分镜首词逐组【补查】(每组 1 credit),最多 4 组,直到够分镜数。
+      //   og:image 仅首组带(来源页就一张)。
+      const want = Math.max(sentences.length, 8);
+      const localImgs: string[] = [];
+      const seenImg = new Set<string>();
+      const queryGroups = Array.from(new Set(
+        [queryEn, ...termsResult.terms.map((t) => (t || [])[0]).filter(Boolean).map((s) => s.toLowerCase())].filter(Boolean),
+      ));
+      for (const q of queryGroups.slice(0, 4)) {
+        if (localImgs.length >= want) break;
+        const got = await fetchAndDownloadHotspotImages(
+          q,
+          localImgs.length === 0 ? hotspotTopic?.url : undefined,
+          Math.max(want * 4, 24),
+          assetDir,
+        );
+        for (const p of got) { if (!seenImg.has(p)) { seenImg.add(p); localImgs.push(p); } }
+        tracker.progress(`🖼️ 已凑配图 ${localImgs.length}/${want} 张…`);
+      }
 
       // 平铺到各镜(轮流复用);assign 恒空(无视频)→ compose 用 imageByScene 的图做 Ken Burns。
       const imageByScene = new Map<number, string>();

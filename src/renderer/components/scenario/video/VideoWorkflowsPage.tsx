@@ -3576,6 +3576,8 @@ export const HotspotVideoModal: React.FC<{
   });
   const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
+  const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   const [outputMode, setOutputMode] = useState<OutputMode>(
     Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
@@ -3604,6 +3606,8 @@ export const HotspotVideoModal: React.FC<{
     targetSeconds,
     useStockVideo: false,            // 纯图 Ken Burns(Serper 给的是图,不是视频)
     subtitleEnabled,
+    voice,
+    voiceRate,
     maxClipSeconds: 4,
     videoCount: 1,
   });
@@ -3697,6 +3701,25 @@ export const HotspotVideoModal: React.FC<{
             {isZh ? '烧录字幕' : 'Burn subtitles'}
           </label>
 
+          <Field label={isZh ? '配音音色' : 'Voice'}>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+              {VOICE_GROUPS.map((g) => (
+                <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                  {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                </optgroup>
+              ))}
+            </select>
+            <div className="flex gap-2 mt-2">
+              {RATE_OPTIONS.map((r) => (
+                <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                  {isZh ? r.zh : r.en}
+                </button>
+              ))}
+            </div>
+          </Field>
+
           <Field label={isZh ? '成片去向' : 'Output'}>
             <div className="flex gap-2 mb-2">
               {(['local', 'upload'] as OutputMode[]).map((m) => (
@@ -3725,16 +3748,30 @@ export const HotspotVideoModal: React.FC<{
             )}
           </Field>
 
-          <Field label={isZh ? '运行频率' : 'Frequency'}>
-            <div className="flex flex-wrap gap-2">
-              {([['once', isZh ? '仅手动' : 'Manual'], ['daily', isZh ? '每天' : 'Daily'], ['daily_random', isZh ? '每天(随机)' : 'Daily random'], ['6h', isZh ? '每 6 小时' : 'Every 6h']] as Array<[VideoRunInterval, string]>).map(([v, label]) => (
-                <button key={v} type="button" onClick={() => setRunInterval(v)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border ${runInterval === v ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{label}</button>
+          <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { v: 'once', zh: '不重复', en: 'Once' },
+                { v: 'daily', zh: '每天定时', en: 'Daily' },
+                { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
+                { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
+                { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
+              ] as { v: VideoRunInterval; zh: string; en: string }[]).map((o) => (
+                <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
+                  className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}>
+                  {isZh ? o.zh : o.en}
+                </button>
               ))}
             </div>
             {runInterval === 'daily' && (
               <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)}
                 className="mt-2 px-3 py-1.5 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
+            )}
+            {runInterval === 'daily_random' && (
+              <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Once daily at a random time'}</p>
+            )}
+            {runInterval !== 'once' && (
+              <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
             )}
           </Field>
 
