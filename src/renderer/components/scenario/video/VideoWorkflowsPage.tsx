@@ -118,7 +118,15 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
             onSaved={() => setEditTaskId(null)}
           />
         )}
-        {editingTask && editingTask.input?.engine !== 'template' && (
+        {editingTask && editingTask.input?.engine === 'hotspot' && (
+          <HotspotVideoModal
+            isZh={isZh}
+            editTask={editingTask}
+            onClose={() => setEditTaskId(null)}
+            onSaved={() => setEditTaskId(null)}
+          />
+        )}
+        {editingTask && editingTask.input?.engine !== 'template' && editingTask.input?.engine !== 'hotspot' && (
           <VideoConfigModal
             isZh={isZh}
             editTask={editingTask}
@@ -363,12 +371,15 @@ const HeadBadges: React.FC<{ isZh: boolean; size?: 'sm' | 'md'; input?: { engine
   const cls = size === 'md' ? 'text-xs px-2.5 py-1' : 'text-[11px] px-2 py-0.5';
   const isAi = input?.engine === 'ai';
   const isTemplate = input?.engine === 'template';
-  const isLocal = !!input && !isAi && !isTemplate && Array.isArray(input.localVideos) && input.localVideos.length > 0;
-  const modeLabel = isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
+  const isHotspot = input?.engine === 'hotspot';
+  const isLocal = !!input && !isAi && !isTemplate && !isHotspot && Array.isArray(input.localVideos) && input.localVideos.length > 0;
+  const modeLabel = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
+    : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
     : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
     : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
     : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
-  const modeColor = isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+  const modeColor = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
+    : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
     : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
     : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
   return (
@@ -541,12 +552,15 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           // 生成模式徽章:纯AI生成(Seedance)/ 模板速生 / 在线素材 / 本地素材 —— 一眼区分。
           const isAi = task.input.engine === 'ai';
           const isTemplate = task.input.engine === 'template';
-          const isLocal = !isAi && !isTemplate && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
-          const label = isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
+          const isHotspot = task.input.engine === 'hotspot';
+          const isLocal = !isAi && !isTemplate && !isHotspot && Array.isArray(task.input.localVideos) && task.input.localVideos.length > 0;
+          const label = isHotspot ? (isZh ? '🔥 热搜成片' : '🔥 Hotspot')
+            : isTemplate ? (isZh ? '⚡ 模板速生' : '⚡ Template')
             : isAi ? (isZh ? '✨ 纯AI生成' : '✨ Pure AI')
             : isLocal ? (isZh ? '📁 本地素材' : '📁 Local')
             : (isZh ? '🎞️ 在线素材' : '🎞️ Stock');
-          const color = isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
+          const color = isHotspot ? 'text-rose-500 bg-rose-500/10 border-rose-500/30'
+            : isTemplate ? 'text-fuchsia-500 bg-fuchsia-500/10 border-fuchsia-500/30'
             : isAi ? 'text-violet-500 bg-violet-500/10 border-violet-500/30'
             : 'text-sky-500 bg-sky-500/10 border-sky-500/30';
           return <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] px-2 py-0.5 font-semibold rounded-full border ${color}`}>{label}</span>;
@@ -559,7 +573,27 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
       {/* 配置摘要:engine 分流 —— stock/pure_ai 展示 赛道/人设/关键词/文案;
           模板速生展示 赛道/版式/标题/数据/配音/BGM(用户真正填的)。 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
-        {task.input.engine === 'template' ? (() => {
+        {task.input.engine === 'hotspot' ? (() => {
+          const srcMap: Record<string, string> = { hotsearch: isZh ? '全网热搜' : 'Hot Search', web3: 'Web3', tech: isZh ? '科技/AI' : 'Tech/AI' };
+          const srcs = (((task.input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join(' · ') || '-';
+          const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
+          return (
+            <>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🔥 {isZh ? '热点源' : 'Sources'}</span>
+                <span className="truncate">{srcs}</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">⏱️ {isZh ? '时长' : 'Length'}</span>
+                <span className="truncate">{task.input.targetSeconds || 60}s</span>
+              </div>
+              <div className="flex items-start gap-1.5">
+                <span className="text-gray-400 shrink-0">🚀 {isZh ? '发布' : 'Publish'}</span>
+                <span className="truncate">{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</span>
+              </div>
+            </>
+          );
+        })() : task.input.engine === 'template' ? (() => {
           const t = task.input.template;
           const { count, preview } = templateDataPreview(t?.dataText, isZh);
           return (
@@ -1645,6 +1679,7 @@ const VideoCreateFlow: React.FC<{
   const [cinemaOpen, setCinemaOpen] = useState(false);     // 电影级 → VideoConfigModal forcedMode=pure_ai
   const [stockOpen, setStockOpen] = useState(false);       // 在线素材 → VideoConfigModal forcedMode=stock
   const [templateOpen, setTemplateOpen] = useState(false); // 模板速生 → TemplateSpeedModal
+  const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
@@ -1670,6 +1705,13 @@ const VideoCreateFlow: React.FC<{
           descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame, optional AI voice-over + subtitles. Seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
           costZh="单条约 $0.02~$0.04(数据/写稿/合成)" costEn="~$0.02–0.04 per clip (data / script / compose)"
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
+        <VideoScenarioEntryCard isZh={isZh} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
+          titleZh="热搜成片 · 蹭热点全自动" titleEn="Hotspot · Auto Trend Video"
+          descZh="勾选热搜榜 / Web3 / 科技源,每天定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配相关图片成片并发布。真·一次设置、每天自动蹭热点出片。"
+          descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
+          costZh="单条约 $0.02~$0.05(写稿/联网/配图/合成)" costEn="~$0.02–0.05 per clip (script / web / images / compose)"
+          btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
       </section>
 
       {cinemaOpen && (
@@ -1680,6 +1722,9 @@ const VideoCreateFlow: React.FC<{
       )}
       {templateOpen && (
         <TemplateSpeedModal isZh={isZh} onClose={() => setTemplateOpen(false)} onCreated={onCreated} />
+      )}
+      {hotspotOpen && (
+        <HotspotVideoModal isZh={isZh} onClose={() => setHotspotOpen(false)} onCreated={onCreated} />
       )}
     </div>
   );
@@ -3493,6 +3538,222 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
 //   Step 4 背景音乐(三选一 + 音量)
 //   Step 5 出片(品牌色 + 运行频率)
 type TplStep = 1 | 2 | 3 | 4 | 5;
+
+// ── 热搜成片配置向导(engine='hotspot')──────────────────────────────────
+//   跟其它视频卡不同:不填赛道/关键词/稿子,只勾「热点源」。每次运行从勾选源最新 20 条
+//   随机 1 条选题 → 服务端联网取材 → AI 紧贴资料写口播 → Serper 配图 → 合成 → 发布。
+//   出片/发布/定时/登录校验全复用既有 video task 基础设施(差别只在 engine='hotspot')。
+const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string; descZh: string; descEn: string }> = [
+  { id: 'hotsearch', zh: '全网热搜', en: 'Hot Search', emoji: '🔥', descZh: '微博 / 抖音 / 知乎 / 百度 / B站 / 雪球 热榜', descEn: 'Weibo / Douyin / Zhihu / Baidu / Bilibili / Xueqiu' },
+  { id: 'web3',      zh: 'Web3 资讯', en: 'Web3',       emoji: '🌐', descZh: '行业新闻 / 快讯 / 深度分析', descEn: 'Industry news / flash / analysis' },
+  { id: 'tech',      zh: '科技 / AI', en: 'Tech / AI',  emoji: '🤖', descZh: 'AI 精选 + 科技通用资讯', descEn: 'AI picks + general tech' },
+];
+
+export const HotspotVideoModal: React.FC<{
+  isZh: boolean;
+  onClose: () => void;
+  onCreated?: (id: string) => void;
+  editTask?: any;
+  onSaved?: () => void;
+}> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
+  const isEdit = !!editTask;
+  const ei = editTask?.input || {};
+  const [title, setTitle] = useState<string>(editTask?.title || '');
+  const [sources, setSources] = useState<Record<string, boolean>>(() => {
+    const saved: string[] = Array.isArray(ei.hotspotSources) && ei.hotspotSources.length ? ei.hotspotSources : ['hotsearch'];
+    const init: Record<string, boolean> = {};
+    HOTSPOT_SOURCES.forEach((s) => { init[s.id] = saved.includes(s.id); });
+    return init;
+  });
+  const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
+  const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
+  const [outputMode, setOutputMode] = useState<OutputMode>(
+    Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
+  const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
+    const saved: string[] = Array.isArray(ei.publishPlatforms) ? ei.publishPlatforms : [];
+    const init = {} as Record<Platform, boolean>;
+    PUBLISH_PLATFORMS.forEach((p) => { init[p.id] = saved.includes(p.id); });
+    return init;
+  });
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'daily');
+  const [dailyTime, setDailyTime] = useState<string>(editTask?.dailyTime || '08:00');
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState('');
+  const [showLoginCheck, setShowLoginCheck] = useState(false);
+
+  const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
+  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+
+  const buildTitle = () => (title.trim() || (isZh ? '热搜成片' : 'Hotspot Video'));
+  const buildInput = (): VideoCreationInput => ({
+    persona: '', track: '', keywords: [], script: '', scriptMode: 'ai',
+    engine: 'hotspot',
+    hotspotSources: selectedSources,
+    referenceImages: [],
+    aspect: '9:16',
+    publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+    targetSeconds,
+    useStockVideo: false,            // 纯图 Ken Burns(Serper 给的是图,不是视频)
+    subtitleEnabled,
+    maxClipSeconds: 4,
+    videoCount: 1,
+  });
+
+  const doCreate = async () => {
+    if (submitting) return;
+    setSubmitting(true);
+    setErr('');
+    try {
+      const input = buildInput();
+      const schedule: VideoSchedule = { runInterval, dailyTime: runInterval === 'daily' ? dailyTime : undefined };
+      if (isEdit && editTask) {
+        const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle(), schedule);
+        if (!ok) { setErr(isZh ? '任务正在运行,无法编辑。' : 'Task running, cannot edit.'); return; }
+        onSaved?.();
+        return;
+      }
+      if (!(await videoQueue.canCreate())) {
+        setErr(isZh
+          ? `视频任务已满(${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}),请先到「我的视频任务」删掉已完成的再新建。`
+          : `Video tasks full (${VIDEO_TASK_LIMIT}/${VIDEO_TASK_LIMIT}). Delete a finished one first.`);
+        return;
+      }
+      const id = videoTaskStore.createTask(input, buildTitle(), schedule);
+      onCreated?.(id);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubmitClick = () => {
+    if (selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
+    // 要发布 + 勾了平台 → 先过登录校验(全登录才放行),对齐其它视频卡。
+    if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(''); setShowLoginCheck(true); return; }
+    void doCreate();
+  };
+
+  const DUR = [30, 45, 60, 90, 120];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+          <h2 className="text-base font-bold dark:text-gray-100 flex items-center gap-2">
+            <span>🔥</span>{isZh ? (isEdit ? '编辑 · 热搜成片' : '热搜成片') : (isEdit ? 'Edit · Hotspot Video' : 'Hotspot Video')}
+          </h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">✕</button>
+        </div>
+
+        <div className="px-5 py-4 space-y-5">
+          <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
+            {isZh
+              ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配相关图片成片。配合「每天定时」= 全自动日更。'
+              : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
+          </p>
+
+          <Field label={isZh ? '任务名称' : 'Task name'}>
+            <input value={title} onChange={(e) => setTitle(e.target.value)}
+              placeholder={isZh ? '热搜成片' : 'Hotspot Video'}
+              className="w-full px-3 py-2 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
+          </Field>
+
+          <Field label={isZh ? '热点源(可多选)' : 'Hot sources (multi)'} hint={isZh ? '选题从这些源来' : ''}>
+            <div className="space-y-2">
+              {HOTSPOT_SOURCES.map((s) => {
+                const on = !!sources[s.id];
+                return (
+                  <button key={s.id} type="button"
+                    onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
+                    className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                      on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
+                    <span className="text-xl">{s.emoji}</span>
+                    <span className="flex-1 min-w-0">
+                      <span className="block text-sm font-semibold dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                      <span className="block text-[11px] text-gray-400 truncate">{isZh ? s.descZh : s.descEn}</span>
+                    </span>
+                    <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-[11px] ${on ? 'bg-amber-500 border-amber-500 text-white' : 'border-gray-300 dark:border-gray-600'}`}>{on ? '✓' : ''}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </Field>
+
+          <Field label={isZh ? '目标时长' : 'Target length'}>
+            <div className="flex flex-wrap gap-2">
+              {DUR.map((d) => (
+                <button key={d} type="button" onClick={() => setTargetSeconds(d)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border ${targetSeconds === d ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{d}s</button>
+              ))}
+            </div>
+          </Field>
+          <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+            <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+            {isZh ? '烧录字幕' : 'Burn subtitles'}
+          </label>
+
+          <Field label={isZh ? '成片去向' : 'Output'}>
+            <div className="flex gap-2 mb-2">
+              {(['local', 'upload'] as OutputMode[]).map((m) => (
+                <button key={m} type="button" onClick={() => setOutputMode(m)}
+                  className={`flex-1 py-2 rounded-lg text-sm border ${outputMode === m ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                  {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
+                </button>
+              ))}
+            </div>
+            {outputMode === 'upload' && (
+              <div className="grid grid-cols-2 gap-2">
+                {PUBLISH_PLATFORMS.map((p) => {
+                  const on = !!platforms[p.id];
+                  return (
+                    <button key={p.id} type="button" onClick={() => setPlatforms((pp) => ({ ...pp, [p.id]: !pp[p.id] }))}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700'}`}>
+                      <span>{p.emoji}</span><span className="dark:text-gray-200">{isZh ? p.zh : p.en}</span>
+                      {on && <span className="ml-auto text-amber-500">✓</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {outputMode === 'upload' && (
+              <p className="text-[11px] text-gray-400 mt-2">{isZh ? '标题/正文/话题全部 AI 自动生成,无需填写;运行前会校验各平台登录态,未登录的自动跳过。' : 'Title/caption/tags auto-generated; login checked before run, not-logged-in skipped.'}</p>
+            )}
+          </Field>
+
+          <Field label={isZh ? '运行频率' : 'Frequency'}>
+            <div className="flex flex-wrap gap-2">
+              {([['once', isZh ? '仅手动' : 'Manual'], ['daily', isZh ? '每天' : 'Daily'], ['daily_random', isZh ? '每天(随机)' : 'Daily random'], ['6h', isZh ? '每 6 小时' : 'Every 6h']] as Array<[VideoRunInterval, string]>).map(([v, label]) => (
+                <button key={v} type="button" onClick={() => setRunInterval(v)}
+                  className={`px-3 py-1.5 rounded-lg text-sm border ${runInterval === v ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{label}</button>
+              ))}
+            </div>
+            {runInterval === 'daily' && (
+              <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)}
+                className="mt-2 px-3 py-1.5 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
+            )}
+          </Field>
+
+          {err && <p className="text-sm text-rose-500">{err}</p>}
+        </div>
+
+        <div className="sticky bottom-0 flex gap-3 px-5 py-3.5 border-t dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+          <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">{isZh ? '取消' : 'Cancel'}</button>
+          <button onClick={onSubmitClick} disabled={submitting}
+            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+            {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🔥 ${isZh ? '创建任务' : 'Create'}`}
+          </button>
+        </div>
+
+        {showLoginCheck && (
+          <VideoLoginCheckModal
+            platforms={selectedPlatformIds}
+            onCancel={() => setShowLoginCheck(false)}
+            onConfirmed={() => { setShowLoginCheck(false); void doCreate(); }}
+          />
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; onCreated?: (id: string) => void; editTask?: any; onSaved?: () => void }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   // 编辑态:用任务现有模板配置回填(新建/编辑共用同一向导,只是数据预填)。

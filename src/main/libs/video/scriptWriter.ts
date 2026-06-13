@@ -205,6 +205,9 @@ export interface GenerateScriptInput {
   /** 用户提供的参考文案(scriptMode='ai' 时):作为方向/素材参考,AI 据此再创作,
    *  不逐字照搬。空 / undefined 时按主题从零写。 */
   referenceScript?: string;
+  /** 热搜成片:服务端联网(Serper /news)取到的该热点最新资料块(多条报道汇总)。存在时作为
+   *  【内容主题】,要求 AI 综合资料、紧贴事实、按最新进展写(优先级高于 referenceScript,截断更宽)。 */
+  material?: string;
   /** 口播稿语言。缺省 'zh'。由上层按【视频文案语言(有则优先)/ 关键词语言】探测后传入。 */
   lang?: ContentLang;
 }
@@ -241,7 +244,11 @@ export async function generateScript(
   //   2026-06 修(用户实测:选美食赛道 + 填 spacex 参考文案,AI 仍写美食)——根因是赛道
   //   是【强内容指令】,参考文案被降级成"仅供参考、别照搬",冲突时 AI 听赛道写了原赛道
   //   题材。反过来:有参考文案就以它为内容主导,赛道转成"用某类博主的口吻",不绑题材。
-  const ref = (input.referenceScript || '').trim();
+  // 热搜成片:material(联网新闻资料)作为内容主题,优先级高于普通参考文案,且放宽截断长度,
+  //   prompt 强调"综合资料、紧贴事实、按最新写、不编造"——满足用户"全网查询紧贴给的内容按最新写"。
+  const research = (input.material || '').trim();
+  const ref = research || (input.referenceScript || '').trim();
+  const refIsResearch = !!research;
 
   // system prompt 走模板(服务端可调措辞),只认 4 个占位符;空的人设/赛道行替换后被 filter 掉。
   const tpl = scriptSystemTemplate || DEFAULT_VIDEO_CONFIG.scriptSystemTemplate;
@@ -259,11 +266,17 @@ export async function generateScript(
   //   不放进 system template 是因为 system template 是服务端可调的,改这事跟模板措辞无关;
   //   而且视角是「每次创作变一次」的运行期行为,本该在每次调用处现 roll。
   const angle = pickNarrationAngle(lang);
+  // 有参考文案/资料:它就是本视频的【内容主题】,据此创作口播;赛道/关键词不作内容,只在 system 作口吻。
+  //   热搜成片(refIsResearch)用联网资料块,放宽到 4000 字符并强调"综合、紧贴事实、按最新、不编造"。
+  const refBlock = refIsResearch
+    ? (lang === 'zh'
+        ? `【本视频要讲的热点 —— 以下是它的最新联网资料(多条报道汇总)。请综合这些资料、紧贴事实、围绕【最新进展】写一段口播:信息要准、不臆测、不编造;可精炼重组成顺口的口播版,但题材与事实必须忠于资料,不要改成别的领域】:\n${ref.slice(0, 4000)}`
+        : `【Hot topic to cover — below is the latest web research (multiple report snippets). Synthesize it, stay faithful to the facts, and write the narration around the LATEST developments: be accurate, do not speculate or fabricate; you may tighten into a smooth spoken version, but keep the subject and facts faithful to the research, do NOT switch to another niche】:\n${ref.slice(0, 4000)}`)
+    : (lang === 'zh'
+        ? `【本视频内容主题 —— 就讲这篇,可精炼/重组织成更顺口的口播版,但题材必须忠于这篇,不要改成别的领域】:\n${ref.slice(0, 1500)}`
+        : `【Video topic — base the narration on THIS content; you may tighten/restructure for speech, but keep the subject faithful to it, do NOT switch to another niche】:\n${ref.slice(0, 1500)}`);
   const user = (ref ? [
-    // 有参考文案:它就是本视频的【内容主题】,据此创作口播;赛道/关键词不作内容,只在 system 作口吻。
-    lang === 'zh'
-      ? `【本视频内容主题 —— 就讲这篇,可精炼/重组织成更顺口的口播版,但题材必须忠于这篇,不要改成别的领域】:\n${ref.slice(0, 1500)}`
-      : `【Video topic — base the narration on THIS content; you may tighten/restructure for speech, but keep the subject faithful to it, do NOT switch to another niche】:\n${ref.slice(0, 1500)}`,
+    refBlock,
   ] : [
     `主题:${input.topic}`,
     kw ? `关键词:${kw}` : '',

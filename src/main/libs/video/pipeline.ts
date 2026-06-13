@@ -24,6 +24,7 @@ import {
 } from './tts';
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
+import { pickHotspotTopic, fetchHotspotMaterial, fetchAndDownloadHotspotImages, type HotspotTopic } from './hotspotProvider';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
@@ -155,13 +156,16 @@ export interface VideoCreationInput {
    *                      参考图(≤2)做风格/人设统一;失败镜降级到参考图静帧/邻镜。
    *                      走服务端代理(/api/video/seedance/*),逐片段计费 + 失败退款。
    */
-  engine?: 'stock' | 'ai' | 'template';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot';
   /** AI 引擎分辨率档(成本敏感):'480p'|'720p'(默认)|'1080p'。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */
   seedanceModel?: 'lite' | 'pro' | 'pro15' | 'v2';
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: TemplateOptions;
+  /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
+   *  每次运行从这些源最新 20 条随机挑 1 条选题,服务端联网取材 → 写稿 → Serper 配图。 */
+  hotspotSources?: string[];
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -581,28 +585,69 @@ async function runVideoPipeline(
     tracker.start('script', `输出目录:${taskDir}`);
     // 拉服务端可调配置(prompt 模板 + 各阈值)。拉不到 / 没登录 → 用内置默认,出片照常。
     const vcfg = await getVideoConfig();
+    // ── 热搜成片(engine==='hotspot'):写稿前先选题 + 联网取材 ──────────────
+    //   从用户勾选的热点源最新 20 条随机 1 条 → Serper /news 取这条热点的最新资料。
+    //   选题失败(源里没条目)→ 直接判错;取材失败(没配 serper key / 无网)→ 仅按标题写,
+    //   不报错。后续完全复用 stock 图片模式的写稿/配图/合成/发布。
+    let hotspotTopic: HotspotTopic | null = null;
+    let hotspotMaterial = '';
+    if (input.engine === 'hotspot') {
+      const sources = (input.hotspotSources || []).filter(Boolean);
+      if (sources.length === 0) {
+        const err = '热搜成片:未勾选任何热点源';
+        tracker.fail('script', err);
+        return { ok: false, error: err };
+      }
+      throwIfAborted(signal);
+      tracker.progress('🔥 正在从勾选的热点源里选题…');
+      hotspotTopic = await pickHotspotTopic(sources);
+      if (!hotspotTopic) {
+        const err = '热搜成片:所选热点源暂无可用条目(稍后热榜刷新再试)';
+        tracker.fail('script', err);
+        return { ok: false, error: err };
+      }
+      tracker.progress(`📌 选中热点:「${hotspotTopic.title}」· ${hotspotTopic.source}`);
+      throwIfAborted(signal);
+      tracker.progress('🌐 联网检索这条热点的最新资料…');
+      const tlang = detectLang(hotspotTopic.title);
+      hotspotMaterial = await fetchHotspotMaterial(hotspotTopic.title, tlang === 'zh' ? 'zh' : 'en');
+      tracker.progress(hotspotMaterial
+        ? `📰 已获取联网资料(约 ${hotspotMaterial.length} 字),AI 将紧贴资料按最新写`
+        : '⚠️ 未取到联网资料(serper 未配 / 无网),AI 将仅按热点标题撰写');
+    }
+
     const userText = (input.script || '').trim();
-    const scriptMode = input.scriptMode || (userText ? 'strict' : 'ai');
+    // 热搜成片恒为 AI 写稿(用户不填稿)。
+    const scriptMode: 'strict' | 'ai' = input.engine === 'hotspot'
+      ? 'ai'
+      : (input.scriptMode || (userText ? 'strict' : 'ai'));
     // 内容语言:口播稿 + 素材搜索词都用它。规则(用户指定):有视频文案就按文案语言走,
-    // 否则按关键词语言。空白时退化为中文。strict 模式逐字朗读用户文案,语言天然就是文案语言。
-    const contentLang = detectLang(userText || (input.keywords || []).join(' '));
+    // 否则按关键词语言。热搜成片按选中热点标题的语言。空白时退化为中文。
+    const contentLang = detectLang(userText || (input.keywords || []).join(' ') || (hotspotTopic?.title || ''));
     // 本任务【写稿 + 搜索词】已扣的权威 USD 之和(含 reasoner ×3),供下面平台费预扣时
     // 按 videoCount 让服务端补收剩余 (count-1) 份 AI 费。AI 只调一次,各步累加进来。
     let aiCostUsd = 0;
     let script = userText;
     if (scriptMode === 'ai') {
-      const topic = (input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式';
-      tracker.progress(userText
-        ? `AI 正在参考你的文案撰写旁白（目标约 ${input.targetSeconds ?? 45}s）…`
-        : `AI 正在撰写旁白脚本（目标约 ${input.targetSeconds ?? 45}s）…`);
+      const isHotspot = input.engine === 'hotspot';
+      const topic = isHotspot && hotspotTopic
+        ? hotspotTopic.title
+        : ((input.keywords || []).filter(Boolean).join('、') || input.track || '生活方式');
+      tracker.progress(isHotspot
+        ? `AI 正在紧贴热点资料撰写口播（目标约 ${input.targetSeconds ?? 45}s）…`
+        : (userText
+          ? `AI 正在参考你的文案撰写旁白（目标约 ${input.targetSeconds ?? 45}s）…`
+          : `AI 正在撰写旁白脚本（目标约 ${input.targetSeconds ?? 45}s）…`));
       try {
         const r = await generateScript({
           topic,
           persona: input.persona,
-          track: input.track,
-          keywords: input.keywords,
+          // 热搜成片不绑赛道/关键词(题材由热点资料决定);其它模式照常传。
+          track: isHotspot ? undefined : input.track,
+          keywords: isHotspot ? undefined : input.keywords,
           targetSeconds: input.targetSeconds ?? 45,
           referenceScript: userText || undefined,
+          material: isHotspot ? (hotspotMaterial || undefined) : undefined,
           lang: contentLang,
         }, vcfg.scriptSystemTemplate);
         script = r.script;
@@ -990,9 +1035,12 @@ async function runVideoPipeline(
       };
       tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`);
     } else {
-      // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满)。
+      // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满);
+      // 热搜成片(hotspot)走 Serper 图池(纯图 Ken Burns),其余走 Pexels 素材库。
       // 素材池只建一次,assign(shuffle) 供每条按需取片段。
-      const pool = await buildStockPool();
+      const pool = input.engine === 'hotspot'
+        ? await buildHotspotImagePool()
+        : await buildStockPool();
       assignVisuals = (videoIdx: number) => ({
         sceneClips: pool.assign(videoIdx > 0),
         imagePool: pool.imagePool,
@@ -1216,6 +1264,53 @@ async function runVideoPipeline(
 
     return { assign: assignOnce, imagePool, imageByScene };
     } // end buildStockPool
+
+    // 热搜成片:用 Serper /images(英文配图词)+ og:image 建图池(纯图 Ken Burns)。
+    //   一次 Serper 查询(1 credit)拿 10-15 张铺满全片,不逐镜搜(省 credit)。
+    //   返回形状与 buildStockPool 一致:assign 恒空(无视频)→ compose 走图片运镜。
+    async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string> }> {
+      // 配图英文词:复用 generateSearchTerms 把口播句转英文搜索词(Google 索引精准),
+      //   取去重后前几个拼成一个 query 一把搜(热点标题兜底)。
+      tracker.progress('AI 规划配图英文关键词…');
+      const termsResult = await generateSearchTerms(sentences, [], vcfg.termsSystemPrompt, {
+        topic: hotspotTopic?.title || '',
+        lang: contentLang,
+      });
+      aiCostUsd += termsResult.costUsd;
+      tracker.addTokens(termsResult.tokens, termsResult.costUsd);
+      const uniqTerms = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase())));
+      const queryEn = uniqTerms.slice(0, 5).join(' ') || hotspotTopic?.title || '';
+      if (queryEn) tracker.progress(`🔍 配图检索词:${queryEn}`);
+
+      // 一次查询拿 ≥ 分镜数 的图(下载含体积/分辨率校验 + og:image 来源页兜底)。
+      const want = Math.max(sentences.length, 12);
+      const localImgs = await fetchAndDownloadHotspotImages(queryEn, hotspotTopic?.url, want, assetDir);
+
+      // 平铺到各镜(轮流复用);assign 恒空(无视频)→ compose 用 imageByScene 的图做 Ken Burns。
+      const imageByScene = new Map<number, string>();
+      if (localImgs.length > 0) {
+        sentences.forEach((_, i) => imageByScene.set(i, localImgs[i % localImgs.length]));
+      }
+      const imagePool = [...localImgs];
+
+      // 留档到「素材」子目录(对齐 buildStockPool)。
+      try {
+        if (localImgs.length > 0) {
+          const matDir = path.join(destDir, '素材');
+          fs.mkdirSync(matDir, { recursive: true });
+          localImgs.forEach((src, i) => {
+            try { fs.copyFileSync(src, path.join(matDir, `${String(i + 1).padStart(3, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+          });
+        }
+      } catch { /* 留档失败不影响出片 */ }
+
+      tracker.done('visuals', localImgs.length > 0
+        ? `配图就绪:${localImgs.length} 张(Serper + og:image)→ Ken Burns 铺满 ${sentences.length} 镜`
+        : '未取到配图,使用文字卡');
+
+      const assign = (_shuffle: boolean): string[][] => sentences.map(() => [] as string[]);
+      return { assign, imagePool, imageByScene };
+    }
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
     //    费用(平台费向上限靠拢 + AI 按条数叠加)开跑前【一次性】整笔预扣,全部失败才整笔退回。

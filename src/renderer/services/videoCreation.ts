@@ -62,9 +62,13 @@ export interface VideoCreationInput {
    * 画面引擎:'stock'(默认,AI 分镜 + 在线素材库) | 'ai'(Seedance AI 自动成片,
    * 逐镜生成视频片段,参考图统一风格,走服务端代理逐片段计费)。
    */
-  engine?: 'stock' | 'ai' | 'template';
+  engine?: 'stock' | 'ai' | 'template' | 'hotspot';
   /** engine==='template'(模板速生)专属配置;其它 engine 忽略。 */
   template?: VideoTemplateOptions;
+  /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
+   *  每次运行从这些源最新 20 条随机挑 1 条选题,服务端联网(Serper /news)取材 → 客户端写稿
+   *  → Serper /images 配图 → 合成 → 发布。其它 engine 忽略此字段。 */
+  hotspotSources?: string[];
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */

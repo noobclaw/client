@@ -147,6 +147,30 @@ export async function fetchStockImages(opts: FetchStockOptions): Promise<string[
   return results;
 }
 
+/**
+ * 给定一组公开图片 URL,直接下载到本地(复用 downloadTo 的体积/分辨率校验)。
+ * 热搜成片用:Serper /images / og:image 已返回 URL 列表,无需再走关键词搜索。
+ * 新闻配图常比素材库图小、且多为横图(og:image 16:9),minEdge 放宽到 360,
+ * 不然卡 480 会把新闻图几乎删光;Ken Burns 运镜阶段会按竖屏裁切,小图上采样可接受。
+ */
+export async function downloadImagesFromUrls(
+  urls: string[],
+  destDir: string,
+  minEdge = 360,
+): Promise<string[]> {
+  const results: string[] = [];
+  let idx = 0;
+  for (const url of urls) {
+    if (typeof url !== 'string' || !/^https?:\/\//.test(url)) continue;
+    const ext = (url.split('?')[0].match(/\.(jpg|jpeg|png|webp)$/i)?.[1] || 'jpg').toLowerCase();
+    const dest = path.join(destDir, `hotspot_${String(idx).padStart(3, '0')}.${ext}`);
+    idx++;
+    const ok = await downloadTo(url, dest, minEdge);
+    if (ok) results.push(dest);
+  }
+  return results;
+}
+
 // ─────────────────────────── 视频素材 ───────────────────────────
 
 interface StockVideoMeta {
