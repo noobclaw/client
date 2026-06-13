@@ -236,10 +236,10 @@ function intervalLabelDetailed(task: VideoTask, isZh: boolean): string | null {
   if (!iv || iv === 'once') return null;
   if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
   switch (iv) {
-    case '30min': return isZh ? '每 30 分钟(+0-10 分钟随机延迟)' : 'Every 30min (+0-10min jitter)';
-    case '1h': return isZh ? '每小时(+0-10 分钟随机延迟)' : 'Hourly (+0-10min jitter)';
-    case '3h': return isZh ? '每 3 小时(+0-10 分钟随机延迟)' : 'Every 3h (+0-10min jitter)';
-    case '6h': return isZh ? '每 6 小时(+0-10 分钟随机延迟)' : 'Every 6h (+0-10min jitter)';
+    case '30min': return isZh ? '每 30 分钟(+1-10 分钟随机延迟)' : 'Every 30min (+1-10min jitter)';
+    case '1h': return isZh ? '每小时(+1-10 分钟随机延迟)' : 'Hourly (+1-10min jitter)';
+    case '3h': return isZh ? '每 3 小时(+1-45 分钟随机延迟)' : 'Every 3h (+1-45min jitter)';
+    case '6h': return isZh ? '每 6 小时(+1-45 分钟随机延迟)' : 'Every 6h (+1-45min jitter)';
     case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}(±15 分钟随机)` : `Daily ${task.dailyTime || '08:00'} (±15min)`;
     case 'daily_random': return isZh ? '每日随机时间一次' : 'Once daily (random time)';
     default: return null;
@@ -906,6 +906,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
+        <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
         <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns'}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
@@ -975,6 +976,15 @@ function voiceDisplayLabel(voiceId: string | undefined, isZh: boolean): string {
   return v ? (isZh ? v.zh : v.en) : (voiceId || (isZh ? '默认音色' : 'Default'));
 }
 
+/** 热搜成片「每次运行条数」标签:min===max → "N 条/次";否则 "min-max 条/次(随机)"。 */
+function hotspotCountLabel(input: VideoCreationInput, isZh: boolean): string {
+  const lo = Math.max(1, Math.round((input as any).videoCountMin ?? input.videoCount ?? 1));
+  const hi = Math.max(lo, Math.round((input as any).videoCountMax ?? input.videoCount ?? 1));
+  return lo === hi
+    ? (isZh ? `${hi} 条/次` : `${hi}/run`)
+    : (isZh ? `${lo}-${hi} 条/次(随机)` : `${lo}-${hi}/run (random)`);
+}
+
 /**
  * 扁平配置文本行(任务详情页用)。对齐币安详情卡:左列就是一串纯文本字段,
  * 没有内嵌灰框、没有「任务配置」小标题 —— 跟 TaskDetailPage 的 persona/频次/
@@ -1026,6 +1036,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       <>
         <div className="break-words">🔥 {isZh ? '热点源' : 'Sources'}：{srcs}</div>
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
+        <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
         <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '联网配图(Ken Burns)' : 'Web images (Ken Burns)'}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
@@ -3650,6 +3661,9 @@ const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string
   { id: 'tech',     zh: '科技 / AI',  en: 'Tech/AI',  emoji: '🤖', def: false },
 ];
 
+// 热搜成片每次运行出片条数封顶(本地渲染 + 按条计费,不开到币安发帖的 200)。
+const HOTSPOT_COUNT_CAP = 10;
+
 export const HotspotVideoModal: React.FC<{
   isZh: boolean;
   onClose: () => void;
@@ -3681,8 +3695,14 @@ export const HotspotVideoModal: React.FC<{
     PUBLISH_PLATFORMS.forEach((p) => { init[p.id] = saved.includes(p.id); });
     return init;
   });
-  const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'daily');
-  const [dailyTime, setDailyTime] = useState<string>(editTask?.dailyTime || '08:00');
+  // 对齐币安:不提供「每天定时」(固定钟点易被风控判机器人),默认/兜底走「每日随机时间」。
+  // 编辑老任务若存的是 'daily',统一归到 'daily_random'(币安同款迁移)。
+  const [runInterval, setRunInterval] = useState<VideoRunInterval>(
+    editTask?.runInterval && editTask.runInterval !== 'daily' ? editTask.runInterval : 'daily_random');
+  // 每次运行出片条数随机区间 [min,max](对齐币安「每次运行发帖条数」)。封顶 10。
+  // 每次定时/手动运行,主进程在区间内随机取 N,跑 N 条各自独立选题+写稿+按条计费。
+  const [countMin, setCountMin] = useState<number>(Math.max(1, Math.min(HOTSPOT_COUNT_CAP, Math.round(ei.videoCountMin ?? ei.videoCount ?? 1))));
+  const [countMax, setCountMax] = useState<number>(Math.max(1, Math.min(HOTSPOT_COUNT_CAP, Math.round(ei.videoCountMax ?? ei.videoCount ?? 1))));
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
   const [showLoginCheck, setShowLoginCheck] = useState(false);
@@ -3707,7 +3727,10 @@ export const HotspotVideoModal: React.FC<{
     voice,
     voiceRate,
     maxClipSeconds: 4,
-    videoCount: 1,
+    // 出片条数随机区间(归一化 min≤max)。videoCount 存 max 作向后兼容/旧展示兜底。
+    videoCountMin: Math.min(countMin, countMax),
+    videoCountMax: Math.max(countMin, countMax),
+    videoCount: Math.max(countMin, countMax),
   });
 
   const doCreate = async () => {
@@ -3716,7 +3739,8 @@ export const HotspotVideoModal: React.FC<{
     setErr('');
     try {
       const input = buildInput();
-      const schedule: VideoSchedule = { runInterval, dailyTime: runInterval === 'daily' ? dailyTime : undefined };
+      // 热搜成片不提供「每天定时」→ 无 dailyTime(daily_random/间隔类都不需要固定时刻)。
+      const schedule: VideoSchedule = { runInterval };
       if (isEdit && editTask) {
         const ok = videoTaskStore.updateTask(editTask.id, input, buildTitle(), schedule);
         if (!ok) { setErr(isZh ? '任务正在运行,无法编辑。' : 'Task running, cannot edit.'); return; }
@@ -3757,17 +3781,18 @@ export const HotspotVideoModal: React.FC<{
   };
 
   const DUR = [30, 45, 60, 90, 120];
-  // 运行频率档位:对齐币安任务的能力(30min/1h/3h/6h + 每天定时 + 每日随机 + 不重复)。
+  // 运行频率档位:逐字对齐币安发帖场景 —— 故意不给「每天定时」(固定钟点易被风控判机器人),
+  // 用「每日随机时间」代替并设为推荐。30min/1h/3h/6h + 每日随机时间 + 不重复。
   const FREQ_OPTS: { v: VideoRunInterval; zh: string; en: string }[] = [
     { v: 'once', zh: '不重复', en: 'Once' },
     { v: '30min', zh: '每 30 分钟', en: 'Every 30min' },
     { v: '1h', zh: '每小时', en: 'Hourly' },
     { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
     { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
-    { v: 'daily', zh: '每天定时', en: 'Daily' },
-    { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
+    { v: 'daily_random', zh: '每日随机时间', en: 'Daily (random time)' },
   ];
-  const isJitter = runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h';
+  const isShortJitter = runInterval === '30min' || runInterval === '1h';
+  const isLongJitter = runInterval === '3h' || runInterval === '6h';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -3797,7 +3822,7 @@ export const HotspotVideoModal: React.FC<{
             <>
               <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
                 {isZh
-                  ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每天定时」= 全自动日更。'
+                  ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每日随机时间」= 全自动日更。'
                   : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
               </p>
               <Field label={isZh ? '热点源(可多选,默认已勾常用)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
@@ -3887,34 +3912,60 @@ export const HotspotVideoModal: React.FC<{
             </Field>
           )}
 
-          {/* ── Step 4:运行频率(对齐币安能力) ── */}
+          {/* ── Step 4:运行频率 + 每次运行条数(逐字对齐币安发帖任务) ── */}
           {step === 4 && (
-            <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
-              <div className="grid grid-cols-3 gap-2">
-                {FREQ_OPTS.map((o) => (
-                  <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
-                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}>
-                    {isZh ? o.zh : o.en}
-                  </button>
-                ))}
-              </div>
-              {runInterval === 'daily' && (
-                <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)}
-                  className="mt-2 px-3 py-1.5 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
-              )}
-              {runInterval === 'daily_random' && (
-                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Once daily at a random time'}</p>
-              )}
-              {runInterval === 'daily' && (
-                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 ±15 分钟随机延迟,避免精准卡点' : '⚠️ ±15min jitter around the time (anti-detection).'}</p>
-              )}
-              {isJitter && (
-                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 0-10 分钟随机延迟,避免精准卡点' : '⚠️ +0-10min jitter after threshold (anti-detection).'}</p>
-              )}
-              {runInterval !== 'once' && (
-                <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
-              )}
-            </Field>
+            <>
+              <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
+                <div className="grid grid-cols-3 gap-2">
+                  {FREQ_OPTS.map((o) => (
+                    <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
+                      className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}>
+                      {isZh ? o.zh : o.en}
+                    </button>
+                  ))}
+                </div>
+                {runInterval === 'daily_random' && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间触发,比固定钟点更像真人' : '✨ Recommended — daily at a randomized time, more human-like'}</p>
+                )}
+                {isShortJitter && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-10 分钟随机延迟,避免精准卡点' : '⚠️ +1-10min jitter after threshold (anti-detection).'}</p>
+                )}
+                {isLongJitter && (
+                  <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 1-45 分钟随机延迟,避免精准卡点' : '⚠️ +1-45min jitter after threshold (anti-detection).'}</p>
+                )}
+                {runInterval !== 'once' && (
+                  <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
+                )}
+              </Field>
+
+              {/* 每次运行条数随机区间(对齐币安「每次运行发帖条数」min-max 双滑块)。
+                  每次运行随机取 N ∈ [min,max],跑 N 条各自独立选题+写稿,【按条计费】。 */}
+              <Field label={isZh ? `每次运行条数(1-${HOTSPOT_COUNT_CAP})` : `Videos per run (1-${HOTSPOT_COUNT_CAP})`}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                      {isZh ? '最少' : 'Min'}: <span className="font-semibold text-amber-500">{Math.min(countMin, countMax)}</span>
+                    </div>
+                    <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMin}
+                      onChange={(e) => setCountMin(parseInt(e.target.value, 10))}
+                      className="w-full accent-amber-500 cursor-pointer" />
+                  </div>
+                  <div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                      {isZh ? '最多' : 'Max'}: <span className="font-semibold text-amber-500">{Math.max(countMin, countMax)}</span>
+                    </div>
+                    <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMax}
+                      onChange={(e) => setCountMax(parseInt(e.target.value, 10))}
+                      className="w-full accent-amber-500 cursor-pointer" />
+                  </div>
+                </div>
+                <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                  {isZh
+                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $0.1~0.2 平台费 + AI 写稿 token)`
+                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$0.1-0.2 platform fee + AI tokens each)`}
+                </p>
+              </Field>
+            </>
           )}
 
           {err && <p className="text-sm text-rose-500">{err}</p>}

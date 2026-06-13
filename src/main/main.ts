@@ -2972,7 +2972,7 @@ if (!gotTheLock) {
     const activeVideoRuns = new Map<string, AbortController>();
     ipcMain.handle('video:generate', async (_e, input: unknown) => {
       const { generateVideo } = require('./libs/video/pipeline');
-      const inp = (input || {}) as { taskId?: unknown; engine?: unknown; videoCount?: unknown };
+      const inp = (input || {}) as { taskId?: unknown; engine?: unknown; videoCount?: unknown; videoCountMin?: unknown; videoCountMax?: unknown };
       const taskId = inp?.taskId ? String(inp.taskId) : '';
       const ctrl = new AbortController();
       if (taskId) { activeVideoRuns.get(taskId)?.abort(); activeVideoRuns.set(taskId, ctrl); }
@@ -2984,17 +2984,29 @@ if (!gotTheLock) {
         } catch {}
       };
 
-      // 批量条数:仅【在线素材 stock】支持 1~100 —— 外层循环跑 N 次完整 pipeline,每条都
-      //   AI 独立写稿+配音(不是复用换画面),各自按 1 条计费(失败那条 pipeline 内部自退),
-      //   单条失败/异常跳过继续下一条。AI(Seedance,逐片段烧钱)/模板/热搜维持单次。
-      const batch = inp?.engine === 'stock'
-        ? Math.max(1, Math.min(100, Math.round(Number(inp?.videoCount) || 1)))
-        : 1;
+      // 批量条数:外层循环跑 N 次完整 pipeline,每条都【AI 独立写稿+配音】(不是复用换画面),
+      //   各自按 1 条计费(失败那条 pipeline 内部自退),单条失败/异常跳过继续下一条。
+      //   · 在线素材 stock:固定 N = videoCount(1~100)。
+      //   · 热搜成片 hotspot:每次运行随机 N ∈ [videoCountMin, videoCountMax](封顶 10,对齐
+      //     币安「每次运行条数」随机区间)—— 每条独立选题(pickHotspotTopic 各跑一次随机)。
+      //   · AI(Seedance,逐片段烧钱)/ 模板:维持单次。
+      const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
+      let batch = 1;
+      if (inp?.engine === 'stock') {
+        batch = clampCount(inp?.videoCount, 100);
+      } else if (inp?.engine === 'hotspot') {
+        const lo = clampCount(inp?.videoCountMin, 10);
+        const hi = Math.max(lo, clampCount(inp?.videoCountMax, 10));
+        batch = lo + Math.floor(Math.random() * (hi - lo + 1));
+      }
 
       // 单条:维持原行为(await 返回;renderer 实际靠 video:progress 终态 resolve)。
+      // 热搜成片每条 pipeline 恒 videoCount=1(条数完全由上面的 batch 控制):避免 min<max
+      // 时随机到 batch=1、却把 input.videoCount(=max)带进 pipeline 复用脚本多出几条。
       if (batch <= 1) {
         try {
-          return await generateVideo(input, emit, ctrl.signal);
+          const single = inp?.engine === 'hotspot' ? { ...(input as object), videoCount: 1 } : input;
+          return await generateVideo(single, emit, ctrl.signal);
         } catch (err) {
           return { ok: false, error: err instanceof Error ? err.message : String(err) };
         } finally {

@@ -131,6 +131,13 @@ export interface VideoCreationInput {
   maxClipSeconds?: number;
   /** 一次出片数量(1~5)。复用脚本/配音,每条不同画面组合。默认 1。 */
   videoCount?: number;
+  /**
+   * 热搜成片(engine==='hotspot')专属:每次运行出片条数的随机区间 [min,max](对齐币安
+   * 发帖任务的「每次运行条数」)。每次定时/手动运行时主进程在 [min,max] 里随机取 N,
+   * 外层循环跑 N 条【各自独立选题+写稿+按条计费】。缺省 / 未设 = 1 条。封顶 10。
+   */
+  videoCountMin?: number;
+  videoCountMax?: number;
   /** v6.x: 所属视频任务 id —— 主进程据此把成片输出到「按任务」的文件夹
    *  (视频创作/<id前8位>_<任务名>),而非按日期的共享桶。 */
   taskId?: string;

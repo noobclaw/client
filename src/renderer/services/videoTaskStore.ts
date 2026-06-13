@@ -54,7 +54,8 @@ export interface VideoSchedule {
 /**
  * 计算下一次定时运行的时间戳(语义对齐 scenarioManager.computeNextPlannedRun):
  *   - 'once'         → Infinity(永不自动触发;调用方应改存 undefined)
- *   - '30min' / '1h' / '3h' / '6h' → fromTs + 间隔 + [0,10min) 抖动
+ *   - '30min' / '1h'  → fromTs + 间隔 + [0,10min) 抖动(短间隔)
+ *   - '3h' / '6h'     → fromTs + 间隔 + [0,45min) 抖动(长间隔放宽,对齐币安任务防规律识别)
  *   - 'daily'        → 下一个 HH:MM(今天已过则次日)± 15min 抖动
  *   - 'daily_random' → 次日 0 点起 [0,24h) 随机一次
  * fromTs 一般传「上次运行结束时间」(首次排程传 now)。
@@ -70,8 +71,8 @@ export function computeNextVideoRun(
   switch (interval) {
     case '30min': return fromTs + 30 * MIN + jitter(10 * MIN);
     case '1h': return fromTs + HOUR + jitter(10 * MIN);
-    case '3h': return fromTs + 3 * HOUR + jitter(10 * MIN);
-    case '6h': return fromTs + 6 * HOUR + jitter(10 * MIN);
+    case '3h': return fromTs + 3 * HOUR + jitter(45 * MIN);
+    case '6h': return fromTs + 6 * HOUR + jitter(45 * MIN);
     case 'daily': {
       const [hhRaw, mmRaw] = (dailyTime || '08:00').split(':');
       const hh = Math.min(23, Math.max(0, parseInt(hhRaw, 10) || 0));
