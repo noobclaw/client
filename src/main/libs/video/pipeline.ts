@@ -1283,25 +1283,30 @@ async function runVideoPipeline(
       const queryEn = uniqTerms.slice(0, 5).join(' ') || hotspotTopic?.title || '';
       if (queryEn) tracker.progress(`🔍 配图检索词:${queryEn}`);
 
-      // 目标 = 每镜一张(不够再复用)。图床防盗链下载失败率高,所以:① 每次多要候选(want×4)做冗余;
-      //   ② 首组词凑不够,再用各分镜首词逐组【补查】(每组 1 credit),最多 4 组,直到够分镜数。
-      //   og:image 仅首组带(来源页就一张)。
+      // 配图策略(用户定):取最多 5 个【独立】英文关键词,各查一次 Serper /images(每词 10 张),
+      //   凑最多 ~50 张候选 → 够做长视频、画面更丰富(不同词出不同图)。图全部本地留档(见下「素材」)。
+      const terms5 = Array.from(new Set(
+        termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()),
+      )).slice(0, 5);
+      if (terms5.length === 0) terms5.push(queryEn || hotspotTopic?.title || '');
       const want = Math.max(sentences.length, 8);
       const localImgs: string[] = [];
       const seenImg = new Set<string>();
-      const queryGroups = Array.from(new Set(
-        [queryEn, ...termsResult.terms.map((t) => (t || [])[0]).filter(Boolean).map((s) => s.toLowerCase())].filter(Boolean),
-      ));
-      for (const q of queryGroups.slice(0, 4)) {
-        if (localImgs.length >= want) break;
-        const got = await fetchAndDownloadHotspotImages(
-          q,
-          localImgs.length === 0 ? hotspotTopic?.url : undefined,
-          Math.max(want * 4, 24),
-          assetDir,
-        );
-        for (const p of got) { if (!seenImg.has(p)) { seenImg.add(p); localImgs.push(p); } }
-        tracker.progress(`🖼️ 已凑配图 ${localImgs.length}/${want} 张…`);
+      let firstDiag: { reached: boolean; hasKey: boolean; serperCount: number; serperError: string } | null = null;
+      for (let i = 0; i < terms5.length; i++) {
+        const q = terms5[i];
+        if (!q) continue;
+        const { paths, diag } = await fetchAndDownloadHotspotImages(q, i === 0 ? hotspotTopic?.url : undefined, 10, assetDir);
+        if (i === 0) firstDiag = diag;
+        for (const p of paths) { if (!seenImg.has(p)) { seenImg.add(p); localImgs.push(p); } }
+        tracker.progress(`🖼️ 配图「${q}」serper 返回 ${diag.serperCount} 张 → 累计下载 ${localImgs.length} 张`);
+      }
+      // serper 没出图时把真因打到进度里(不再静默只剩 og 那张)。
+      if (firstDiag && firstDiag.serperCount === 0) {
+        if (!firstDiag.reached) tracker.progress('⚠️ 配图接口没通(后端没部署最新代码 / 未登录?)');
+        else if (!firstDiag.hasKey) tracker.progress('⚠️ 服务端没读到 serper key — 查 admin 的 serper_api_key + 后端是否已部署最新代码并重启');
+        else if (firstDiag.serperError) tracker.progress(`⚠️ Serper 调用失败:${firstDiag.serperError}(后端到 google.serper.dev 的网络?)`);
+        else tracker.progress('⚠️ Serper 返回 0 图(该英文词无结果)');
       }
 
       // 平铺到各镜(轮流复用);assign 恒空(无视频)→ compose 用 imageByScene 的图做 Ken Burns。

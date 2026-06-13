@@ -81,23 +81,38 @@ export async function fetchHotspotMaterial(title: string, lang = 'zh'): Promise<
 }
 
 /** 配图:Serper /images(英文词)+ og:image 来源页兜底,返回公开图片 URL 列表。失败返空数组。 */
-export async function fetchHotspotImageUrls(queryEn: string, sourceUrl?: string, count = 15): Promise<string[]> {
-  const json = await postJson('/api/video/hotspot/images', { queryEn, sourceUrl, count });
-  const imgs = json?.images;
-  if (!Array.isArray(imgs)) return [];
-  return imgs
-    .map((im: any) => (typeof im === 'string' ? im : im?.url))
-    .filter((u: any): u is string => typeof u === 'string' && /^https?:\/\//.test(u));
+export interface HotspotImageDiag {
+  reached: boolean;      // 是否成功拿到 backend 响应(false=网络/404/认证挂了)
+  hasKey: boolean;       // backend 读到 serper key 没
+  serperCount: number;   // serper /images 返回几张
+  serperError: string;   // serper 报错/网络到不了的信息
+  ogCount: number;       // og:image 兜底几张
 }
 
-/** 配图一条龙:查 URL → 下载到本地。返回本地路径数组(长度 ≤ count)。 */
+export async function fetchHotspotImages(queryEn: string, sourceUrl?: string, count = 15): Promise<{ urls: string[]; diag: HotspotImageDiag }> {
+  const json = await postJson('/api/video/hotspot/images', { queryEn, sourceUrl, count });
+  const diag: HotspotImageDiag = {
+    reached: !!json,
+    hasKey: !!json?.hasKey,
+    serperCount: Number(json?.serperCount) || 0,
+    serperError: String(json?.serperError || ''),
+    ogCount: Number(json?.ogCount) || 0,
+  };
+  const imgs = json?.images;
+  const urls = Array.isArray(imgs)
+    ? imgs.map((im: any) => (typeof im === 'string' ? im : im?.url)).filter((u: any): u is string => typeof u === 'string' && /^https?:\/\//.test(u))
+    : [];
+  return { urls, diag };
+}
+
+/** 配图一条龙:查 URL → 下载到本地。返回本地路径 + 诊断(透传 backend 的 serper 状态)。 */
 export async function fetchAndDownloadHotspotImages(
   queryEn: string,
   sourceUrl: string | undefined,
   count: number,
   destDir: string,
-): Promise<string[]> {
-  const urls = await fetchHotspotImageUrls(queryEn, sourceUrl, count);
-  if (urls.length === 0) return [];
-  return downloadImagesFromUrls(urls, destDir);
+): Promise<{ paths: string[]; diag: HotspotImageDiag }> {
+  const { urls, diag } = await fetchHotspotImages(queryEn, sourceUrl, count);
+  const paths = urls.length === 0 ? [] : await downloadImagesFromUrls(urls, destDir);
+  return { paths, diag };
 }

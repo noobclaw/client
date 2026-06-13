@@ -1680,17 +1680,21 @@ const VideoCreateFlow: React.FC<{
   const [stockOpen, setStockOpen] = useState(false);       // 在线素材 → VideoConfigModal forcedMode=stock
   const [templateOpen, setTemplateOpen] = useState(false); // 模板速生 → TemplateSpeedModal
   const [hotspotOpen, setHotspotOpen] = useState(false);   // 热搜成片 → HotspotVideoModal
+  // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
+  const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <VideoScenarioEntryCard isZh={isZh} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
+        {isZhHot && (
+        <VideoScenarioEntryCard isZh={isZhHot} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
-          titleZh="热搜成片 · 蹭热点全自动" titleEn="Hotspot · Auto Trend Video"
-          descZh="勾选热搜榜 / Web3 / 科技源,每天定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配相关图片成片并发布。真·一次设置、每天自动蹭热点出片。"
+          titleZh="热搜成片 · 热点全自动" titleEn="Hotspot · Auto Trend Video"
+          descZh="勾选热搜榜 / Web3 / 科技源,定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配图片成片并发布。真·一次设置、每天自动蹭热点出片。"
           descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
           costZh="单条约 $0.02~$0.05(写稿/联网/配图/合成)" costEn="~$0.02–0.05 per clip (script / web / images / compose)"
           btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
+        )}
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -1724,7 +1728,7 @@ const VideoCreateFlow: React.FC<{
         <TemplateSpeedModal isZh={isZh} onClose={() => setTemplateOpen(false)} onCreated={onCreated} />
       )}
       {hotspotOpen && (
-        <HotspotVideoModal isZh={isZh} onClose={() => setHotspotOpen(false)} onCreated={onCreated} />
+        <HotspotVideoModal isZh={isZhHot} onClose={() => setHotspotOpen(false)} onCreated={onCreated} />
       )}
     </div>
   );
@@ -3660,7 +3664,7 @@ export const HotspotVideoModal: React.FC<{
         <div className="px-5 py-4 space-y-5">
           <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
             {isZh
-              ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配相关图片成片。配合「每天定时」= 全自动日更。'
+              ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每天定时」= 全自动日更。'
               : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
           </p>
 
