@@ -3684,8 +3684,14 @@ export const HotspotVideoModal: React.FC<{
     return init;
   });
   const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
-  // 素材来源:'image'=Serper 配图 Ken Burns(默认);'douyin'=搜抖音视频混剪 + 底部黑条盖原字幕。
-  const [materialSource, setMaterialSource] = useState<'image' | 'douyin'>(ei.hotspotMaterialSource === 'douyin' ? 'douyin' : 'image');
+  // 素材来源:'image'=Serper 配图 Ken Burns;'douyin'=搜抖音视频混剪 + 底部黑条盖原字幕。
+  // 新建默认【按界面语言分流】:中文界面(国内/华人,有抖音)默认抖音混剪;海外(非中文,
+  // 多半没抖音)默认图片配图。用户仍可在向导手动改;编辑态沿用已存值。
+  const [materialSource, setMaterialSource] = useState<'image' | 'douyin'>(
+    ei.hotspotMaterialSource === 'douyin' ? 'douyin'
+      : ei.hotspotMaterialSource === 'image' ? 'image'
+        : (isZh ? 'douyin' : 'image'),
+  );
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
