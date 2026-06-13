@@ -1274,7 +1274,8 @@ async function runVideoPipeline(
       tracker.progress('AI 规划配图英文关键词…');
       const termsResult = await generateSearchTerms(sentences, [], vcfg.termsSystemPrompt, {
         topic: hotspotTopic?.title || '',
-        lang: contentLang,
+        // 配图词按热点标题语言定人种倾向:英文话题(web3/科技)走 en 不强行 asian;口播仍中文。
+        lang: detectLang(hotspotTopic?.title || ''),
       });
       aiCostUsd += termsResult.costUsd;
       tracker.addTokens(termsResult.tokens, termsResult.costUsd);
