@@ -10,7 +10,16 @@
  * 上层据此走纯文案 / 文字卡兜底,不让整条任务崩。
  */
 
+import fs from 'fs';
+import path from 'path';
 import { downloadImagesFromUrls } from './stockProvider';
+
+/** 后端代下回来的一张图:base64(国内主路径,客户端不碰海外)或 url(海外兜底)。 */
+export interface HotspotImage {
+  base64?: string;
+  mimeType?: string;
+  url?: string;
+}
 
 function apiBase(): string {
   return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
@@ -92,15 +101,15 @@ export interface HotspotImageDiag {
 }
 
 /**
- * 配图编排(后端决策):把【AI 出的英文关键词 + 时长 + 来源URL】给后端,后端按时长决定发几次
- * serper、要几张,返回【排好序的候选 URL 列表(原图在前→缩略图兜底→og)+ 目标张数 want】。
- * 客户端只管下载到 want 张。编排在后端 → 以后调配图策略不用打包客户端。
+ * 配图编排(后端决策 + 代下载):把【AI 出的英文关键词 + 时长 + 来源URL】给后端,后端按时长算 want,
+ * 查 serper 收候选(优先小图),【在后端并发代下载成 base64】返回。客户端拿 base64 直接写文件,
+ * 完全不碰海外图(国内/无 VPN/系统代理不生效都能配上图)。base64 不足时 url 兜底(海外客户端可下)。
  */
 export async function fetchHotspotImagePlan(
   keywords: string[],
   targetSeconds: number,
   sourceUrl?: string,
-): Promise<{ urls: string[]; want: number; diag: HotspotImageDiag }> {
+): Promise<{ images: HotspotImage[]; want: number; diag: HotspotImageDiag }> {
   const json = await postJson('/api/video/hotspot/images', { keywords, targetSeconds, sourceUrl });
   const diag: HotspotImageDiag = {
     reached: !!json,
@@ -114,16 +123,41 @@ export async function fetchHotspotImagePlan(
       ? json.keywordStats.map((s: any) => ({ kw: String(s?.kw || ''), searched: !!s?.searched, found: Number(s?.found) || 0 }))
       : [],
   };
-  const imgs = json?.images;
-  const urls = Array.isArray(imgs)
-    ? imgs.map((im: any) => (typeof im === 'string' ? im : im?.url)).filter((u: any): u is string => typeof u === 'string' && /^https?:\/\//.test(u))
-    : [];
+  const raw = Array.isArray(json?.images) ? json.images : [];
+  const images: HotspotImage[] = raw
+    .map((im: any): HotspotImage => (typeof im === 'string'
+      ? { url: im }
+      : { base64: im?.base64 ? String(im.base64) : undefined, mimeType: im?.mimeType ? String(im.mimeType) : undefined, url: im?.url ? String(im.url) : undefined }))
+    .filter((im: HotspotImage) => !!im.base64 || (typeof im.url === 'string' && /^https?:\/\//.test(im.url)));
   const want = Number(json?.want) || Math.max(8, Math.min(40, Math.ceil(targetSeconds / 4) + 2));
-  return { urls, want, diag };
+  return { images, want, diag };
 }
 
-/** 下载后端返回的图链接到本地,下到 want 张即停。返回本地路径。 */
-export async function downloadHotspotImages(urls: string[], destDir: string, want: number): Promise<string[]> {
-  if (urls.length === 0) return [];
-  return downloadImagesFromUrls(urls, destDir, 200, want);
+/**
+ * 把后端返回的图落地到本地,下到 want 张即停。返回本地路径。
+ *   · base64(后端代下,主路径)→ 直接写文件,不碰网络。
+ *   · url(兜底)→ 走 downloadImagesFromUrls(海外客户端 / 后端代下不足时)。
+ */
+export async function downloadHotspotImages(images: HotspotImage[], destDir: string, want: number): Promise<string[]> {
+  if (!Array.isArray(images) || images.length === 0) return [];
+  const results: string[] = [];
+  const urlOnly: string[] = [];
+  let idx = 0;
+  for (const im of images) {
+    if (results.length >= want) break;
+    if (im.base64) {
+      const mt = im.mimeType || '';
+      const ext = mt.includes('png') ? 'png' : mt.includes('webp') ? 'webp' : 'jpg';
+      const dest = path.join(destDir, `hotspot_${String(idx).padStart(3, '0')}.${ext}`);
+      try { fs.writeFileSync(dest, Buffer.from(im.base64, 'base64')); results.push(dest); idx++; } catch { /* 写失败跳过 */ }
+    } else if (im.url) {
+      urlOnly.push(im.url);
+    }
+  }
+  // base64 没凑够 want → url 兜底下载(海外客户端能直连;国内大概率也下不动,但不阻塞)。
+  if (results.length < want && urlOnly.length > 0) {
+    const more = await downloadImagesFromUrls(urlOnly, destDir, 200, want - results.length);
+    results.push(...more);
+  }
+  return results;
 }

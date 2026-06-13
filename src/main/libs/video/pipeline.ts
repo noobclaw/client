@@ -233,6 +233,10 @@ export interface VideoCreationInput {
    * 只对每条做不同的素材片段组合,平台费按条数 ×N。默认 1。
    */
   videoCount?: number;
+  /** 热搜成片专属:每次运行出片条数随机区间 [min,max](主进程在区间内取 N 跑外层循环,
+   *  每条独立选题+写稿+按条计费)。缺省 = 1。详见 renderer VideoCreationInput 同名字段。 */
+  videoCountMin?: number;
+  videoCountMax?: number;
   /**
    * v6.x: 所属视频任务 id。传入时,成片输出到【按任务】的文件夹
    * (视频创作/<id前8位>_<任务名>/<日期>/<批次号>/),详情页顶部「输出目录」稳定指向
@@ -566,7 +570,10 @@ async function runVideoPipeline(
   // 跟踪这笔在途预扣,供「全部条目失败 / 异常」时 finally 兜底整笔退回。
   // engine==='ai'(Seedance 自动成片)的钱在服务端【逐片段】扣(/seedance/create,
   // 含 markup),且失败自动退款 —— 不再走这里的"平台基础费"预扣,避免重复收费。
-  const isMode1 = input.engine !== 'ai' && input.useStockVideo !== false;
+  // 热搜成片(engine==='hotspot')虽然 useStockVideo=false(纯图 Ken Burns),但要【按条计费】:
+  // 主进程外层循环把它拆成 N 条单独 pipeline(各 videoCount=1),每条在这里预扣一份平台基础费
+  // (≈$0.09~0.18),失败那条幂等退回 —— 故 hotspot 也算 mode1。
+  const isMode1 = input.engine !== 'ai' && (input.useStockVideo !== false || input.engine === 'hotspot');
   let chargeId: string | undefined;
   let refundOnExit = false;
 
@@ -1289,11 +1296,12 @@ async function runVideoPipeline(
       const keywords = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()))).slice(0, 8);
       tracker.progress(`🔤 AI 配图关键词(${keywords.length} 个):${keywords.join(' · ') || '(空,AI 没出词)'}`);
 
-      // ── 配图编排在【后端】:把关键词 + 时长 + 来源URL 给后端,后端按时长决定发几次 serper、
-      //    要几张,返回排好序的候选 URL + 目标张数 want。客户端只管下载 + 组装。
-      //    → 以后调配图策略(几次/几张/兜底)只改 backend、不打包客户端,所有客户端立即一致。
-      const { urls, want, diag } = await fetchHotspotImagePlan(keywords, input.targetSeconds ?? 60, hotspotTopic?.url);
-      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${urls.length} 个${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
+      // ── 配图编排 + 代下载在【后端】:把关键词 + 时长 + 来源URL 给后端,后端按时长算 want、查
+      //    serper、【并发代下载成 base64】返回。客户端拿 base64 直接写文件,完全不碰海外图
+      //    (国内 / 无 VPN / 系统代理不生效 都能配上图)。→ 调配图策略只改 backend、不打包客户端。
+      const { images, want, diag } = await fetchHotspotImagePlan(keywords, input.targetSeconds ?? 60, hotspotTopic?.url);
+      const b64n = images.filter((im) => !!im.base64).length;
+      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${images.length} 个(后端代下 ${b64n} 张)${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
       // 逐词明细:每个关键词查没查、serper 返回几张。一眼看出哪些词有图、哪些空。
       if (diag.keywordStats.length > 0) {
         const detail = diag.keywordStats
@@ -1303,8 +1311,8 @@ async function runVideoPipeline(
       }
       if (diag.serperError) tracker.progress(`   ⚠️ serper 报错:${diag.serperError}`);
 
-      // 下载候选,下到 want 张即停(原图在前、挂的用 gstatic 缩略图补)。
-      const localImgs = await downloadHotspotImages(urls, assetDir, want);
+      // 落地:base64 直接写文件(主路径),url 兜底下载;下到 want 张即停。
+      const localImgs = await downloadHotspotImages(images, assetDir, want);
 
       // 没出图时把真因打到进度里(不再静默只剩 1 张)。
       if (localImgs.length === 0) {
