@@ -886,6 +886,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         </Row>
         <Row label={`⏱️ ${isZh ? '时长' : 'Duration'}`}>{durationDesc}</Row>
         <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '本地动效渲染(HF 派)' : 'Local animated render (HF-style)'}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
   }
@@ -897,14 +898,13 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
       const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === input.voice);
       return v ? (isZh ? v.zh : v.en) : (input.voice || (isZh ? '默认音色' : 'Default'));
     })();
-    const pubN = Array.isArray(input.publishPlatforms) ? input.publishPlatforms.length : 0;
     return (
       <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-3 space-y-2 text-xs">
         <Row label={`🔥 ${isZh ? '热点源' : 'Sources'}`}>{srcs}</Row>
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
         <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns'}</Row>
-        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{pubN > 0 ? (isZh ? `${pubN} 个平台` : `${pubN} platforms`) : (isZh ? '仅存本地' : 'Local only')}</Row>
+        <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
   }
@@ -940,6 +940,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
               ? (isZh ? '在线视频素材 + 图片' : 'stock video + images')
               : (isZh ? '仅图片' : 'images only')}
       </Row>
+      <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
     </div>
   );
 };
@@ -950,6 +951,19 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
     <span className="flex-1 min-w-0 dark:text-gray-200">{children}</span>
   </div>
 );
+
+// 发布去向摘要(详情页/记录详情常驻显示):空 publishPlatforms = 仅存本地;否则列出平台中文名。
+// 让用户在详情页一眼看到「存本地」还是「上传到 抖音、小红书…」(之前只在 hotspot 显示个数,
+// stock/ai/template 完全不显示 → 选了上传也看不到发到哪)。
+function publishSummary(input: VideoCreationInput, isZh: boolean): string {
+  const ids = Array.isArray(input.publishPlatforms) ? input.publishPlatforms.filter(Boolean) : [];
+  if (ids.length === 0) return isZh ? '存本地(不上传)' : 'Local only';
+  const names = ids.map((id) => {
+    const m = PUBLISH_PLATFORMS.find((p) => p.id === id);
+    return m ? `${m.emoji} ${isZh ? m.zh : m.en}` : String(id);
+  });
+  return (isZh ? '上传到 ' : 'Upload to ') + names.join(isZh ? '、' : ', ');
+}
 
 /**
  * 扁平配置文本行(任务详情页用)。对齐币安详情卡:左列就是一串纯文本字段,
@@ -983,6 +997,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         </div>
         <div>⏱️ {isZh ? '时长' : 'Duration'}：{durationDesc}</div>
         <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '本地动效渲染(HF 派)' : 'Local animated render (HF-style)'}</div>
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
   }
@@ -1007,6 +1022,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         📝 {isZh ? '视频文案' : 'Script'}：<span className="text-gray-400">[{scriptTag}]</span> {scriptBody}
       </div>
       <div>🎞️ {isZh ? '画面' : 'Visuals'}：{visuals}</div>
+      <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
     </>
   );
 };
@@ -3304,7 +3320,10 @@ const VideoConfigModal: React.FC<{
                       : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
                   </div>
 
-                  {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签 */}
+                  {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签。
+                      ⚠️ 在线素材(stock)是批量 AI 自动成片,每条独立写稿,发布文案也强制每条 AI 生成
+                      (填一个固定标题/正文会让 N 条共用同一文案,违背"每条独立")→ 不给输入框。 */}
+                  {mode !== 'stock' && (
                   <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
                     <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
                       {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
@@ -3326,6 +3345,12 @@ const VideoConfigModal: React.FC<{
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
                     />
                   </div>
+                  )}
+                  {mode === 'stock' && (
+                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
+                      {isZh ? '📝 发布文案:每条由 AI 独立生成钩人标题 + 引导互动文案 + 话题标签(批量成片不支持统一自定义文案)' : '📝 Caption: AI writes a unique hook title + CTA + hashtags per clip (batch mode has no shared custom caption)'}
+                    </div>
+                  )}
                 </Field>
               )}
 
