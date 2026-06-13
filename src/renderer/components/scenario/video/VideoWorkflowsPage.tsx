@@ -1674,7 +1674,7 @@ const VideoCreateFlow: React.FC<{
   onCreated: (taskId: string) => void;
   onGoTasks?: () => void;
 }> = ({ isZh, onCreated, onGoTasks }) => {
-  // 3 张独立 card,各自独立向导:电影级(纯AI)/ 在线素材(AI口播)/ 模板速生。
+  // 4 张独立 card,各自独立向导:热搜成片 / 在线素材(AI口播)/ 电影级(纯AI)/ 模板速生。
   // (翻译二创 2026-06-11 删除:whisper 在日本网络下不通,且功能在测试期只有一个用户。)
   const [cinemaOpen, setCinemaOpen] = useState(false);     // 电影级 → VideoConfigModal forcedMode=pure_ai
   const [stockOpen, setStockOpen] = useState(false);       // 在线素材 → VideoConfigModal forcedMode=stock
@@ -1684,6 +1684,13 @@ const VideoCreateFlow: React.FC<{
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <VideoScenarioEntryCard isZh={isZh} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
+          tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
+          titleZh="热搜成片 · 蹭热点全自动" titleEn="Hotspot · Auto Trend Video"
+          descZh="勾选热搜榜 / Web3 / 科技源,每天定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配相关图片成片并发布。真·一次设置、每天自动蹭热点出片。"
+          descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
+          costZh="单条约 $0.02~$0.05(写稿/联网/配图/合成)" costEn="~$0.02–0.05 per clip (script / web / images / compose)"
+          btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
@@ -1705,13 +1712,6 @@ const VideoCreateFlow: React.FC<{
           descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame, optional AI voice-over + subtitles. Seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
           costZh="单条约 $0.02~$0.04(数据/写稿/合成)" costEn="~$0.02–0.04 per clip (data / script / compose)"
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
-          tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
-          titleZh="热搜成片 · 蹭热点全自动" titleEn="Hotspot · Auto Trend Video"
-          descZh="勾选热搜榜 / Web3 / 科技源,每天定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配相关图片成片并发布。真·一次设置、每天自动蹭热点出片。"
-          descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
-          costZh="单条约 $0.02~$0.05(写稿/联网/配图/合成)" costEn="~$0.02–0.05 per clip (script / web / images / compose)"
-          btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
       </section>
 
       {cinemaOpen && (

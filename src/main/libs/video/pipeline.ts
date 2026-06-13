@@ -1475,7 +1475,9 @@ async function runVideoPipeline(
         keywords: userText ? undefined : input.keywords,
         track: userText ? undefined : input.track,
         lang: contentLang,
-        userTitle: input.publishTitle,
+        // 热搜成片:发布标题直接用热搜原标题(userTitle 优先、AI 不覆盖);正文/标签仍 AI 生成。
+        //   用户在向导自填了 publishTitle 则更优先。
+        userTitle: input.publishTitle || (input.engine === 'hotspot' ? hotspotTopic?.title : undefined),
         userCaption: input.publishCaption,
         userTags: input.hashtags,
         onLog: (m: string) => tracker.progress(m),
