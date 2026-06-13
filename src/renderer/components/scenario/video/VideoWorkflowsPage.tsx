@@ -218,6 +218,8 @@ function intervalLabel(task: VideoTask, isZh: boolean): string | null {
   if (!iv || iv === 'once') return null;
   if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
   switch (iv) {
+    case '30min': return isZh ? '每 30 分钟' : 'Every 30min';
+    case '1h': return isZh ? '每小时' : 'Hourly';
     case '3h': return isZh ? '每 3 小时' : 'Every 3h';
     case '6h': return isZh ? '每 6 小时' : 'Every 6h';
     case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}` : `Daily ${task.dailyTime || '08:00'}`;
@@ -234,6 +236,8 @@ function intervalLabelDetailed(task: VideoTask, isZh: boolean): string | null {
   if (!iv || iv === 'once') return null;
   if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
   switch (iv) {
+    case '30min': return isZh ? '每 30 分钟(+0-10 分钟随机延迟)' : 'Every 30min (+0-10min jitter)';
+    case '1h': return isZh ? '每小时(+0-10 分钟随机延迟)' : 'Hourly (+0-10min jitter)';
     case '3h': return isZh ? '每 3 小时(+0-10 分钟随机延迟)' : 'Every 3h (+0-10min jitter)';
     case '6h': return isZh ? '每 6 小时(+0-10 分钟随机延迟)' : 'Every 6h (+0-10min jitter)';
     case 'daily': return isZh ? `每天 ${task.dailyTime || '08:00'}(±15 分钟随机)` : `Daily ${task.dailyTime || '08:00'} (±15min)`;
@@ -965,6 +969,12 @@ function publishSummary(input: VideoCreationInput, isZh: boolean): string {
   return (isZh ? '上传到 ' : 'Upload to ') + names.join(isZh ? '、' : ', ');
 }
 
+/** 把配音音色 id 映射成可读名(查不到就回退原 id / 默认)。详情/记录共用。 */
+function voiceDisplayLabel(voiceId: string | undefined, isZh: boolean): string {
+  const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === voiceId);
+  return v ? (isZh ? v.zh : v.en) : (voiceId || (isZh ? '默认音色' : 'Default'));
+}
+
 /**
  * 扁平配置文本行(任务详情页用)。对齐币安详情卡:左列就是一串纯文本字段,
  * 没有内嵌灰框、没有「任务配置」小标题 —— 跟 TaskDetailPage 的 persona/频次/
@@ -997,6 +1007,27 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         </div>
         <div>⏱️ {isZh ? '时长' : 'Duration'}：{durationDesc}</div>
         <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '本地动效渲染(HF 派)' : 'Local animated render (HF-style)'}</div>
+        <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
+      </>
+    );
+  }
+  // 热搜成片:展示热点源/时长/配音/字幕/画面/发布 —— 没有「赛道/人设/关键词/文案」概念
+  // (题材每次运行从热榜随机选,资料联网取,所以那几项对它无意义,不展示一堆 `-`)。
+  if (input.engine === 'hotspot') {
+    const srcMap: Record<string, string> = {
+      weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu',
+      baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu',
+      web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI',
+    };
+    const srcs = ((input.hotspotSources as string[] | undefined) || []).map((s) => srcMap[s] || s).join('、') || '-';
+    const voiceLabel = voiceDisplayLabel(input.voice, isZh);
+    const subTag = input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : ' · no subs');
+    return (
+      <>
+        <div className="break-words">🔥 {isZh ? '热点源' : 'Sources'}：{srcs}</div>
+        <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
+        <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
+        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '联网配图(Ken Burns)' : 'Web images (Ken Burns)'}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
@@ -3622,7 +3653,8 @@ export const HotspotVideoModal: React.FC<{
 }> = ({ isZh, onClose, onCreated, editTask, onSaved }) => {
   const isEdit = !!editTask;
   const ei = editTask?.input || {};
-  const [title, setTitle] = useState<string>(editTask?.title || '');
+  // 任务名不再让用户填:沿用编辑态旧名,新建固定「热搜成片」(见 buildTitle)。
+  const [title] = useState<string>(editTask?.title || '');
   const [sources, setSources] = useState<Record<string, boolean>>(() => {
     const saved: string[] = Array.isArray(ei.hotspotSources) && ei.hotspotSources.length
       ? ei.hotspotSources
@@ -3648,10 +3680,13 @@ export const HotspotVideoModal: React.FC<{
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
   const [showLoginCheck, setShowLoginCheck] = useState(false);
+  // 分步向导:① 热点源 → ② 内容(时长/配音/字幕)→ ③ 成片去向 → ④ 运行频率。
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
   const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
   const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
 
+  // 任务名不再让用户填(每次随机选题,固定名没意义)→ 新建固定「热搜成片」,编辑保留旧名。
   const buildTitle = () => (title.trim() || (isZh ? '热搜成片' : 'Hotspot Video'));
   const buildInput = (): VideoCreationInput => ({
     persona: '', track: '', keywords: [], script: '', scriptMode: 'ai',
@@ -3695,152 +3730,205 @@ export const HotspotVideoModal: React.FC<{
     }
   };
 
+  // 最后一步「创建/保存」:校验源 → 发布要先过登录校验。
   const onSubmitClick = () => {
-    if (selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
+    if (selectedSources.length === 0) { setStep(1); setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
     // 要发布 + 勾了平台 → 先过登录校验(全登录才放行),对齐其它视频卡。
     if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(''); setShowLoginCheck(true); return; }
     void doCreate();
   };
 
+  // 「下一步」按 step 校验后推进;step 1 必须至少勾一个源。
+  const goNext = () => {
+    if (step === 1 && selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
+    setErr('');
+    setStep((s) => (s < 4 ? ((s + 1) as 1 | 2 | 3 | 4) : s));
+  };
+  const goBack = () => {
+    setErr('');
+    if (step === 1) { onClose(); return; }
+    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4));
+  };
+
   const DUR = [30, 45, 60, 90, 120];
+  // 运行频率档位:对齐币安任务的能力(30min/1h/3h/6h + 每天定时 + 每日随机 + 不重复)。
+  const FREQ_OPTS: { v: VideoRunInterval; zh: string; en: string }[] = [
+    { v: 'once', zh: '不重复', en: 'Once' },
+    { v: '30min', zh: '每 30 分钟', en: 'Every 30min' },
+    { v: '1h', zh: '每小时', en: 'Hourly' },
+    { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
+    { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
+    { v: 'daily', zh: '每天定时', en: 'Daily' },
+    { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
+  ];
+  const isJitter = runInterval === '30min' || runInterval === '1h' || runInterval === '3h' || runInterval === '6h';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[88vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3.5 border-b dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
-          <h2 className="text-base font-bold dark:text-gray-100 flex items-center gap-2">
-            <span>🔥</span>{isZh ? (isEdit ? '编辑 · 热搜成片' : '热搜成片') : (isEdit ? 'Edit · Hotspot Video' : 'Hotspot Video')}
-          </h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">✕</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/50" />
+      <div className="relative w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 px-6 pt-5 pb-3 border-b border-gray-100 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur flex items-start justify-between">
+          <div>
+            <h3 className="text-lg font-bold dark:text-white flex items-center gap-2">
+              <span>🔥</span>{isZh ? (isEdit ? '编辑 · 热搜成片' : '热搜成片') : (isEdit ? 'Edit · Hotspot Video' : 'Hotspot Video')}
+            </h3>
+            <div className="flex items-center gap-2 mt-3 flex-wrap">
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '热点源' : 'Sources'} />
+              <div className={`h-px w-3 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
+              <div className={`h-px w-3 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '去向' : 'Output'} />
+              <div className={`h-px w-3 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={4} active={step === 4} done={false} label={isZh ? '频率' : 'Frequency'} />
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
         </div>
 
-        <div className="px-5 py-4 space-y-5">
-          <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
-            {isZh
-              ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每天定时」= 全自动日更。'
-              : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
-          </p>
+        <div className="px-6 py-5 space-y-5">
+          {/* ── Step 1:热点源 ── */}
+          {step === 1 && (
+            <>
+              <p className="text-[12px] leading-relaxed text-gray-500 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 rounded-lg px-3 py-2">
+                {isZh
+                  ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每天定时」= 全自动日更。'
+                  : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
+              </p>
+              <Field label={isZh ? '热点源(可多选,默认已勾常用)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
+                <div className="grid grid-cols-2 gap-2">
+                  {HOTSPOT_SOURCES.map((s) => {
+                    const on = !!sources[s.id];
+                    return (
+                      <button key={s.id} type="button"
+                        onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                          on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
+                        <span>{s.emoji}</span>
+                        <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                        {on && <span className="text-amber-500">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            </>
+          )}
 
-          <Field label={isZh ? '任务名称' : 'Task name'}>
-            <input value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder={isZh ? '热搜成片' : 'Hotspot Video'}
-              className="w-full px-3 py-2 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
-          </Field>
-
-          <Field label={isZh ? '热点源(可多选,默认已勾常用)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : ''}>
-            <div className="grid grid-cols-2 gap-2">
-              {HOTSPOT_SOURCES.map((s) => {
-                const on = !!sources[s.id];
-                return (
-                  <button key={s.id} type="button"
-                    onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
-                      on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
-                    <span>{s.emoji}</span>
-                    <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
-                    {on && <span className="text-amber-500">✓</span>}
-                  </button>
-                );
-              })}
-            </div>
-          </Field>
-
-          <Field label={isZh ? '目标时长' : 'Target length'}>
-            <div className="flex flex-wrap gap-2">
-              {DUR.map((d) => (
-                <button key={d} type="button" onClick={() => setTargetSeconds(d)}
-                  className={`px-3 py-1.5 rounded-lg text-sm border ${targetSeconds === d ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{d}s</button>
-              ))}
-            </div>
-          </Field>
-          <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
-            <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="w-4 h-4 accent-amber-500" />
-            {isZh ? '烧录字幕' : 'Burn subtitles'}
-          </label>
-
-          <Field label={isZh ? '配音音色' : 'Voice'}>
-            <select value={voice} onChange={(e) => setVoice(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
-              {VOICE_GROUPS.map((g) => (
-                <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
-                  {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
-                </optgroup>
-              ))}
-            </select>
-            <div className="flex gap-2 mt-2">
-              {RATE_OPTIONS.map((r) => (
-                <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
-                  className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-                  {isZh ? r.zh : r.en}
-                </button>
-              ))}
-            </div>
-          </Field>
-
-          <Field label={isZh ? '成片去向' : 'Output'}>
-            <div className="flex gap-2 mb-2">
-              {(['local', 'upload'] as OutputMode[]).map((m) => (
-                <button key={m} type="button" onClick={() => setOutputMode(m)}
-                  className={`flex-1 py-2 rounded-lg text-sm border ${outputMode === m ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
-                  {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
-                </button>
-              ))}
-            </div>
-            {outputMode === 'upload' && (
-              <div className="grid grid-cols-2 gap-2">
-                {PUBLISH_PLATFORMS.map((p) => {
-                  const on = !!platforms[p.id];
-                  return (
-                    <button key={p.id} type="button" onClick={() => setPlatforms((pp) => ({ ...pp, [p.id]: !pp[p.id] }))}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700'}`}>
-                      <span>{p.emoji}</span><span className="dark:text-gray-200">{isZh ? p.zh : p.en}</span>
-                      {on && <span className="ml-auto text-amber-500">✓</span>}
+          {/* ── Step 2:内容(时长 + 字幕 + 配音) ── */}
+          {step === 2 && (
+            <>
+              <Field label={isZh ? '目标时长' : 'Target length'}>
+                <div className="flex flex-wrap gap-2">
+                  {DUR.map((d) => (
+                    <button key={d} type="button" onClick={() => setTargetSeconds(d)}
+                      className={`px-3 py-1.5 rounded-lg text-sm border ${targetSeconds === d ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{d}s</button>
+                  ))}
+                </div>
+              </Field>
+              <label className="flex items-center gap-2 text-sm dark:text-gray-200 cursor-pointer">
+                <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                {isZh ? '烧录字幕' : 'Burn subtitles'}
+              </label>
+              <Field label={isZh ? '配音音色' : 'Voice'}>
+                <select value={voice} onChange={(e) => setVoice(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  {VOICE_GROUPS.map((g) => (
+                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                      {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                    </optgroup>
+                  ))}
+                </select>
+                <div className="flex gap-2 mt-2">
+                  {RATE_OPTIONS.map((r) => (
+                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                      {isZh ? r.zh : r.en}
                     </button>
-                  );
-                })}
-              </div>
-            )}
-            {outputMode === 'upload' && (
-              <p className="text-[11px] text-gray-400 mt-2">{isZh ? '标题/正文/话题全部 AI 自动生成,无需填写;运行前会校验各平台登录态,未登录的自动跳过。' : 'Title/caption/tags auto-generated; login checked before run, not-logged-in skipped.'}</p>
-            )}
-          </Field>
+                  ))}
+                </div>
+              </Field>
+            </>
+          )}
 
-          <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
-            <div className="grid grid-cols-3 gap-2">
-              {([
-                { v: 'once', zh: '不重复', en: 'Once' },
-                { v: 'daily', zh: '每天定时', en: 'Daily' },
-                { v: 'daily_random', zh: '每日随机', en: 'Daily random' },
-                { v: '3h', zh: '每 3 小时', en: 'Every 3h' },
-                { v: '6h', zh: '每 6 小时', en: 'Every 6h' },
-              ] as { v: VideoRunInterval; zh: string; en: string }[]).map((o) => (
-                <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
-                  className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}>
-                  {isZh ? o.zh : o.en}
-                </button>
-              ))}
-            </div>
-            {runInterval === 'daily' && (
-              <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)}
-                className="mt-2 px-3 py-1.5 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
-            )}
-            {runInterval === 'daily_random' && (
-              <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Once daily at a random time'}</p>
-            )}
-            {runInterval !== 'once' && (
-              <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
-            )}
-          </Field>
+          {/* ── Step 3:成片去向 ── */}
+          {step === 3 && (
+            <Field label={isZh ? '成片去向' : 'Output'}>
+              <div className="flex gap-2 mb-2">
+                {(['local', 'upload'] as OutputMode[]).map((m) => (
+                  <button key={m} type="button" onClick={() => setOutputMode(m)}
+                    className={`flex-1 py-2 rounded-lg text-sm border ${outputMode === m ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                    {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
+                  </button>
+                ))}
+              </div>
+              {outputMode === 'upload' && (
+                <div className="grid grid-cols-2 gap-2">
+                  {PUBLISH_PLATFORMS.map((p) => {
+                    const on = !!platforms[p.id];
+                    return (
+                      <button key={p.id} type="button" onClick={() => setPlatforms((pp) => ({ ...pp, [p.id]: !pp[p.id] }))}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700'}`}>
+                        <span>{p.emoji}</span><span className="dark:text-gray-200">{isZh ? p.zh : p.en}</span>
+                        {on && <span className="ml-auto text-amber-500">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {outputMode === 'upload' && (
+                <p className="text-[11px] text-gray-400 mt-2">{isZh ? '标题/正文/话题全部 AI 自动生成,无需填写;运行前会校验各平台登录态,未登录的自动跳过。' : 'Title/caption/tags auto-generated; login checked before run, not-logged-in skipped.'}</p>
+              )}
+            </Field>
+          )}
+
+          {/* ── Step 4:运行频率(对齐币安能力) ── */}
+          {step === 4 && (
+            <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
+              <div className="grid grid-cols-3 gap-2">
+                {FREQ_OPTS.map((o) => (
+                  <button key={o.v} type="button" onClick={() => setRunInterval(o.v)}
+                    className={`px-2 py-1.5 rounded-lg text-xs border transition-colors ${runInterval === o.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-amber-300'}`}>
+                    {isZh ? o.zh : o.en}
+                  </button>
+                ))}
+              </div>
+              {runInterval === 'daily' && (
+                <input type="time" value={dailyTime} onChange={(e) => setDailyTime(e.target.value)}
+                  className="mt-2 px-3 py-1.5 rounded-lg border dark:border-gray-700 dark:bg-gray-800 text-sm dark:text-gray-100" />
+              )}
+              {runInterval === 'daily_random' && (
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '✨ 推荐 — 每天随机时间出片一次,最像真人' : '✨ Once daily at a random time'}</p>
+              )}
+              {runInterval === 'daily' && (
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 ±15 分钟随机延迟,避免精准卡点' : '⚠️ ±15min jitter around the time (anti-detection).'}</p>
+              )}
+              {isJitter && (
+                <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">{isZh ? '⚠️ 到点后再加 0-10 分钟随机延迟,避免精准卡点' : '⚠️ +0-10min jitter after threshold (anti-detection).'}</p>
+              )}
+              {runInterval !== 'once' && (
+                <p className="mt-2 text-[11px] text-amber-500">{isZh ? '⚠️ 定时到点自动出片并扣费,请保证余额充足 + 应用保持开启。' : '⚠️ Scheduled runs auto-bill — keep balance and app running.'}</p>
+              )}
+            </Field>
+          )}
 
           {err && <p className="text-sm text-rose-500">{err}</p>}
         </div>
 
-        <div className="sticky bottom-0 flex gap-3 px-5 py-3.5 border-t dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
-          <button onClick={onClose} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">{isZh ? '取消' : 'Cancel'}</button>
-          <button onClick={onSubmitClick} disabled={submitting}
-            className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
-            {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🔥 ${isZh ? '创建任务' : 'Create'}`}
+        <div className="sticky bottom-0 flex gap-3 px-6 py-3.5 border-t dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur">
+          <button onClick={goBack} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">
+            {step === 1 ? (isZh ? '取消' : 'Cancel') : (isZh ? '上一步' : 'Back')}
           </button>
+          {step < 4 ? (
+            <button onClick={goNext}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600">
+              {isZh ? '下一步' : 'Next'}
+            </button>
+          ) : (
+            <button onClick={onSubmitClick} disabled={submitting}
+              className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600 disabled:opacity-50">
+              {submitting ? (isZh ? '创建中…' : 'Creating…') : isEdit ? `💾 ${isZh ? '保存' : 'Save'}` : `🔥 ${isZh ? '创建任务' : 'Create'}`}
+            </button>
+          )}
         </div>
 
         {showLoginCheck && (

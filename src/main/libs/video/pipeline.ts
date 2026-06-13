@@ -599,14 +599,21 @@ async function runVideoPipeline(
         return { ok: false, error: err };
       }
       throwIfAborted(signal);
-      tracker.progress('🔥 正在从勾选的热点源里选题…');
+      // 进度里明确列出勾选了哪些榜单平台(对齐用户「想看到选中了哪个平台的热点」诉求)。
+      const HOTSPOT_SRC_LABEL: Record<string, string> = {
+        weibo: '微博热搜', douyin: '抖音热搜', zhihu: '知乎热榜', baidu: '百度热搜',
+        bilibili: 'B站热搜', xueqiu: '雪球热门股', web3: 'Web3 资讯', tech: '科技/AI',
+      };
+      const srcNames = sources.map((s) => HOTSPOT_SRC_LABEL[s] || s).join('、');
+      tracker.progress(`🔥 已勾选热点源:${srcNames} —— 正在从这些榜单最新条目里随机选题…`);
       hotspotTopic = await pickHotspotTopic(sources);
       if (!hotspotTopic) {
         const err = '热搜成片:所选热点源暂无可用条目(稍后热榜刷新再试)';
         tracker.fail('script', err);
         return { ok: false, error: err };
       }
-      tracker.progress(`📌 选中热点:「${hotspotTopic.title}」· ${hotspotTopic.source}`);
+      const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
+      tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
       throwIfAborted(signal);
       tracker.progress('🌐 联网检索这条热点的最新资料…');
       const tlang = detectLang(hotspotTopic.title);

@@ -39,9 +39,10 @@ const MAX_LOGS = 600;       // 每条运行记录的日志条数上限
 
 export type VideoRunStatus = 'running' | 'done' | 'error';
 
-/** 视频任务的定时间隔(对齐 scenario 的 run_interval,但去掉 30min/1h —— 本地出片很吃
- *  资源且按条计费,最短给到每 3 小时)。'once' = 仅手动,不自动重复。 */
-export type VideoRunInterval = 'once' | '3h' | '6h' | 'daily' | 'daily_random';
+/** 视频任务的定时间隔(对齐 scenario / 币安任务的 run_interval 完整能力:30min/1h/3h/6h +
+ *  每天定时 + 每日随机)。'once' = 仅手动,不自动重复。
+ *  ⚠️ 短间隔(30min/1h)本地出片吃资源且按条计费,向导里已加 jitter 提示,由用户自行权衡。 */
+export type VideoRunInterval = 'once' | '30min' | '1h' | '3h' | '6h' | 'daily' | 'daily_random';
 
 /** 任务级定时配置(向导「出片」步收集,存到 VideoTask 上)。 */
 export interface VideoSchedule {
@@ -53,7 +54,7 @@ export interface VideoSchedule {
 /**
  * 计算下一次定时运行的时间戳(语义对齐 scenarioManager.computeNextPlannedRun):
  *   - 'once'         → Infinity(永不自动触发;调用方应改存 undefined)
- *   - '3h' / '6h'    → fromTs + 间隔 + [0,10min) 抖动
+ *   - '30min' / '1h' / '3h' / '6h' → fromTs + 间隔 + [0,10min) 抖动
  *   - 'daily'        → 下一个 HH:MM(今天已过则次日)± 15min 抖动
  *   - 'daily_random' → 次日 0 点起 [0,24h) 随机一次
  * fromTs 一般传「上次运行结束时间」(首次排程传 now)。
@@ -67,6 +68,8 @@ export function computeNextVideoRun(
   const HOUR = 60 * MIN;
   const jitter = (maxMs: number) => Math.floor(Math.random() * maxMs);
   switch (interval) {
+    case '30min': return fromTs + 30 * MIN + jitter(10 * MIN);
+    case '1h': return fromTs + HOUR + jitter(10 * MIN);
     case '3h': return fromTs + 3 * HOUR + jitter(10 * MIN);
     case '6h': return fromTs + 6 * HOUR + jitter(10 * MIN);
     case 'daily': {
