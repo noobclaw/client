@@ -1287,12 +1287,21 @@ async function runVideoPipeline(
       aiCostUsd += termsResult.costUsd;
       tracker.addTokens(termsResult.tokens, termsResult.costUsd);
       const keywords = Array.from(new Set(termsResult.terms.flat().filter(Boolean).map((s) => s.toLowerCase()))).slice(0, 8);
+      tracker.progress(`🔤 AI 配图关键词(${keywords.length} 个):${keywords.join(' · ') || '(空,AI 没出词)'}`);
 
       // ── 配图编排在【后端】:把关键词 + 时长 + 来源URL 给后端,后端按时长决定发几次 serper、
       //    要几张,返回排好序的候选 URL + 目标张数 want。客户端只管下载 + 组装。
       //    → 以后调配图策略(几次/几张/兜底)只改 backend、不打包客户端,所有客户端立即一致。
       const { urls, want, diag } = await fetchHotspotImagePlan(keywords, input.targetSeconds ?? 60, hotspotTopic?.url);
-      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${urls.length} 个`);
+      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,发 ${diag.queries} 次查询,候选 ${urls.length} 个${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
+      // 逐词明细:每个关键词查没查、serper 返回几张。一眼看出哪些词有图、哪些空。
+      if (diag.keywordStats.length > 0) {
+        const detail = diag.keywordStats
+          .map((s) => `${s.kw}${s.searched ? `→${s.found} 张` : '(未查·候选已够)'}`)
+          .join('  |  ');
+        tracker.progress(`   📋 逐词查询明细:${detail}`);
+      }
+      if (diag.serperError) tracker.progress(`   ⚠️ serper 报错:${diag.serperError}`);
 
       // 下载候选,下到 want 张即停(原图在前、挂的用 gstatic 缩略图补)。
       const localImgs = await downloadHotspotImages(urls, assetDir, want);

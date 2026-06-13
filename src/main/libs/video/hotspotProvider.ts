@@ -87,6 +87,8 @@ export interface HotspotImageDiag {
   serperTotal: number;   // serper 累计返回几张候选
   serperError: string;   // serper 报错/网络到不了的信息
   ogCount: number;       // og:image 兜底几张
+  keywords: string[];    // 实际用于检索的英文关键词
+  keywordStats: { kw: string; searched: boolean; found: number }[]; // 逐词明细:查没查 / 返回几张
 }
 
 /**
@@ -107,6 +109,10 @@ export async function fetchHotspotImagePlan(
     serperTotal: Number(json?.serperTotal) || 0,
     serperError: String(json?.serperError || ''),
     ogCount: Number(json?.ogCount) || 0,
+    keywords: Array.isArray(json?.keywords) ? json.keywords.map((k: any) => String(k)) : [],
+    keywordStats: Array.isArray(json?.keywordStats)
+      ? json.keywordStats.map((s: any) => ({ kw: String(s?.kw || ''), searched: !!s?.searched, found: Number(s?.found) || 0 }))
+      : [],
   };
   const imgs = json?.images;
   const urls = Array.isArray(imgs)
