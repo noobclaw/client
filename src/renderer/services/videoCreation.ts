@@ -69,6 +69,9 @@ export interface VideoCreationInput {
    *  每次运行从这些源最新 20 条随机挑 1 条选题,服务端联网(Serper /news)取材 → 客户端写稿
    *  → Serper /images 配图 → 合成 → 发布。其它 engine 忽略此字段。 */
   hotspotSources?: string[];
+  /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
+   *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
+  hotspotMaterialSource?: 'image' | 'douyin';
   /** AI 引擎分辨率档:'480p' | '720p'(默认) | '1080p'(越高越清越贵)。 */
   seedanceResolution?: '480p' | '720p' | '1080p';
   /** AI 引擎模型档位:'lite'(1.0 Lite) | 'pro'(1.0 Pro) | 'pro15'(1.5 Pro,默认) | 'v2'(2.0)。 */

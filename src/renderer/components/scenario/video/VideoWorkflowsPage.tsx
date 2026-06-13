@@ -3684,6 +3684,8 @@ export const HotspotVideoModal: React.FC<{
     return init;
   });
   const [targetSeconds, setTargetSeconds] = useState<number>(ei.targetSeconds ?? 60);
+  // 素材来源:'image'=Serper 配图 Ken Burns(默认);'douyin'=搜抖音视频混剪 + 底部黑条盖原字幕。
+  const [materialSource, setMaterialSource] = useState<'image' | 'douyin'>(ei.hotspotMaterialSource === 'douyin' ? 'douyin' : 'image');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
@@ -3718,6 +3720,7 @@ export const HotspotVideoModal: React.FC<{
     persona: '', track: '', keywords: [], script: '', scriptMode: 'ai',
     engine: 'hotspot',
     hotspotSources: selectedSources,
+    hotspotMaterialSource: materialSource,
     referenceImages: [],
     aspect: '9:16',
     publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
@@ -3853,6 +3856,20 @@ export const HotspotVideoModal: React.FC<{
                   {DUR.map((d) => (
                     <button key={d} type="button" onClick={() => setTargetSeconds(d)}
                       className={`px-3 py-1.5 rounded-lg text-sm border ${targetSeconds === d ? 'border-amber-500 bg-amber-500 text-white' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>{d}s</button>
+                  ))}
+                </div>
+              </Field>
+              <Field label={isZh ? '画面素材' : 'Footage'}>
+                <div className="flex gap-2">
+                  {([
+                    { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '按标题配图 + Ken Burns · 稳定、免登录' },
+                    { v: 'douyin', zh: '🎬 抖音混剪', en: '🎬 Douyin remix', deszh: '搜抖音真实视频混剪 + 配音 · 需登录抖音' },
+                  ] as const).map((m) => (
+                    <button key={m.v} type="button" onClick={() => setMaterialSource(m.v)}
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${materialSource === m.v ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
+                      <div>{isZh ? m.zh : m.en}</div>
+                      {isZh && <div className="text-[11px] font-normal text-gray-500 dark:text-gray-400 mt-0.5">{m.deszh}</div>}
+                    </button>
                   ))}
                 </div>
               </Field>

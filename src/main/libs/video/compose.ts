@@ -227,6 +227,11 @@ export interface SceneSpec {
   durationSec: number;
   /** 字幕文案(原句),用于无 Whisper 时估算 cue。 */
   subtitle: string;
+  /**
+   * 盖住素材自带的【底部烧死字幕】(抖音混剪用):在画面底部叠一条不透明黑块,
+   * 把原视频烧进去的字幕遮掉,我们自己的字幕再画在上面。默认 false(图片/普通素材不需要)。
+   */
+  maskBottomBar?: boolean;
 }
 
 /** 把绝对路径转成 concat list 里的安全行。 */
@@ -237,6 +242,7 @@ function concatLine(p: string): string {
 /** 多段视频背景:切 N 段(每段 ≤maxClip)cover-crop 拼接。失败抛错(由上层降级)。 */
 async function renderClipsBg(
   workDir: string, out: string, clips: string[], dur: number, W: number, H: number, maxClip: number,
+  maskBottomBar = false,
 ): Promise<void> {
   const segCount = Math.max(1, Math.min(8, Math.ceil(dur / Math.max(1, maxClip))));
   const segDur = dur / segCount;
@@ -258,7 +264,10 @@ async function renderClipsBg(
     );
   }
   const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
-  const fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0,format=yuv420p[v]`;
+  // 抖音混剪:concat 后在底部叠一条不透明黑块,盖掉素材烧死的原字幕(底部 22%,实心黑;
+  //   我们自己的字幕在主合成阶段 drawtext 画在更上层,所以盖条不挡自家字幕)。
+  const mask = maskBottomBar ? ',drawbox=x=0:y=ih*0.78:w=iw:h=ih*0.22:color=black:t=fill' : '';
+  const fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0${mask},format=yuv420p[v]`;
   args.push(
     '-filter_complex', fc,
     '-map', '[v]', '-an',
@@ -342,7 +351,7 @@ async function renderSceneBg(
 
   // 视频 → 图片 → 纯色,逐级降级,绝不因单镜素材问题让整条视频失败。
   if (clips.length > 0) {
-    try { await renderClipsBg(workDir, out, clips, dur, W, H, maxClip); return out; }
+    try { await renderClipsBg(workDir, out, clips, dur, W, H, maxClip, !!scene.maskBottomBar); return out; }
     catch { /* 落到图片/纯色兜底 */ }
   }
   if (scene.imagePath && fs.existsSync(scene.imagePath)) {

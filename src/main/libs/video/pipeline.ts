@@ -25,6 +25,7 @@ import {
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
+import { fetchDouyinClips } from './hotspotDouyinSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, generateHotspotKeywords, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
@@ -166,6 +167,9 @@ export interface VideoCreationInput {
   /** engine==='hotspot'(热搜成片)专属:用户勾选的热点源('hotsearch'|'web3'|'tech')。
    *  每次运行从这些源最新 20 条随机挑 1 条选题,服务端联网取材 → 写稿 → Serper 配图。 */
   hotspotSources?: string[];
+  /** engine==='hotspot' 素材来源:'image'(默认,Serper 配图 Ken Burns)|
+   *  'douyin'(按标题搜抖音、下无水印视频混剪 + 底部黑条盖原字幕 + 配音)。 */
+  hotspotMaterialSource?: 'image' | 'douyin';
   referenceImages: string[];
   /**
    * 用户上传的本地视频素材绝对路径(画面来源 = 本地上传)。非空时直接拿这些
@@ -644,6 +648,8 @@ async function runVideoPipeline(
     // 热搜成片计费(按下载图片数,云端代下则 ×2):由 buildHotspotImagePool 填,charge 时读。
     let hotspotImageCount = 0;
     let hotspotUsedCloud = false;
+    // 抖音混剪模式:画面是抖音视频(底部要盖黑条遮原字幕)。由下面素材分配那步置位,composeOne 读。
+    let hotspotDouyinMode = false;
     let script = userText;
     if (scriptMode === 'ai') {
       const isHotspot = input.engine === 'hotspot';
@@ -895,6 +901,7 @@ async function runVideoPipeline(
     // 画面分配器:给定第几条视频(0-based),产出该条的 { sceneClips, imagePool }。
     // 第 0 条按原顺序;后续条把素材池打乱再分配 → 同脚本/配音、不同画面。
     let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[]; imageByScene?: Map<number, string> };
+  let douyinClips: string[] = []; // 抖音混剪模式下载到本地的视频路径(空 = 没取到,落回图片配图)
 
     if (input.engine === 'ai') {
       // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
@@ -1051,6 +1058,26 @@ async function runVideoPipeline(
         return { sceneClips, imagePool: [] };
       };
       tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`);
+    } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
+               && (douyinClips = await collectDouyinClips()).length > 0) {
+      // 热搜成片【抖音混剪】:按标题搜抖音、下无水印视频,当作镜头素材循环拼(底部黑条盖原字幕)。
+      //   取不到素材(没登录/没源)→ 上面的 && 短路为 0,自动落到 else 走图片配图兜底。
+      hotspotDouyinMode = true;
+      hotspotImageCount = douyinClips.length; // 计费暂复用 hotspot 口径(按素材数,至少 $0.02)
+      const dyVideos = douyinClips;
+      assignVisuals = (videoIdx: number) => {
+        // 每条错开起始游标 → 同一批抖音视频排出不同片段组合(多条各不同)。
+        let cursor = videoIdx;
+        const sceneClips = sentences.map((_, i) => {
+          const dur = Math.max(1.2, sceneDurations[i]);
+          const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+          const clips: string[] = [];
+          for (let k = 0; k < want; k++) clips.push(dyVideos[cursor++ % dyVideos.length]);
+          return clips;
+        });
+        return { sceneClips, imagePool: [] };
+      };
+      tracker.done('visuals', `🎬 抖音混剪画面就绪(${dyVideos.length} 个素材 · 底部黑条盖原字幕)`);
     } else {
       // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满);
       // 热搜成片(hotspot)走 Serper 图池(纯图 Ken Burns),其余走 Pexels 素材库。
@@ -1379,6 +1406,32 @@ async function runVideoPipeline(
       return { assign, imagePool, imageByScene, imageBySceneFor };
     }
 
+    /**
+     * 抖音混剪取材:按【标题 + 标题拆出的中文实体词】搜抖音、下无水印视频到任务素材目录,
+     * 留档一份到「素材」子目录。返回本地路径(空 = 没登录/没源,上层落回图片配图)。
+     */
+    async function collectDouyinClips(): Promise<string[]> {
+      const title = hotspotTopic?.title || '';
+      const dyTerms = await generateHotspotKeywords(title, 'zh');
+      aiCostUsd += dyTerms.costUsd; tracker.addTokens(dyTerms.tokens, dyTerms.costUsd);
+      const keywords = Array.from(new Set([title, ...dyTerms.terms].map((s) => s.trim()).filter(Boolean)));
+      const wantClips = Math.max(3, Math.min(10, Math.ceil((input.targetSeconds ?? 60) / 8) + 1));
+      tracker.progress(`🎬 抖音混剪:按标题搜抖音、取无水印视频(目标 ${wantClips} 个)…`);
+      const dy = await fetchDouyinClips(keywords, wantClips, assetDir, (m) => tracker.progress(m), signal);
+      if (dy.paths.length === 0) {
+        tracker.progress(`⚠️ 抖音没取到素材(${dy.diag.reason || '未知'}),退回图片配图`);
+        return [];
+      }
+      try {
+        const matDir = path.join(destDir, '素材');
+        fs.mkdirSync(matDir, { recursive: true });
+        dy.paths.forEach((src, i) => {
+          try { fs.copyFileSync(src, path.join(matDir, `抖音${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+        });
+      } catch { /* 留档失败不影响出片 */ }
+      return dy.paths;
+    }
+
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
     //    费用(平台费向上限靠拢 + AI 按条数叠加)开跑前【一次性】整笔预扣,全部失败才整笔退回。
     throwIfAborted(signal);
@@ -1449,6 +1502,8 @@ async function runVideoPipeline(
           audioPath: wantNarration ? audios[i].audioPath : undefined,
           durationSec: sceneDurations[i],
           subtitle: sentence,
+          // 抖音混剪:视频镜底部盖黑条遮原烧死字幕(图片镜/其它模式不盖)。
+          maskBottomBar: hotspotDouyinMode && hasVideo,
         };
       });
       const outPath = path.join(destDir, outputFileName(v));
