@@ -1632,12 +1632,12 @@ const VideoTaskDetail: React.FC<{
           onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
           actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
         />
-        {/* 定时任务才显「下次运行」(纯展示,暂停功能已移除 —— 定时任务到点必跑)。 */}
+        {/* 定时任务才显「下次运行」(纯展示,暂停功能已移除 —— 定时任务到点必跑)。
+            频率(每日随机 / 每3小时…)在上面「运行频率」配置行已显示,这里只放下次时刻。 */}
         {task.runInterval && task.runInterval !== 'once' && (
           <VStatCard
             label={isZh ? '下次运行' : 'Next Run'}
-            value={`⏰ ${fmtNextRun(task.nextPlannedRunAt, isZh)}`}
-            actionLabel={intervalLabel(task, isZh) || undefined}
+            value={`⏰ ${fmtNextRun(task.nextPlannedRunAt, isZh)} · ${intervalLabel(task, isZh) || ''}`}
           />
         )}
       </div>
