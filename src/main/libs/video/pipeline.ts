@@ -1149,16 +1149,16 @@ async function runVideoPipeline(
     } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
                && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
                && (douyinPool = await buildDouyinPool())) {
-      // 中文话题 + 选「视频混剪」:抖音【分段铺镜】—— 每镜画面按自己那句口播的中文词搜来,画面跟内容走
-      //   (见 buildDouyinPool,仿 stock)。取不到 → 短路落下面抖音图文 / 文字卡。非中文话题应走 TikTok(待做)。
+      // 中文话题 + 选「视频混剪」:抖音混剪 —— 只按热搜标题搜、切片铺镜(见 buildDouyinPool,用户要求不 AI
+      //   拆词)。取不到 → 短路落下面抖音图文 / 文字卡。非中文话题应走 TikTok(待做)。
       hotspotDouyinMode = true;
       assignVisuals = (videoIdx: number) => ({ sceneClips: douyinPool!.assign(videoIdx), imagePool: [] });
-      tracker.done('visuals', '🎬 抖音分段混剪就绪(画面跟每镜内容 · 底部黑条盖原字幕)');
+      tracker.done('visuals', '🎬 抖音混剪就绪(按热搜标题搜 · 底部黑条盖原字幕)');
     } else if (input.engine === 'hotspot'
                && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
                && (douyinImgPool = await buildDouyinImagePool())) {
-      // 中文话题:选了图片配图、或选了视频混剪但视频没取到 → 抖音【分段图文】(每镜图跟自己那句口播,
-      //   见 buildDouyinImagePool,仿 stock)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜
+      // 中文话题:选了图片配图、或选了视频混剪但视频没取到 → 抖音图文(只按热搜标题搜,见
+      //   buildDouyinImagePool)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜
       //   hasVideo=false 不触发模糊盖条(图不需盖原字幕)。
       hotspotDouyinMode = true;
       assignVisuals = (videoIdx: number) => ({
@@ -1166,7 +1166,7 @@ async function runVideoPipeline(
         imagePool: douyinImgPool!.imagePool,
         imageByScene: douyinImgPool!.imageBySceneFor(videoIdx),
       });
-      tracker.done('visuals', '🖼️ 抖音分段图文就绪(画面跟每镜内容 · Ken Burns)');
+      tracker.done('visuals', '🖼️ 抖音图文就绪(按热搜标题搜 · Ken Burns)');
     } else if (input.engine === 'hotspot') {
       // 热搜成片【不再用 Serper 配图】(用户决策 2026-06:中文→抖音,英文/小语种→TikTok)。
       //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题(TikTok 取材开发中,真机调后启用)。
@@ -1483,23 +1483,18 @@ async function runVideoPipeline(
     }
 
     /**
-     * 抖音【分段铺镜】视频池(仿 buildStockPool,画面跟每镜内容走 —— 替代旧 collectDouyinClips 的整条1词随机铺):
-     *   每镜 AI 配中文词(generateSearchTerms zh)→ 去重首词封顶 → 逐词【串行】搜抖音/下视频/切片
-     *   → poolByTerm(词→片段)→ assign 时每镜【先取本镜词】的片段、不够借全局、used 去重。
-     * 串行慢(浏览器单 tab),但异步后台跑、质量优先。取不到 → null,上层落抖音图文/文字卡。
+     * 抖音视频池:【只按热搜标题搜】(用户要求,不 AI 拆分镜词 —— 拆词会让画面偏离热点太远)→ 搜抖音/下视频/
+     *   切片成片段池 → assign 时每镜从池里取、used 去重(切片够多 → 铺镜不重复)。取不到 → null,上层落
+     *   抖音图文/文字卡。保留 perSceneTerms/poolByTerm 结构只为复用切片+去重逻辑,实际只有标题一个词。
      */
     async function buildDouyinPool(): Promise<{ assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null> {
-      // 1) 每镜中文搜索词(复用 generateSearchTerms,outputLang='zh' 出中文词)
-      const tr = await generateSearchTerms(sentences, [], undefined, { topic: hotspotTopic?.title || '', lang: 'zh' }, 'zh');
-      aiCostUsd += tr.costUsd;
-      tracker.addTokens(tr.tokens, tr.costUsd);
-      const perSceneTerms = tr.terms.map((a) => (a || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean));
-      // 2) 去重首词 + 封顶(防串行搜太慢)
-      const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
-      const DOUYIN_TERM_CAP = 10;
-      const searchTerms = primaryTerms.slice(0, DOUYIN_TERM_CAP);
-      if (searchTerms.length === 0) return null;
-      tracker.progress(`🔍 抖音分段搜索词(${searchTerms.length}):${searchTerms.join(' · ')}`);
+      // 【只按热搜标题搜】(用户要求):AI 拆分镜词会让画面偏离热点太远(如「沈泉锐第一次当摇子有点生疏」
+      //   被拆成「机械 齐舞 舞台」搜出无关 cut),热搜成片永远只用热搜原标题搜,不额外出关键词。
+      const title = (hotspotTopic?.title || '').trim();
+      if (!title) return null;
+      const searchTerms = [title];
+      const perSceneTerms = sentences.map(() => [title]); // 每镜共用标题词,take 走全局池 + used 去重(不重复铺)
+      tracker.progress(`🎬 抖音取材:只按热搜标题搜「${title}」`);
       // 3) 逐词【串行】搜+切片,建 poolByTerm(词→片段)
       const segLen = Math.max(2, maxClip);
       const poolByTerm = new Map<string, string[]>();
@@ -1532,7 +1527,7 @@ async function runVideoPipeline(
       if (poolByTerm.size === 0) return null;
       const allSegs = Array.from(poolByTerm.values()).flat();
       hotspotImageCount = allSegs.length; // 计费按片段数(沿用 hotspot 口径)
-      tracker.progress(`✂️ 抖音分段素材就绪:${searchTerms.length} 词 · ${allSegs.length} 片段(画面跟每镜内容)`);
+      tracker.progress(`✂️ 抖音素材就绪:${allSegs.length} 片段(按热搜标题搜 · 切片铺镜不重复)`);
       // 4) assign:每镜先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开
       const assign = (videoIdx: number): string[][] => {
         const used = new Set<string>();
@@ -1561,19 +1556,16 @@ async function runVideoPipeline(
     }
 
     /**
-     * 抖音【分段图文配图】池(仿 buildDouyinPool/stock,画面跟每镜内容):每镜中文词 → 去重首词封顶 →
-     *   逐词【串行】搜抖音图文笔记的图 → poolByTerm(词→图)→ imageBySceneFor 每镜先取本镜词的图、
-     *   不够借全局、used 去重。取不到 → null,上层落文字卡。
+     * 抖音图文配图池:【只按热搜标题搜】(用户要求,同 buildDouyinPool 不 AI 拆词)→ 搜抖音图文笔记的图 →
+     *   imageBySceneFor 每镜取一图、used 去重。取不到 → null,上层落文字卡。
      */
     async function buildDouyinImagePool(): Promise<{ imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null> {
-      const tr = await generateSearchTerms(sentences, [], undefined, { topic: hotspotTopic?.title || '', lang: 'zh' }, 'zh');
-      aiCostUsd += tr.costUsd;
-      tracker.addTokens(tr.tokens, tr.costUsd);
-      const perSceneTerms = tr.terms.map((a) => (a || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean));
-      const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
-      const searchTerms = primaryTerms.slice(0, 10);
-      if (searchTerms.length === 0) return null;
-      tracker.progress(`🔍 抖音图文分段搜索词(${searchTerms.length}):${searchTerms.join(' · ')}`);
+      // 【只按热搜标题搜】(用户要求):同 buildDouyinPool,图文配图也永远只用热搜原标题,不 AI 拆词偏移。
+      const title = (hotspotTopic?.title || '').trim();
+      if (!title) return null;
+      const searchTerms = [title];
+      const perSceneTerms = sentences.map(() => [title]);
+      tracker.progress(`🖼️ 抖音图文取材:只按热搜标题搜「${title}」`);
       const poolByTerm = new Map<string, string[]>();
       for (const term of searchTerms) {
         if (signal?.aborted) break;
@@ -1584,7 +1576,7 @@ async function runVideoPipeline(
       if (poolByTerm.size === 0) return null;
       const allImgs = Array.from(poolByTerm.values()).flat();
       hotspotImageCount = allImgs.length; // 计费按图片数(沿用 hotspot 口径)
-      tracker.progress(`🖼️ 抖音图文分段就绪:${searchTerms.length} 词 · ${allImgs.length} 图(画面跟每镜内容 · Ken Burns)`);
+      tracker.progress(`🖼️ 抖音图文就绪:${allImgs.length} 图(按热搜标题搜 · Ken Burns)`);
       // 每镜一图:先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开。
       const imageBySceneFor = (videoIdx: number): Map<number, string> => {
         const used = new Set<string>();
