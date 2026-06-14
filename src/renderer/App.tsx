@@ -1004,7 +1004,10 @@ const App: React.FC = () => {
             ) : mainView === 'scenarioCreate' ? (
               <ScenarioView
                 mode="create"
-                onSwitchToManage={() => handleShowQuickUse()}
+                /* 「已有任务」→ 切到「我的涨粉任务」管理页(mainView='quickuse'),并把初选平台
+                   带过去(视频卡片传 'video' → 管理页直接定位到视频 tab)。这样侧栏高亮、
+                   顶栏标题、内容三者都切到「我的涨粉任务」,而不是停在「新建涨粉任务」。 */
+                onSwitchToManage={(platform) => { setQuickUseInitialPlatform(platform); setMainView('quickuse'); }}
                 onInDetailChange={setScenarioInDetail}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}

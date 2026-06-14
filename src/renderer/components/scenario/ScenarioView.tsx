@@ -79,8 +79,9 @@ interface ScenarioViewProps {
    *  避免两个菜单内容重叠)。由 App 注入,内部切 mainView='scenarioCreate'。 */
   onSwitchToCreate?: (platform?: PlatformId) => void;
   /** v6.x: create 模式(「一键涨粉」新建页)右上角「查看已有的涨粉任务」按钮 →
-   *  切到「我的涨粉任务」manage 菜单。由 App 注入,内部切 mainView='quickuse'。 */
-  onSwitchToManage?: () => void;
+   *  切到「我的涨粉任务」manage 菜单。由 App 注入,内部切 mainView='quickuse'。
+   *  可带 platform:视频卡片「已有任务」传 'video',让管理页直接定位到视频 tab。 */
+  onSwitchToManage?: (platform?: PlatformId) => void;
   /** 进入/退出【任务详情 / 运行记录详情】时上报。create / runs 菜单下钻到任务详情时,
    *  任务详情逻辑上属于「我的涨粉任务」→ App 据此把左侧菜单高亮切到「我的涨粉任务」,
    *  使侧栏高亮 + 顶栏标题不再停在「新建涨粉任务 / 涨粉运行记录」。 */
@@ -115,6 +116,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onShowInvite,
   mode = 'manage',
   onSwitchToCreate,
+  onSwitchToManage,
   onInDetailChange,
 }) => {
   const isMac = window.electron.platform === 'darwin';
@@ -531,6 +533,10 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           section={currentSection === 'create' ? 'create' : currentSection === 'history' ? 'history' : 'tasks'}
           onGoCreate={goVideoCreate}
           onBack={() => setView({ kind: 'main', section: 'tasks', platform: 'video' })}
+          /* create 模式(「新建涨粉任务」菜单)点「已有任务」→ 跳「我的涨粉任务」管理页并定位
+             视频 tab(切顶层 mainView,侧栏高亮 + 标题都对);manage/runs 模式不传 → 回退用 onBack
+             内部切到 tasks。 */
+          onGoTasks={mode === 'create' && onSwitchToManage ? () => onSwitchToManage('video') : undefined}
           onDetailChange={setVideoInDetail}
           onRefresh={refreshAll}
         />

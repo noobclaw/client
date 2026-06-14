@@ -69,9 +69,13 @@ interface VideoWorkflowsPageProps {
    *  (对齐 scenario 详情页:详情态全屏,顶上不挂那么多 tab)。 */
   onDetailChange?: (inDetail: boolean) => void;
   onRefresh?: () => void | Promise<void>;
+  /** 「已有任务」点击行为:create 模式下应【跳到「我的涨粉任务」管理页的视频 tab】(切顶层
+   *  mainView,让侧栏高亮 + 标题都对),而不是只在当前 ScenarioView 内把 section 切到 tasks。
+   *  未传则回退用 onBack(内部切换,manage/runs 模式就该这样)。 */
+  onGoTasks?: () => void;
 }
 
-export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack, onDetailChange, onRefresh }) => {
+export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section, onGoCreate, onBack, onDetailChange, onRefresh, onGoTasks }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const { tasks, runs } = useVideoStore();
   const [detail, setDetail] = useState<DetailView>({ kind: 'list' });
@@ -157,7 +161,7 @@ export const VideoWorkflowsPage: React.FC<VideoWorkflowsPageProps> = ({ section,
           onBack();                              // section → tasks(L1 高亮回任务)
           setDetail({ kind: 'task', taskId });   // 直接进新任务详情(本地一键成片)
         }}
-        onGoTasks={onBack}                       // 「已有任务」→ 回任务落地页
+        onGoTasks={onGoTasks || onBack}          // 「已有任务」→ create 模式跳管理页视频 tab;否则内部切换
       />
     );
   }
