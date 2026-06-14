@@ -578,7 +578,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
           模板速生展示 赛道/版式/标题/数据/配音/BGM(用户真正填的)。 */}
       <div className="text-xs text-gray-600 dark:text-gray-300 space-y-1">
         {task.input.engine === 'hotspot' ? (() => {
-          const srcMap: Record<string, string> = { weibo: isZh ? '微博' : 'Weibo', douyin: isZh ? '抖音' : 'Douyin', zhihu: isZh ? '知乎' : 'Zhihu', baidu: isZh ? '百度' : 'Baidu', bilibili: 'B站', xueqiu: isZh ? '雪球' : 'Xueqiu', web3: 'Web3', tech: isZh ? '科技' : 'Tech' };
+          const srcMap: Record<string, string> = { weibo: isZh ? '微博' : 'Weibo', douyin: isZh ? '抖音' : 'Douyin', zhihu: isZh ? '知乎' : 'Zhihu', baidu: isZh ? '百度' : 'Baidu', bilibili: 'B站', xueqiu: isZh ? '雪球' : 'Xueqiu', hackernews: 'Hacker News', reddit: 'Reddit', googletrends: isZh ? 'Google 趋势' : 'Google Trends', youtube: 'YouTube', web3: 'Web3', tech: isZh ? '科技' : 'Tech' };
           const srcs = (((task.input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join(' · ') || '-';
           const pubN = Array.isArray(task.input.publishPlatforms) ? task.input.publishPlatforms.length : 0;
           return (
@@ -896,7 +896,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
   }
   // 热搜成片:展示热点源/时长/配音/画面/发布,不展示赛道/人设/关键词(对它无意义)。
   if (input.engine === 'hotspot') {
-    const srcMap: Record<string, string> = { weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu', baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu', web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI' };
+    const srcMap: Record<string, string> = { weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu', baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu', hackernews: 'Hacker News', reddit: 'Reddit', googletrends: isZh ? 'Google 趋势' : 'Google Trends', youtube: isZh ? 'YouTube 热门' : 'YouTube', web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI' };
     const srcs = (((input as any).hotspotSources as string[]) || []).map((s) => srcMap[s] || s).join('、') || '-';
     const voiceLabel = (() => {
       const v = VOICE_GROUPS.flatMap((g) => g.voices).find((x) => x.id === input.voice);
@@ -1027,6 +1027,8 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
     const srcMap: Record<string, string> = {
       weibo: isZh ? '微博热搜' : 'Weibo', douyin: isZh ? '抖音热搜' : 'Douyin', zhihu: isZh ? '知乎热榜' : 'Zhihu',
       baidu: isZh ? '百度热搜' : 'Baidu', bilibili: 'B站热搜', xueqiu: isZh ? '雪球热门股' : 'Xueqiu',
+      hackernews: 'Hacker News', reddit: 'Reddit', googletrends: isZh ? 'Google 趋势' : 'Google Trends',
+      youtube: isZh ? 'YouTube 热门' : 'YouTube',
       web3: 'Web3 资讯', tech: isZh ? '科技/AI' : 'Tech/AI',
     };
     const srcs = ((input.hotspotSources as string[] | undefined) || []).map((s) => srcMap[s] || s).join('、') || '-';
@@ -3658,6 +3660,11 @@ const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string
   { id: 'baidu',    zh: '百度热搜',   en: 'Baidu',    emoji: '🔍', def: true },
   { id: 'bilibili', zh: 'B站热搜',    en: 'Bilibili', emoji: '📺', def: true },
   { id: 'xueqiu',   zh: '雪球热门股', en: 'Xueqiu',   emoji: '📈', def: false },
+  // 国外热榜(英文标题,后端 lang=en;英文话题写稿仍强制中文口播)。默认不勾,国内用户按需开。
+  { id: 'hackernews',   zh: 'Hacker News',  en: 'Hacker News',   emoji: '🟠', def: false },
+  { id: 'reddit',       zh: 'Reddit',       en: 'Reddit',        emoji: '👽', def: false },
+  { id: 'googletrends', zh: 'Google 趋势',  en: 'Google Trends', emoji: '📊', def: false },
+  { id: 'youtube',      zh: 'YouTube 热门', en: 'YouTube',       emoji: '▶️', def: false },
   { id: 'web3',     zh: 'Web3 资讯',  en: 'Web3',     emoji: '🌐', def: true },
   { id: 'tech',     zh: '科技 / AI',  en: 'Tech/AI',  emoji: '🤖', def: false },
 ];
@@ -3721,7 +3728,7 @@ export const HotspotVideoModal: React.FC<{
   const [err, setErr] = useState('');
   const [showLoginCheck, setShowLoginCheck] = useState(false);
   // 分步向导:① 热点源 → ② 内容(时长/配音/字幕)→ ③ 成片去向 → ④ 运行频率。
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
   const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
@@ -3791,12 +3798,12 @@ export const HotspotVideoModal: React.FC<{
   const goNext = () => {
     if (step === 1 && selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
     setErr('');
-    setStep((s) => (s < 4 ? ((s + 1) as 1 | 2 | 3 | 4) : s));
+    setStep((s) => (s < 5 ? ((s + 1) as 1 | 2 | 3 | 4 | 5) : s));
   };
   const goBack = () => {
     setErr('');
     if (step === 1) { onClose(); return; }
-    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4));
+    setStep((s) => ((s - 1) as 1 | 2 | 3 | 4 | 5));
   };
 
   const DUR = [30, 45, 60, 90, 120];
@@ -3827,9 +3834,11 @@ export const HotspotVideoModal: React.FC<{
               <div className={`h-px w-3 ${step > 1 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
               <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '去向' : 'Output'} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Audio'} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={false} label={isZh ? '频率' : 'Frequency'} />
+              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '去向' : 'Output'} />
+              <div className={`h-px w-3 ${step > 4 ? 'bg-rose-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
+              <StepDot n={5} active={step === 5} done={false} label={isZh ? '频率' : 'Frequency'} />
             </div>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -3878,7 +3887,7 @@ export const HotspotVideoModal: React.FC<{
               <Field label={isZh ? '画面素材' : 'Footage'}>
                 <div className="flex gap-2">
                   {([
-                    { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '按标题配图 + Ken Burns · 稳定、免登录' },
+                    { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '中文走抖音图文 · 海外谷歌图 · Ken Burns' },
                     { v: 'douyin', zh: '🎬 抖音混剪', en: '🎬 Douyin remix', deszh: '搜抖音真实视频混剪 + 配音 · 需登录抖音' },
                   ] as const).map((m) => (
                     <button key={m.v} type="button" onClick={() => setMaterialSource(m.v)}
@@ -3893,24 +3902,6 @@ export const HotspotVideoModal: React.FC<{
                 <input type="checkbox" checked={subtitleEnabled} onChange={(e) => setSubtitleEnabled(e.target.checked)} className="w-4 h-4 accent-amber-500" />
                 {isZh ? '烧录字幕' : 'Burn subtitles'}
               </label>
-              <Field label={isZh ? '配音音色' : 'Voice'}>
-                <select value={voice} onChange={(e) => setVoice(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
-                  {VOICE_GROUPS.map((g) => (
-                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
-                      {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
-                    </optgroup>
-                  ))}
-                </select>
-                <div className="flex gap-2 mt-2">
-                  {RATE_OPTIONS.map((r) => (
-                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
-                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-                      {isZh ? r.zh : r.en}
-                    </button>
-                  ))}
-                </div>
-              </Field>
               {subtitleEnabled && (
                 <Field label={isZh ? '字幕样式' : 'Subtitle'}>
                   <div className="flex flex-wrap gap-1 mb-2">
@@ -3936,6 +3927,30 @@ export const HotspotVideoModal: React.FC<{
                   </div>
                 </Field>
               )}
+            </>
+          )}
+
+          {/* ── Step 3:配音 + 背景音乐 ── */}
+          {step === 3 && (
+            <>
+              <Field label={isZh ? '配音音色' : 'Voice'}>
+                <select value={voice} onChange={(e) => setVoice(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  {VOICE_GROUPS.map((g) => (
+                    <optgroup key={g.groupZh} label={isZh ? g.groupZh : g.groupEn}>
+                      {g.voices.map((v) => (<option key={v.id} value={v.id}>{isZh ? v.zh : v.en}</option>))}
+                    </optgroup>
+                  ))}
+                </select>
+                <div className="flex gap-2 mt-2">
+                  {RATE_OPTIONS.map((r) => (
+                    <button key={r.v} type="button" onClick={() => setVoiceRate(r.v)}
+                      className={`flex-1 px-2 py-1.5 rounded-lg text-xs border ${voiceRate === r.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                      {isZh ? r.zh : r.en}
+                    </button>
+                  ))}
+                </div>
+              </Field>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'}>
                 <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
@@ -3946,8 +3961,8 @@ export const HotspotVideoModal: React.FC<{
             </>
           )}
 
-          {/* ── Step 3:成片去向 ── */}
-          {step === 3 && (
+          {/* ── Step 4:成片去向 ── */}
+          {step === 4 && (
             <Field label={isZh ? '成片去向' : 'Output'}>
               <div className="flex gap-2 mb-2">
                 {(['local', 'upload'] as OutputMode[]).map((m) => (
@@ -3977,8 +3992,8 @@ export const HotspotVideoModal: React.FC<{
             </Field>
           )}
 
-          {/* ── Step 4:运行频率 + 每次运行条数(逐字对齐币安发帖任务) ── */}
-          {step === 4 && (
+          {/* ── Step 5:运行频率 + 每次运行条数(逐字对齐币安发帖任务) ── */}
+          {step === 5 && (
             <>
               <Field label={isZh ? '运行频率' : 'Frequency'} hint={isZh ? '到点自动按上面配置重跑' : 'auto-rerun on schedule'}>
                 <div className="grid grid-cols-3 gap-2">
@@ -4040,7 +4055,7 @@ export const HotspotVideoModal: React.FC<{
           <button onClick={goBack} className="px-4 py-2.5 rounded-lg text-sm border dark:border-gray-700 dark:text-gray-300">
             {step === 1 ? (isZh ? '取消' : 'Cancel') : (isZh ? '上一步' : 'Back')}
           </button>
-          {step < 4 ? (
+          {step < 5 ? (
             <button onClick={goNext}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-amber-500 text-white hover:bg-amber-600">
               {isZh ? '下一步' : 'Next'}

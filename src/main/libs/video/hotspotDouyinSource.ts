@@ -82,7 +82,8 @@ async function ensureDouyinLoggedIn(onLog: (m: string) => void, signal?: AbortSi
 }
 
 /**
- * 按关键词搜抖音、下无水印视频到 destDir。返回本地 mp4 路径 + 诊断。绝不抛(降级返空)。
+ * 按关键词搜抖音、下素材到 destDir。mode='video' 下无水印视频(.mp4);'image' 下【图文笔记】的图(.jpg)。
+ * 返回本地路径 + 诊断。绝不抛(降级返空)。
  */
 export async function fetchDouyinClips(
   keywords: string[],
@@ -90,6 +91,7 @@ export async function fetchDouyinClips(
   destDir: string,
   onLog: (m: string) => void,
   signal?: AbortSignal,
+  mode: 'video' | 'image' = 'video',
 ): Promise<DouyinClipsResult> {
   const diag: DouyinClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
 
@@ -112,12 +114,12 @@ export async function fetchDouyinClips(
   diag.loggedIn = true;
 
   // 3. 跑搜+取源脚本
-  onLog('🔎 按标题搜抖音、取无水印源…');
+  onLog(mode === 'image' ? '🔎 按标题搜抖音图文、取图…' : '🔎 按标题搜抖音、取无水印源…');
   let ret: any;
   try {
     const fn = new AsyncFunction('ctx', code);
     const sctx = {
-      input: { keywords, wantCount },
+      input: { keywords, wantCount, mode },
       cmd: (command: string, params: any, timeoutMs: number) => pubCmd('douyin', command, params, timeoutMs),
       sleep,
       log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
@@ -133,18 +135,20 @@ export async function fetchDouyinClips(
   const urls: string[] = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
   diag.gotUrls = urls.length;
   if (urls.length === 0) {
-    onLog('⚠️ 抖音没取到可用视频源');
+    onLog(mode === 'image' ? '⚠️ 抖音没取到可用图文图片' : '⚠️ 抖音没取到可用视频源');
     diag.reason = ret?.reason || 'no_urls';
     return { paths: [], diag };
   }
 
   // 4. 主进程下载到本地素材目录
-  onLog(`⬇️ 下载 ${urls.length} 个抖音视频…`);
+  onLog(`⬇️ 下载 ${urls.length} 个抖音${mode === 'image' ? '图片' : '视频'}…`);
   try { fs.mkdirSync(destDir, { recursive: true }); } catch { /* 已存在 */ }
+  const ext = mode === 'image' ? 'jpg' : 'mp4';
+  const base = mode === 'image' ? 'douyin_img' : 'douyin_clip';
   const paths: string[] = [];
   for (let i = 0; i < urls.length; i++) {
     if (signal?.aborted) break;
-    const dest = path.join(destDir, `douyin_clip_${String(i).padStart(2, '0')}.mp4`);
+    const dest = path.join(destDir, `${base}_${String(i).padStart(2, '0')}.${ext}`);
     if (await downloadOne(urls[i], dest)) {
       paths.push(dest);
       diag.downloaded++;

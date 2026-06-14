@@ -902,6 +902,7 @@ async function runVideoPipeline(
     // 第 0 条按原顺序;后续条把素材池打乱再分配 → 同脚本/配音、不同画面。
     let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[]; imageByScene?: Map<number, string> };
   let douyinClips: string[] = []; // 抖音混剪模式下载到本地的视频路径(空 = 没取到,落回图片配图)
+  let douyinImages: string[] = []; // 抖音图文模式下载到本地的图片路径(空 = 没取到,落回 Serper 配图)
 
     if (input.engine === 'ai') {
       // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
@@ -1079,7 +1080,23 @@ async function runVideoPipeline(
         });
         return { sceneClips, imagePool: [] };
       };
-      tracker.done('visuals', `🎬 抖音混剪画面就绪(${dyVideos.length} 个素材 · 底部黑条盖原字幕)`);
+      tracker.done('visuals', `🎬 抖音混剪画面就绪(${dySegs.length} 个素材 · 底部黑条盖原字幕)`);
+    } else if (input.engine === 'hotspot' && input.hotspotMaterialSource !== 'douyin'
+               && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && (douyinImages = await collectDouyinImages()).length > 0) {
+      // 热搜成片【抖音图文配图】:中文话题的「智能配图」从抖音图文笔记下图(英文话题/海外没登录 →
+      //   短路落 else 走 Serper 兜底)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜 hasVideo=false
+      //   不会触发模糊盖条(图不需要盖原字幕)。
+      hotspotDouyinMode = true;
+      hotspotImageCount = douyinImages.length;
+      const dyImgs = douyinImages;
+      assignVisuals = (videoIdx: number) => {
+        const m = new Map<number, string>();
+        const off = ((videoIdx % dyImgs.length) + dyImgs.length) % dyImgs.length;
+        sentences.forEach((_, i) => m.set(i, dyImgs[(i + off) % dyImgs.length]));
+        return { sceneClips: sentences.map(() => [] as string[]), imagePool: dyImgs, imageByScene: m };
+      };
+      tracker.done('visuals', `🖼️ 抖音图文配图就绪(${dyImgs.length} 张 · Ken Burns)`);
     } else {
       // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满);
       // 热搜成片(hotspot)走 Serper 图池(纯图 Ken Burns),其余走 Pexels 素材库。
@@ -1458,6 +1475,32 @@ async function runVideoPipeline(
         return segs;
       }
       return dy.paths; // 切失败兜底:用原视频(可能有重复,但有画面)
+    }
+
+    /**
+     * 抖音图文配图(中文话题的「智能配图」走这条):按【标题 + 中文实体词】搜抖音【图文笔记】、
+     * 下图到任务素材目录。返回本地图片路径(空 = 没登录/没图文 → 上层落回 Serper 谷歌图)。
+     */
+    async function collectDouyinImages(): Promise<string[]> {
+      const title = hotspotTopic?.title || '';
+      const dyTerms = await generateHotspotKeywords(title, 'zh');
+      aiCostUsd += dyTerms.costUsd; tracker.addTokens(dyTerms.tokens, dyTerms.costUsd);
+      const keywords = Array.from(new Set([title, ...dyTerms.terms].map((s) => s.trim()).filter(Boolean)));
+      const want = Math.max(8, Math.min(40, Math.ceil((input.targetSeconds ?? 60) / 4) + 2));
+      tracker.progress(`🖼️ 抖音图文:按标题搜抖音图文笔记、下图(目标 ${want} 张)…`);
+      const dy = await fetchDouyinClips(keywords, want, assetDir, (m) => tracker.progress(m), signal, 'image');
+      if (dy.paths.length === 0) {
+        tracker.progress(`⚠️ 抖音没取到图文(${dy.diag.reason || '未知'}),退回联网配图`);
+        return [];
+      }
+      try {
+        const matDir = path.join(destDir, '素材');
+        fs.mkdirSync(matDir, { recursive: true });
+        dy.paths.forEach((src, i) => {
+          try { fs.copyFileSync(src, path.join(matDir, `抖音图${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+        });
+      } catch { /* 留档失败不影响出片 */ }
+      return dy.paths;
     }
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
