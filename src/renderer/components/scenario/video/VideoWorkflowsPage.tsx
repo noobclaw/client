@@ -4214,9 +4214,10 @@ export const HotspotVideoModal: React.FC<{
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
                       {isZh ? '最少' : 'Min'}: <span className="font-semibold text-amber-500">{countMin}</span>
                     </div>
-                    {/* 拖「最少」超过「最多」就把最多一起顶上去 → 两 thumb 永不交叉、拖谁谁动(显示原值)。 */}
+                    {/* 跟币安/小红书发帖条数滑块一字不差:两个独立 raw 滑块,显示原值,不夹不推
+                        (buildInput 里 Math.min/Math.max 归一化,min>max 也不会出错)。 */}
                     <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMin}
-                      onChange={(e) => { const v = parseInt(e.target.value, 10); setCountMin(v); if (v > countMax) setCountMax(v); }}
+                      onChange={(e) => setCountMin(parseInt(e.target.value, 10))}
                       className="w-full accent-amber-500 cursor-pointer" />
                   </div>
                   <div>
@@ -4224,7 +4225,7 @@ export const HotspotVideoModal: React.FC<{
                       {isZh ? '最多' : 'Max'}: <span className="font-semibold text-amber-500">{countMax}</span>
                     </div>
                     <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMax}
-                      onChange={(e) => { const v = parseInt(e.target.value, 10); setCountMax(v); if (v < countMin) setCountMin(v); }}
+                      onChange={(e) => setCountMax(parseInt(e.target.value, 10))}
                       className="w-full accent-amber-500 cursor-pointer" />
                   </div>
                 </div>
