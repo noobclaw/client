@@ -4136,6 +4136,10 @@ export const HotspotVideoModal: React.FC<{
                 <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
                   <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                  {/* 编辑老任务时选中的云端曲目可能不在已拉清单里(清单变了/拉不到)→ 补占位,避免下拉空白。 */}
+                  {bgmPath.startsWith(REMOTE_BGM_PREFIX) && !remoteBgm.some((b) => `${REMOTE_BGM_PREFIX}${b.url}` === bgmPath) && (
+                    <option value={bgmPath}>☁️ {bgmDisplayName(bgmPath, isZh, remoteBgm)}</option>
+                  )}
                   <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
                     {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
                   </optgroup>
