@@ -186,6 +186,13 @@ function allocateCues(phrases: string[], startSec: number, endSec: number): Subt
   return cues;
 }
 
+// ── 抖音混剪「模糊带 + 字幕」共享几何 ──────────────────────────────
+// 模糊带(盖原字幕)和我们自己的字幕用同一组比例,保证字幕始终落在模糊带【垂直中央】。
+// 调这三个数就能整体上移/下移这条带,字幕自动跟随居中。
+const REMIX_MASK_TOP = 0.66;                                  // 模糊带顶边(占画高);越小越靠上
+const REMIX_MASK_H = 0.18;                                    // 模糊带高度(占画高)
+const REMIX_MASK_CENTER = REMIX_MASK_TOP + REMIX_MASK_H / 2;  // 字幕垂直中心对齐到这(= 0.75)
+
 export interface SubtitleStyle {
   /** 是否烧字幕。false = 完全不烧。 */
   enabled: boolean;
@@ -266,11 +273,11 @@ async function renderClipsBg(
   const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
   // 抖音混剪:concat 后对【中下方原字幕带】做局部高斯模糊,把素材烧死的原字幕糊掉(主流搬运号
   //   做法 —— 不通栏、不挡画面,比纯黑块自然)。我们自己的字幕在主合成阶段 drawtext 画在这条
-  //   模糊带上(字幕位置 'lower' 与此对齐)。模糊带覆盖中下 0.70~0.88(抖音字幕常见区)。
+  //   模糊带【垂直中央】(字幕位置 'lower' 用同一组 REMIX_MASK_* 常量,自动居中对齐)。
   let fc: string;
   if (maskBottomBar) {
-    const maskY = Math.round(H * 0.70);
-    const maskH = Math.round(H * 0.18);
+    const maskY = Math.round(H * REMIX_MASK_TOP);
+    const maskH = Math.round(H * REMIX_MASK_H);
     fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0[vcat];`
       + `[vcat]split[vbase][vm];[vm]crop=${W}:${maskH}:0:${maskY},boxblur=24:2[vmb];`
       + `[vbase][vmb]overlay=0:${maskY},format=yuv420p[v]`;
@@ -440,8 +447,8 @@ function subtitleY(position: SubtitleStyle['position'], H: number): string {
   switch (position) {
     case 'top': return String(Math.round(H * 0.10));
     case 'center': return '(h-text_h)/2';
-    // 'lower' = 中下方(抖音混剪默认):比 bottom 更靠上,落在中下模糊带上,且左右天然居中留白。
-    case 'lower': return `h-text_h-${Math.round(H * 0.26)}`;
+    // 'lower' = 中下方(抖音混剪默认):垂直居中于模糊带(REMIX_MASK_CENTER),左右天然居中留白。
+    case 'lower': return `${Math.round(H * REMIX_MASK_CENTER)}-text_h/2`;
     case 'bottom':
     default: return `h-text_h-${Math.round(H * 0.12)}`;
   }
