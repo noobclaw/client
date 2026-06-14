@@ -3680,18 +3680,19 @@ type TplStep = 1 | 2 | 3 | 4 | 5;
 // 热点源:热搜榜按【具体榜】分开选(对齐 backend HOTSPOT_SOURCE_MAP 的 key),web3/科技按分类。
 // def=true 的新建时默认勾选。
 const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string; def: boolean }> = [
-  { id: 'weibo',    zh: '微博热搜',   en: 'Weibo',    emoji: '🔥', def: true },
+  // 抖音 / B站 / 微博 放最前(默认勾选的常用榜),其余跟后。
   { id: 'douyin',   zh: '抖音热搜',   en: 'Douyin',   emoji: '🎵', def: true },
+  { id: 'bilibili', zh: 'B站热搜',    en: 'Bilibili', emoji: '📺', def: true },
+  { id: 'weibo',    zh: '微博热搜',   en: 'Weibo',    emoji: '🔥', def: true },
   { id: 'zhihu',    zh: '知乎热榜',   en: 'Zhihu',    emoji: '💭', def: true },
   { id: 'baidu',    zh: '百度热搜',   en: 'Baidu',    emoji: '🔍', def: true },
-  { id: 'bilibili', zh: 'B站热搜',    en: 'Bilibili', emoji: '📺', def: true },
   { id: 'xueqiu',   zh: '雪球热门股', en: 'Xueqiu',   emoji: '📈', def: false },
   // 国外热榜(英文标题,后端 lang=en;英文话题写稿仍强制中文口播)。默认不勾,国内用户按需开。
   { id: 'hackernews',   zh: 'Hacker News',  en: 'Hacker News',   emoji: '🟠', def: false },
   { id: 'reddit',       zh: 'Reddit',       en: 'Reddit',        emoji: '👽', def: false },
   { id: 'googletrends', zh: 'Google 趋势',  en: 'Google Trends', emoji: '📊', def: false },
   { id: 'youtube',      zh: 'YouTube 热门', en: 'YouTube',       emoji: '▶️', def: false },
-  { id: 'web3',     zh: 'Web3 资讯',  en: 'Web3',     emoji: '🌐', def: true },
+  { id: 'web3',     zh: 'Web3 资讯',  en: 'Web3',     emoji: '🌐', def: false },
   { id: 'tech',     zh: '科技 / AI',  en: 'Tech/AI',  emoji: '🤖', def: false },
 ];
 
@@ -3908,7 +3909,7 @@ export const HotspotVideoModal: React.FC<{
                   ? '每次运行从你勾选的热点源最新 20 条里随机挑 1 条,联网查这条热点的最新资料、AI 紧贴资料写口播稿、自动配图片成片。配合「每日随机时间」= 全自动日更。'
                   : 'Each run randomly picks 1 of the latest 20 from your chosen sources, fetches the latest web info, writes a script tight to it, and auto-composes with relevant images. Pair with daily schedule for full auto.'}
               </p>
-              <Field label={isZh ? '热点源(可多选,默认已勾常用)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
+              <Field label={isZh ? '热点源(可多选,榜单实时更新)' : 'Sources (multi)'} hint={isZh ? '定时从勾选的榜 top20 随机选题' : 'random topic from selected boards'}>
                 <div className="grid grid-cols-2 gap-2">
                   {HOTSPOT_SOURCES.map((s) => {
                     const on = !!sources[s.id];
