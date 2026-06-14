@@ -537,10 +537,51 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       👤 {localizePersonaPrefix(personaSnippet, isZh)}
                     </div>
                   )}
-                  {/* 抖音图文创作:在 frequency 之上展示 3 段参考文案的前 1-2 段
-                      预览,跟详情页一致 — 这是这个场景的核心输入,列表页应该
-                      第一眼能看到。 */}
-                  {isDouyinImageText && (() => {
+                  {/* 关键词 / 搜索词 —— 列表卡片以前不展示,用户一眼看不出这个任务在搞什么主题
+                      (尤其互动涨粉:靠这些词搜视频/笔记)。镜像 TaskDetailPage 的口径:
+                      推特(KOL 池,不按词搜)/ 图文创作 / 链接仿写·下载 不展示;binance 发帖词是
+                      Token tag,源平台搬运是搜索词,其余为普通关键词。空则不显示。 */}
+                  {platformId !== 'x' && !isImageTextTask && !isAnyLinkRewrite
+                    && Array.isArray(task.keywords) && task.keywords.length > 0 && (() => {
+                    const kwLabel = isBinanceSourceViral ? (isZh ? '搜索词' : 'Search')
+                      : /^binance/.test(sid) ? 'Token'
+                      : (isZh ? '关键词' : 'Keywords');
+                    return (
+                      <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">
+                        🏷️ {kwLabel}: {task.keywords.slice(0, 6).join(' · ')}
+                        {task.keywords.length > 6 ? ' …' : ''}
+                      </div>
+                    );
+                  })()}
+                  {/* 搬运类型 / 本次搬运媒体类型 + Token 标签 —— 镜像 TaskDetailPage:
+                      binance_from_x_repost 显示「搬运类型」;3 个源平台 viral 搬运显示
+                      「本次搬运」媒体类型 + Token 标签(cashtags 空则走内置主流币)。 */}
+                  {(() => {
+                    const mf = (task as any).media_filter;
+                    const mfLabel = mf === 'image_only' ? (isZh ? '🖼 仅图文' : '🖼 Images only')
+                      : mf === 'video_only' ? (isZh ? '🎥 仅视频' : '🎥 Videos only')
+                      : (isZh ? '🖼🎥 全部' : '🖼🎥 All');
+                    if (sid === 'binance_from_x_repost') {
+                      return <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 truncate">🎞 {isZh ? '搬运类型' : 'Media'}: {mfLabel}</div>;
+                    }
+                    if (isBinanceSourceViral) {
+                      const cashtags = (task as any).cashtags as string[] | undefined;
+                      const tokenStr = cashtags && cashtags.length > 0
+                        ? cashtags.map((c) => '$' + c).join(' · ')
+                        : (isZh ? '内置主流币' : 'built-in majors');
+                      return (
+                        <div className="text-xs text-gray-600 dark:text-gray-300 mb-1 space-y-0.5">
+                          <div className="truncate">🎞 {isZh ? '本次搬运' : 'Repost'}: {mfLabel}</div>
+                          <div className="truncate">🪙 Token: {tokenStr}</div>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                  {/* 图文创作(抖音/小红书/视频号/头条):在 frequency 之上展示 3 段参考文案的
+                      前 1-2 段预览 —— 跟 TaskDetailPage 一致(详情页对【所有】图文场景都展示,
+                      列表以前只对抖音展示,小红书/视频号/头条漏了)。这是该场景的核心输入。 */}
+                  {isImageTextTask && (() => {
                     const segs: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
                     const visible = segs.filter(s => typeof s === 'string' && s.trim().length > 0).slice(0, 2);
                     if (visible.length === 0) return null;
