@@ -1409,9 +1409,19 @@ const VideoTaskDetail: React.FC<{
   // 任务配置的发布平台(空 = 仅存本地,运行前无需登录校验)。
   const publishPlatforms: string[] = Array.isArray((task.input as any).publishPlatforms)
     ? ((task.input as any).publishPlatforms as string[]) : [];
-  // 手动运行前的多平台登录校验(对齐创建期 gate):勾了发布平台就先弹,全登录才开跑。
-  // 定时调度(videoQueue.onScheduleDue)不走这里 —— 无人值守弹框没人点,靠运行期
-  // 「等 3 分钟超时跳过」兜底。
+  // 热搜成片【抖音取材】也要登录(抖音主站,非创作者中心)。
+  //   · materialSource='image'(Serper 配图)是后端抓,不开浏览器、不需要登录,跳过。
+  //   · 设计上中文→抖音、英文→TikTok,但 TikTok 取材 pipeline 还没建(buildTiktokPool 待办,
+  //     须 VPN 真机调),目前 materialSource='douyin' 不分语言都走抖音搜 —— 所以这里一律校验抖音。
+  //     等 TikTok 取材落地,这里再按 hotspotSources 语言切 'tiktok'(EN 榜:HN/Reddit/Google/YouTube)。
+  const materialLoginPlatforms: string[] =
+    (task.input.engine === 'hotspot' && (task.input as any).hotspotMaterialSource === 'douyin')
+      ? ['douyin'] : [];
+  // 手动运行前的登录校验:发布平台(创作者中心口径)∪ 取材平台(主站口径)。任一非空就先弹,
+  // 全绿(插件已连 + 各平台登录)才开跑。定时调度不走这里(无人值守靠运行期超时兜底)。
+  const loginCheckList = Array.from(new Set([...publishPlatforms, ...materialLoginPlatforms]));
+  // 主站 override = 取材要、但不在发布列表里的(同时发布时按发布的创作者中心口径,更严)。
+  const loginMainSiteOverride = materialLoginPlatforms.filter((p) => !publishPlatforms.includes(p));
   const [showLoginCheck, setShowLoginCheck] = useState(false);
 
   // 真正开跑(余额 + 登录校验都过了之后)。
@@ -1441,8 +1451,9 @@ const VideoTaskDetail: React.FC<{
       // 本地上传任务不收平台费,但 AI 写稿仍可能实时扣 token → 保留一次轻量余额校验。
       return;
     }
-    // 勾了发布平台 → 先过多平台登录校验(全绿才真正开跑);仅存本地 → 直接跑。
-    if (publishPlatforms.length > 0) { setShowLoginCheck(true); return; }
+    // 需登录的平台(发布平台 ∪ 热搜取材平台)非空 → 先过登录校验(插件已连 + 全平台登录才开跑);
+    // 都不需要(仅存本地 + 非抖音取材)→ 直接跑。
+    if (loginCheckList.length > 0) { setShowLoginCheck(true); return; }
     startRun();
   };
 
@@ -1674,7 +1685,12 @@ const VideoTaskDetail: React.FC<{
 
       {showLoginCheck && (
         <VideoLoginCheckModal
-          platforms={publishPlatforms}
+          platforms={loginCheckList}
+          mainSiteOverride={loginMainSiteOverride}
+          title={isZh ? '运行前登录校验' : 'Pre-run login check'}
+          subtitle={materialLoginPlatforms.length > 0
+            ? (isZh ? '热搜成片需:浏览器插件已连接 + 取材/发布平台已登录' : 'Hotspot run needs the extension connected and source/publish platforms logged in')
+            : (isZh ? '运行前需确认浏览器插件已连接 + 各发布平台已登录' : 'Extension must be connected and all publish platforms logged in')}
           onCancel={() => setShowLoginCheck(false)}
           onConfirmed={() => { setShowLoginCheck(false); startRun(); }}
         />

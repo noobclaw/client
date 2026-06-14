@@ -39,17 +39,35 @@ function metaOf(id: string) {
   return PLATFORM_META[id] || { zh: id, en: id, emoji: '🌐', url: '', creator: false };
 }
 
+/** 「主站模式」(取素材)用的主站 URL —— 抖音/TikTok 取材只需主站登录,不进创作者中心。 */
+const MAIN_SITE_URL: Record<string, string> = {
+  douyin: 'https://www.douyin.com/',
+  tiktok: 'https://www.tiktok.com/',
+};
+
 interface Props {
   /** 用户在向导里勾选的发布平台 id 列表。 */
   platforms: string[];
   onCancel: () => void;
   /** 全部平台登录通过、用户点「保存任务」时回调(向导据此真正提交保存)。 */
   onConfirmed: () => void;
+  /**
+   * 这些 id 用【主站登录】校验(checkXhsLogin/主站 URL),即使它在 PLATFORM_META 里是
+   * 创作者中心平台(如抖音)。用于「取素材」场景:抖音混剪/图文只需主站登录,不需创作者中心。
+   * 默认空 = 全按 PLATFORM_META.creator 走(发布场景不变)。
+   */
+  mainSiteOverride?: string[];
+  /** 自定义标题/副标题(默认是「发布平台登录校验」;取素材场景可传更贴切的文案)。 */
+  title?: string;
+  subtitle?: string;
 }
 
-export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onConfirmed }) => {
+export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onConfirmed, mainSiteOverride, title, subtitle }) => {
   const isZh = i18nService.currentLanguage === 'zh';
   const list = (platforms || []).filter((p) => !!PLATFORM_META[p]);
+  const override = mainSiteOverride || [];
+  /** 这个 id 这次是否按创作者中心校验(主站 override 命中则否)。 */
+  const useCreatorFor = (id: string) => metaOf(id).creator && !override.includes(id);
 
   const [extensionStatus, setExtensionStatus] = useState<StepStatus>('checking');
   const [platformStatus, setPlatformStatus] = useState<Record<string, StepStatus>>(
@@ -59,16 +77,17 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   const [opening, setOpening] = useState<string | null>(null);
 
   const checkOne = useCallback(async (id: string) => {
-    const m = metaOf(id);
+    const useCreator = metaOf(id).creator && !override.includes(id);
     try {
-      const st = m.creator
+      const st = useCreator
         ? await scenarioService.checkCreatorCenter(id as any)
         : await scenarioService.checkXhsLogin(id as any);
       return { id, st };
     } catch {
       return { id, st: { loggedIn: false, reason: 'check_threw' } as { loggedIn: boolean; reason?: string } };
     }
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [override.join(',')]);
 
   const runCheck = useCallback(async () => {
     if (list.length === 0) { setExtensionStatus('pass'); return; }
@@ -106,20 +125,22 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
 
   const handleOpen = async (id: string) => {
     const m = metaOf(id);
+    const useCreator = useCreatorFor(id);
     setOpening(id);
     try {
-      const res = m.creator
+      const res = useCreator
         ? await scenarioService.openCreatorCenter(id as any)
         : await scenarioService.openXhsLogin(id as any);
       if (!res.ok) {
         // race 修复(同 LoginRequiredModal):扩展开 tab 可能比 3s timeout 慢,先 probe
         // 一次,已经开了就别再 window.open 双开。
         await new Promise((r) => setTimeout(r, 1500));
-        const probe = m.creator
+        const probe = useCreator
           ? await scenarioService.checkCreatorCenter(id as any)
           : await scenarioService.checkXhsLogin(id as any);
         if (!probe.loggedIn) {
-          try { window.open(m.url, '_blank'); } catch { /* ignore */ }
+          const fallbackUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
+          try { window.open(fallbackUrl, '_blank'); } catch { /* ignore */ }
         }
       }
       setTimeout(() => void runCheck(), 2000);
@@ -161,9 +182,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
         <div className="px-6 pt-5 pb-2 text-center shrink-0">
           <div className="text-3xl mb-1">🔐</div>
-          <h3 className="text-lg font-bold dark:text-white">{isZh ? '发布平台登录校验' : 'Publish Platform Login Check'}</h3>
+          <h3 className="text-lg font-bold dark:text-white">{title || (isZh ? '发布平台登录校验' : 'Publish Platform Login Check')}</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-            {isZh ? '保存前需确认每个发布平台都已登录(全部登录才能保存)' : 'All selected platforms must be logged in before saving'}
+            {subtitle || (isZh ? '保存前需确认每个发布平台都已登录(全部登录才能保存)' : 'All selected platforms must be logged in before saving')}
           </p>
         </div>
 
@@ -199,7 +220,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
             const realPass = extensionStatus === 'pass' && raw === 'pass';
             const realFail = extensionStatus === 'pass' && raw === 'fail';
             const visualStatus: StepStatus = realPass ? 'pass' : (realFail ? 'fail' : 'checking');
-            const label = `${m.emoji} ${isZh ? m.zh : m.en}${m.creator ? (isZh ? '(创作中心)' : ' (Creator)') : ''}`;
+            const label = `${m.emoji} ${isZh ? m.zh : m.en}${useCreatorFor(id) ? (isZh ? '(创作中心)' : ' (Creator)') : ''}`;
             return (
               <div key={id} className={`flex items-start gap-3 rounded-xl px-3 py-2.5 border ${
                 visualStatus === 'fail' ? 'border-red-500/30 bg-red-500/5'
