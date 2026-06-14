@@ -220,7 +220,6 @@ function fmtRelative(ts: number | null | undefined, isZh: boolean): string {
 function intervalLabel(task: VideoTask, isZh: boolean): string | null {
   const iv = task.runInterval;
   if (!iv || iv === 'once') return null;
-  if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
   switch (iv) {
     case '30min': return isZh ? '每 30 分钟' : 'Every 30min';
     case '1h': return isZh ? '每小时' : 'Hourly';
@@ -238,7 +237,6 @@ function intervalLabel(task: VideoTask, isZh: boolean): string | null {
 function intervalLabelDetailed(task: VideoTask, isZh: boolean): string | null {
   const iv = task.runInterval;
   if (!iv || iv === 'once') return null;
-  if (!task.scheduleEnabled) return isZh ? '定时已暂停' : 'Paused';
   switch (iv) {
     case '30min': return isZh ? '每 30 分钟(+1-10 分钟随机延迟)' : 'Every 30min (+1-10min jitter)';
     case '1h': return isZh ? '每小时(+1-10 分钟随机延迟)' : 'Hourly (+1-10min jitter)';
@@ -666,7 +664,7 @@ const VideoTaskCard: React.FC<{ isZh: boolean; task: VideoTask; onClick: () => v
         {intervalLabel(task, isZh) && (
           <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
             ⏰ {intervalLabel(task, isZh)}
-            {task.scheduleEnabled && task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
+            {task.nextPlannedRunAt ? ` · ${fmtNextRun(task.nextPlannedRunAt, isZh)}` : ''}
           </span>
         )}
       </div>
@@ -1634,21 +1632,12 @@ const VideoTaskDetail: React.FC<{
           onClick={latestRun ? () => onOpenRecord(latestRun.id) : undefined}
           actionLabel={latestRun ? (isZh ? '查看本次运行记录 →' : 'View run record →') : undefined}
         />
-        {/* 定时任务才显「下次运行」;点卡片暂停 / 恢复定时(不改间隔)。 */}
+        {/* 定时任务才显「下次运行」(纯展示,暂停功能已移除 —— 定时任务到点必跑)。 */}
         {task.runInterval && task.runInterval !== 'once' && (
           <VStatCard
             label={isZh ? '下次运行' : 'Next Run'}
-            value={
-              task.scheduleEnabled
-                ? `⏰ ${fmtNextRun(task.nextPlannedRunAt, isZh)}`
-                : (isZh ? '⏸ 已暂停' : '⏸ Paused')
-            }
-            onClick={() => videoTaskStore.setScheduleEnabled(task.id, !task.scheduleEnabled)}
-            actionLabel={
-              task.scheduleEnabled
-                ? `${intervalLabel(task, isZh)} · ${isZh ? '点击暂停定时' : 'Click to pause'}`
-                : (isZh ? '点击恢复定时 →' : 'Click to resume →')
-            }
+            value={`⏰ ${fmtNextRun(task.nextPlannedRunAt, isZh)}`}
+            actionLabel={intervalLabel(task, isZh) || undefined}
           />
         )}
       </div>
@@ -3707,7 +3696,7 @@ const HOTSPOT_SOURCES: Array<{ id: string; zh: string; en: string; emoji: string
 ];
 
 // 热搜成片每次运行出片条数封顶(本地渲染 + 按条计费,不开到币安发帖的 200)。
-const HOTSPOT_COUNT_CAP = 10;
+const HOTSPOT_COUNT_CAP = 100;
 
 export const HotspotVideoModal: React.FC<{
   isZh: boolean;

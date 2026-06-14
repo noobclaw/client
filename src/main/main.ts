@@ -2987,7 +2987,7 @@ if (!gotTheLock) {
       // 批量条数:外层循环跑 N 次完整 pipeline,每条都【AI 独立写稿+配音】(不是复用换画面),
       //   各自按 1 条计费(失败那条 pipeline 内部自退),单条失败/异常跳过继续下一条。
       //   · 在线素材 stock:固定 N = videoCount(1~100)。
-      //   · 热搜成片 hotspot:每次运行随机 N ∈ [videoCountMin, videoCountMax](封顶 10,对齐
+      //   · 热搜成片 hotspot:每次运行随机 N ∈ [videoCountMin, videoCountMax](封顶 100,对齐
       //     币安「每次运行条数」随机区间)—— 每条独立选题(pickHotspotTopic 各跑一次随机)。
       //   · AI(Seedance,逐片段烧钱)/ 模板:维持单次。
       const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
@@ -2995,8 +2995,8 @@ if (!gotTheLock) {
       if (inp?.engine === 'stock') {
         batch = clampCount(inp?.videoCount, 100);
       } else if (inp?.engine === 'hotspot') {
-        const lo = clampCount(inp?.videoCountMin, 10);
-        const hi = Math.max(lo, clampCount(inp?.videoCountMax, 10));
+        const lo = clampCount(inp?.videoCountMin, 100);
+        const hi = Math.max(lo, clampCount(inp?.videoCountMax, 100));
         batch = lo + Math.floor(Math.random() * (hi - lo + 1));
       }
 

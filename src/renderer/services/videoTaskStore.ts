@@ -233,7 +233,8 @@ class VideoTaskStore {
     // 1) 补算:开了定时但还没算下次运行的任务(老数据 / 刚开关过)。
     let patched = false;
     for (const t of this.tasks) {
-      if (t.scheduleEnabled && t.runInterval && t.runInterval !== 'once'
+      // 暂停功能已移除:定时任务一律到点跑,不再看 scheduleEnabled(老数据若为 false 也照跑)。
+      if (t.runInterval && t.runInterval !== 'once'
         && typeof t.nextPlannedRunAt !== 'number') {
         t.nextPlannedRunAt = computeNextVideoRun(t.runInterval, t.dailyTime, now);
         t.updatedAt = now;
@@ -245,7 +246,7 @@ class VideoTaskStore {
     if (this.running) return;
     // 3) 选「到点且最早」的一个开跑。runTask 的 .finally 会重算它的 nextPlannedRunAt。
     const due = this.tasks
-      .filter((t) => t.scheduleEnabled && t.runInterval && t.runInterval !== 'once'
+      .filter((t) => t.runInterval && t.runInterval !== 'once'
         && typeof t.nextPlannedRunAt === 'number' && now >= (t.nextPlannedRunAt as number))
       .sort((a, b) => (a.nextPlannedRunAt as number) - (b.nextPlannedRunAt as number));
     if (due.length === 0) return;
@@ -604,8 +605,8 @@ class VideoTaskStore {
           t.lastRunAt = run2.finishedAt || Date.now();
           t.cumulativeTokens += run2.tokensUsed || 0;
           t.cumulativeCostUsd = (t.cumulativeCostUsd || 0) + (run2.costUsd || 0);
-          // 定时任务:本次跑完即排下一次(从现在算起,避免出片耗时累积漂移)。
-          if (t.scheduleEnabled && t.runInterval && t.runInterval !== 'once') {
+          // 定时任务:本次跑完即排下一次(从现在算起,避免出片耗时累积漂移)。暂停功能已移除。
+          if (t.runInterval && t.runInterval !== 'once') {
             t.nextPlannedRunAt = computeNextVideoRun(t.runInterval, t.dailyTime, Date.now());
           }
         });
