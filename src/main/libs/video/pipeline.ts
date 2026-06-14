@@ -987,6 +987,8 @@ async function runVideoPipeline(
     let assignVisuals: (videoIdx: number) => { sceneClips: string[][]; imagePool: string[]; imageByScene?: Map<number, string> };
   let douyinClips: string[] = []; // 抖音混剪模式下载到本地的视频路径(空 = 没取到,落回图片配图)
   let douyinImages: string[] = []; // 抖音图文模式下载到本地的图片路径(空 = 没取到,落回 Serper 配图)
+  // 抖音【分段铺镜】池(buildDouyinPool):每镜中文词→逐词搜→按段铺,画面跟每镜内容走。null=没取到。
+  let douyinPool: { assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null = null;
 
     if (input.engine === 'ai') {
       // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
@@ -1144,36 +1146,13 @@ async function runVideoPipeline(
       };
       tracker.done('visuals', `画面就绪(本地素材 ${localVideos.length} 个${videoCount > 1 ? ` · ${videoCount} 条各不同组合` : ''})`);
     } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
-               && (douyinClips = await collectDouyinClips()).length > 0) {
-      // 热搜成片【抖音混剪】:按标题搜抖音、下无水印视频,当作镜头素材循环拼(底部黑条盖原字幕)。
-      //   取不到素材(没登录/没源)→ 上面的 && 短路为 0,自动落到 else 走图片配图兜底。
+               && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && (douyinPool = await buildDouyinPool())) {
+      // 中文话题 + 选「视频混剪」:抖音【分段铺镜】—— 每镜画面按自己那句口播的中文词搜来,画面跟内容走
+      //   (见 buildDouyinPool,仿 stock)。取不到 → 短路落下面抖音图文 / 文字卡。非中文话题应走 TikTok(待做)。
       hotspotDouyinMode = true;
-      hotspotImageCount = douyinClips.length; // 计费暂复用 hotspot 口径(按素材数,至少 $0.02)
-      const dySegs = douyinClips; // 已是切好的片段池
-      assignVisuals = (videoIdx: number) => {
-        // 片段池【打乱】铺镜:一条视频里每个片段【只用一次】(用户要求:素材绝不反复用)。
-        //   池子已按总需求切够(见上),正常铺满都不重复;只有原视频太少/太短切不出那么多时,
-        //   才在【全部片段都用过之后】兜底循环。每条 videoIdx 错开起点 → 多条各不同组合。
-        const pool = shuffled(dySegs);
-        const used = new Set<string>();
-        let cursor = (videoIdx * 7) % Math.max(1, pool.length);
-        const take = (): string => {
-          for (let t = 0; t < pool.length; t++) {
-            const cand = pool[cursor++ % pool.length];
-            if (!used.has(cand)) { used.add(cand); return cand; }
-          }
-          return pool[cursor++ % pool.length]; // 池子全用过了(素材实在不够)→ 兜底循环
-        };
-        const sceneClips = sentences.map((_, i) => {
-          const dur = Math.max(1.2, sceneDurations[i]);
-          const want = Math.max(1, Math.min(4, Math.ceil(dur / maxClip)));
-          const clips: string[] = [];
-          for (let k = 0; k < want; k++) clips.push(take());
-          return clips;
-        });
-        return { sceneClips, imagePool: [] };
-      };
-      tracker.done('visuals', `🎬 抖音混剪画面就绪(${dySegs.length} 个素材 · 底部黑条盖原字幕)`);
+      assignVisuals = (videoIdx: number) => ({ sceneClips: douyinPool!.assign(videoIdx), imagePool: [] });
+      tracker.done('visuals', '🎬 抖音分段混剪就绪(画面跟每镜内容 · 底部黑条盖原字幕)');
     } else if (input.engine === 'hotspot'
                && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
                && (douyinImages = await collectDouyinImages()).length > 0) {
@@ -1505,6 +1484,84 @@ async function runVideoPipeline(
 
       const assign = (_shuffle: boolean): string[][] => sentences.map(() => [] as string[]);
       return { assign, imagePool, imageByScene, imageBySceneFor };
+    }
+
+    /**
+     * 抖音【分段铺镜】视频池(仿 buildStockPool,画面跟每镜内容走 —— 替代旧 collectDouyinClips 的整条1词随机铺):
+     *   每镜 AI 配中文词(generateSearchTerms zh)→ 去重首词封顶 → 逐词【串行】搜抖音/下视频/切片
+     *   → poolByTerm(词→片段)→ assign 时每镜【先取本镜词】的片段、不够借全局、used 去重。
+     * 串行慢(浏览器单 tab),但异步后台跑、质量优先。取不到 → null,上层落抖音图文/文字卡。
+     */
+    async function buildDouyinPool(): Promise<{ assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null> {
+      // 1) 每镜中文搜索词(复用 generateSearchTerms,outputLang='zh' 出中文词)
+      const tr = await generateSearchTerms(sentences, [], undefined, { topic: hotspotTopic?.title || '', lang: 'zh' }, 'zh');
+      aiCostUsd += tr.costUsd;
+      tracker.addTokens(tr.tokens, tr.costUsd);
+      const perSceneTerms = tr.terms.map((a) => (a || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean));
+      // 2) 去重首词 + 封顶(防串行搜太慢)
+      const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
+      const DOUYIN_TERM_CAP = 10;
+      const searchTerms = primaryTerms.slice(0, DOUYIN_TERM_CAP);
+      if (searchTerms.length === 0) return null;
+      tracker.progress(`🔍 抖音分段搜索词(${searchTerms.length}):${searchTerms.join(' · ')}`);
+      // 3) 逐词【串行】搜+切片,建 poolByTerm(词→片段)
+      const segLen = Math.max(2, maxClip);
+      const poolByTerm = new Map<string, string[]>();
+      let si = 0;
+      for (const term of searchTerms) {
+        if (signal?.aborted) break;
+        const dy = await fetchDouyinClips([term], 2, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+        if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
+        const segs: string[] = [];
+        for (const v of dy.paths) {
+          if (signal?.aborted) break;
+          const dur = await probeDuration(v).catch(() => 0);
+          if (dur <= 0) continue;
+          const maxSegs = Math.max(1, Math.floor((dur - segLen) / 1.0) + 1);
+          const n = Math.max(1, Math.min(6, maxSegs)); // 每视频最多 6 段(均匀铺,起点各异)
+          const step = n > 1 ? (dur - segLen) / (n - 1) : 0;
+          for (let k = 0; k < n; k++) {
+            const ss = Math.max(0, k * step);
+            const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
+            const r = await runFfmpeg(
+              ['-y', '-ss', ss.toFixed(2), '-i', v, '-t', String(segLen), '-an',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
+              { timeoutMs: 120_000 },
+            );
+            if (r.ok && fs.existsSync(out)) { segs.push(out); si++; }
+          }
+        }
+        if (segs.length) poolByTerm.set(term, segs);
+      }
+      if (poolByTerm.size === 0) return null;
+      const allSegs = Array.from(poolByTerm.values()).flat();
+      hotspotImageCount = allSegs.length; // 计费按片段数(沿用 hotspot 口径)
+      tracker.progress(`✂️ 抖音分段素材就绪:${searchTerms.length} 词 · ${allSegs.length} 片段(画面跟每镜内容)`);
+      // 4) assign:每镜先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开
+      const assign = (videoIdx: number): string[][] => {
+        const used = new Set<string>();
+        const shuffle = videoIdx > 0;
+        const byTerm = new Map<string, string[]>();
+        for (const [k, v] of poolByTerm) byTerm.set(k, shuffle ? shuffled(v) : [...v]);
+        const all = shuffle ? shuffled(allSegs) : [...allSegs];
+        const take = (i: number): string => {
+          for (const term of perSceneTerms[i] || []) {
+            const q = byTerm.get(term);
+            if (q) { const v = q.find((p) => !used.has(p)); if (v) { used.add(v); return v; } }
+          }
+          const any = all.find((p) => !used.has(p));
+          if (any) { used.add(any); return any; }
+          return all[used.size % Math.max(1, all.length)]; // 全用过 → 循环兜底
+        };
+        return sentences.map((_, i) => {
+          const dur = Math.max(1.2, sceneDurations[i]);
+          const want = Math.max(1, Math.min(4, Math.ceil(dur / maxClip)));
+          const clips: string[] = [];
+          for (let k = 0; k < want; k++) clips.push(take(i));
+          return clips;
+        });
+      };
+      return { assign, imageByScene: new Map() };
     }
 
     /**
