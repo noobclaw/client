@@ -81,11 +81,41 @@ async function ensureDouyinLoggedIn(onLog: (m: string) => void, signal?: AbortSi
   return false;
 }
 
+// ── 抖音取材【串行锁】──────────────────────────────────────────────────
+// 同一进程内可能有多条 video pipeline 同时在跑(手动任务走 main IPC、定时/scenario 任务走
+// sidecar-server,两条都调 generateVideoBatch),而它们【共用同一个抖音浏览器 tab】。不串行的话,
+// A 正在搜「黄大炜」时 B 把同一个 tab 导航去搜「范丞丞」→ A 抓到 B 的页面 → 出现「口播 A 配画面 B」
+// 的串台(用户实测)。这里用一条 promise 链把所有抖音取材【逐个排队】跑,彻底杜绝交错。
+let _douyinChain: Promise<unknown> = Promise.resolve();
+let _douyinBusy = false;
+const _douyinNoop = (): void => { /* 吞掉结果/异常,只为推进链尾 */ };
+function runExclusiveDouyin<T>(onLog: (m: string) => void, fn: () => Promise<T>): Promise<T> {
+  if (_douyinBusy) { try { onLog('⏳ 抖音浏览器忙(另一条视频正在取材),排队等待…'); } catch { /* ignore */ } }
+  const next = _douyinChain.then(async (): Promise<T> => {
+    _douyinBusy = true;
+    try { return await fn(); } finally { _douyinBusy = false; }
+  });
+  // 链尾吞掉成功/失败,保证下一个排队者不被上一个的异常打断。
+  _douyinChain = next.then(_douyinNoop, _douyinNoop);
+  return next;
+}
+
 /**
  * 按关键词搜抖音、下素材到 destDir。mode='video' 下无水印视频(.mp4);'image' 下【图文笔记】的图(.jpg)。
- * 返回本地路径 + 诊断。绝不抛(降级返空)。
+ * 返回本地路径 + 诊断。绝不抛(降级返空)。【串行】:多条 pipeline 并发时排队,避免共用 tab 串台。
  */
-export async function fetchDouyinClips(
+export function fetchDouyinClips(
+  keywords: string[],
+  wantCount: number,
+  destDir: string,
+  onLog: (m: string) => void,
+  signal?: AbortSignal,
+  mode: 'video' | 'image' = 'video',
+): Promise<DouyinClipsResult> {
+  return runExclusiveDouyin(onLog, () => fetchDouyinClipsImpl(keywords, wantCount, destDir, onLog, signal, mode));
+}
+
+async function fetchDouyinClipsImpl(
   keywords: string[],
   wantCount: number,
   destDir: string,
@@ -94,6 +124,8 @@ export async function fetchDouyinClips(
   mode: 'video' | 'image' = 'video',
 ): Promise<DouyinClipsResult> {
   const diag: DouyinClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
+  // 排队等待期间任务可能已被取消 → 直接降级返空,不再驱动浏览器。
+  if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], diag }; }
 
   // 1. 拉下发脚本(走发布 driver 同款 publish-drivers 热更新;key = 文件名 douyin_search)
   const pack = await fetchPublishDrivers();
