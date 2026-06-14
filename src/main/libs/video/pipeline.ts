@@ -1442,17 +1442,20 @@ async function runVideoPipeline(
       //   复用时每次都从开头截,画面反复重复。视频少(≤5)就靠每个多切几段填满时长。
       tracker.progress('✂️ 切分素材为片段池…');
       const segLen = Math.max(2, maxClip);
+      // 重叠切:步长 < 段长 → 同一视频多切几段(起点不同、画面部分重叠,冗余可接受)。素材/视频少时
+      //   也能凑足片段池,避免后面铺镜 cursor 循环【反复用同一段】(用户反馈:同素材反复出现)。
+      const step = Math.max(1.5, segLen * 0.6);
       const segs: string[] = [];
       let si = 0;
       for (const v of dy.paths) {
         if (signal?.aborted) break;
         const dur = await probeDuration(v).catch(() => 0);
         if (dur <= 0) continue;
-        const n = Math.max(1, Math.min(12, Math.floor(dur / segLen))); // 每视频最多切 12 段(视频少时多切几刀)
+        const n = Math.max(1, Math.min(16, Math.floor((dur - segLen) / step) + 1)); // 每视频最多切 16 段(重叠多切)
         for (let k = 0; k < n; k++) {
           const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
           const r = await runFfmpeg(
-            ['-y', '-ss', String(k * segLen), '-i', v, '-t', String(segLen), '-an',
+            ['-y', '-ss', (k * step).toFixed(2), '-i', v, '-t', String(segLen), '-an',
               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
             { timeoutMs: 120_000 },
           );

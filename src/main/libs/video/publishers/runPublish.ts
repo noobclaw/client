@@ -34,6 +34,8 @@ import { groupTitle as buildGroupTitle, getStandardBounds } from '../../scenario
 import { PUBLISHER_ANCHOR_URL, bridgeOptsFor } from './publisherUtils';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+// 提交后默认等这么久:平台(尤其抖音)是「点提交后才真正开始上传视频」,过早进入下一动作/刷新会白提交。
+const POST_SUBMIT_WAIT_MS = 45_000;
 
 /** 未登录的等待上限:3 分钟(用户要求 —— 反复检测,超时跳过本条视频不补传)。 */
 const LOGIN_WAIT_MS = 3 * 60 * 1000;
@@ -357,9 +359,12 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
       }
     }
     if (pr.ok) {
-      opts.onLog?.(`✅ ${label} 发布完成`);
+      opts.onLog?.(`✅ ${label} 提交完成`);
       result.publishedCount++;
       result.details.push({ platform: id, status: 'published' });
+      // 提交后默认等上传完成:平台点提交后才真正上传视频,过早进入下一动作/刷新会把刚提交的作品弄丢。
+      opts.onLog?.(`   ⏳ 等 ${Math.round(POST_SUBMIT_WAIT_MS / 1000)}s 让平台把视频上传完…`);
+      await sleep(POST_SUBMIT_WAIT_MS);
     } else {
       opts.onLog?.(`❌ ${label} 发布失败:${pr.reason || 'unknown'}`);
       result.failedCount++;

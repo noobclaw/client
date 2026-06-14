@@ -472,6 +472,7 @@ function buildDrawtextChain(
   style: SubtitleStyle,
   fontRel: string | null,
   H: number,
+  W: number,
 ): string[] {
   const yExpr = subtitleY(style.position, H);
   const fontColor = normalizeColor(style.color, 'white');
@@ -479,9 +480,13 @@ function buildDrawtextChain(
   // 没选 → 沿用原来的半透明黑底盒(可读性兜底)。
   const stroke = (style.strokeColor || '').trim();
   const borderW = Math.max(2, Math.round(style.fontSize * 0.06));
+  // 每行最大字数按【字号 + 画宽】自适应:左右各留 ~6% 安全边距,字号越大每行越少字
+  //   (中文方块字宽≈字号)。避免大字号(超大80/特大100)一行铺满甚至溢出、两侧不留白。
+  const safeX = Math.round(W * 0.06);
+  const maxPerLine = Math.max(6, Math.floor((W - 2 * safeX) / Math.max(16, style.fontSize)));
   const filters: string[] = [];
   cues.forEach((cue, j) => {
-    const wrapped = wrapSubtitle(cue.text);
+    const wrapped = wrapSubtitle(cue.text, maxPerLine);
     if (!wrapped) return;
     const txtName = `cue_${String(j).padStart(4, '0')}.txt`;
     fs.writeFileSync(path.join(workDir, txtName), wrapped, 'utf8');
@@ -681,7 +686,7 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
       const cues = leadSec > 0
         ? rawCues.map((c) => ({ ...c, start: c.start + leadSec, end: c.end + leadSec }))
         : rawCues;
-      drawtext = buildDrawtextChain(workDir, refineCues(cues), style, fontRel, H);
+      drawtext = buildDrawtextChain(workDir, refineCues(cues), style, fontRel, H, W);
     }
 
     // 4. 烧字幕 / 加留白(或直接 mux)→ merged

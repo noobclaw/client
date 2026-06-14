@@ -2279,7 +2279,7 @@ const VideoConfigModal: React.FC<{
   const [maxClipSeconds, setMaxClipSeconds] = useState<number>(editTask?.input.maxClipSeconds ?? 4);
 
   // 步骤 3:音频(音色 / 语速 / 背景音乐 / BGM 音量)
-  const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voice, setVoice] = useState<string>(editTask?.input.voice || 'zh-CN-YunjianNeural');
   const [voiceRate, setVoiceRate] = useState<number>(editTask?.input.voiceRate ?? 0);
   // BGM 默认选中第 1 首内置曲目(新建任务);编辑老任务时沿用其已存值(空也保留空)。
   const [bgmPath, setBgmPath] = useState<string>(
@@ -3728,7 +3728,7 @@ export const HotspotVideoModal: React.FC<{
         : (isZh ? 'douyin' : 'image'),
   );
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
-  const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-YunjianNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   // 字幕样式 + BGM(用户要可调)。字幕位置默认按界面语言:中文→中下(配合抖音混剪盖原字幕),海外→底部。
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
@@ -4199,7 +4199,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // 新建:默认开配音 + 字幕(模板速生定位短视频,有配音 + 烧字幕完播率更高)。
   // 编辑:保留任务现有设置(et?.narration === true 才认为开过)。
   const [narration, setNarration] = useState<boolean>(isEdit ? et?.narration === true : true);
-  const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-XiaoxiaoNeural');
+  const [voice, setVoice] = useState<string>(et?.voice || editTask?.input?.voice || 'zh-CN-YunjianNeural');
   const [voiceRate, setVoiceRate] = useState<number>(typeof et?.voiceRate === 'number' ? et.voiceRate : 0);
   const [voiceScript, setVoiceScript] = useState<string>(et?.voiceScript || '');
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(isEdit ? et?.subtitleEnabled !== false : true);
