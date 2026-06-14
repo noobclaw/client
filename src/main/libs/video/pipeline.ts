@@ -1495,13 +1495,15 @@ async function runVideoPipeline(
       const searchTerms = [title];
       const perSceneTerms = sentences.map(() => [title]); // 每镜共用标题词,take 走全局池 + used 去重(不重复铺)
       tracker.progress(`🎬 抖音取材:只按热搜标题搜「${title}」`);
-      // 3) 逐词【串行】搜+切片,建 poolByTerm(词→片段)
+      // 3) 逐词【串行】搜+切片,建 poolByTerm(词→片段)。只有标题一个词,所以一次性多下几个源视频
+      //   (按目标时长算,夹[5,10]),靠多个源 + 每个切多段保证画面有变化、铺镜不重复。
       const segLen = Math.max(2, maxClip);
+      const wantClips = Math.max(5, Math.min(10, Math.ceil((input.targetSeconds ?? 60) / 10)));
       const poolByTerm = new Map<string, string[]>();
       let si = 0;
       for (const term of searchTerms) {
         if (signal?.aborted) break;
-        const dy = await fetchDouyinClips([term], 2, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+        const dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
         if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
         const segs: string[] = [];
         for (const v of dy.paths) {
@@ -1566,10 +1568,12 @@ async function runVideoPipeline(
       const searchTerms = [title];
       const perSceneTerms = sentences.map(() => [title]);
       tracker.progress(`🖼️ 抖音图文取材:只按热搜标题搜「${title}」`);
+      // 每镜一图,所以一次性多取(按分镜数 +4 缓冲,夹[8,24]),保证每镜不重复。
+      const wantImgs = Math.max(8, Math.min(24, sentences.length + 4));
       const poolByTerm = new Map<string, string[]>();
       for (const term of searchTerms) {
         if (signal?.aborted) break;
-        const dy = await fetchDouyinClips([term], 4, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+        const dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
         if (dy.paths.length) poolByTerm.set(term, dy.paths);
         else tracker.progress(`   ⚠️「${term}」没取到图文图`);
       }
