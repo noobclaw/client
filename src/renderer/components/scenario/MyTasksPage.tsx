@@ -496,7 +496,7 @@ export const MyTasksPage: React.FC<Props> = ({ tasks, scenarios, loading, platfo
                       <span className={`shrink-0 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full border ${typeLabel.color}`}>
                         {typeLabel.icon} {isZh ? typeLabel.zh : typeLabel.en}
                       </span>
-                      {!isAnyLinkRewrite && !isDouyinImageText && (
+                      {!isAnyLinkRewrite && !isImageTextTask && (
                         <>
                           <span className="text-lg">{subIcon}</span>
                           <span className="font-medium dark:text-white truncate">{subTitle}</span>
