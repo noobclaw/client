@@ -4212,25 +4212,26 @@ export const HotspotVideoModal: React.FC<{
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                      {isZh ? '最少' : 'Min'}: <span className="font-semibold text-amber-500">{Math.min(countMin, countMax)}</span>
+                      {isZh ? '最少' : 'Min'}: <span className="font-semibold text-amber-500">{countMin}</span>
                     </div>
+                    {/* 拖「最少」超过「最多」就把最多一起顶上去 → 两 thumb 永不交叉、拖谁谁动(显示原值)。 */}
                     <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMin}
-                      onChange={(e) => setCountMin(parseInt(e.target.value, 10))}
+                      onChange={(e) => { const v = parseInt(e.target.value, 10); setCountMin(v); if (v > countMax) setCountMax(v); }}
                       className="w-full accent-amber-500 cursor-pointer" />
                   </div>
                   <div>
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                      {isZh ? '最多' : 'Max'}: <span className="font-semibold text-amber-500">{Math.max(countMin, countMax)}</span>
+                      {isZh ? '最多' : 'Max'}: <span className="font-semibold text-amber-500">{countMax}</span>
                     </div>
                     <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMax}
-                      onChange={(e) => setCountMax(parseInt(e.target.value, 10))}
+                      onChange={(e) => { const v = parseInt(e.target.value, 10); setCountMax(v); if (v < countMin) setCountMin(v); }}
                       className="w-full accent-amber-500 cursor-pointer" />
                   </div>
                 </div>
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
-                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
+                    ? `每次运行随机出 ${countMin}-${countMax} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
+                    : `${countMin}-${countMax} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
                 </p>
               </Field>
             </>
