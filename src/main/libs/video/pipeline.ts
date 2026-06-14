@@ -1505,14 +1505,19 @@ async function runVideoPipeline(
         if (signal?.aborted) break;
         const dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
         if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
+        // 切片是逐段 ffmpeg 重编码(慢,几十秒~分钟级),逐个源视频报进度,别让用户对着空白卡很久。
+        tracker.progress(`✂️ 下载完成,开始切片(${dy.paths.length} 个源视频 → 切成多段铺镜)…`);
         const segs: string[] = [];
+        let vIdx = 0;
         for (const v of dy.paths) {
           if (signal?.aborted) break;
+          vIdx++;
           const dur = await probeDuration(v).catch(() => 0);
           if (dur <= 0) continue;
           const maxSegs = Math.max(1, Math.floor((dur - segLen) / 1.0) + 1);
           const n = Math.max(1, Math.min(6, maxSegs)); // 每视频最多 6 段(均匀铺,起点各异)
           const step = n > 1 ? (dur - segLen) / (n - 1) : 0;
+          tracker.progress(`✂️ 切片中:第 ${vIdx}/${dy.paths.length} 个源视频 → 切 ${n} 段(累计 ${segs.length} 段)…`);
           for (let k = 0; k < n; k++) {
             const ss = Math.max(0, k * step);
             const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
