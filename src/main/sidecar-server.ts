@@ -1056,14 +1056,14 @@ const server = http.createServer(async (req, res) => {
             // done/error event), and return immediately. The renderer resolves
             // its generate() promise on that terminal SSE event.
             try {
-              const { generateVideo } = await import('./libs/video/pipeline');
+              const { generateVideoBatch } = await import('./libs/video/pipeline');
               // 建 AbortController 并按 taskId 注册,供「停止」中断 pipeline + SIGKILL 子进程。
               const vTaskId = (args[0] && (args[0] as { taskId?: unknown }).taskId)
                 ? String((args[0] as { taskId?: unknown }).taskId) : '';
               const ctrl = new AbortController();
               if (vTaskId) { activeVideoRuns.get(vTaskId)?.abort(); activeVideoRuns.set(vTaskId, ctrl); }
               const cleanup = () => { if (vTaskId && activeVideoRuns.get(vTaskId) === ctrl) activeVideoRuns.delete(vTaskId); };
-              generateVideo(args[0], (progress: unknown) => {
+              generateVideoBatch(args[0] as any, (progress: unknown) => {
                 broadcastSSE('video:progress', progress);
               }, ctrl.signal).then((result) => {
                 // Belt-and-suspenders terminal event (no `steps` so it can't

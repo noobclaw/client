@@ -497,6 +497,80 @@ export function throwIfAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw new Error('VIDEO_ABORTED:已停止');
 }
 
+/**
+ * 批量编排:决定一次任务出几条,外层逐条独立跑 generateVideo,聚合成【唯一一次】终态。
+ *   · stock      → N = videoCount(1~100)
+ *   · hotspot    → N = 随机 [videoCountMin, videoCountMax](每条独立选题,pipeline 内部恒 1 条)
+ *   · ai/template→ 1 条(Seedance 逐帧烧钱 / 模板单次)
+ * ⚠️ 必须是【所有 video:generate 入口】的统一编排:main.ts 的 IPC handler 和 sidecar-server 的
+ *    video:generate(scenario 定时/后台任务走这条!)都要调本函数 —— 否则走 sidecar 的任务拿不到
+ *    batch,hotspot/stock 永远只出 1 条(用户实测:设 2 条却只出 1 条就结束)。
+ *    每条都【完整跑完】(本地保存 + 按需发布)才进下一条,中途不提前结束。
+ */
+export async function generateVideoBatch(
+  input: VideoCreationInput,
+  emit?: ProgressEmitter,
+  signal?: AbortSignal,
+): Promise<VideoCreationResult> {
+  const inp = input as VideoCreationInput & { videoCountMin?: number; videoCountMax?: number };
+  const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
+  let batch = 1;
+  if (inp.engine === 'stock') {
+    batch = clampCount(inp.videoCount, 100);
+  } else if (inp.engine === 'hotspot') {
+    const lo = clampCount(inp.videoCountMin, 100);
+    const hi = Math.max(lo, clampCount(inp.videoCountMax, 100));
+    batch = lo + Math.floor(Math.random() * (hi - lo + 1));
+  }
+
+  // 单条:hotspot 恒 videoCount=1(条数完全由 batch 控制);其余原样。generateVideo 自己发终态。
+  if (batch <= 1) {
+    const single = inp.engine === 'hotspot' ? ({ ...inp, videoCount: 1 } as VideoCreationInput) : input;
+    return await generateVideo(single, emit, signal);
+  }
+
+  // 批量:逐条独立 generateVideo(videoCount=1),拦截单条终态转「第 X/N 条」批次进度,最后发唯一终态。
+  const outputPaths: string[] = [];
+  let success = 0, failed = 0, stopped = false;
+  for (let i = 0; i < batch; i++) {
+    if (signal?.aborted) { stopped = true; break; }
+    const subEmit: ProgressEmitter = (p: any) => {
+      try {
+        if (p && (p.status === 'done' || p.status === 'error')) {
+          emit?.({ ...p, status: 'running', batchIndex: i + 1, batchTotal: batch,
+            message: `第 ${i + 1}/${batch} 条${p.status === 'done' ? '已完成 ✅' : '失败,跳过 ⏭️'}` } as any);
+        } else {
+          emit?.({ ...(p as object), batchIndex: i + 1, batchTotal: batch } as any);
+        }
+      } catch { try { emit?.(p); } catch { /* ignore */ } }
+    };
+    let r: VideoCreationResult | undefined;
+    try {
+      r = await generateVideo({ ...inp, videoCount: 1 } as VideoCreationInput, subEmit, signal);
+    } catch {
+      failed++; continue; // 单条异常 → 跳过,继续下一条
+    }
+    if ((r as any)?.stopped) { stopped = true; break; }
+    if (r?.ok) {
+      success++;
+      if (r.outputPath && !outputPaths.includes(r.outputPath)) outputPaths.push(r.outputPath);
+      const rp = (r as any).outputPaths;
+      if (Array.isArray(rp)) for (const p of rp) if (p && !outputPaths.includes(p)) outputPaths.push(p);
+    } else {
+      failed++;
+    }
+  }
+  const summary = `批量完成:成功 ${success}/${batch} 条`
+    + (failed ? ` · 跳过 ${failed} 条` : '')
+    + (stopped ? ' · 已停止' : '');
+  emit?.({
+    jobId: (inp as any).taskId, status: success > 0 ? 'done' : 'error', steps: [],
+    message: summary, outputPath: outputPaths[0], videoCount: success,
+    ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
+  } as any);
+  return { ok: success > 0, outputPath: outputPaths[0], outputPaths, stopped } as unknown as VideoCreationResult;
+}
+
 export async function generateVideo(
   input: VideoCreationInput,
   emit?: ProgressEmitter,

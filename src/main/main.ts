@@ -2971,7 +2971,7 @@ if (!gotTheLock) {
     // 运行中的视频任务注册表(taskId → AbortController),供「停止」中断 pipeline + kill 子进程。
     const activeVideoRuns = new Map<string, AbortController>();
     ipcMain.handle('video:generate', async (_e, input: unknown) => {
-      const { generateVideo } = require('./libs/video/pipeline');
+      const { generateVideoBatch } = require('./libs/video/pipeline');
       const inp = (input || {}) as { taskId?: unknown; engine?: unknown; videoCount?: unknown; videoCountMin?: unknown; videoCountMax?: unknown };
       const taskId = inp?.taskId ? String(inp.taskId) : '';
       const ctrl = new AbortController();
@@ -2984,85 +2984,15 @@ if (!gotTheLock) {
         } catch {}
       };
 
-      // 批量条数:外层循环跑 N 次完整 pipeline,每条都【AI 独立写稿+配音】(不是复用换画面),
-      //   各自按 1 条计费(失败那条 pipeline 内部自退),单条失败/异常跳过继续下一条。
-      //   · 在线素材 stock:固定 N = videoCount(1~100)。
-      //   · 热搜成片 hotspot:每次运行随机 N ∈ [videoCountMin, videoCountMax](封顶 100,对齐
-      //     币安「每次运行条数」随机区间)—— 每条独立选题(pickHotspotTopic 各跑一次随机)。
-      //   · AI(Seedance,逐片段烧钱)/ 模板:维持单次。
-      const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
-      let batch = 1;
-      if (inp?.engine === 'stock') {
-        batch = clampCount(inp?.videoCount, 100);
-      } else if (inp?.engine === 'hotspot') {
-        const lo = clampCount(inp?.videoCountMin, 100);
-        const hi = Math.max(lo, clampCount(inp?.videoCountMax, 100));
-        batch = lo + Math.floor(Math.random() * (hi - lo + 1));
-      }
-
-      // 单条:维持原行为(await 返回;renderer 实际靠 video:progress 终态 resolve)。
-      // 热搜成片每条 pipeline 恒 videoCount=1(条数完全由上面的 batch 控制):避免 min<max
-      // 时随机到 batch=1、却把 input.videoCount(=max)带进 pipeline 复用脚本多出几条。
-      if (batch <= 1) {
-        try {
-          const single = inp?.engine === 'hotspot' ? { ...(input as object), videoCount: 1 } : input;
-          return await generateVideo(single, emit, ctrl.signal);
-        } catch (err) {
-          return { ok: false, error: err instanceof Error ? err.message : String(err) };
-        } finally {
-          if (taskId && activeVideoRuns.get(taskId) === ctrl) activeVideoRuns.delete(taskId);
-        }
-      }
-
-      // 批量:fire-and-forget 后台跑(N 条几分钟~几小时,await 会撞 IPC 超时)。立即返回
-      //   {status:'started'};进度 + 终态全走 video:progress。子条的 done/error 被拦截转成
-      //   批次进度,避免 renderer 收到单条 done 就提前 resolve;全部跑完才发【唯一一次】终态。
-      void (async () => {
-        const outputPaths: string[] = [];
-        let success = 0, failed = 0, stopped = false;
-        for (let i = 0; i < batch; i++) {
-          if (ctrl.signal.aborted) { stopped = true; break; }
-          const subEmit = (p: unknown) => {
-            try {
-              const ev = p as { status?: string } | null;
-              if (ev && (ev.status === 'done' || ev.status === 'error')) {
-                // 拦截单条终态 → 转成「第 X/N 条」批次进度(status 改 running,renderer 不会 resolve)。
-                emit({ ...ev, status: 'running', batchIndex: i + 1, batchTotal: batch,
-                  message: `第 ${i + 1}/${batch} 条${ev.status === 'done' ? '已完成 ✅' : '失败,跳过 ⏭️'}` });
-              } else {
-                emit({ ...(ev as object), batchIndex: i + 1, batchTotal: batch });
-              }
-            } catch { try { emit(p); } catch {} }
-          };
-          let r: { ok?: boolean; stopped?: boolean; outputPath?: string; outputPaths?: string[] } | undefined;
-          try {
-            r = await generateVideo({ ...inp, videoCount: 1 }, subEmit, ctrl.signal);
-          } catch {
-            failed++; continue; // 单条异常 → 跳过,继续下一条
-          }
-          if (r?.stopped) { stopped = true; break; }
-          if (r?.ok) {
-            success++;
-            if (r.outputPath && !outputPaths.includes(r.outputPath)) outputPaths.push(r.outputPath);
-            if (Array.isArray(r.outputPaths)) for (const p of r.outputPaths) if (p && !outputPaths.includes(p)) outputPaths.push(p);
-          } else {
-            failed++; // ok:false → 该条失败,继续
-          }
-        }
-        // 唯一一次批次终态:成功 >0 → done(renderer resolve 成功);全失败 → error。
-        const summary = `批量完成:成功 ${success}/${batch} 条`
-          + (failed ? ` · 跳过 ${failed} 条` : '')
-          + (stopped ? ' · 已停止' : '');
-        emit({
-          jobId: taskId, status: success > 0 ? 'done' : 'error', steps: [],
-          message: summary, outputPath: outputPaths[0], videoCount: success,
-          ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
-        });
-      })().catch(() => { /* 后台批量兜底:不抛 */ }).finally(() => {
-        if (taskId && activeVideoRuns.get(taskId) === ctrl) activeVideoRuns.delete(taskId);
-      });
-
-      return { ok: true, status: 'started', batch };
+      // 批量编排统一走 pipeline.generateVideoBatch —— IPC(本 handler)与 sidecar-server 的
+      //   video:generate(scenario 定时/后台任务走这条!)共用同一套,避免两份漂移、避免某条路径
+      //   漏掉批量(此前 sidecar 没批量,hotspot/stock 走定时只出 1 条)。
+      //   fire-and-forget:N 条几分钟~几小时,await 会撞 IPC 超时;进度 + 终态全走 video:progress,
+      //   renderer 靠终态事件 resolve generate()。每条完整跑完(本地保存 + 按需发布)才进下一条。
+      void generateVideoBatch(inp as any, emit, ctrl.signal)
+        .catch(() => { /* 后台兜底:不抛(终态已由 generateVideoBatch 发出) */ })
+        .finally(() => { if (taskId && activeVideoRuns.get(taskId) === ctrl) activeVideoRuns.delete(taskId); });
+      return { ok: true, status: 'started' };
     });
     // 停止某个正在出片的视频任务:abort → pipeline 步骤边界退出 + ffmpeg/seedance/tts 子进程 SIGKILL。
     ipcMain.handle('video:stop', async (_e, taskId: unknown) => {
