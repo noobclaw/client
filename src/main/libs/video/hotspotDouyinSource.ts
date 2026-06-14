@@ -144,7 +144,7 @@ export async function fetchDouyinClips(
   onLog(`⬇️ 下载 ${urls.length} 个抖音${mode === 'image' ? '图片' : '视频'}…`);
   try { fs.mkdirSync(destDir, { recursive: true }); } catch { /* 已存在 */ }
   const ext = mode === 'image' ? 'jpg' : 'mp4';
-  const base = mode === 'image' ? 'douyin_img' : 'douyin_clip';
+  const base = mode === 'image' ? 'img' : 'clip'; // 文件名不带平台名(用户要求)
   const paths: string[] = [];
   for (let i = 0; i < urls.length; i++) {
     if (signal?.aborted) break;

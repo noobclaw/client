@@ -27,7 +27,7 @@ import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type S
 import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
 import { fetchDouyinClips } from './hotspotDouyinSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
-import { generateScript, generateSearchTerms, generateHotspotKeywords, detectLang } from './scriptWriter';
+import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
 import { chargeMode1Video, chargeHotspotImages, refundMode1Video } from './billing';
 import { resolveBgmPath } from './bgm';
@@ -1333,29 +1333,13 @@ async function runVideoPipeline(
     //   一次 Serper 查询(1 credit)拿 10-15 张铺满全片,不逐镜搜(省 credit)。
     //   返回形状与 buildStockPool 一致:assign 恒空(无视频)→ compose 走图片运镜。
     async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string>; imageBySceneFor?: (videoIdx: number) => Map<number, string> }> {
-      // 配图关键词【基于热搜标题】:都是热榜,配图紧扣标题主体最准 —— 取「标题原句 + 标题里拆出的
-      //   核心实体/概念词」,而不是从整篇口播稿逐镜抽(那样词又多又散)。例「花小龙带黄晓明自律的
-      //   一天」→ 标题原句 + 花小龙 / 黄晓明 / 自律。中文热点出中文这组(serper 谷歌图中文词源更干净:
-      //   维基/新闻/机构)+ 一份英文兜底;英文热点(web3/科技)只出英文。
-      tracker.progress('AI 按标题规划配图关键词…');
+      // 配图关键词【永远只用热搜标题】(用户要求,不额外出实体词):中文话题用中文标题搜、英文话题
+      //   (web3/科技)用英文标题搜。serper 中文整句标题也有图(维基/新闻/机构源更干净)。
       const topicTitle = hotspotTopic?.title || '';
       const isZhTopic = String(detectLang(topicTitle)).toLowerCase().startsWith('zh');
-      const dedup = (list: string[]): string[] => Array.from(new Set(list.map((s) => s.trim()).filter(Boolean))).slice(0, 6);
-      let kwZh: string[] = [];
-      let kwEn: string[] = [];
-      if (isZhTopic) {
-        const zhRes = await generateHotspotKeywords(topicTitle, 'zh');
-        aiCostUsd += zhRes.costUsd; tracker.addTokens(zhRes.tokens, zhRes.costUsd);
-        kwZh = dedup([topicTitle, ...zhRes.terms]);
-        const enRes = await generateHotspotKeywords(topicTitle, 'en');
-        aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
-        kwEn = dedup(enRes.terms.map((s) => s.toLowerCase()));
-      } else {
-        const enRes = await generateHotspotKeywords(topicTitle, 'en');
-        aiCostUsd += enRes.costUsd; tracker.addTokens(enRes.tokens, enRes.costUsd);
-        kwEn = dedup([topicTitle, ...enRes.terms].map((s) => s.toLowerCase()));
-      }
-      tracker.progress(`🔤 配图关键词(基于标题)— 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
+      const kwZh: string[] = isZhTopic && topicTitle ? [topicTitle] : [];
+      const kwEn: string[] = !isZhTopic && topicTitle ? [topicTitle.toLowerCase()] : [];
+      tracker.progress(`🔤 配图关键词(热搜标题)— 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
 
       // ── 配图编排在【后端】:中文词优先搜→英文兜底、只大图、剔付费图库,返回大图 URL + 下发黑名单。
       //    客户端优先自己下大图(省服务端流量),下不动的转后端代下 base64(国内主走这条)。
@@ -1426,32 +1410,30 @@ async function runVideoPipeline(
     }
 
     /**
-     * 抖音混剪取材:按【标题 + 标题拆出的中文实体词】搜抖音、下无水印视频到任务素材目录,
-     * 留档一份到「素材」子目录。返回本地路径(空 = 没登录/没源,上层落回图片配图)。
+     * 混剪取材:【只按热搜标题】搜视频、下到任务素材目录(最多 5 个,靠切片填满时长),留档一份到
+     * 「素材」子目录(文件名不带平台名)。返回本地路径(空 = 没登录/没源,上层落回图片配图)。
      */
     async function collectDouyinClips(): Promise<string[]> {
       const title = hotspotTopic?.title || '';
-      const dyTerms = await generateHotspotKeywords(title, 'zh');
-      aiCostUsd += dyTerms.costUsd; tracker.addTokens(dyTerms.tokens, dyTerms.costUsd);
-      const keywords = Array.from(new Set([title, ...dyTerms.terms].map((s) => s.trim()).filter(Boolean)));
-      const wantClips = Math.max(3, Math.min(10, Math.ceil((input.targetSeconds ?? 60) / 8) + 1));
-      tracker.progress(`🎬 抖音混剪:按标题搜抖音、取无水印视频(目标 ${wantClips} 个)…`);
+      const keywords = title ? [title] : []; // 永远只按热搜标题查,不额外出关键词(用户要求)
+      const wantClips = Math.max(2, Math.min(5, Math.ceil((input.targetSeconds ?? 60) / 15))); // 最多 5 个,靠切片填时长
+      tracker.progress(`🎬 混剪取材:按标题搜视频(最多 ${wantClips} 个,切片填满时长)…`);
       const dy = await fetchDouyinClips(keywords, wantClips, assetDir, (m) => tracker.progress(m), signal);
       if (dy.paths.length === 0) {
-        tracker.progress(`⚠️ 抖音没取到素材(${dy.diag.reason || '未知'}),退回图片配图`);
+        tracker.progress(`⚠️ 没取到混剪素材(${dy.diag.reason || '未知'}),退回图片配图`);
         return [];
       }
       try {
         const matDir = path.join(destDir, '素材');
         fs.mkdirSync(matDir, { recursive: true });
         dy.paths.forEach((src, i) => {
-          try { fs.copyFileSync(src, path.join(matDir, `抖音${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+          try { fs.copyFileSync(src, path.join(matDir, `素材${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
         });
       } catch { /* 留档失败不影响出片 */ }
 
-      // 切【片段池】:每个抖音视频按 maxClip 切成多段 → 后面打乱铺镜。这是去重的关键 —— 否则同一个
-      //   长视频被多镜复用时每次都从开头截,画面反复重复(用户反馈的"一直出现重复画面")。
-      tracker.progress('✂️ 切分抖音素材为片段池…');
+      // 切【片段池】:每个视频按 maxClip 切成多段 → 后面打乱铺镜。去重关键 —— 否则同一个长视频被多镜
+      //   复用时每次都从开头截,画面反复重复。视频少(≤5)就靠每个多切几段填满时长。
+      tracker.progress('✂️ 切分素材为片段池…');
       const segLen = Math.max(2, maxClip);
       const segs: string[] = [];
       let si = 0;
@@ -1459,9 +1441,9 @@ async function runVideoPipeline(
         if (signal?.aborted) break;
         const dur = await probeDuration(v).catch(() => 0);
         if (dur <= 0) continue;
-        const n = Math.max(1, Math.min(10, Math.floor(dur / segLen))); // 每视频最多切 10 段
+        const n = Math.max(1, Math.min(12, Math.floor(dur / segLen))); // 每视频最多切 12 段(视频少时多切几刀)
         for (let k = 0; k < n; k++) {
-          const out = path.join(assetDir, `dyseg_${String(si).padStart(3, '0')}.mp4`);
+          const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
           const r = await runFfmpeg(
             ['-y', '-ss', String(k * segLen), '-i', v, '-t', String(segLen), '-an',
               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
@@ -1478,26 +1460,24 @@ async function runVideoPipeline(
     }
 
     /**
-     * 抖音图文配图(中文话题的「智能配图」走这条):按【标题 + 中文实体词】搜抖音【图文笔记】、
-     * 下图到任务素材目录。返回本地图片路径(空 = 没登录/没图文 → 上层落回 Serper 谷歌图)。
+     * 图文配图(中文话题的「智能配图」走这条):【只按热搜标题】搜图文笔记、下图到任务素材目录
+     * (文件名不带平台名)。返回本地图片路径(空 = 没登录/没图文 → 上层落回 Serper 谷歌图)。
      */
     async function collectDouyinImages(): Promise<string[]> {
       const title = hotspotTopic?.title || '';
-      const dyTerms = await generateHotspotKeywords(title, 'zh');
-      aiCostUsd += dyTerms.costUsd; tracker.addTokens(dyTerms.tokens, dyTerms.costUsd);
-      const keywords = Array.from(new Set([title, ...dyTerms.terms].map((s) => s.trim()).filter(Boolean)));
+      const keywords = title ? [title] : []; // 永远只按热搜标题查,不额外出关键词(用户要求)
       const want = Math.max(8, Math.min(40, Math.ceil((input.targetSeconds ?? 60) / 4) + 2));
-      tracker.progress(`🖼️ 抖音图文:按标题搜抖音图文笔记、下图(目标 ${want} 张)…`);
+      tracker.progress(`🖼️ 图文配图:按标题搜图文笔记、下图(目标 ${want} 张)…`);
       const dy = await fetchDouyinClips(keywords, want, assetDir, (m) => tracker.progress(m), signal, 'image');
       if (dy.paths.length === 0) {
-        tracker.progress(`⚠️ 抖音没取到图文(${dy.diag.reason || '未知'}),退回联网配图`);
+        tracker.progress(`⚠️ 没取到图文配图(${dy.diag.reason || '未知'}),退回联网配图`);
         return [];
       }
       try {
         const matDir = path.join(destDir, '素材');
         fs.mkdirSync(matDir, { recursive: true });
         dy.paths.forEach((src, i) => {
-          try { fs.copyFileSync(src, path.join(matDir, `抖音图${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+          try { fs.copyFileSync(src, path.join(matDir, `配图${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
         });
       } catch { /* 留档失败不影响出片 */ }
       return dy.paths;
