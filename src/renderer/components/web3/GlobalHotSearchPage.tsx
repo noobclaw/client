@@ -19,8 +19,29 @@ interface HotItem {
   url: string;
   rank?: number;
   source: string;
+  publishedAt?: string;
 }
 interface HotSource { source: string; items: HotItem[]; }
+
+// 6 个榜单分成 2 个切换组,每组 3 个【一行三个】。第 1 组(默认)= 抖音 / B站 / 微博。
+// 组内顺序 = 展示顺序;sources 里的名字必须跟后端 HOT_SOURCE_ORDER 精确一致(锚定靠它)。
+const TAB_GROUPS: { key: string; label: string; sources: string[] }[] = [
+  { key: 'a', label: '🎵 抖音 · 📺 B站 · 🔥 微博', sources: ['抖音热搜', 'B站热搜', '微博热搜'] },
+  { key: 'b', label: '💭 知乎 · 🔍 百度 · 📈 雪球', sources: ['知乎热榜', '百度热搜', '雪球热门股'] },
+];
+
+// 一组里最新的 publishedAt = 该榜「更新时间」。返回 "HH:MM" 短串(取不到返回 '')。
+const latestUpdated = (items: HotItem[]): string => {
+  let max = 0;
+  for (const it of items) {
+    const t = it.publishedAt ? Date.parse(it.publishedAt) : 0;
+    if (Number.isFinite(t) && t > max) max = t;
+  }
+  if (!max) return '';
+  const d = new Date(max);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${p(d.getHours())}:${p(d.getMinutes())}`;
+};
 
 // 每个榜单的视觉标识(emoji + 主题渐变色)。没列到的源走默认。
 const SOURCE_STYLE: Record<string, { emoji: string; from: string; to: string; ring: string }> = {
@@ -48,6 +69,7 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
   const [sources, setSources] = useState<HotSource[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [activeTab, setActiveTab] = useState(0);   // 0=抖音/B站/微博,1=知乎/百度/雪球
 
   const load = useCallback(async () => {
     setLoading(true); setError(false);
@@ -64,6 +86,8 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
 
   const openLink = (url: string) => { if (url) window.electron?.shell?.openExternal?.(url); };
   const title = i18nService.t('globalHotSearch');
+  // 按 source 名建索引 —— tab 切换时靠它锚定到对应榜单(名字跟后端精确一致)。
+  const bySource = new Map(sources.map((s) => [s.source, s] as const));
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -104,49 +128,83 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
             <button onClick={load} className="px-3 py-1.5 rounded-lg bg-claude-accent text-white text-xs hover:opacity-90">{i18nService.t('globalHotSearchRetry')}</button>
           </div>
         ) : (
-          <div className="p-3 sm:p-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4 auto-rows-min">
-            {sources.map((src) => {
-              const st = styleOf(src.source);
-              return (
-                <div key={src.source}
-                  className={`group rounded-2xl border dark:border-claude-darkBorder/60 border-claude-border/60 ${st.ring} bg-gradient-to-br ${st.from} ${st.to} dark:bg-claude-darkSurface/40 bg-white/60 backdrop-blur-sm overflow-hidden transition-all hover:shadow-lg`}>
-                  {/* 卡片头 */}
-                  <div className="flex items-center gap-2 px-4 py-3 border-b dark:border-claude-darkBorder/40 border-claude-border/40">
-                    <span className="text-xl">{st.emoji}</span>
-                    <span className="text-sm font-bold dark:text-claude-darkText text-claude-text">{src.source}</span>
-                    <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full dark:bg-claude-darkBg/60 bg-white/70 dark:text-claude-darkTextSecondary text-claude-textSecondary font-medium">
-                      {src.items.length} {i18nService.t('globalHotSearchCount')}
-                    </span>
-                  </div>
-                  {/* 榜单 */}
-                  <ol className="px-2 py-2">
-                    {src.items.map((it, i) => {
-                      const rank = it.rank || (i + 1);
-                      return (
-                        <li key={it.id}>
-                          <button type="button" onClick={() => openLink(it.url)}
-                            className="w-full flex items-start gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
-                            <span className={`shrink-0 w-5 h-5 mt-0.5 rounded-md text-[11px] font-bold flex items-center justify-center ${rankBadge(rank)}`}>
-                              {rank}
-                            </span>
-                            <span className="flex-1 min-w-0">
-                              <span className="block text-[13px] leading-snug dark:text-claude-darkText text-claude-text line-clamp-2 group-hover:text-claude-text dark:group-hover:text-claude-darkText">
-                                {it.title}
-                              </span>
-                              {it.summary && (
-                                <span className="block text-[11px] mt-0.5 dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70 truncate">
-                                  {it.summary}
+          <div className="p-3 sm:p-4">
+            {/* 切换组:点一下,下面一行三个榜单整组切换(抖音/B站/微博 ⇄ 知乎/百度/雪球) */}
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              {TAB_GROUPS.map((g, idx) => (
+                <button key={g.key} type="button" onClick={() => setActiveTab(idx)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                    activeTab === idx
+                      ? 'bg-claude-accent text-white border-transparent shadow'
+                      : 'dark:text-claude-darkTextSecondary text-claude-textSecondary dark:border-claude-darkBorder border-claude-border hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'}`}>
+                  {g.label}
+                </button>
+              ))}
+            </div>
+
+            {/* 当前组的 3 个榜单(一行三个),按组内顺序锚定;某榜抓取失败给占位卡保持布局 */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 auto-rows-min">
+              {TAB_GROUPS[activeTab].sources.map((name) => {
+                const src = bySource.get(name);
+                const st = styleOf(name);
+                const updated = src ? latestUpdated(src.items) : '';
+                return (
+                  <div key={name}
+                    className={`group rounded-2xl border dark:border-claude-darkBorder/60 border-claude-border/60 ${st.ring} bg-gradient-to-br ${st.from} ${st.to} dark:bg-claude-darkSurface/40 bg-white/60 backdrop-blur-sm overflow-hidden transition-all hover:shadow-lg`}>
+                    {/* 卡片头:左 emoji+名;右 最新更新时间 + 条数 */}
+                    <div className="flex items-center gap-2 px-4 py-3 border-b dark:border-claude-darkBorder/40 border-claude-border/40">
+                      <span className="text-xl">{st.emoji}</span>
+                      <span className="text-sm font-bold dark:text-claude-darkText text-claude-text">{name}</span>
+                      <span className="ml-auto flex items-center gap-1.5">
+                        {updated && (
+                          <span title={i18nService.t('globalHotSearchUpdatedAt') || '最新更新时间'}
+                            className="text-[10px] px-1.5 py-0.5 rounded-full dark:bg-claude-darkBg/60 bg-white/70 dark:text-claude-darkTextSecondary text-claude-textSecondary font-medium tabular-nums">
+                            🕐 {updated}
+                          </span>
+                        )}
+                        {src && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full dark:bg-claude-darkBg/60 bg-white/70 dark:text-claude-darkTextSecondary text-claude-textSecondary font-medium">
+                            {src.items.length} {i18nService.t('globalHotSearchCount')}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                    {/* 榜单 / 占位 */}
+                    {src ? (
+                      <ol className="px-2 py-2">
+                        {src.items.map((it, i) => {
+                          const rank = it.rank || (i + 1);
+                          return (
+                            <li key={it.id}>
+                              <button type="button" onClick={() => openLink(it.url)}
+                                className="w-full flex items-start gap-2.5 px-2 py-1.5 rounded-lg text-left hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+                                <span className={`shrink-0 w-5 h-5 mt-0.5 rounded-md text-[11px] font-bold flex items-center justify-center ${rankBadge(rank)}`}>
+                                  {rank}
                                 </span>
-                              )}
-                            </span>
-                          </button>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                </div>
-              );
-            })}
+                                <span className="flex-1 min-w-0">
+                                  <span className="block text-[13px] leading-snug dark:text-claude-darkText text-claude-text line-clamp-2 group-hover:text-claude-text dark:group-hover:text-claude-darkText">
+                                    {it.title}
+                                  </span>
+                                  {it.summary && (
+                                    <span className="block text-[11px] mt-0.5 dark:text-claude-darkTextSecondary/70 text-claude-textSecondary/70 truncate">
+                                      {it.summary}
+                                    </span>
+                                  )}
+                                </span>
+                              </button>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                    ) : (
+                      <div className="px-4 py-10 text-center text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">
+                        {i18nService.t('globalHotSearchEmpty') || '该榜暂无数据'}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
