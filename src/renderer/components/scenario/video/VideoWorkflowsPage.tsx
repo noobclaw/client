@@ -3665,6 +3665,63 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
 ];
 
+// 版式迷你预览:在版式卡里画个小竖屏示意,让用户一眼看出每种版式画面长啥样(纯内联 JSX,不增包体)。
+const TLP_SCREEN: React.CSSProperties = { width: 50, height: 89, flexShrink: 0, background: '#14122a', borderRadius: 8, padding: 5, display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden' };
+const TemplateLayoutPreview: React.FC<{ style: string }> = ({ style }) => {
+  const C = '#d946ef'; // 模板速生品牌色(fuchsia)
+  const bar = (w: string, bg = '#322b50') => ({ height: 5, width: w, borderRadius: 2, background: bg } as React.CSSProperties);
+  if (style === 'rank_list') {
+    return (
+      <div style={TLP_SCREEN}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? C : '#534AB7', flexShrink: 0 }} />
+            <span style={bar('100%')} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (style === 'news_cards') {
+    return (
+      <div style={TLP_SCREEN}>
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ borderLeft: `2px solid ${C}`, paddingLeft: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <span style={bar('85%', '#4a4170')} />
+            <span style={bar('55%')} />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (style === 'quote') {
+    return (
+      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <span style={{ color: C, fontSize: 22, lineHeight: 1 }}>&ldquo;</span>
+        <span style={bar('60%', '#4a4170')} />
+        <span style={bar('42%')} />
+      </div>
+    );
+  }
+  if (style === 'countdown') {
+    return (
+      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <span style={{ color: C, fontSize: 34, fontWeight: 700, lineHeight: 1 }}>1</span>
+        <span style={bar('48%')} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ ...TLP_SCREEN, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, alignContent: 'center' }}>
+      {[0, 1, 2, 3].map((i) => (
+        <div key={i} style={{ background: '#221d3d', borderRadius: 3, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <span style={{ width: 16, height: 6, borderRadius: 2, background: i % 2 ? '#534AB7' : C }} />
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // 模板速生:5 步向导(2026-06-12 把版式 / 内容拆开,看清版式后再填内容比挤在一屏好用)。
 //   Step 1 版式(挑模板:排行榜 / 资讯 / 金句 / 倒数 / 数据看板)
 //   Step 2 内容(标题 + 内容/数据)
@@ -4368,9 +4425,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                 <div className="grid grid-cols-2 gap-2">
                   {TEMPLATE_STYLES.map((s) => (
                     <button key={s.id} type="button" onClick={() => setStyle(s.id)}
-                      className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${style === s.id ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
-                      <div className="font-medium dark:text-white">{s.emoji} {isZh ? s.zh : s.en}</div>
-                      <div className="text-[11px] text-gray-500">{s.hint}</div>
+                      className={`flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border text-sm transition-colors ${style === s.id ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
+                      <TemplateLayoutPreview style={s.id} />
+                      <div className="min-w-0">
+                        <div className="font-medium dark:text-white">{s.emoji} {isZh ? s.zh : s.en}</div>
+                        <div className="text-[11px] text-gray-500">{s.hint}</div>
+                      </div>
                     </button>
                   ))}
                 </div>
