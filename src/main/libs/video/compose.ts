@@ -302,21 +302,33 @@ async function renderClipsBg(
   if (!r.ok || !fs.existsSync(out)) throw new Error(`clips bg failed: ${r.stderr.slice(-400)}`);
 }
 
-/** 单图 Ken Burns 背景。失败抛错(由上层降级到纯色卡)。 */
+/** 单图 Ken Burns 背景。失败抛错(由上层降级到纯色卡)。
+ *  maskBottomBar=true 时在字幕处叠一条局部高斯模糊带(跟视频镜同款),让图文/视频两种模式观感统一。 */
 async function renderImageBg(
   workDir: string, out: string, imagePath: string, dur: number, W: number, H: number,
+  maskBottomBar = false, subtitlePos: SubtitleStyle['position'] = 'lower',
 ): Promise<void> {
   const durFrames = Math.round(dur * FPS);
-  const vChain = [
+  // Ken Burns 链(不带 format,后面按是否加模糊带决定收尾)。
+  const kb = [
     `scale=${W}:${H}:force_original_aspect_ratio=increase`,
     `crop=${W}:${H}`,
     `scale=${W * 2}:${H * 2}`,
     `zoompan=z='min(zoom+0.0012,1.18)':d=${durFrames}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=${FPS}`,
-    'format=yuv420p',
-  ];
+  ].join(',');
+  let fc: string;
+  if (maskBottomBar) {
+    const maskH = Math.round(H * REMIX_MASK_H);
+    const maskCenter = Math.round(H * subtitleCenterRatio(subtitlePos));
+    const maskY = Math.max(0, Math.min(maskCenter - Math.round(maskH / 2), H - maskH));
+    fc = `[0:v]${kb}[vk];[vk]split[vbase][vm];[vm]crop=${W}:${maskH}:0:${maskY},boxblur=24:2[vmb];`
+      + `[vbase][vmb]overlay=0:${maskY},format=yuv420p[v]`;
+  } else {
+    fc = `[0:v]${kb},format=yuv420p[v]`;
+  }
   const args = [
     '-y', '-loop', '1', '-i', imagePath,
-    '-filter_complex', `[0:v]${vChain.join(',')}[v]`,
+    '-filter_complex', fc,
     '-map', '[v]', '-an',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
     '-r', String(FPS), '-pix_fmt', 'yuv420p',
@@ -378,7 +390,7 @@ async function renderSceneBg(
     catch { /* 落到图片/纯色兜底 */ }
   }
   if (scene.imagePath && fs.existsSync(scene.imagePath)) {
-    try { await renderImageBg(workDir, out, scene.imagePath, dur, W, H); return out; }
+    try { await renderImageBg(workDir, out, scene.imagePath, dur, W, H, !!scene.maskBottomBar, subtitlePos); return out; }
     catch { /* 落到纯色兜底 */ }
   }
   await renderColorBg(out, dur, W, H);

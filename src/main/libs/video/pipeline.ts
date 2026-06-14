@@ -1757,8 +1757,9 @@ async function runVideoPipeline(
           audioPath: wantNarration ? audios[i].audioPath : undefined,
           durationSec: sceneDurations[i],
           subtitle: sentence,
-          // 抖音混剪:视频镜底部盖黑条遮原烧死字幕(图片镜/其它模式不盖)。
-          maskBottomBar: hotspotDouyinMode && hasVideo,
+          // 热搜成片:字幕模糊带统一开 —— 视频镜顺带盖原烧死字幕,图片镜纯做字幕底带,
+          //   两种模式观感一致(用户要求统一)。文字卡(无视频无图)走纯色卡,compose 自动不应用。
+          maskBottomBar: input.engine === 'hotspot',
         };
       });
       const outPath = path.join(destDir, outputFileName(v));
