@@ -2122,6 +2122,8 @@ const SUB_FONTSIZE_OPTIONS: { v: number; zh: string; en: string }[] = [
   { v: 42, zh: '小', en: 'S' },
   { v: 52, zh: '中', en: 'M' },
   { v: 64, zh: '大', en: 'L' },
+  { v: 80, zh: '超大', en: 'XL' },
+  { v: 100, zh: '特大', en: 'XXL' },
 ];
 
 // 字幕文字颜色调色板(抄 MoneyPrinterTurbo:几个高对比常用色)。
@@ -3742,6 +3744,10 @@ export const HotspotVideoModal: React.FC<{
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
   const [subtitleColor, setSubtitleColor] = useState<string>(ei.subtitleColor || '#FFFFFF');
   const [subtitleFont, setSubtitleFont] = useState<string>(ei.subtitleFont || '');
+  // 字号 + 描边(以前 hotspot 没给,字幕只能默认大小/白字)。新建默认大号 64 + 黑描边(短视频最醒目);
+  // 编辑保留任务已存值(空串描边 = 用户特意选「无」,?? 不会覆盖)。
+  const [subtitleFontSize, setSubtitleFontSize] = useState<number>(ei.subtitleFontSize ?? 64);
+  const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(ei.subtitleStrokeColor ?? '#000000');
   const [bgmPath, setBgmPath] = useState<string>(ei.bgmPath || '');
   const [outputMode, setOutputMode] = useState<OutputMode>(
     Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
@@ -3784,6 +3790,8 @@ export const HotspotVideoModal: React.FC<{
     subtitlePosition,
     subtitleColor,
     subtitleFont,
+    subtitleFontSize,
+    subtitleStrokeColor: subtitleStrokeColor || undefined,
     bgmPath,
     voice,
     voiceRate,
@@ -3939,15 +3947,32 @@ export const HotspotVideoModal: React.FC<{
               </label>
               {subtitleEnabled && (
                 <Field label={isZh ? '字幕样式' : 'Subtitle'}>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {SUB_POSITION_OPTIONS.map((s) => (
-                      <button key={s.id} type="button" onClick={() => setSubtitlePosition(s.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs border ${subtitlePosition === s.id ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
-                        {isZh ? s.zh : s.en}
-                      </button>
-                    ))}
+                  {/* 字号 */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-500 w-10 shrink-0">{isZh ? '字号' : 'Size'}</span>
+                    <div className="flex flex-wrap gap-1">
+                      {SUB_FONTSIZE_OPTIONS.map((f) => (
+                        <button key={f.v} type="button" onClick={() => setSubtitleFontSize(f.v)}
+                          className={`px-2.5 py-1 rounded-lg text-xs border ${subtitleFontSize === f.v ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                          {isZh ? f.zh : f.en}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  {/* 位置 */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-xs text-gray-500 w-10 shrink-0">{isZh ? '位置' : 'Pos'}</span>
+                    <div className="flex flex-wrap gap-1">
+                      {SUB_POSITION_OPTIONS.map((s) => (
+                        <button key={s.id} type="button" onClick={() => setSubtitlePosition(s.id)}
+                          className={`px-2.5 py-1 rounded-lg text-xs border ${subtitlePosition === s.id ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                          {isZh ? s.zh : s.en}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {/* 字体 + 文字颜色 */}
+                  <div className="flex items-center gap-2 mb-2">
                     <select value={subtitleFont} onChange={(e) => setSubtitleFont(e.target.value)}
                       className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
                       {SUB_FONT_OPTIONS.map((f) => (<option key={f.v || 'default'} value={f.v}>{isZh ? f.zh : f.en}</option>))}
@@ -3958,6 +3983,28 @@ export const HotspotVideoModal: React.FC<{
                           className={`w-6 h-6 rounded-full border-2 ${subtitleColor === c.v ? 'border-amber-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`}
                           style={{ backgroundColor: c.v }} />
                       ))}
+                    </div>
+                  </div>
+                  {/* 描边颜色("无" = 半透明黑底盒) */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500 w-10 shrink-0">{isZh ? '描边' : 'Stroke'}</span>
+                    <div className="flex gap-1.5">
+                      {SUB_STROKE_OPTIONS.map((c) => {
+                        const active = subtitleStrokeColor === c.v;
+                        if (c.v === '') {
+                          return (
+                            <button key="none" type="button" onClick={() => setSubtitleStrokeColor('')}
+                              className={`px-2 h-6 rounded-full text-[11px] border-2 ${active ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400' : 'border-gray-300 dark:border-gray-600 text-gray-500'}`}>
+                              {isZh ? '无' : 'None'}
+                            </button>
+                          );
+                        }
+                        return (
+                          <button key={c.v} type="button" title={isZh ? c.zh : c.en} onClick={() => setSubtitleStrokeColor(c.v)}
+                            className={`w-6 h-6 rounded-full border-2 ${active ? 'border-amber-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`}
+                            style={{ backgroundColor: c.v }} />
+                        );
+                      })}
                     </div>
                   </div>
                 </Field>
