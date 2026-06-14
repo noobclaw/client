@@ -9,7 +9,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: windows-latest
+          # Windows — pinned to windows-2022 (Visual Studio 2022 / v17). As of
+          # 2026-06, windows-latest redirects to windows-2025-vs2026 (Visual
+          # Studio 18), which node-gyp@11 does not recognize ("find VS unknown
+          # version undefined" → native addon build fails). VS 2022 is fully
+          # supported by node-gyp, so pin until node-gyp gains VS18 support.
+          - platform: windows-2022
             target: x86_64-pc-windows-msvc
           # macOS arm64 — Apple Silicon native build on the default
           # macos-latest runner (M-series).
