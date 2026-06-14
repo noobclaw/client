@@ -23,11 +23,13 @@ interface HotItem {
 }
 interface HotSource { source: string; items: HotItem[]; }
 
-// 6 个榜单分成 2 个切换组,每组 3 个【一行三个】。第 1 组(默认)= 抖音 / B站 / 微博。
-// 组内顺序 = 展示顺序;sources 里的名字必须跟后端 HOT_SOURCE_ORDER 精确一致(锚定靠它)。
+// 榜单分成切换组,每组一行展示。第 1 组(默认)= 抖音 / B站 / 微博。
+// 组内顺序 = 展示顺序;sources 里的名字必须跟后端 HOT_SOURCE_ORDER 精确一致(锚定 + 懒加载查询都靠它)。
+// ⚠️ 懒加载:首屏只拉第 1 组,切到别的组才按 ?sources= 拉那组(见 loadTab)。
 const TAB_GROUPS: { key: string; label: string; sources: string[] }[] = [
   { key: 'a', label: '🎵 抖音 · 📺 B站 · 🔥 微博', sources: ['抖音热搜', 'B站热搜', '微博热搜'] },
   { key: 'b', label: '💭 知乎 · 🔍 百度 · 📈 雪球', sources: ['知乎热榜', '百度热搜', '雪球热门股'] },
+  { key: 'c', label: '🌍 HN · Reddit · Google · YouTube', sources: ['Hacker News', 'Reddit', 'Google Trends', 'YouTube Trending'] },
 ];
 
 // 一组里最新的 publishedAt = 该榜「更新时间」。返回 "HH:MM" 短串(取不到返回 '')。
@@ -51,6 +53,11 @@ const SOURCE_STYLE: Record<string, { emoji: string; from: string; to: string; ri
   '抖音热搜':   { emoji: '🎵', from: 'from-fuchsia-500/20', to: 'to-pink-500/5',   ring: 'group-hover:border-fuchsia-500/50' },
   'B站热搜':    { emoji: '📺', from: 'from-pink-400/20',   to: 'to-cyan-400/5',    ring: 'group-hover:border-pink-400/50' },
   '雪球热门股': { emoji: '📈', from: 'from-emerald-500/20', to: 'to-teal-500/5',   ring: 'group-hover:border-emerald-500/50' },
+  // 国外热榜(英文标题,后端 lang=en)
+  'Hacker News':      { emoji: '🟠', from: 'from-orange-500/20', to: 'to-amber-500/5', ring: 'group-hover:border-orange-500/50' },
+  'Reddit':           { emoji: '👽', from: 'from-orange-600/20', to: 'to-red-500/5',   ring: 'group-hover:border-orange-600/50' },
+  'Google Trends':    { emoji: '📊', from: 'from-blue-500/20',   to: 'to-green-500/5', ring: 'group-hover:border-blue-500/50' },
+  'YouTube Trending': { emoji: '▶️', from: 'from-red-500/20',    to: 'to-rose-500/5',  ring: 'group-hover:border-red-500/50' },
 };
 const styleOf = (s: string) => SOURCE_STYLE[s] || { emoji: '🌐', from: 'from-gray-500/20', to: 'to-gray-500/5', ring: 'group-hover:border-claude-accent/50' };
 
@@ -66,28 +73,44 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
   isSidebarCollapsed, onToggleSidebar, onNewChat, updateBadge,
 }) => {
   const isMac = window.electron.platform === 'darwin';
-  const [sources, setSources] = useState<HotSource[]>([]);
-  const [loading, setLoading] = useState(true);
+  // 懒加载:bySource 累积各组拉到的榜单;loadedTabs 记已拉过的组(切回不重拉);loadingTab 当前在拉哪组。
+  const [bySource, setBySource] = useState<Map<string, HotSource>>(new Map());
+  const [loadedTabs, setLoadedTabs] = useState<Set<number>>(new Set());
+  const [loadingTab, setLoadingTab] = useState<number | null>(null);
   const [error, setError] = useState(false);
-  const [activeTab, setActiveTab] = useState(0);   // 0=抖音/B站/微博,1=知乎/百度/雪球
+  const [activeTab, setActiveTab] = useState(0);   // 0=抖音/B站/微博,1=知乎/百度/雪球,2=国外
 
-  const load = useCallback(async () => {
-    setLoading(true); setError(false);
+  // 只拉某一组的源(懒加载)。force=true 用于「刷新」按钮重拉当前组。
+  const loadTab = useCallback(async (idx: number, force = false) => {
+    if (!force && loadedTabs.has(idx)) return;
+    setLoadingTab(idx); setError(false);
     try {
-      const resp = await fetch(`${getBackendApiUrl()}/api/web3/hot-search`);
+      const names = TAB_GROUPS[idx].sources;
+      const qs = encodeURIComponent(names.join(','));
+      const resp = await fetch(`${getBackendApiUrl()}/api/web3/hot-search?sources=${qs}`);
       if (!resp.ok) throw new Error('http ' + resp.status);
       const json = await resp.json();
-      setSources(Array.isArray(json.sources) ? json.sources.filter((s: HotSource) => s.items?.length) : []);
+      const got: HotSource[] = Array.isArray(json.sources) ? json.sources.filter((s: HotSource) => s.items?.length) : [];
+      setBySource((prev) => { const m = new Map(prev); for (const s of got) m.set(s.source, s); return m; });
+      setLoadedTabs((prev) => new Set(prev).add(idx));
     } catch { setError(true); }
-    finally { setLoading(false); }
-  }, []);
+    finally { setLoadingTab(null); }
+  }, [loadedTabs]);
 
-  useEffect(() => { void load(); }, [load]);
+  // 首屏:只拉第 1 组(其余等用户点 tab 再拉)。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadTab(0); }, []);
+
+  const selectTab = (idx: number) => { setActiveTab(idx); void loadTab(idx); };
+  const refresh = () => { void loadTab(activeTab, true); };
 
   const openLink = (url: string) => { if (url) window.electron?.shell?.openExternal?.(url); };
   const title = i18nService.t('globalHotSearch');
-  // 按 source 名建索引 —— tab 切换时靠它锚定到对应榜单(名字跟后端精确一致)。
-  const bySource = new Map(sources.map((s) => [s.source, s] as const));
+
+  const group = TAB_GROUPS[activeTab];
+  const gridColsCls = group.sources.length >= 4 ? 'md:grid-cols-2 xl:grid-cols-4' : 'md:grid-cols-3';
+  const tabLoading = loadingTab === activeTab && !loadedTabs.has(activeTab);
+  const tabError = error && !loadedTabs.has(activeTab);
 
   return (
     <div className="flex flex-col h-full w-full">
@@ -108,9 +131,9 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
           <h1 className="text-sm font-semibold dark:text-claude-darkText text-claude-text flex items-center gap-2">
             <span className="text-base">🔥</span> {title}
           </h1>
-          <button type="button" onClick={load} disabled={loading}
+          <button type="button" onClick={refresh} disabled={loadingTab !== null}
             className="ml-1 text-[11px] px-2 py-0.5 rounded-md dark:text-claude-darkTextSecondary text-claude-textSecondary hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover transition-colors disabled:opacity-50">
-            {loading ? '⟳' : '↻'} {i18nService.t('globalHotSearchRefresh')}
+            {loadingTab !== null ? '⟳' : '↻'} {i18nService.t('globalHotSearchRefresh')}
           </button>
         </div>
         <WindowTitleBar inline />
@@ -118,33 +141,34 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
 
       {/* Content */}
       <div className="flex-1 min-h-0 overflow-y-auto dark:bg-claude-darkBg bg-claude-bg">
-        {loading && sources.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
-            <span className="animate-pulse">🔥 {i18nService.t('globalHotSearchLoading')}</span>
+        <div className="p-3 sm:p-4">
+          {/* 切换组:点一下整组切换;未拉过的组点了才去 loading(懒加载)。tab 始终可点。 */}
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {TAB_GROUPS.map((g, idx) => (
+              <button key={g.key} type="button" onClick={() => selectTab(idx)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                  activeTab === idx
+                    ? 'bg-claude-accent text-white border-transparent shadow'
+                    : 'dark:text-claude-darkTextSecondary text-claude-textSecondary dark:border-claude-darkBorder border-claude-border hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'}`}>
+                {g.label}
+                {loadingTab === idx && <span className="ml-1 animate-pulse">⟳</span>}
+              </button>
+            ))}
           </div>
-        ) : error ? (
-          <div className="h-full flex flex-col items-center justify-center gap-3 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
-            <span>😶‍🌫️ {i18nService.t('globalHotSearchError')}</span>
-            <button onClick={load} className="px-3 py-1.5 rounded-lg bg-claude-accent text-white text-xs hover:opacity-90">{i18nService.t('globalHotSearchRetry')}</button>
-          </div>
-        ) : (
-          <div className="p-3 sm:p-4">
-            {/* 切换组:点一下,下面一行三个榜单整组切换(抖音/B站/微博 ⇄ 知乎/百度/雪球) */}
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              {TAB_GROUPS.map((g, idx) => (
-                <button key={g.key} type="button" onClick={() => setActiveTab(idx)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    activeTab === idx
-                      ? 'bg-claude-accent text-white border-transparent shadow'
-                      : 'dark:text-claude-darkTextSecondary text-claude-textSecondary dark:border-claude-darkBorder border-claude-border hover:bg-claude-surfaceHover dark:hover:bg-claude-darkSurfaceHover'}`}>
-                  {g.label}
-                </button>
-              ))}
-            </div>
 
-            {/* 当前组的 3 个榜单(一行三个),按组内顺序锚定;某榜抓取失败给占位卡保持布局 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4 auto-rows-min">
-              {TAB_GROUPS[activeTab].sources.map((name) => {
+          {tabLoading ? (
+            <div className="py-20 flex items-center justify-center text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
+              <span className="animate-pulse">🔥 {i18nService.t('globalHotSearchLoading')}</span>
+            </div>
+          ) : tabError ? (
+            <div className="py-20 flex flex-col items-center justify-center gap-3 text-sm dark:text-claude-darkTextSecondary text-claude-textSecondary">
+              <span>😶‍🌫️ {i18nService.t('globalHotSearchError')}</span>
+              <button onClick={refresh} className="px-3 py-1.5 rounded-lg bg-claude-accent text-white text-xs hover:opacity-90">{i18nService.t('globalHotSearchRetry')}</button>
+            </div>
+          ) : (
+            /* 当前组的榜单(一行铺开),按组内顺序锚定;某榜抓取失败给占位卡保持布局 */
+            <div className={`grid grid-cols-1 ${gridColsCls} gap-3 sm:gap-4 auto-rows-min`}>
+              {group.sources.map((name) => {
                 const src = bySource.get(name);
                 const st = styleOf(name);
                 const updated = src ? latestUpdated(src.items) : '';
@@ -205,8 +229,8 @@ const GlobalHotSearchPage: React.FC<GlobalHotSearchPageProps> = ({
                 );
               })}
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );
