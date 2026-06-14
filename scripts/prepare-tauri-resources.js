@@ -217,6 +217,22 @@ function main() {
     }
   }
 
+  // 9. Bundled GSAP (vendored client/resources/gsap/gsap.min.js, GreenSock
+  //    standard license). The headless HTML renderer blocks ALL network, so the
+  //    "AI 自由排版" (ai_freeform) templates can't load GSAP from a CDN — we inline
+  //    this source string into the scene HTML at render time. gsapAsset.ts resolves
+  //    it at runtime via getResourcesPath()/gsap/gsap.min.js.
+  {
+    const gsapSrc = path.join(ROOT, 'resources', 'gsap');
+    const gsapDest = path.join(RESOURCES_DIR, 'gsap');
+    if (fs.existsSync(gsapSrc)) {
+      const count = copyDirRecursive(gsapSrc, gsapDest);
+      console.log(`  gsap: ${count} files`);
+    } else {
+      console.warn('  gsap: NOT FOUND — ai_freeform templates that use GSAP timelines will fail to render.');
+    }
+  }
+
   console.log(`Done. Resources prepared in ${RESOURCES_DIR}`);
 }
 

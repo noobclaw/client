@@ -22,8 +22,10 @@ function apiBase(): string {
   return process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
 }
 
-/** 模板版式枚举(card 向导让用户选)。 */
-export type TemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board';
+/** 模板版式枚举(card 向导让用户选)。
+ *  ai_freeform = 「AI 自由排版」:AI 写整页 HTML+CSS(+可选 GSAP),走 freeformWriter +
+ *  体检迭代闭环,不走固定模板渲染。其余 5 个是固定精品模板。 */
+export type TemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board' | 'ai_freeform';
 
 /** 「模板速生」任务输入子对象。 */
 export interface TemplateOptions {
@@ -131,7 +133,18 @@ function pickTemplateVoiceTone(): string {
   return POOL[Math.floor(Math.random() * POOL.length)];
 }
 
-async function callDeepSeekData(system: string, user: string, temperature?: number): Promise<ChatResult> {
+/**
+ * 走 NoobClaw 服务端 DeepSeek 代理跑一次 chat completion(JSON 模式)。
+ * 导出供 freeformWriter 复用同一条计费/鉴权口径(别再各写一份)。
+ * maxTokens 默认 2400;freeform 产整页 HTML 需要更大,调用方可放大。
+ */
+export async function callNoobclawChat(
+  system: string, user: string, opts?: { temperature?: number; maxTokens?: number },
+): Promise<ChatResult> {
+  return callDeepSeekData(system, user, opts?.temperature, opts?.maxTokens);
+}
+
+async function callDeepSeekData(system: string, user: string, temperature?: number, maxTokens?: number): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
   const ctrl = new AbortController();
@@ -141,7 +154,7 @@ async function callDeepSeekData(system: string, user: string, temperature?: numb
       model: 'noobclawai-chat',
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       stream: false,
-      max_tokens: 2400,
+      max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 2400,
       response_format: { type: 'json_object' },
     };
     // 创作类(voiceScript)显式拉高温度提升多样性;纯数据 items 抽取不传 = 用默认低温保稳定。

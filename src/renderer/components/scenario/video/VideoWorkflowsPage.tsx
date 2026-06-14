@@ -3658,6 +3658,7 @@ const VideoScenarioEntryCard: React.FC<{
 //  2 步向导:内容(版式 + 标题 + 数据)→ 出片(赛道 + 品牌色 + 时长 + 定时)
 // ════════════════════════════════════════════════════════════════════
 const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; emoji: string; hint: string }> = [
+  { id: 'ai_freeform', zh: 'AI 自由排版', en: 'AI freeform', emoji: '🪄', hint: 'AI 按内容自动设计画面,不限版式(最灵活)' },
   { id: 'rank_list', zh: '排行榜 / 榜单', en: 'Rank list', emoji: '🏆', hint: '涨幅榜、热门榜、Top N' },
   { id: 'news_cards', zh: '资讯快讯', en: 'News cards', emoji: '📰', hint: '今日要点、公告、日报' },
   { id: 'quote', zh: '金句 / 语录', en: 'Quote', emoji: '✍️', hint: '观点、知识点、避坑' },
@@ -3670,6 +3671,17 @@ const TLP_SCREEN: React.CSSProperties = { width: 50, height: 89, flexShrink: 0, 
 const TemplateLayoutPreview: React.FC<{ style: string }> = ({ style }) => {
   const C = '#d946ef'; // 模板速生品牌色(fuchsia)
   const bar = (w: string, bg = '#322b50') => ({ height: 5, width: w, borderRadius: 2, background: bg } as React.CSSProperties);
+  if (style === 'ai_freeform') {
+    // 自由排版没有固定形状 —— 用「✨ + 错落不规则块」示意「AI 任意排版」。
+    return (
+      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+        <span style={{ color: C, fontSize: 20, lineHeight: 1 }}>✨</span>
+        <span style={bar('70%', '#4a4170')} />
+        <span style={{ ...bar('40%'), alignSelf: 'flex-start', marginLeft: 6 }} />
+        <span style={{ ...bar('55%'), alignSelf: 'flex-end', marginRight: 5 }} />
+      </div>
+    );
+  }
   if (style === 'rank_list') {
     return (
       <div style={TLP_SCREEN}>

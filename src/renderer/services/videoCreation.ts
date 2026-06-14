@@ -16,8 +16,9 @@ export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
 
 export type SubtitlePosition = 'top' | 'center' | 'lower' | 'bottom';
 
-/** 模板速生版式(与主进程 templateHtmlWriter.TemplateStyle 对齐)。 */
-export type VideoTemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board';
+/** 模板速生版式(与主进程 templateHtmlWriter.TemplateStyle 对齐)。
+ *  ai_freeform = 「AI 自由排版」:AI 写整页 HTML(走 freeformWriter + 体检迭代),不限固定版式。 */
+export type VideoTemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board' | 'ai_freeform';
 /** 模板速生任务配置(IPC 传到主进程 template-pipeline;字段需与主进程 TemplateOptions 一致)。 */
 export interface VideoTemplateOptions {
   style: VideoTemplateStyle;

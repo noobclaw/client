@@ -24,10 +24,13 @@ import {
   ProgressTracker, resolveOutputDirs, outputFileName, throwIfAborted,
   type VideoCreationInput, type VideoCreationResult, type ProgressEmitter,
 } from './pipeline';
-import { generateTemplateData, detectTemplateLang } from './templateHtmlWriter';
+import { generateTemplateData, detectTemplateLang, type ContentLang } from './templateHtmlWriter';
 import { getVideoConfig } from './videoConfig';
 import { renderTemplate, pageSizeFor, calcPageCount, calcPageRanges, type TemplateSpec } from './templateLibrary';
-import { renderHtmlToVideo, resolveHeadlessBrowser } from './htmlVideoRenderer';
+import { renderHtmlToVideo, resolveHeadlessBrowser, auditHtml } from './htmlVideoRenderer';
+import { generateFreeformScene, type FreeformResult } from './freeformWriter';
+import { wrapTemplateHtml } from './templateAnim';
+import { loadGsapSource } from './gsapAsset';
 import { synthesize, getLastTtsError, getVoiceFallbacks } from './tts';
 import { getTtsVoice } from './config';
 import { chargeMode1Video, refundMode1Video } from './billing';
@@ -89,6 +92,86 @@ async function ttsWithFallback(
   return null;
 }
 
+/** 自由排版「写 → 体检 → 修」迭代上限。每轮 = 1 次 AI 调用 + 1 次无头体检(~1-2s)。 */
+const MAX_FREEFORM_ATTEMPTS = 3;
+
+interface FreeformHtmlArgs {
+  dataText: string;
+  title?: string;
+  lang: ContentLang;
+  brandColor: string;
+  accentColor?: string;
+  durationSec: number;
+  fps: number;
+  captionCues?: CaptionCue[];
+  watermark?: string;
+}
+
+/**
+ * 「AI 自由排版」产 HTML 的迭代闭环:AI 写整页 → 无头浏览器体检(溢出/裁切/重叠/动画/确定性)
+ * → 把问题喂回 AI 重写,最多 MAX_FREEFORM_ATTEMPTS 轮。体检通过即返回;轮次耗尽用最后一版。
+ * AI 整个挂了(走纯代码兜底)就不再循环。永远返回可渲染 HTML。
+ */
+async function produceFreeformHtml(
+  args: FreeformHtmlArgs,
+  tracker: ProgressTracker,
+  onCost: (tokens: number, usd: number) => void,
+): Promise<string> {
+  const gsapSource = loadGsapSource();
+  const gsapAvailable = !!gsapSource;
+  const captionsOn = !!(args.captionCues && args.captionCues.length);
+  let prev: FreeformResult | null = null;
+  let lastIssues: string[] = [];
+  let lastHtml = '';
+  for (let attempt = 1; attempt <= MAX_FREEFORM_ATTEMPTS; attempt++) {
+    tracker.progress(attempt === 1
+      ? `🎨 AI 自由排版生成中…${gsapAvailable ? '(GSAP 可用)' : ''}`
+      : `🎨 自由排版修订第 ${attempt} 轮(修上轮 ${lastIssues.length} 个问题)…`);
+    const scene = await generateFreeformScene({
+      dataText: args.dataText,
+      title: args.title,
+      lang: args.lang,
+      brandColor: args.brandColor,
+      accentColor: args.accentColor,
+      durationSec: args.durationSec,
+      captionsOn,
+      gsapAvailable,
+      fixHint: prev
+        ? { prevCss: prev.css, prevBodyHtml: prev.bodyHtml, prevSetupScript: prev.setupScript, issues: lastIssues }
+        : undefined,
+    });
+    onCost(scene.tokens, scene.costUsd);
+    const useGsap = !!scene.setupScript && gsapAvailable;
+    const html = wrapTemplateHtml({
+      bodyHtml: scene.bodyHtml,
+      css: scene.css,
+      brandColor: args.brandColor,
+      durationSec: args.durationSec,
+      fps: args.fps,
+      captionCues: args.captionCues,
+      watermark: args.watermark,
+      gsapSource: useGsap ? gsapSource! : undefined,
+      setupScript: useGsap ? scene.setupScript : undefined,
+    });
+    lastHtml = html;
+    const audit = await auditHtml(html);
+    if (audit.ok) {
+      tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮)${scene.source === 'fallback' ? ' · 兜底版' : ''}${useGsap ? ' · GSAP' : ''}`);
+      return html;
+    }
+    tracker.progress(`🔎 体检发现 ${audit.issues.length} 个问题:${audit.issues.slice(0, 3).join(' / ')}${audit.issues.length > 3 ? ' …' : ''}`);
+    // AI 整个挂了(走了纯代码兜底)→ 再循环也没意义,直接用兜底版出片
+    if (scene.source === 'fallback') {
+      tracker.progress('⚠️ AI 不可用,采用纯代码兜底排版');
+      return html;
+    }
+    prev = scene;
+    lastIssues = audit.issues;
+  }
+  tracker.progress(`⚠️ 自由排版体检 ${MAX_FREEFORM_ATTEMPTS} 轮仍有小瑕疵,采用最后一版出片`);
+  return lastHtml;
+}
+
 export async function runTemplatePipeline(
   input: VideoCreationInput,
   emit?: ProgressEmitter,
@@ -129,6 +212,8 @@ export async function runTemplatePipeline(
     tracker.start('data', `输出目录:${taskDir}`);
     const lang = detectTemplateLang(`${tpl.dataText} ${tpl.title || ''}`);
     const wantNarration = tpl.narration === true;
+    // 「AI 自由排版」:AI 写整页 HTML(freeformWriter + 体检闭环),不走固定模板渲染、不分页。
+    const isFreeform = tpl.style === 'ai_freeform';
     const vcfg = await getVideoConfig();
     // 估算 items 数量(就是 dataText 的非空行数,clamp 到模板上限 12),
     // 算 pageMeta 用 —— 让 AI 知道画面分几页、每页几条,据此分段输出 voiceSegments。
@@ -137,23 +222,32 @@ export async function runTemplatePipeline(
     const pageSize = pageSizeFor(tpl.style);
     const estPageCount = calcPageCount(estItemCount, pageSize);
     const pageRanges = calcPageRanges(estItemCount, pageSize);
-    const data = await generateTemplateData(
-      {
-        style: tpl.style,
-        title: tpl.title,
-        dataText: tpl.dataText,
-        // 模板速生不再用 track —— 它对 AI 排版/口播稿都没指导意义(2026-06-12 删字段);
-        // 编辑老任务时 input.track 可能还在,但生成不参考。
-        lang,
-        needVoiceScript: wantNarration,
-        // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉不需要
-        pageMeta: wantNarration ? { pageCount: estPageCount, pageRanges } : undefined,
-      },
-      // 服务端可调 prompt(只覆盖纯数据版;needVoiceScript 时仍用本地的强约束版,避免改坏)
-      wantNarration ? undefined : vcfg.templateDataSystemPrompt,
-    );
-    tracker.addTokens(data.tokens, data.costUsd);
-    tracker.done('data', data.source === 'ai' ? '✅ AI 已整理数据 · 精品模板' : '✅ 数据已整理 · 精品模板');
+    let data: Awaited<ReturnType<typeof generateTemplateData>>;
+    if (isFreeform && !wantNarration) {
+      // 自由排版 + 无配音:不需要抽 items / 口播稿,AI 稍后直接读原文排版,省一次 AI 调用。
+      data = { items: [], source: 'fallback', tokens: 0, costUsd: 0 } as Awaited<ReturnType<typeof generateTemplateData>>;
+      tracker.done('data', '✅ 自由排版 · 跳过数据抽取(AI 将直接读原文)');
+    } else {
+      data = await generateTemplateData(
+        {
+          style: tpl.style,
+          title: tpl.title,
+          // 模板速生不再用 track —— 它对 AI 排版/口播稿都没指导意义(2026-06-12 删字段);
+          // 编辑老任务时 input.track 可能还在,但生成不参考。
+          dataText: tpl.dataText,
+          lang,
+          needVoiceScript: wantNarration,
+          // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉/自由排版不需要
+          pageMeta: (wantNarration && !isFreeform) ? { pageCount: estPageCount, pageRanges } : undefined,
+        },
+        // 服务端可调 prompt(只覆盖纯数据版;needVoiceScript 时仍用本地的强约束版,避免改坏)
+        wantNarration ? undefined : vcfg.templateDataSystemPrompt,
+      );
+      tracker.addTokens(data.tokens, data.costUsd);
+      tracker.done('data', data.source === 'ai'
+        ? (isFreeform ? '✅ AI 已生成口播稿 · 自由排版' : '✅ AI 已整理数据 · 精品模板')
+        : (isFreeform ? '✅ 口播稿已就绪 · 自由排版' : '✅ 数据已整理 · 精品模板'));
+    }
 
     // ── STEP 2:配音(开了才跑;关了直接跳过)──────────────────────────
     throwIfAborted(signal);
@@ -223,6 +317,7 @@ export async function runTemplatePipeline(
     const durationSec = wantNarration && realDurationSec > 0
       ? Math.max(3, realDurationSec + 0.4)
       : clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
+    const fps = tpl.fps && tpl.fps > 0 ? tpl.fps : 30;
 
     // 平台基础费预扣(对齐 stock 模式定价口径,单条约 $0.09~$0.18,服务端权威值)。
     // 在 AI 数据/配音已经实扣 token 之后、渲染【真起 ffmpeg】之前调:
@@ -243,53 +338,70 @@ export async function runTemplatePipeline(
     tracker.addTokens(charge.chargedTokens || 0, charge.feeUsd || 0);
     tracker.progress(`💎 平台基础费已预扣 ${charge.chargedTokens || 0} 积分（≈$${(charge.feeUsd || 0).toFixed(2)}），失败将自动退回`);
 
-    // ── 音画同步:由 voiceSegments + 真实音频时长反算每页时间窗 ──
-    //
-    // 原理:edge-tts 朗读速度恒定 → 段字符数比例 ≈ 段时间比例。我们把 AI 切好的
-    // voiceSegments(每段对应一页画面)按字符长度比例分配真实音频时长,得到每页
-    // 的 [startSec, durSec],传给 templateLibrary 替代均分,实现配音念到第 N 段
-    // 时画面正好在第 N 页。
-    //
-    // 触发条件(任一不满足就 fallback 到均分):
-    //   1) 开了配音,且 TTS 成功(realDurationSec > 0)
-    //   2) AI 返回了 voiceSegments(且长度等于实际 items 分页后的页数)
-    //   3) 实际 items 的分页页数 == AI 给的 segments 数量
-    const actualPageSize = pageSizeFor(tpl.style);
-    const actualPageCount = calcPageCount(data.items.length, actualPageSize);
-    let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
-    if (wantNarration && realDurationSec > 0 && data.voiceSegments && data.voiceSegments.length === actualPageCount) {
-      const segs = data.voiceSegments;
-      const totalChars = segs.reduce((s, x) => s + x.length, 0);
-      if (totalChars > 0) {
-        // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
-        const usable = Math.max(2.0, realDurationSec - 0.6);
-        let cursor = 0.3;
-        pageTimings = segs.map((seg) => {
-          const dur = (seg.length / totalChars) * usable;
-          const startSec = cursor;
-          cursor += dur;
-          return { startSec, durSec: dur };
-        });
-        tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页配上 ${segs.length} 段配音`);
+    const brandColor = /^#[0-9a-f]{6}$/i.test(tpl.brandColor || '') ? tpl.brandColor! : '#f0b90b';
+    let html: string;
+    if (isFreeform) {
+      // ── AI 自由排版:写 → 体检 → 修,迭代闭环(没有视觉模型,靠无头浏览器自查)──
+      html = await produceFreeformHtml({
+        dataText: tpl.dataText,
+        title: data.title || tpl.title,
+        lang,
+        brandColor,
+        accentColor: tpl.accentColor,
+        durationSec,
+        fps,
+        captionCues,
+        watermark: tpl.watermark,
+      }, tracker, (tk, usd) => tracker.addTokens(tk, usd));
+    } else {
+      // ── 固定精品模板:音画同步(voiceSegments + 真实音频时长反算每页时间窗)+ 渲染 ──
+      //
+      // 原理:edge-tts 朗读速度恒定 → 段字符数比例 ≈ 段时间比例。我们把 AI 切好的
+      // voiceSegments(每段对应一页画面)按字符长度比例分配真实音频时长,得到每页
+      // 的 [startSec, durSec],传给 templateLibrary 替代均分,实现配音念到第 N 段
+      // 时画面正好在第 N 页。
+      //
+      // 触发条件(任一不满足就 fallback 到均分):
+      //   1) 开了配音,且 TTS 成功(realDurationSec > 0)
+      //   2) AI 返回了 voiceSegments(且长度等于实际 items 分页后的页数)
+      //   3) 实际 items 的分页页数 == AI 给的 segments 数量
+      const actualPageSize = pageSizeFor(tpl.style);
+      const actualPageCount = calcPageCount(data.items.length, actualPageSize);
+      let pageTimings: Array<{ startSec: number; durSec: number }> | undefined;
+      if (wantNarration && realDurationSec > 0 && data.voiceSegments && data.voiceSegments.length === actualPageCount) {
+        const segs = data.voiceSegments;
+        const totalChars = segs.reduce((s, x) => s + x.length, 0);
+        if (totalChars > 0) {
+          // 留 0.3s 入场 + 0.3s 尾留白(跟 paginate 兜底分支同口径)
+          const usable = Math.max(2.0, realDurationSec - 0.6);
+          let cursor = 0.3;
+          pageTimings = segs.map((seg) => {
+            const dur = (seg.length / totalChars) * usable;
+            const startSec = cursor;
+            cursor += dur;
+            return { startSec, durSec: dur };
+          });
+          tracker.progress(`🎬 音画同步就绪 · ${actualPageCount} 页配上 ${segs.length} 段配音`);
+        }
+      } else if (wantNarration && actualPageCount > 1) {
+        // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
+        tracker.progress(`⚠️ AI 未按页切分配音,画面将按时长均分(${actualPageCount} 页 × ${(durationSec / actualPageCount).toFixed(1)}s)`);
       }
-    } else if (wantNarration && actualPageCount > 1) {
-      // 开了配音但 segments 没拿到/对不上 → 提示用户后会走均分,画面跟配音不严格对齐
-      tracker.progress(`⚠️ AI 未按页切分配音,画面将按时长均分(${actualPageCount} 页 × ${(durationSec / actualPageCount).toFixed(1)}s)`);
-    }
 
-    const spec: TemplateSpec = {
-      style: tpl.style,
-      title: data.title || tpl.title,
-      subtitle: data.subtitle,
-      items: data.items,
-      brandColor: /^#[0-9a-f]{6}$/i.test(tpl.brandColor || '') ? tpl.brandColor! : '#f0b90b',
-      accentColor: tpl.accentColor,
-      durationSec,
-      fps: tpl.fps && tpl.fps > 0 ? tpl.fps : 30,
-      captions: captionCues,
-      pageTimings,
-    };
-    const html = renderTemplate(spec);
+      const spec: TemplateSpec = {
+        style: tpl.style,
+        title: data.title || tpl.title,
+        subtitle: data.subtitle,
+        items: data.items,
+        brandColor,
+        accentColor: tpl.accentColor,
+        durationSec,
+        fps,
+        captions: captionCues,
+        pageTimings,
+      };
+      html = renderTemplate(spec);
+    }
     try { fs.writeFileSync(path.join(destDir, '模板.html'), html, 'utf8'); } catch { /* non-fatal */ }
 
     // BGM 解析(本地 / 内置 / 云端;失败兜底为无 BGM,绝不阻塞出片)
@@ -301,7 +413,7 @@ export async function runTemplatePipeline(
     await renderHtmlToVideo({
       html,
       width: 1080, height: 1920,
-      fps: spec.fps, durationSec: spec.durationSec,
+      fps, durationSec,
       outPath,
       narrationPath: realNarrationPath,
       narrationVolume: 1.0,

@@ -61,6 +61,15 @@ export interface ProbeHtmlResult {
   fps?: number;
 }
 
+export interface AuditHtmlResult {
+  /** true = 没发现布局问题(可直接出片);false = issues 里有要修的。 */
+  ok: boolean;
+  /** 结构化问题清单(中文,可直接喂回 AI 让它改)。 */
+  issues: string[];
+  /** 致命:契约都不成立(没 __nbc.seek / DURATION),issues 也会带一条。 */
+  fatal?: string;
+}
+
 export interface HeadlessBrowser {
   path: string;
   kind: 'chrome' | 'edge' | 'chromium';
@@ -469,6 +478,103 @@ export async function renderHtmlToVideo(opts: RenderHtmlToVideoOptions): Promise
   } catch (err) {
     if (started) encoder.kill();
     throw err;
+  } finally {
+    await session.close();
+  }
+}
+
+// ── 布局体检 JS(在页面里跑,返回中文问题清单)──────────────────────────────
+// 这是「AI 自由排版」没有视觉模型时的【眼睛】:纯 getBoundingClientRect/getComputedStyle,
+// 确定性、免费。抓的都是「效果差」的元凶:溢出、文字被裁、元素重叠、出场动画没接上。
+const AUDIT_JS = `(function(){
+  var W=1080,H=1920,issues=[];
+  var stage=document.getElementById('stage')||document.body;
+  function cs(el){return getComputedStyle(el);}
+  function vis(el){var s=cs(el);if(s.display==='none'||s.visibility==='hidden')return false;if(parseFloat(s.opacity||'1')<0.05)return false;var r=el.getBoundingClientRect();return r.width>=2&&r.height>=2;}
+  function ownText(el){var t='';for(var i=0;i<el.childNodes.length;i++){if(el.childNodes[i].nodeType===3)t+=el.childNodes[i].textContent;}return t.trim();}
+  function isFx(el){var c=' '+(el.className&&el.className.baseVal!==undefined?el.className.baseVal:(''+el.className))+' ';return /\\b(bg-grid|bg-glow|fx-|caption-track|watermark)\\b/.test(c)||el.id==='caption-track'||el.id==='watermark';}
+  var all=stage.querySelectorAll('*'),texts=[];
+  for(var i=0;i<all.length;i++){
+    var el=all[i];if(isFx(el)||!vis(el))continue;
+    var r=el.getBoundingClientRect(),ot=ownText(el);
+    // 1) 带文字的元素超出画布
+    if(ot&&(r.left<-10||r.top<-10||r.right>W+10||r.bottom>H+10)){
+      issues.push('元素超出画布: "'+ot.slice(0,16)+'" 位置['+Math.round(r.left)+','+Math.round(r.top)+'→'+Math.round(r.right)+','+Math.round(r.bottom)+'] 超出 1080x1920');
+    }
+    // 2) 文字被容器裁切(overflow hidden 把内容切了)
+    var ov=cs(el);var ovs=(ov.overflow||'')+(ov.overflowX||'')+(ov.overflowY||'');
+    if(/hidden|clip/.test(ovs)&&ot){
+      if(el.scrollWidth>el.clientWidth+4||el.scrollHeight>el.clientHeight+4){
+        issues.push('文字被裁切: "'+ot.slice(0,16)+'" 内容'+el.scrollWidth+'x'+el.scrollHeight+'>容器'+el.clientWidth+'x'+el.clientHeight+'(放大容器或缩小字号/换行)');
+      }
+    }
+    // 3) 出场动画没接上:带 data-anim 且无退场,settled 时却几乎不可见 → 时序写错
+    if(el.hasAttribute('data-anim')&&!el.hasAttribute('data-exit-start')&&ot){
+      if(parseFloat(ov.opacity||'1')<0.3){
+        issues.push('出场动画没接上(settled 时仍透明): "'+ot.slice(0,16)+'" — 检查 data-start/data-duration 是否落在 [0,DURATION]');
+      }
+    }
+    if(ot)texts.push({r:r,t:ot,el:el});
+  }
+  // 4) 文字元素两两显著重叠(取叶子文字,父链包含关系跳过)
+  for(var a=0;a<texts.length;a++)for(var b=a+1;b<texts.length;b++){
+    var A=texts[a],B=texts[b];
+    if(A.el.contains(B.el)||B.el.contains(A.el))continue;
+    var ix=Math.max(0,Math.min(A.r.right,B.r.right)-Math.max(A.r.left,B.r.left));
+    var iy=Math.max(0,Math.min(A.r.bottom,B.r.bottom)-Math.max(A.r.top,B.r.top));
+    var inter=ix*iy;if(inter<=0)continue;
+    var small=Math.min(A.r.width*A.r.height,B.r.width*B.r.height);
+    if(small>0&&inter/small>0.4){
+      issues.push('文字重叠: "'+A.t.slice(0,12)+'" 与 "'+B.t.slice(0,12)+'" 重叠'+Math.round(inter/small*100)+'%');
+    }
+  }
+  // 5) 画面太空(可见文字元素 < 1 条)
+  if(texts.length<1)issues.push('画面几乎空白(settled 时没有可见文字内容)— 检查动画时序/元素是否被裁没');
+  // 去重 + 截断
+  var seen={},out=[];for(var k=0;k<issues.length;k++){if(!seen[issues[k]]){seen[issues[k]]=1;out.push(issues[k]);}if(out.length>=12)break;}
+  return out;
+})()`;
+
+/**
+ * 布局体检:启短命无头实例,seek 到 settled 时刻(DURATION*0.92,进场已完成、尾段稳定),
+ * 跑 AUDIT_JS 查溢出/裁切/重叠/动画没接上;再做【确定性自检】(同一帧渲两次像素必须一致,
+ * 抓 AI 偷用 random/时钟)。给 freeform 迭代闭环当「眼睛」。绝不抛(异常 → ok:false + 原因)。
+ */
+export async function auditHtml(html: string): Promise<AuditHtmlResult> {
+  const width = 1080, height = 1920;
+  const session = new HeadlessSession();
+  try {
+    await session.launch(width, height);
+    await session.navigateHtml(html);
+    await session.waitReady();
+    const contract = await session.readContract();
+    if (!contract.ok) {
+      return { ok: false, fatal: contract.reason, issues: [`渲染契约不成立(${contract.reason || '无 __nbc.seek/DURATION'})— 必须保证 window.__nbc.seek(t) 与 window.DURATION 可用`] };
+    }
+    const dur = contract.durationSec || 5;
+    const settled = Math.max(0.2, dur * 0.92);
+    const issues: string[] = [];
+    // 取 t=0 与 settled 两帧:① 必须不同(否则没动画,静态图)
+    await session.seekAt(0);
+    const f0 = await session.shot(width, height, 8000);
+    // 确定性自检:settled 帧渲两次必须字节一致(抓 random/时钟)
+    await session.seekAt(settled);
+    const f1 = await session.shot(width, height, 8000);
+    await session.seekAt(settled);
+    const f2 = await session.shot(width, height, 8000);
+    if (f0.length === f1.length && f0.equals(f1)) {
+      issues.push('画面没有动画(t=0 与结尾完全一样)— 给元素加 data-* 进场动画或 GSAP 时间线');
+    }
+    if (!(f1.length === f2.length && f1.equals(f2))) {
+      issues.push('动画非确定性(同一时间点渲两次画面不一致)— 禁止 Date/Math.random/setInterval/requestAnimationFrame,只能用 data-* 或 paused GSAP 时间线');
+    }
+    // 布局体检(在 settled 帧上)
+    const r = await session.cmd('Runtime.evaluate', { expression: AUDIT_JS, returnByValue: true });
+    const layoutIssues: string[] = Array.isArray(r?.result?.value) ? r.result.value : [];
+    for (const x of layoutIssues) if (typeof x === 'string') issues.push(x);
+    return { ok: issues.length === 0, issues: issues.slice(0, 12) };
+  } catch (e) {
+    return { ok: false, issues: [`体检异常:${String((e as Error)?.message || e)}`] };
   } finally {
     await session.close();
   }

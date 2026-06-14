@@ -261,6 +261,18 @@ export const NBC_RUNTIME_JS = `(function(){
       // 4. data-loop 环境动画(背景 blob / 光泽扫过 / 标题故障抖动等,持续循环)
       var loops = document.querySelectorAll('[data-loop]');
       for(var m=0;m<loops.length;m++) applyLoop(loops[m], t);
+      // 5. GSAP paused 时间线(「AI 自由排版」ai_freeform 用):totalTime(t) 确定性 seek。
+      //    AI 在 setup 脚本里建 gsap.timeline({paused:true}),存进 window.__timelines。
+      //    我们逐条把 playhead 推到 t(超出总时长就钉在末帧),纯函数、无壁钟、可倒带 ——
+      //    跟 data-* 协议同一个 seek 入口,音画/字幕对齐误差仍为 0。
+      if(window.__timelines){
+        for(var tk in window.__timelines){
+          var gtl = window.__timelines[tk];
+          if(gtl && typeof gtl.totalTime==='function'){
+            try{ var td=(typeof gtl.totalDuration==='function')?gtl.totalDuration():t; gtl.totalTime(t>td?td:t); }catch(e){}
+          }
+        }
+      }
     }
   };
   window.__nbc = nbc;
@@ -310,6 +322,18 @@ export interface WrapHtmlOptions {
   fps: number;
   captionCues?: CaptionCue[];
   watermark?: string;
+  /**
+   * 「AI 自由排版」用:内联的 GSAP 源码字符串(gsapAsset.loadGsapSource())。
+   * 非空时注入到 <head> 顶部,让 setupScript / AI body 能用 window.gsap。
+   * 网络封死下不能走 CDN,必须内联。
+   */
+  gsapSource?: string;
+  /**
+   * 「AI 自由排版」用:AI 产的时间线 setup 脚本。在 DOM + GSAP 都就绪后、NBC seek
+   * 运行时之前执行 —— 通常做的事是建若干 `gsap.timeline({paused:true})` 存进
+   * window.__timelines,供 __nbc.seek(t) 逐帧 totalTime(t)。
+   */
+  setupScript?: string;
 }
 
 export function wrapTemplateHtml(opts: WrapHtmlOptions): string {
@@ -321,13 +345,21 @@ export function wrapTemplateHtml(opts: WrapHtmlOptions): string {
   //   #quote-area 自动让出底部安全区(见 templateBaseCss 里 .has-caption 选择器)。
   //   否则 caption-track 会跟列表/网格底部重叠,字幕把最后一条数据挡住。
   const stageClass = captionTrack ? ' class="has-caption"' : '';
-  return `<!doctype html><html><head><meta charset="utf-8"><style>${templateBaseCss(opts.brandColor)}${opts.css}</style></head>
+  // GSAP 内联(AI 自由排版):放 <head>,保证 body 脚本 / setupScript 执行时 window.gsap 已就绪。
+  const gsapTag = opts.gsapSource ? `<script>${opts.gsapSource}</script>` : '';
+  // AI 的时间线 setup:在 body 之后(DOM 已在)、NBC seek 运行时之前跑。包 try/catch,
+  // 单条 setup 失败不至于让整页 __nbc 起不来(probe/audit 会照出动画没接上)。
+  const setupTag = opts.setupScript
+    ? `<script>try{(function(){${opts.setupScript}\n})();}catch(e){}</script>`
+    : '';
+  return `<!doctype html><html><head><meta charset="utf-8">${gsapTag}<style>${templateBaseCss(opts.brandColor)}${opts.css}</style></head>
 <body><div id="stage"${stageClass}>
 <div class="bg-grid"></div><div class="bg-glow"></div>
 ${opts.bodyHtml}
 ${captionTrack}
 ${watermark}
 </div>
+${setupTag}
 <script>
 window.FPS=${opts.fps};
 window.DURATION=${opts.durationSec};
