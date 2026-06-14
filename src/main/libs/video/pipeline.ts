@@ -1505,6 +1505,15 @@ async function runVideoPipeline(
         if (signal?.aborted) break;
         const dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
         if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
+        // 下载的源视频留档到输出目录「素材」子目录(assetDir 是临时目录、结尾会清掉,不留档就丢了)。
+        //   跟 stock / 旧 collectDouyinClips 一致 —— 用户要能在成片旁边看到/复用原素材。
+        try {
+          const matDir = path.join(destDir, '素材');
+          fs.mkdirSync(matDir, { recursive: true });
+          dy.paths.forEach((src, i) => {
+            try { fs.copyFileSync(src, path.join(matDir, `素材${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+          });
+        } catch { /* 留档失败不影响出片 */ }
         // 切片是逐段 ffmpeg 重编码(慢,几十秒~分钟级),逐个源视频报进度,别让用户对着空白卡很久。
         tracker.progress(`✂️ 下载完成,开始切片(${dy.paths.length} 个源视频 → 切成多段铺镜)…`);
         const segs: string[] = [];
@@ -1579,8 +1588,17 @@ async function runVideoPipeline(
       for (const term of searchTerms) {
         if (signal?.aborted) break;
         const dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
-        if (dy.paths.length) poolByTerm.set(term, dy.paths);
-        else tracker.progress(`   ⚠️「${term}」没取到图文图`);
+        if (dy.paths.length) {
+          poolByTerm.set(term, dy.paths);
+          // 下载的图文图留档到输出目录「素材」子目录(assetDir 临时目录结尾会清,不留档就丢了)。
+          try {
+            const matDir = path.join(destDir, '素材');
+            fs.mkdirSync(matDir, { recursive: true });
+            dy.paths.forEach((src, i) => {
+              try { fs.copyFileSync(src, path.join(matDir, `配图${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+            });
+          } catch { /* 留档失败不影响出片 */ }
+        } else tracker.progress(`   ⚠️「${term}」没取到图文图`);
       }
       if (poolByTerm.size === 0) return null;
       const allImgs = Array.from(poolByTerm.values()).flat();
