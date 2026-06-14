@@ -192,7 +192,7 @@ export interface SubtitleStyle {
   /** 字号(在成片原始分辨率下的像素)。 */
   fontSize: number;
   /** 位置。 */
-  position: 'top' | 'center' | 'bottom';
+  position: 'top' | 'center' | 'lower' | 'bottom';
   /** 字幕文字颜色(#RRGGBB 或颜色名)。空 = 白色。 */
   color?: string;
   /** 描边颜色(#RRGGBB 或颜色名)。空 = 不描边(沿用半透明黑底盒)。 */
@@ -264,10 +264,19 @@ async function renderClipsBg(
     );
   }
   const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
-  // 抖音混剪:concat 后在底部叠一条不透明黑块,盖掉素材烧死的原字幕(底部 22%,实心黑;
-  //   我们自己的字幕在主合成阶段 drawtext 画在更上层,所以盖条不挡自家字幕)。
-  const mask = maskBottomBar ? ',drawbox=x=0:y=ih*0.78:w=iw:h=ih*0.22:color=black:t=fill' : '';
-  const fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0${mask},format=yuv420p[v]`;
+  // 抖音混剪:concat 后对【中下方原字幕带】做局部高斯模糊,把素材烧死的原字幕糊掉(主流搬运号
+  //   做法 —— 不通栏、不挡画面,比纯黑块自然)。我们自己的字幕在主合成阶段 drawtext 画在这条
+  //   模糊带上(字幕位置 'lower' 与此对齐)。模糊带覆盖中下 0.70~0.88(抖音字幕常见区)。
+  let fc: string;
+  if (maskBottomBar) {
+    const maskY = Math.round(H * 0.70);
+    const maskH = Math.round(H * 0.18);
+    fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0[vcat];`
+      + `[vcat]split[vbase][vm];[vm]crop=${W}:${maskH}:0:${maskY},boxblur=24:2[vmb];`
+      + `[vbase][vmb]overlay=0:${maskY},format=yuv420p[v]`;
+  } else {
+    fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0,format=yuv420p[v]`;
+  }
   args.push(
     '-filter_complex', fc,
     '-map', '[v]', '-an',
@@ -431,6 +440,8 @@ function subtitleY(position: SubtitleStyle['position'], H: number): string {
   switch (position) {
     case 'top': return String(Math.round(H * 0.10));
     case 'center': return '(h-text_h)/2';
+    // 'lower' = 中下方(抖音混剪默认):比 bottom 更靠上,落在中下模糊带上,且左右天然居中留白。
+    case 'lower': return `h-text_h-${Math.round(H * 0.26)}`;
     case 'bottom':
     default: return `h-text_h-${Math.round(H * 0.12)}`;
   }

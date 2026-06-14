@@ -14,7 +14,7 @@ export type VideoAspect = '9:16' | '16:9' | '1:1';
 
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
 
-export type SubtitlePosition = 'top' | 'center' | 'bottom';
+export type SubtitlePosition = 'top' | 'center' | 'lower' | 'bottom';
 
 /** 模板速生版式(与主进程 templateHtmlWriter.TemplateStyle 对齐)。 */
 export type VideoTemplateStyle = 'rank_list' | 'news_cards' | 'quote' | 'countdown' | 'stat_board';

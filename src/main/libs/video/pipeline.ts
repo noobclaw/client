@@ -17,7 +17,7 @@ import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { getHomePath } from '../platformAdapter';
-import { isFfmpegAvailable, setVideoAbortSignal, runFfmpeg } from './ffmpegRuntime';
+import { isFfmpegAvailable, setVideoAbortSignal, runFfmpeg, probeDuration } from './ffmpegRuntime';
 import {
   synthesize, synthesizeWhole, getLastTtsError, getVoiceFallbacks,
   alignSentencesToCues, groupWordCues,
@@ -39,7 +39,7 @@ import { resolvePublishCaption } from './publishCaptionWriter';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
-export type SubtitlePosition = 'top' | 'center' | 'bottom';
+export type SubtitlePosition = 'top' | 'center' | 'lower' | 'bottom';
 
 /** aspect → 成片宽高(短边 1080)。 */
 function aspectToSize(aspect: VideoAspect): { width: number; height: number } {
@@ -1064,15 +1064,17 @@ async function runVideoPipeline(
       //   取不到素材(没登录/没源)→ 上面的 && 短路为 0,自动落到 else 走图片配图兜底。
       hotspotDouyinMode = true;
       hotspotImageCount = douyinClips.length; // 计费暂复用 hotspot 口径(按素材数,至少 $0.02)
-      const dyVideos = douyinClips;
+      const dySegs = douyinClips; // 已是切好的片段池
       assignVisuals = (videoIdx: number) => {
-        // 每条错开起始游标 → 同一批抖音视频排出不同片段组合(多条各不同)。
-        let cursor = videoIdx;
+        // 片段池【打乱】铺镜:每镜取不同片段(来自不同视频/不同时间段)→ 去重;每条 videoIdx
+        //   重新打乱 + 错开游标 → 多条各不同。
+        const pool = shuffled(dySegs);
+        let cursor = videoIdx % Math.max(1, pool.length);
         const sceneClips = sentences.map((_, i) => {
           const dur = Math.max(1.2, sceneDurations[i]);
-          const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
+          const want = Math.max(1, Math.min(4, Math.ceil(dur / maxClip)));
           const clips: string[] = [];
-          for (let k = 0; k < want; k++) clips.push(dyVideos[cursor++ % dyVideos.length]);
+          for (let k = 0; k < want; k++) clips.push(pool[cursor++ % pool.length]);
           return clips;
         });
         return { sceneClips, imagePool: [] };
@@ -1429,7 +1431,33 @@ async function runVideoPipeline(
           try { fs.copyFileSync(src, path.join(matDir, `抖音${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
         });
       } catch { /* 留档失败不影响出片 */ }
-      return dy.paths;
+
+      // 切【片段池】:每个抖音视频按 maxClip 切成多段 → 后面打乱铺镜。这是去重的关键 —— 否则同一个
+      //   长视频被多镜复用时每次都从开头截,画面反复重复(用户反馈的"一直出现重复画面")。
+      tracker.progress('✂️ 切分抖音素材为片段池…');
+      const segLen = Math.max(2, maxClip);
+      const segs: string[] = [];
+      let si = 0;
+      for (const v of dy.paths) {
+        if (signal?.aborted) break;
+        const dur = await probeDuration(v).catch(() => 0);
+        if (dur <= 0) continue;
+        const n = Math.max(1, Math.min(10, Math.floor(dur / segLen))); // 每视频最多切 10 段
+        for (let k = 0; k < n; k++) {
+          const out = path.join(assetDir, `dyseg_${String(si).padStart(3, '0')}.mp4`);
+          const r = await runFfmpeg(
+            ['-y', '-ss', String(k * segLen), '-i', v, '-t', String(segLen), '-an',
+              '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
+            { timeoutMs: 120_000 },
+          );
+          if (r.ok && fs.existsSync(out)) { segs.push(out); si++; }
+        }
+      }
+      if (segs.length > 0) {
+        tracker.progress(`✂️ 切出 ${segs.length} 个片段(打乱铺镜去重)`);
+        return segs;
+      }
+      return dy.paths; // 切失败兜底:用原视频(可能有重复,但有画面)
     }
 
     // 4. 组装分镜 + 合成。批量出片时并发跑 videoCount 条(封顶 2 条同时跑):同脚本/配音、每条不同画面组合。
@@ -1443,7 +1471,7 @@ async function runVideoPipeline(
     const subtitle: SubtitleStyle = {
       enabled: subtitleEnabled,
       fontSize: input.subtitleFontSize && input.subtitleFontSize > 0 ? input.subtitleFontSize : 52,
-      position: input.subtitlePosition || 'bottom',
+      position: input.subtitlePosition || (hotspotDouyinMode ? 'lower' : 'bottom'),
       color: input.subtitleColor,
       strokeColor: input.subtitleStrokeColor,
       fontFile: input.subtitleFont,

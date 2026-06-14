@@ -1767,30 +1767,30 @@ const VideoCreateFlow: React.FC<{
         <VideoScenarioEntryCard isZh={isZhHot} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
           titleZh="热搜成片 · 热点全自动" titleEn="Hotspot · Auto Trend Video"
-          descZh="勾选热搜榜 / Web3 / 科技源,定时从最新热点里随机挑一条,联网查这条热点的最新资料、AI 紧贴事实写口播、自动配图片成片并发布。真·一次设置、每天自动蹭热点出片。"
-          descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest web info, writes a fact-tight script, auto-composes with relevant images and publishes. Set once, auto-publish daily."
+          descZh="勾选热搜榜 / Web3 / 科技源,每天自动从最新热点挑一条,联网取材、AI 紧贴事实写口播、自动配图成片。一次设置、每天蹭热点出片,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest info, writes a fact-tight script and auto-composes with images. Set once — auto-publishes daily to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh="单条约 $0.02~$0.15(写稿/联网/配图/合成)" costEn="~$0.02–0.15 per clip (script / web / images / compose)"
           btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
         )}
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
-          descZh="低成本批量日更的利器:给个主题,AI 自动写口播稿+配音+字幕,海量正版素材库一键凑齐画面,一次最多出 100 条(每条 AI 独立写稿+配音,失败自动跳过)。知识科普 / 资讯解说 / 好物种草,配音字幕合成全免费。"
-          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each with its own fresh AI script + voice; failures auto-skipped). TTS / subtitles / compositing are free."
+          descZh="低成本批量日更利器:给个主题,AI 写口播稿+配音+字幕,海量正版素材库凑齐画面,一次最多 100 条(每条独立写稿+配音,失败自动跳过)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each a fresh AI script + voice; failures auto-skipped). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh="单条约 $0.02~$0.04(写稿/素材/合成)" costEn="~$0.02–0.04 per clip (script / stock / compose)"
           btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
-          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成全新画面、自动配音+字幕,现实里拍不到的镜头也能生出来,还能传参考图锁画风。脑洞 / 概念 / 想象类内容的最强搭子。"
-          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film. Add reference images to lock the style."
+          descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh="按秒计费 · 约 $0.04/秒(720p)" costEn="Per-second · ~$0.04/s (720p)"
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
-          descZh="把榜单、资讯、数据、金句一键变成带动效的竖屏短视频 —— AI 现编动画页面、本地逐帧渲染、可选 AI 配音 + 字幕。秒级出片、稳定可控,币安行情榜、热点快讯、Top 盘点最合适。"
-          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally frame-by-frame, optional AI voice-over + subtitles. Seconds to render. Perfect for market boards, news flashes and Top-N countdowns."
+          descZh="把榜单、资讯、数据、金句一键变成带动效竖屏短视频 —— AI 现编动画、本地逐帧渲染、可选配音+字幕。秒级出片、稳定可控,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
+          descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh="单条约 $0.02~$0.04(数据/写稿/合成)" costEn="~$0.02–0.04 per clip (data / script / compose)"
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
       </section>
@@ -2097,6 +2097,7 @@ const RATE_OPTIONS: { v: number; zh: string; en: string }[] = [
 const SUB_POSITION_OPTIONS: { id: SubtitlePosition; zh: string; en: string }[] = [
   { id: 'top', zh: '顶部', en: 'Top' },
   { id: 'center', zh: '居中', en: 'Center' },
+  { id: 'lower', zh: '中下', en: 'Lower' },
   { id: 'bottom', zh: '底部', en: 'Bottom' },
 ];
 
@@ -3695,6 +3696,11 @@ export const HotspotVideoModal: React.FC<{
   const [subtitleEnabled, setSubtitleEnabled] = useState<boolean>(ei.subtitleEnabled ?? true);
   const [voice, setVoice] = useState<string>(ei.voice || 'zh-CN-XiaoxiaoNeural');
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
+  // 字幕样式 + BGM(用户要可调)。字幕位置默认按界面语言:中文→中下(配合抖音混剪盖原字幕),海外→底部。
+  const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
+  const [subtitleColor, setSubtitleColor] = useState<string>(ei.subtitleColor || '#FFFFFF');
+  const [subtitleFont, setSubtitleFont] = useState<string>(ei.subtitleFont || '');
+  const [bgmPath, setBgmPath] = useState<string>(ei.bgmPath || '');
   const [outputMode, setOutputMode] = useState<OutputMode>(
     Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
@@ -3733,6 +3739,10 @@ export const HotspotVideoModal: React.FC<{
     targetSeconds,
     useStockVideo: false,            // 纯图 Ken Burns(Serper 给的是图,不是视频)
     subtitleEnabled,
+    subtitlePosition,
+    subtitleColor,
+    subtitleFont,
+    bgmPath,
     voice,
     voiceRate,
     maxClipSeconds: 4,
@@ -3900,6 +3910,38 @@ export const HotspotVideoModal: React.FC<{
                     </button>
                   ))}
                 </div>
+              </Field>
+              {subtitleEnabled && (
+                <Field label={isZh ? '字幕样式' : 'Subtitle'}>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {SUB_POSITION_OPTIONS.map((s) => (
+                      <button key={s.id} type="button" onClick={() => setSubtitlePosition(s.id)}
+                        className={`px-2.5 py-1 rounded-lg text-xs border ${subtitlePosition === s.id ? 'border-amber-500 bg-amber-500/10 text-amber-600 dark:text-amber-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300'}`}>
+                        {isZh ? s.zh : s.en}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select value={subtitleFont} onChange={(e) => setSubtitleFont(e.target.value)}
+                      className="flex-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-xs dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                      {SUB_FONT_OPTIONS.map((f) => (<option key={f.v || 'default'} value={f.v}>{isZh ? f.zh : f.en}</option>))}
+                    </select>
+                    <div className="flex gap-1.5">
+                      {SUB_COLOR_OPTIONS.map((c) => (
+                        <button key={c.v} type="button" title={isZh ? c.zh : c.en} onClick={() => setSubtitleColor(c.v)}
+                          className={`w-6 h-6 rounded-full border-2 ${subtitleColor === c.v ? 'border-amber-500 scale-110' : 'border-gray-300 dark:border-gray-600'}`}
+                          style={{ backgroundColor: c.v }} />
+                      ))}
+                    </div>
+                  </div>
+                </Field>
+              )}
+              <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'}>
+                <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
+                  <option value="">{isZh ? '无背景音乐' : 'None'}</option>
+                  {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                </select>
               </Field>
             </>
           )}
