@@ -195,12 +195,8 @@ function allocateCues(phrases: string[], startSec: number, endSec: number): Subt
   return cues;
 }
 
-// ── 抖音混剪「模糊带 + 字幕」共享几何 ──────────────────────────────
-// 模糊带(盖原字幕)和我们自己的字幕用同一组比例,保证字幕始终落在模糊带【垂直中央】。
-// 调这三个数就能整体上移/下移这条带,字幕自动跟随居中。
-const REMIX_MASK_TOP = 0.66;                                  // 模糊带顶边(占画高);越小越靠上
-const REMIX_MASK_H = 0.18;                                    // 模糊带高度(占画高)
-const REMIX_MASK_CENTER = REMIX_MASK_TOP + REMIX_MASK_H / 2;  // 字幕垂直中心对齐到这(= 0.75)
+// 抖音混剪模糊带高度(占画高)。位置不固定 —— 跟着字幕走、包裹字幕(见 subtitleCenterRatio + maskBottomBar)。
+const REMIX_MASK_H = 0.18;
 
 export interface SubtitleStyle {
   /** 是否烧字幕。false = 完全不烧。 */
@@ -258,7 +254,7 @@ function concatLine(p: string): string {
 /** 多段视频背景:切 N 段(每段 ≤maxClip)cover-crop 拼接。失败抛错(由上层降级)。 */
 async function renderClipsBg(
   workDir: string, out: string, clips: string[], dur: number, W: number, H: number, maxClip: number,
-  maskBottomBar = false,
+  maskBottomBar = false, subtitlePos: SubtitleStyle['position'] = 'lower',
 ): Promise<void> {
   const segCount = Math.max(1, Math.min(8, Math.ceil(dur / Math.max(1, maxClip))));
   const segDur = dur / segCount;
@@ -280,13 +276,14 @@ async function renderClipsBg(
     );
   }
   const concatInputs = Array.from({ length: segCount }, (_, s) => `[v${s}]`).join('');
-  // 抖音混剪:concat 后对【中下方原字幕带】做局部高斯模糊,把素材烧死的原字幕糊掉(主流搬运号
-  //   做法 —— 不通栏、不挡画面,比纯黑块自然)。我们自己的字幕在主合成阶段 drawtext 画在这条
-  //   模糊带【垂直中央】(字幕位置 'lower' 用同一组 REMIX_MASK_* 常量,自动居中对齐)。
+  // 抖音混剪:concat 后对原字幕带做局部高斯模糊,把素材烧死的原字幕糊掉(主流搬运号做法 ——
+  //   不通栏、不挡画面,比纯黑块自然)。模糊带【跟着字幕走】:中心 = 字幕中心(subtitleCenterRatio),
+  //   高度固定包裹字幕,字幕在主合成 drawtext 画在带的正中央。
   let fc: string;
   if (maskBottomBar) {
-    const maskY = Math.round(H * REMIX_MASK_TOP);
     const maskH = Math.round(H * REMIX_MASK_H);
+    const maskCenter = Math.round(H * subtitleCenterRatio(subtitlePos));
+    const maskY = Math.max(0, Math.min(maskCenter - Math.round(maskH / 2), H - maskH));
     fc = `${filters.join(';')};${concatInputs}concat=n=${segCount}:v=1:a=0[vcat];`
       + `[vcat]split[vbase][vm];[vm]crop=${W}:${maskH}:0:${maskY},boxblur=24:2[vmb];`
       + `[vbase][vmb]overlay=0:${maskY},format=yuv420p[v]`;
@@ -357,6 +354,7 @@ async function renderSceneBg(
   W: number,
   H: number,
   maxClip: number,
+  subtitlePos: SubtitleStyle['position'] = 'lower',
 ): Promise<string> {
   const out = path.join(workDir, `scene_bg_${String(idx).padStart(3, '0')}.mp4`);
   const dur = Math.max(1.2, scene.durationSec);
@@ -376,7 +374,7 @@ async function renderSceneBg(
 
   // 视频 → 图片 → 纯色,逐级降级,绝不因单镜素材问题让整条视频失败。
   if (clips.length > 0) {
-    try { await renderClipsBg(workDir, out, clips, dur, W, H, maxClip, !!scene.maskBottomBar); return out; }
+    try { await renderClipsBg(workDir, out, clips, dur, W, H, maxClip, !!scene.maskBottomBar, subtitlePos); return out; }
     catch { /* 落到图片/纯色兜底 */ }
   }
   if (scene.imagePath && fs.existsSync(scene.imagePath)) {
@@ -451,16 +449,20 @@ function refineCues(cues: SubtitleCue[]): SubtitleCue[] {
   return out;
 }
 
-/** 字幕 y 坐标表达式(随位置与画高)。 */
-function subtitleY(position: SubtitleStyle['position'], H: number): string {
+/** 字幕(及包裹它的模糊带)垂直中心,占画高,按位置。蒙层中心 = 字幕中心 → 蒙层跟字幕走、包裹字幕。 */
+function subtitleCenterRatio(position: SubtitleStyle['position']): number {
   switch (position) {
-    case 'top': return String(Math.round(H * 0.10));
-    case 'center': return '(h-text_h)/2';
-    // 'lower' = 中下方(抖音混剪默认):垂直居中于模糊带(REMIX_MASK_CENTER),左右天然居中留白。
-    case 'lower': return `${Math.round(H * REMIX_MASK_CENTER)}-text_h/2`;
+    case 'top': return 0.13;
+    case 'center': return 0.50;
+    case 'lower': return 0.75;   // 中下方(抖音混剪默认)
     case 'bottom':
-    default: return `h-text_h-${Math.round(H * 0.12)}`;
+    default: return 0.86;
   }
+}
+
+/** 字幕 y 坐标表达式:文字垂直居中于 subtitleCenterRatio 给的中心(与模糊带同心)。 */
+function subtitleY(position: SubtitleStyle['position'], H: number): string {
+  return `${Math.round(H * subtitleCenterRatio(position))}-text_h/2`;
 }
 
 /** 由 cue 列表生成一遍 drawtext 滤镜串(font/textfile 用相对名)。 */
@@ -599,7 +601,7 @@ export async function composeVideo(opts: ComposeOptions): Promise<string> {
     // 1. 逐镜出无声背景
     const bgPaths: string[] = [];
     for (let i = 0; i < scenes.length; i++) {
-      const p = await renderSceneBg(workDir, i, scenes[i], W, H, maxClip);
+      const p = await renderSceneBg(workDir, i, scenes[i], W, H, maxClip, style.position);
       bgPaths.push(p);
       opts.onScene?.(i + 1, scenes.length);
     }

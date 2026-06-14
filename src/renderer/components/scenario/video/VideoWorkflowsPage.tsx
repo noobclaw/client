@@ -3732,7 +3732,7 @@ export const HotspotVideoModal: React.FC<{
   const [voiceRate, setVoiceRate] = useState<number>(ei.voiceRate ?? 0);
   // 字幕样式 + BGM(用户要可调)。字幕位置默认按界面语言:中文→中下(配合抖音混剪盖原字幕),海外→底部。
   const [subtitlePosition, setSubtitlePosition] = useState<SubtitlePosition>(ei.subtitlePosition || (isZh ? 'lower' : 'bottom'));
-  const [subtitleColor, setSubtitleColor] = useState<string>(ei.subtitleColor || '#FFFFFF');
+  const [subtitleColor, setSubtitleColor] = useState<string>(ei.subtitleColor || '#FFE600');
   const [subtitleFont, setSubtitleFont] = useState<string>(ei.subtitleFont || '');
   // 字号 + 描边(以前 hotspot 没给,字幕只能默认大小/白字)。新建默认大号 64 + 黑描边(短视频最醒目);
   // 编辑保留任务已存值(空串描边 = 用户特意选「无」,?? 不会覆盖)。
