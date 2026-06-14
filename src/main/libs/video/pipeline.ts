@@ -518,8 +518,11 @@ export async function generateVideoBatch(
   if (inp.engine === 'stock') {
     batch = clampCount(inp.videoCount, 100);
   } else if (inp.engine === 'hotspot') {
-    const lo = clampCount(inp.videoCountMin, 100);
-    const hi = Math.max(lo, clampCount(inp.videoCountMax, 100));
+    // 兜底 videoCount:老任务(早期向导只存 videoCount、没存 min/max)也要正确出 N 条 ——
+    //   否则 videoCountMin=undefined → clampCount=1 → batch=1,出现「卡片显示 N 条、实际只跑 1 条」。
+    //   UI 标签(hotspotCountLabel)用 `videoCountMin ?? videoCount` 兜底,执行侧必须对齐同一口径。
+    const lo = clampCount(inp.videoCountMin ?? inp.videoCount, 100);
+    const hi = Math.max(lo, clampCount(inp.videoCountMax ?? inp.videoCount, 100));
     batch = lo + Math.floor(Math.random() * (hi - lo + 1));
   }
 
