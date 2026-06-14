@@ -3796,6 +3796,24 @@ export const HotspotVideoModal: React.FC<{
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(ei.subtitleFontSize ?? 64);
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(ei.subtitleStrokeColor ?? '#000000');
   const [bgmPath, setBgmPath] = useState<string>(ei.bgmPath || '');
+  // 云端曲库(跟模板速生 / 在线素材同源 static.noobclaw.com/bgm/manifest.json)。
+  // 没这个时 hotspot 只能选 8 首内置;拉到后追加「云端曲库」optgroup。失败静默。
+  const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const resp = await fetch(`${REMOTE_BGM_MANIFEST_URL}?t=${Date.now()}`);
+        if (!resp.ok) return;
+        const json: any = await resp.json();
+        const arr: any[] = Array.isArray(json) ? json : json?.tracks;
+        if (!alive || !Array.isArray(arr)) return;
+        setRemoteBgm(arr.filter((x) => x && typeof x.url === 'string' && x.url)
+          .map((x) => ({ id: String(x.id || x.url), zh: String(x.zh || x.title || x.name || '云端音乐'), en: String(x.en || x.title || x.name || 'Cloud track'), url: String(x.url) })));
+      } catch { /* 清单未上线 / 网络失败:静默,仅用本地曲库 */ }
+    })();
+    return () => { alive = false; };
+  }, []);
   const [outputMode, setOutputMode] = useState<OutputMode>(
     Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
@@ -4118,7 +4136,14 @@ export const HotspotVideoModal: React.FC<{
                 <select value={bgmPath} onChange={(e) => setBgmPath(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500/50">
                   <option value="">{isZh ? '无背景音乐' : 'None'}</option>
-                  {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                  <optgroup label={isZh ? '内置曲库' : 'Built-in'}>
+                    {BUILTIN_BGM.map((b) => (<option key={b.id} value={`${BUILTIN_BGM_PREFIX}${b.id}`}>🎵 {isZh ? b.zh : b.en}</option>))}
+                  </optgroup>
+                  {remoteBgm.length > 0 && (
+                    <optgroup label={isZh ? '云端曲库（首次需下载）' : 'Cloud (downloads first time)'}>
+                      {remoteBgm.map((b) => (<option key={b.url} value={`${REMOTE_BGM_PREFIX}${b.url}`}>☁️ {isZh ? b.zh : b.en}</option>))}
+                    </optgroup>
+                  )}
                 </select>
               </Field>
             </>
