@@ -989,6 +989,7 @@ async function runVideoPipeline(
   let douyinImages: string[] = []; // 抖音图文模式下载到本地的图片路径(空 = 没取到,落回 Serper 配图)
   // 抖音【分段铺镜】池(buildDouyinPool):每镜中文词→逐词搜→按段铺,画面跟每镜内容走。null=没取到。
   let douyinPool: { assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null = null;
+  let douyinImgPool: { imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null = null; // 抖音分段图文池
 
     if (input.engine === 'ai') {
       // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
@@ -1155,22 +1156,17 @@ async function runVideoPipeline(
       tracker.done('visuals', '🎬 抖音分段混剪就绪(画面跟每镜内容 · 底部黑条盖原字幕)');
     } else if (input.engine === 'hotspot'
                && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
-               && (douyinImages = await collectDouyinImages()).length > 0) {
-      // 中文话题:走到这 = 用户选了图片配图,或选了视频混剪但视频没取到 → 都落【抖音图文】(去掉
-      //   原来 materialSource!=='douyin' 守卫,修「抖音混剪没视频→直接跳 Serper」的怪癖)。
-      // 热搜成片【抖音图文配图】:中文话题的「智能配图」从抖音图文笔记下图(英文话题/海外没登录 →
-      //   短路落 else 走 Serper 兜底)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜 hasVideo=false
-      //   不会触发模糊盖条(图不需要盖原字幕)。
+               && (douyinImgPool = await buildDouyinImagePool())) {
+      // 中文话题:选了图片配图、或选了视频混剪但视频没取到 → 抖音【分段图文】(每镜图跟自己那句口播,
+      //   见 buildDouyinImagePool,仿 stock)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜
+      //   hasVideo=false 不触发模糊盖条(图不需盖原字幕)。
       hotspotDouyinMode = true;
-      hotspotImageCount = douyinImages.length;
-      const dyImgs = douyinImages;
-      assignVisuals = (videoIdx: number) => {
-        const m = new Map<number, string>();
-        const off = ((videoIdx % dyImgs.length) + dyImgs.length) % dyImgs.length;
-        sentences.forEach((_, i) => m.set(i, dyImgs[(i + off) % dyImgs.length]));
-        return { sceneClips: sentences.map(() => [] as string[]), imagePool: dyImgs, imageByScene: m };
-      };
-      tracker.done('visuals', `🖼️ 抖音图文配图就绪(${dyImgs.length} 张 · Ken Burns)`);
+      assignVisuals = (videoIdx: number) => ({
+        sceneClips: sentences.map(() => [] as string[]),
+        imagePool: douyinImgPool!.imagePool,
+        imageByScene: douyinImgPool!.imageBySceneFor(videoIdx),
+      });
+      tracker.done('visuals', '🖼️ 抖音分段图文就绪(画面跟每镜内容 · Ken Burns)');
     } else if (input.engine === 'hotspot') {
       // 热搜成片【不再用 Serper 配图】(用户决策 2026-06:中文→抖音,英文/小语种→TikTok)。
       //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题(TikTok 取材开发中,真机调后启用)。
@@ -1562,6 +1558,54 @@ async function runVideoPipeline(
         });
       };
       return { assign, imageByScene: new Map() };
+    }
+
+    /**
+     * 抖音【分段图文配图】池(仿 buildDouyinPool/stock,画面跟每镜内容):每镜中文词 → 去重首词封顶 →
+     *   逐词【串行】搜抖音图文笔记的图 → poolByTerm(词→图)→ imageBySceneFor 每镜先取本镜词的图、
+     *   不够借全局、used 去重。取不到 → null,上层落文字卡。
+     */
+    async function buildDouyinImagePool(): Promise<{ imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null> {
+      const tr = await generateSearchTerms(sentences, [], undefined, { topic: hotspotTopic?.title || '', lang: 'zh' }, 'zh');
+      aiCostUsd += tr.costUsd;
+      tracker.addTokens(tr.tokens, tr.costUsd);
+      const perSceneTerms = tr.terms.map((a) => (a || []).map((s) => String(s).trim().toLowerCase()).filter(Boolean));
+      const primaryTerms = Array.from(new Set(perSceneTerms.map((t) => t[0]).filter(Boolean)));
+      const searchTerms = primaryTerms.slice(0, 10);
+      if (searchTerms.length === 0) return null;
+      tracker.progress(`🔍 抖音图文分段搜索词(${searchTerms.length}):${searchTerms.join(' · ')}`);
+      const poolByTerm = new Map<string, string[]>();
+      for (const term of searchTerms) {
+        if (signal?.aborted) break;
+        const dy = await fetchDouyinClips([term], 4, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+        if (dy.paths.length) poolByTerm.set(term, dy.paths);
+        else tracker.progress(`   ⚠️「${term}」没取到图文图`);
+      }
+      if (poolByTerm.size === 0) return null;
+      const allImgs = Array.from(poolByTerm.values()).flat();
+      hotspotImageCount = allImgs.length; // 计费按图片数(沿用 hotspot 口径)
+      tracker.progress(`🖼️ 抖音图文分段就绪:${searchTerms.length} 词 · ${allImgs.length} 图(画面跟每镜内容 · Ken Burns)`);
+      // 每镜一图:先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开。
+      const imageBySceneFor = (videoIdx: number): Map<number, string> => {
+        const used = new Set<string>();
+        const shuffle = videoIdx > 0;
+        const byTerm = new Map<string, string[]>();
+        for (const [k, v] of poolByTerm) byTerm.set(k, shuffle ? shuffled(v) : [...v]);
+        const all = shuffle ? shuffled(allImgs) : [...allImgs];
+        const m = new Map<number, string>();
+        sentences.forEach((_, i) => {
+          let pick: string | undefined;
+          for (const term of perSceneTerms[i] || []) {
+            const q = byTerm.get(term);
+            if (q) { const v = q.find((p) => !used.has(p)); if (v) { pick = v; break; } }
+          }
+          if (!pick) pick = all.find((p) => !used.has(p));
+          if (!pick) pick = all[i % Math.max(1, all.length)]; // 全用过 → 循环兜底
+          used.add(pick); m.set(i, pick);
+        });
+        return m;
+      };
+      return { imageBySceneFor, imagePool: allImgs };
     }
 
     /**
