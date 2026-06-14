@@ -1766,6 +1766,17 @@ const VideoCreateFlow: React.FC<{
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
+  // 价格【服务端下发】动态显示:按条区间(stock/hotspot/模板共用)+ 纯 AI 每秒价。调价改后端即生效。
+  const [fee, setFee] = useState<{ min: number; max: number }>({ min: 0.02, max: 0.1 });
+  const [aiUsdPerSec, setAiUsdPerSec] = useState<number>(0.04);
+  useEffect(() => {
+    fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ });
+    noobClawApi.seedanceRate('720p').then((r) => { if (r && r.usdPerSec > 0) setAiUsdPerSec(r.usdPerSec); }).catch(() => {});
+  }, []);
+  const feeZh = `$${fee.min}~$${fee.max}`;
+  const feeEn = `$${fee.min}–${fee.max}`;
+  const aiSec = aiUsdPerSec.toFixed(2);
+
   return (
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1775,7 +1786,7 @@ const VideoCreateFlow: React.FC<{
           titleZh="热搜成片 · 热点全自动" titleEn="Hotspot · Auto Trend Video"
           descZh="勾选热搜榜 / Web3 / 科技源,每天自动从最新热点挑一条,联网取材、AI 紧贴事实写口播、自动配图成片。一次设置、每天蹭热点出片,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest info, writes a fact-tight script and auto-composes with images. Set once — auto-publishes daily to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh="单条约 $0.02~$0.15(写稿/联网/配图/合成)" costEn="~$0.02–0.15 per clip (script / web / images / compose)"
+          costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
           btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
         )}
         <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
@@ -1783,21 +1794,21 @@ const VideoCreateFlow: React.FC<{
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
           descZh="低成本批量日更利器:给个主题,AI 写口播稿+配音+字幕,海量正版素材库凑齐画面,一次最多 100 条(每条独立写稿+配音,失败自动跳过)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each a fresh AI script + voice; failures auto-skipped). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh="单条约 $0.02~$0.04(写稿/素材/合成)" costEn="~$0.02–0.04 per clip (script / stock / compose)"
+          costZh={`单条约 ${feeZh}(写稿/素材/合成)`} costEn={`~${feeEn} per clip (script / stock / compose)`}
           btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
           descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh="按秒计费 · 约 $0.04/秒(720p)" costEn="Per-second · ~$0.04/s (720p)"
+          costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
         <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
           descZh="把榜单、资讯、数据、金句一键变成带动效竖屏短视频 —— AI 现编动画、本地逐帧渲染、可选配音+字幕。秒级出片、稳定可控,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
-          costZh="单条约 $0.02~$0.04(数据/写稿/合成)" costEn="~$0.02–0.04 per clip (data / script / compose)"
+          costZh={`单条约 ${feeZh}(数据/写稿/合成)`} costEn={`~${feeEn} per clip (data / script / compose)`}
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
       </section>
 
@@ -2183,6 +2194,26 @@ async function fetchVideoMinBalance(): Promise<number> {
     }
   } catch { /* 网络/未登录 → 兜底 */ }
   return VIDEO_MODE1_MIN_BALANCE;
+}
+
+// 平台基础费区间(USD)由服务端下发(/api/video/config 的 feeUsdMin/feeUsdMax,admin 可调),
+// 卡片/向导价格文案据此动态显示 —— 调价改后端即生效,不打包客户端。拉不到 → $0.02~$0.1 兜底。
+let _feeCache: { min: number; max: number; at: number } | null = null;
+async function fetchVideoFeeRange(): Promise<{ min: number; max: number }> {
+  if (_feeCache && Date.now() - _feeCache.at < 60_000) return { min: _feeCache.min, max: _feeCache.max };
+  try {
+    const res = await fetch(`${getBackendApiUrl()}/api/video/config`, { headers: noobClawAuth.getAuthHeaders() });
+    if (res.ok) {
+      const data = await res.json();
+      const min = Number(data?.config?.feeUsdMin);
+      const max = Number(data?.config?.feeUsdMax);
+      if (Number.isFinite(min) && Number.isFinite(max) && min >= 0 && max >= min) {
+        _feeCache = { min, max, at: Date.now() };
+        return { min, max };
+      }
+    }
+  } catch { /* 网络/未登录 → 兜底 */ }
+  return { min: 0.02, max: 0.1 };
 }
 
 const VideoConfigModal: React.FC<{
@@ -2624,7 +2655,7 @@ const VideoConfigModal: React.FC<{
                     }}
                     title={isZh ? 'AI 口播稿 + 素材库/本地' : 'AI voice-over script + stock'}
                     desc={isZh ? '给个主题，AI 自动写稿 + 配音 + 剪辑，一键出成片，无需真人出镜、不用露脸。最适合知识科普 / 资讯解说 / 好物种草；下一步「画面」二选一：在线素材库自动配图，或全部用你上传的本地视频' : 'Give it a topic — AI writes, narrates and edits a finished video. No camera, no face needed. Perfect for explainers / news recaps / product picks; in the Visuals step pick ONE: auto online stock, or all your own uploaded clips'}
-                    cost={isZh ? '单条约 $0.02~$0.04' : '~$0.02–0.04 per clip'}
+                    cost={isZh ? '单条约 $0.02~$0.1' : '~$0.02–0.1 per clip'}
                     costTag={isZh ? '性价比高 · 推荐' : 'Best value'}
                   />
                   <ModeOption
@@ -3289,8 +3320,8 @@ const VideoConfigModal: React.FC<{
                   mode === 'pure_ai'
                     ? (isZh ? '1-10 条 / 次 · 纯 AI 按秒计费,约 $0.04/秒(720p)' : '1-10 per run · pure-AI billed per second (~$0.04/s @720p)')
                     : mode === 'stock'
-                      ? (isZh ? '1-100 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-100 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
-                      : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.04(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.04 each (TTS/subs/compose free; AI script extra)')
+                      ? (isZh ? '1-100 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-100 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
+                      : (isZh ? '1-10 条 / 次 · 单条约 $0.02~$0.1(配音/字幕/合成免费,AI 写稿另计)' : '1-10 per run · ~$0.02–0.1 each (TTS/subs/compose free; AI script extra)')
                 }</div>
               </Field>
 
@@ -4045,8 +4076,8 @@ export const HotspotVideoModal: React.FC<{
                 </div>
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $0.1~0.2 平台费 + AI 写稿 token)`
-                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$0.1-0.2 platform fee + AI tokens each)`}
+                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $0.02~$0.1 平台费 + AI 写稿 token)`
+                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$0.02-0.1 platform fee + AI tokens each)`}
                 </p>
               </Field>
             </>
@@ -4460,8 +4491,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               </Field>
               <div className="text-[11px] text-gray-400 space-y-0.5">
                 <div>{isZh
-                  ? `单条约 $0.02~$0.04(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
-                  : `~$0.02–0.04 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
+                  ? `单条约 $0.02~$0.1(数据/${narration ? '写稿/' : ''}合成)· 跟「在线素材」同口径`
+                  : `~$0.02–0.1 per clip (data / ${narration ? 'script / ' : ''}compose) · same as Stock`}</div>
                 <div>{isZh
                   ? `时长 ${narration ? '由 AI 口播稿决定' : '按数据行数自动估算(每行约 0.9s,clamp 4–14s)'}`
                   : `Duration ${narration ? 'driven by AI voice script' : 'auto-estimated from row count'}`}</div>
