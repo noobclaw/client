@@ -3760,6 +3760,25 @@ export const HotspotVideoModal: React.FC<{
   // 分步向导:① 热点源 → ② 内容(时长/配音/字幕)→ ③ 成片去向 → ④ 运行频率。
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
+  // 热点源预览:每个榜当前 top-3 实时条目,挂在卡片下方,让用户选前就知道会选中什么内容。
+  // 拉失败不影响选择(静默)。打开向导时拉一次。
+  const [previews, setPreviews] = useState<Record<string, { title: string }[]>>({});
+  const [previewLoading, setPreviewLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${getBackendApiUrl()}/api/video/hotspot/preview`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ perSource: 3 }),
+        });
+        const json = await res.json();
+        if (alive && json?.items && typeof json.items === 'object') setPreviews(json.items);
+      } catch { /* 预览失败不影响选择 */ }
+      finally { if (alive) setPreviewLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
   const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
 
@@ -3889,14 +3908,25 @@ export const HotspotVideoModal: React.FC<{
                 <div className="grid grid-cols-2 gap-2">
                   {HOTSPOT_SOURCES.map((s) => {
                     const on = !!sources[s.id];
+                    const items = previews[s.id];
                     return (
                       <button key={s.id} type="button"
                         onClick={() => setSources((p) => ({ ...p, [s.id]: !p[s.id] }))}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-all ${
+                        className={`flex flex-col gap-1.5 px-3 py-2 rounded-lg border text-sm text-left transition-all ${
                           on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-amber-300'}`}>
-                        <span>{s.emoji}</span>
-                        <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
-                        {on && <span className="text-amber-500">✓</span>}
+                        <span className="flex items-center gap-2 w-full">
+                          <span>{s.emoji}</span>
+                          <span className="flex-1 min-w-0 truncate dark:text-gray-100">{isZh ? s.zh : s.en}</span>
+                          {on && <span className="text-amber-500">✓</span>}
+                        </span>
+                        {/* 卡片下方挂当前 top-3(实时);整张卡片仍是勾选目标,预览只是静态文字,不冲突。 */}
+                        <span className="block w-full text-[11px] leading-snug text-gray-400 dark:text-gray-500">
+                          {items && items.length > 0
+                            ? items.slice(0, 3).map((it, i) => (
+                                <span key={i} className="block truncate">{i + 1}. {it.title}</span>
+                              ))
+                            : <span className="block truncate">{previewLoading ? (isZh ? '加载中…' : 'Loading…') : (isZh ? '暂无内容' : 'No items')}</span>}
+                        </span>
                       </button>
                     );
                   })}
