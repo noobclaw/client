@@ -908,7 +908,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
-        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns'}</Row>
+        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音视频混剪 · 配音' : 'Douyin remix') : (isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns')}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -1038,7 +1038,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
         <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
-        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{isZh ? '联网配图(Ken Burns)' : 'Web images (Ken Burns)'}</div>
+        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音视频混剪' : 'Douyin remix') : (isZh ? '联网配图(Ken Burns)' : 'Web images (Ken Burns)')}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
