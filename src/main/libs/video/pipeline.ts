@@ -1074,15 +1074,24 @@ async function runVideoPipeline(
       hotspotImageCount = douyinClips.length; // 计费暂复用 hotspot 口径(按素材数,至少 $0.02)
       const dySegs = douyinClips; // 已是切好的片段池
       assignVisuals = (videoIdx: number) => {
-        // 片段池【打乱】铺镜:每镜取不同片段(来自不同视频/不同时间段)→ 去重;每条 videoIdx
-        //   重新打乱 + 错开游标 → 多条各不同。
+        // 片段池【打乱】铺镜:一条视频里每个片段【只用一次】(用户要求:素材绝不反复用)。
+        //   池子已按总需求切够(见上),正常铺满都不重复;只有原视频太少/太短切不出那么多时,
+        //   才在【全部片段都用过之后】兜底循环。每条 videoIdx 错开起点 → 多条各不同组合。
         const pool = shuffled(dySegs);
-        let cursor = videoIdx % Math.max(1, pool.length);
+        const used = new Set<string>();
+        let cursor = (videoIdx * 7) % Math.max(1, pool.length);
+        const take = (): string => {
+          for (let t = 0; t < pool.length; t++) {
+            const cand = pool[cursor++ % pool.length];
+            if (!used.has(cand)) { used.add(cand); return cand; }
+          }
+          return pool[cursor++ % pool.length]; // 池子全用过了(素材实在不够)→ 兜底循环
+        };
         const sceneClips = sentences.map((_, i) => {
           const dur = Math.max(1.2, sceneDurations[i]);
           const want = Math.max(1, Math.min(4, Math.ceil(dur / maxClip)));
           const clips: string[] = [];
-          for (let k = 0; k < want; k++) clips.push(pool[cursor++ % pool.length]);
+          for (let k = 0; k < want; k++) clips.push(take());
           return clips;
         });
         return { sceneClips, imagePool: [] };
@@ -1442,20 +1451,26 @@ async function runVideoPipeline(
       //   复用时每次都从开头截,画面反复重复。视频少(≤5)就靠每个多切几段填满时长。
       tracker.progress('✂️ 切分素材为片段池…');
       const segLen = Math.max(2, maxClip);
-      // 重叠切:步长 < 段长 → 同一视频多切几段(起点不同、画面部分重叠,冗余可接受)。素材/视频少时
-      //   也能凑足片段池,避免后面铺镜 cursor 循环【反复用同一段】(用户反馈:同素材反复出现)。
-      const step = Math.max(1.5, segLen * 0.6);
+      // 按【本条总需求片段数】把池子切够 + 冗余,让后面铺镜【绝不重复】(用户要求:素材不反复用,大不了多切)。
+      //   want 口径必须跟 assignVisuals 一致;各视频均摊目标段数,段在视频内【均匀铺】(起点各不同)。
+      const wantOf = (i: number) => Math.max(1, Math.min(4, Math.ceil(Math.max(1.2, sceneDurations[i]) / maxClip)));
+      const totalWant = sentences.reduce((s, _, i) => s + wantOf(i), 0);
+      const perVideoTarget = Math.max(1, Math.ceil((totalWant + 2) / Math.max(1, dy.paths.length))); // 均摊 + 2 冗余
       const segs: string[] = [];
       let si = 0;
       for (const v of dy.paths) {
         if (signal?.aborted) break;
         const dur = await probeDuration(v).catch(() => 0);
         if (dur <= 0) continue;
-        const n = Math.max(1, Math.min(16, Math.floor((dur - segLen) / step) + 1)); // 每视频最多切 16 段(重叠多切)
+        // 物理上限:相邻段起点至少错开 ~1s(再密就是近重复帧,无意义)。在此上限内尽量切够 perVideoTarget。
+        const maxSegs = Math.max(1, Math.floor((dur - segLen) / 1.0) + 1);
+        const n = Math.max(1, Math.min(maxSegs, perVideoTarget));
+        const step = n > 1 ? (dur - segLen) / (n - 1) : 0; // 均匀铺满整段视频,每段起点都不同
         for (let k = 0; k < n; k++) {
+          const ss = Math.max(0, k * step);
           const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
           const r = await runFfmpeg(
-            ['-y', '-ss', (k * step).toFixed(2), '-i', v, '-t', String(segLen), '-an',
+            ['-y', '-ss', ss.toFixed(2), '-i', v, '-t', String(segLen), '-an',
               '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
             { timeoutMs: 120_000 },
           );
