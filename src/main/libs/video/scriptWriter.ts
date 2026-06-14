@@ -270,8 +270,8 @@ export async function generateScript(
   //   热搜成片(refIsResearch)用联网资料块,放宽到 4000 字符并强调"综合、紧贴事实、按最新、不编造"。
   const refBlock = refIsResearch
     ? (lang === 'zh'
-        ? `【本视频要讲的热点 —— 以下是它的最新联网资料(多条报道汇总)。请综合这些资料、紧贴事实、围绕【最新进展】写一段口播:信息要准、不臆测、不编造;可精炼重组成顺口的口播版,但题材与事实必须忠于资料,不要改成别的领域】:\n${ref.slice(0, 4000)}`
-        : `【Hot topic to cover — below is the latest web research (multiple report snippets). Synthesize it, stay faithful to the facts, and write the narration around the LATEST developments: be accurate, do not speculate or fabricate; you may tighten into a smooth spoken version, but keep the subject and facts faithful to the research, do NOT switch to another niche】:\n${ref.slice(0, 4000)}`)
+        ? `【本视频的热点主题(唯一准绳,口播必须讲的就是这个):${input.topic}】\n【下面是联网搜来的相关报道汇总,供你了解最新事实。⚠️重要:搜索可能掺入与上面主题【无关】的报道——只采用与「${input.topic}」这个人物/事件【直接相关】的内容;凡是写的是【别的人 / 别的事】的段落,一律忽略,绝不能把口播写成资料里的别人。若整份资料都跟主题对不上,就只依据主题本身写(可写得概括些),宁可少写事实细节,也绝不张冠李戴。请围绕该主题的【最新进展】写一段口播:信息要准、不臆测、不编造】:\n${ref.slice(0, 4000)}`
+        : `【Authoritative topic of this video (the ONLY thing the narration may be about): ${input.topic}】\nBelow is web research gathered for the latest facts. ⚠️IMPORTANT: the search may include reports UNRELATED to the topic above — use ONLY content directly about "${input.topic}"; ignore any passage about a DIFFERENT person or event, and never write the narration about someone else from the research. If the whole research mismatches the topic, write from the topic itself (being more general is fine) — never conflate it with someone else. Write the narration around the LATEST developments: accurate, no speculation, no fabrication:\n${ref.slice(0, 4000)}`)
     : (lang === 'zh'
         ? `【本视频内容主题 —— 就讲这篇,可精炼/重组织成更顺口的口播版,但题材必须忠于这篇,不要改成别的领域】:\n${ref.slice(0, 1500)}`
         : `【Video topic — base the narration on THIS content; you may tighten/restructure for speech, but keep the subject faithful to it, do NOT switch to another niche】:\n${ref.slice(0, 1500)}`);

@@ -722,7 +722,7 @@ async function runVideoPipeline(
       hotspotMaterial = await fetchHotspotMaterial(hotspotTopic.title, tlang === 'zh' ? 'zh' : 'en');
       tracker.progress(hotspotMaterial
         ? `📰 已获取联网资料(约 ${hotspotMaterial.length} 字),AI 将紧贴资料按最新写`
-        : '⚠️ 未取到联网资料(serper 未配 / 无网),AI 将仅按热点标题撰写');
+        : '⚠️ 未取到与该热点直接相关的联网资料(无网/未配 serper/搜到的全是无关报道已过滤),AI 将仅按热点标题撰写,不写无关内容');
     }
 
     const userText = (input.script || '').trim();
