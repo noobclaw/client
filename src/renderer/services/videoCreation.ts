@@ -44,6 +44,10 @@ export interface VideoTemplateOptions {
   /** 「AI 自由排版」(ai_freeform)专用:用户对风格/重点的自由描述(如「赛博朋克风、突出第一名」)。
    *  直接拼进 freeformWriter 的 prompt;其它版式忽略。空 = AI 自行决定。 */
   brief?: string;
+  /** 热榜数据源:用户选了某个热榜时存它的【榜名】(同 /api/web3/hot-search?sources= 参数)。
+   *  非空 = 出片时主进程实时抓该榜前 N 条标题当内容(定时任务每次跑都是最新榜单);
+   *  抓失败退回 dataText(向导选榜时存的快照)。空 = 用 dataText(粘贴模式)。 */
+  hotlistSource?: string;
 }
 
 export interface VideoCreationInput {

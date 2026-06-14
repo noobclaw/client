@@ -4464,6 +4464,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           subtitleEnabled: narration ? subtitleEnabled : undefined,
           // 「AI 自由排版」风格意图(其它版式忽略)。
           brief: style === 'ai_freeform' && brief.trim() ? brief.trim() : undefined,
+          // 热榜数据源:存榜名 → 出片时主进程实时抓最新榜单(定时任务天天更新);
+          // dataText 同时存了选榜时的快照,实时抓失败时兜底。
+          hotlistSource: dataSourceMode === 'hotlist' && hotlistName ? hotlistName : undefined,
         },
       };
       const schedule: VideoSchedule = { runInterval };
@@ -4574,7 +4577,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
                 </Field>
               ) : (
-                <Field label={isZh ? '选一个热榜' : 'Pick a hot list'} hint={isZh ? `取该榜前 ${TEMPLATE_HOTLIST_TOPN} 条标题作为内容` : `uses the top ${TEMPLATE_HOTLIST_TOPN} titles as content`}>
+                <Field label={isZh ? '选一个热榜' : 'Pick a hot list'} hint={isZh ? `选哪个榜,出片时就用它的实时榜单(前 ${TEMPLATE_HOTLIST_TOPN} 条)做成视频` : `the video is built from this list's live top ${TEMPLATE_HOTLIST_TOPN}`}>
+                  <div className="mb-2 rounded-lg bg-fuchsia-500/10 border border-fuchsia-500/30 px-3 py-2 text-[11px] text-fuchsia-600 dark:text-fuchsia-300 leading-relaxed">
+                    {isZh
+                      ? '📋 选了热榜 = 直接拿这个榜单做视频,不用自己填内容。每次出片都抓该榜【实时】前几条,所以定时任务能天天自动更新。'
+                      : '📋 Picking a hot list means the video is built straight from that ranking — no manual content. Each render pulls the list live, so scheduled tasks refresh daily.'}
+                  </div>
                   <div className="grid grid-cols-2 gap-2">
                     {TEMPLATE_HOTLISTS.map((h) => (
                       <button key={h.name} type="button" onClick={() => void loadHotlist(h.name)}

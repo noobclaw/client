@@ -92,6 +92,31 @@ async function ttsWithFallback(
   return null;
 }
 
+/** 热榜数据源:出片时实时抓的条数(跟向导 TEMPLATE_HOTLIST_TOPN 对齐)。 */
+const HOTLIST_TOPN = 12;
+
+/**
+ * 实时抓某个热榜前 N 条标题,拼成逐行文本当 dataText。走公开接口 /api/web3/hot-search
+ * (无需鉴权,同 GlobalHotSearchPage)。失败/空 → null,调用方退回快照。绝不抛。
+ */
+async function fetchHotlistText(source: string): Promise<string | null> {
+  try {
+    const base = process.env.NOOBCLAW_API_BASE_URL || 'https://api.noobclaw.com';
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 15000);
+    try {
+      const resp = await fetch(`${base}/api/web3/hot-search?sources=${encodeURIComponent(source)}`, { signal: ctrl.signal });
+      if (!resp.ok) return null;
+      const json: any = await resp.json();
+      const src = Array.isArray(json?.sources)
+        ? (json.sources.find((s: any) => s?.source === source) || json.sources[0]) : null;
+      const items: string[] = Array.isArray(src?.items)
+        ? src.items.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, HOTLIST_TOPN) : [];
+      return items.length ? items.join('\n') : null;
+    } finally { clearTimeout(timer); }
+  } catch { return null; }
+}
+
 /** 自由排版「写 → 体检 → 修」迭代上限。每轮 = 1 次 AI 调用 + 1 次无头体检(~1-2s)。 */
 const MAX_FREEFORM_ATTEMPTS = 3;
 
@@ -193,7 +218,8 @@ export async function runTemplatePipeline(
     return { ok: false, error: err };
   }
   const tpl = input.template;
-  if (!tpl || !(tpl.dataText || '').trim()) {
+  // 有 hotlistSource(热榜数据源)时,内容出片时实时抓,这里允许 dataText 快照为空。
+  if (!tpl || (!(tpl.dataText || '').trim() && !tpl.hotlistSource)) {
     const err = '请先填写榜单/要点内容(模板速生靠这些内容生成画面)。';
     tracker.fail('data', err);
     return { ok: false, error: err };
@@ -212,7 +238,19 @@ export async function runTemplatePipeline(
     // ── STEP 1:AI 产数据 + 可选口播稿(分段以便音画同步)──────────────
     throwIfAborted(signal);
     tracker.start('data', `输出目录:${taskDir}`);
-    const lang = detectTemplateLang(`${tpl.dataText} ${tpl.title || ''}`);
+    // 热榜数据源:出片时实时抓该榜前 N 条标题当内容(定时任务每次跑都是最新榜单);
+    // 抓失败 → 退回 tpl.dataText(向导选榜时存的快照)。粘贴模式 hotlistSource 为空,直接用 dataText。
+    let dataText = tpl.dataText || '';
+    if (tpl.hotlistSource) {
+      const fresh = await fetchHotlistText(tpl.hotlistSource);
+      if (fresh) {
+        dataText = fresh;
+        tracker.progress(`🔥 已抓「${tpl.hotlistSource}」实时榜单 ${fresh.split('\n').length} 条`);
+      } else {
+        tracker.progress(`⚠️ 实时榜单「${tpl.hotlistSource}」抓取失败,用已保存的快照`);
+      }
+    }
+    const lang = detectTemplateLang(`${dataText} ${tpl.title || ''}`);
     const wantNarration = tpl.narration === true;
     // 「AI 自由排版」:AI 写整页 HTML(freeformWriter + 体检闭环),不走固定模板渲染、不分页。
     const isFreeform = tpl.style === 'ai_freeform';
@@ -220,7 +258,7 @@ export async function runTemplatePipeline(
     // 估算 items 数量(就是 dataText 的非空行数,clamp 到模板上限 12),
     // 算 pageMeta 用 —— 让 AI 知道画面分几页、每页几条,据此分段输出 voiceSegments。
     const estItemCount = Math.min(12, Math.max(1,
-      (tpl.dataText || '').split(/\r?\n/).filter((l) => l.trim()).length || 1));
+      (dataText || '').split(/\r?\n/).filter((l) => l.trim()).length || 1));
     const pageSize = pageSizeFor(tpl.style);
     const estPageCount = calcPageCount(estItemCount, pageSize);
     const pageRanges = calcPageRanges(estItemCount, pageSize);
@@ -236,7 +274,7 @@ export async function runTemplatePipeline(
           title: tpl.title,
           // 模板速生不再用 track —— 它对 AI 排版/口播稿都没指导意义(2026-06-12 删字段);
           // 编辑老任务时 input.track 可能还在,但生成不参考。
-          dataText: tpl.dataText,
+          dataText,
           lang,
           needVoiceScript: wantNarration,
           // 开了配音才传 pageMeta(让 AI 按页切分 voiceSegments);纯视觉/自由排版不需要
@@ -318,7 +356,7 @@ export async function runTemplatePipeline(
     //   · 无配音 → 用户配置 / 自动估算(clamp[3, 20])
     const durationSec = wantNarration && realDurationSec > 0
       ? Math.max(3, realDurationSec + 0.4)
-      : clamp(tpl.durationSec || autoDuration(tpl.dataText), 3, 20);
+      : clamp(tpl.durationSec || autoDuration(dataText), 3, 20);
     const fps = tpl.fps && tpl.fps > 0 ? tpl.fps : 30;
 
     // 平台基础费预扣(对齐 stock 模式定价口径,单条约 $0.09~$0.18,服务端权威值)。
@@ -345,7 +383,7 @@ export async function runTemplatePipeline(
     if (isFreeform) {
       // ── AI 自由排版:写 → 体检 → 修,迭代闭环(没有视觉模型,靠无头浏览器自查)──
       html = await produceFreeformHtml({
-        dataText: tpl.dataText,
+        dataText,
         title: data.title || tpl.title,
         lang,
         brandColor,
@@ -444,11 +482,11 @@ export async function runTemplatePipeline(
     const wantPublish = Array.isArray(input.publishPlatforms) && input.publishPlatforms.length > 0;
     try {
       const { resolvePublishCaption } = require('./publishCaptionWriter');
-      const titleHint = tpl.title || (tpl.dataText || '').split(/\r?\n/).filter(Boolean)[0]?.slice(0, 40);
+      const titleHint = tpl.title || (dataText || '').split(/\r?\n/).filter(Boolean)[0]?.slice(0, 40);
       // 平台发布文案:AI 据 voiceScript/dataText 写钩人文案(不再把口播稿/榜单原样当 caption)。
       const cap = await resolvePublishCaption({
         wantPublish,
-        summary: tpl.voiceScript || tpl.dataText || titleHint || '',
+        summary: tpl.voiceScript || dataText || titleHint || '',
         title: titleHint,
         keywords: [],
         track: input.track,
