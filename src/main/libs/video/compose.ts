@@ -454,7 +454,7 @@ function subtitleCenterRatio(position: SubtitleStyle['position']): number {
   switch (position) {
     case 'top': return 0.13;
     case 'center': return 0.50;
-    case 'lower': return 0.75;   // 中下方(抖音混剪默认)
+    case 'lower': return 0.70;   // 中下方(抖音混剪默认):略偏上,字幕+模糊带一起落这。调小=更靠上
     case 'bottom':
     default: return 0.86;
   }
