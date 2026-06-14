@@ -1174,9 +1174,11 @@ async function runVideoPipeline(
         return { sceneClips, imagePool: [] };
       };
       tracker.done('visuals', `🎬 抖音混剪画面就绪(${dySegs.length} 个素材 · 底部黑条盖原字幕)`);
-    } else if (input.engine === 'hotspot' && input.hotspotMaterialSource !== 'douyin'
+    } else if (input.engine === 'hotspot'
                && String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
                && (douyinImages = await collectDouyinImages()).length > 0) {
+      // 中文话题:走到这 = 用户选了图片配图,或选了视频混剪但视频没取到 → 都落【抖音图文】(去掉
+      //   原来 materialSource!=='douyin' 守卫,修「抖音混剪没视频→直接跳 Serper」的怪癖)。
       // 热搜成片【抖音图文配图】:中文话题的「智能配图」从抖音图文笔记下图(英文话题/海外没登录 →
       //   短路落 else 走 Serper 兜底)。复用 hotspotDouyinMode=true:字幕走中下 lower;图镜 hasVideo=false
       //   不会触发模糊盖条(图不需要盖原字幕)。
@@ -1190,17 +1192,20 @@ async function runVideoPipeline(
         return { sceneClips: sentences.map(() => [] as string[]), imagePool: dyImgs, imageByScene: m };
       };
       tracker.done('visuals', `🖼️ 抖音图文配图就绪(${dyImgs.length} 张 · Ken Burns)`);
+    } else if (input.engine === 'hotspot') {
+      // 热搜成片【不再用 Serper 配图】(用户决策 2026-06:中文→抖音,英文/小语种→TikTok)。
+      //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题(TikTok 取材开发中,真机调后启用)。
+      //   暂无素材 → assignVisuals 返回空 → compose 落「纯色文字卡」兜底(绝不再下 Serper 谷歌杂图)。
+      // TODO(TikTok):英文/小语种接 collectTiktokClips / collectTiktokImages(对称抖音,须 VPN 真机调)。
+      tracker.progress('⚠️ 未取到平台素材(中文走抖音 / 英文走 TikTok·开发中)→ 本条用文字卡兜底');
+      assignVisuals = () => ({ sceneClips: sentences.map(() => [] as string[]), imagePool: [] });
     } else {
-      // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满);
-      // 热搜成片(hotspot)走 Serper 图池(纯图 Ken Burns),其余走 Pexels 素材库。
+      // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满)→ Pexels 素材库。
       // 素材池只建一次,assign(shuffle) 供每条按需取片段。
-      const pool = input.engine === 'hotspot'
-        ? await buildHotspotImagePool()
-        : await buildStockPool();
+      const pool = await buildStockPool();
       assignVisuals = (videoIdx: number) => ({
         sceneClips: pool.assign(videoIdx > 0),
         imagePool: pool.imagePool,
-        // hotspot 提供 imageBySceneFor → 每条按 videoIdx 错开图序(多条各不同);其它模式用固定 map。
         imageByScene: pool.imageBySceneFor ? pool.imageBySceneFor(videoIdx) : pool.imageByScene,
       });
     }
