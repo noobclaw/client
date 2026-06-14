@@ -25,6 +25,7 @@ import {
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
 import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
+import { getUsedHotspots, markHotspotUsed } from './usedHotspotStore';
 import { fetchDouyinClips } from './hotspotDouyinSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
@@ -617,12 +618,16 @@ async function runVideoPipeline(
       };
       const srcNames = sources.map((s) => HOTSPOT_SRC_LABEL[s] || s).join('、');
       tracker.progress(`🔥 已勾选热点源:${srcNames} —— 正在从这些榜单最新条目里随机选题…`);
-      hotspotTopic = await pickHotspotTopic(sources);
+      // 按任务读出已用过的热点 id 传给后端排除:一次跑 N 条(主进程外层循环逐条调本 pipeline)
+      //   每条都排掉前面已选的 → 各不相同;跨次运行也不会重复同一热点。选中后立刻记一笔。
+      const usedIds = getUsedHotspots(input.taskId || '');
+      hotspotTopic = await pickHotspotTopic(sources, usedIds);
       if (!hotspotTopic) {
         const err = '热搜成片:所选热点源暂无可用条目(稍后热榜刷新再试)';
         tracker.fail('script', err);
         return { ok: false, error: err };
       }
+      markHotspotUsed(input.taskId || '', hotspotTopic.id);
       const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
       tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
       throwIfAborted(signal);
@@ -884,7 +889,9 @@ async function runVideoPipeline(
     const maxClip = input.maxClipSeconds && input.maxClipSeconds > 0 ? input.maxClipSeconds : 4;
     // 一次出片条数(1~5)。抄 MPT:脚本/配音/素材池只做一次,每条只换片段组合。
     // AI 自动成片(Seedance)逐片段真金白银生成,批量没意义且翻倍烧钱 → 强制单条。
-    const videoCount = input.engine === 'ai'
+    // 热搜成片(含抖音混剪):每条必须是【不同热点】(主进程外层循环逐条独立选题),所以单个
+    //   pipeline 恒出 1 条 —— 绝不在这里用 composeOne 复用同一热点的脚本/素材多出几条。
+    const videoCount = (input.engine === 'ai' || input.engine === 'hotspot')
       ? 1
       : Math.max(1, Math.min(5, Math.round(input.videoCount ?? 1)));
 

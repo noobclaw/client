@@ -67,9 +67,11 @@ export interface HotspotTopic {
   lang?: string;
 }
 
-/** 选题:从勾选源(hotsearch/web3/tech)最新 pool 条里随机 1 条。无可选 / 失败返回 null。 */
-export async function pickHotspotTopic(sources: string[], pool = 20): Promise<HotspotTopic | null> {
-  const json = await postJson('/api/video/hotspot/pick', { sources, pool });
+/** 选题:从勾选源(hotsearch/web3/tech)最新 pool 条里随机 1 条。无可选 / 失败返回 null。
+ *  exclude = 该任务已用过的热点 id,后端选题时排除(都用光才退回整池)→ 一次跑 N 条不重复、
+ *  跨次运行也不重复同一热点。 */
+export async function pickHotspotTopic(sources: string[], exclude: string[] = [], pool = 20): Promise<HotspotTopic | null> {
+  const json = await postJson('/api/video/hotspot/pick', { sources, pool, exclude });
   const t = json?.topic;
   if (!t || !t.title) return null;
   return {
