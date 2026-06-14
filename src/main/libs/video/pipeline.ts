@@ -24,7 +24,7 @@ import {
 } from './tts';
 import { getTtsVoice } from './config';
 import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type StockVideoByTerm, type StockOrientation } from './stockProvider';
-import { pickHotspotTopic, fetchHotspotMaterial, fetchHotspotImagePlan, downloadHotspotImages, type HotspotTopic } from './hotspotProvider';
+import { pickHotspotTopic, fetchHotspotMaterial, type HotspotTopic } from './hotspotProvider';
 import { getUsedHotspots, markHotspotUsed } from './usedHotspotStore';
 import { fetchDouyinClips } from './hotspotDouyinSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
@@ -533,17 +533,24 @@ export async function generateVideoBatch(
   }
 
   // 批量:逐条独立 generateVideo(videoCount=1),拦截单条终态转「第 X/N 条」批次进度,最后发唯一终态。
+  // 「本次消耗」要【跨条累计】(否则第 2 条起单条 pipeline 从 0 重新报 → 显示被清空,用户困惑):
+  //   cumTokens/cumCost = 已跑完条的成本之和;每条进度里加上当前条的实时值一起报 → 单调递增不回退。
   const outputPaths: string[] = [];
   let success = 0, failed = 0, stopped = false;
+  let cumTokens = 0, cumCost = 0;
   for (let i = 0; i < batch; i++) {
     if (signal?.aborted) { stopped = true; break; }
+    let curTokens = 0, curCost = 0;
     const subEmit: ProgressEmitter = (p: any) => {
       try {
+        if (typeof p?.tokensUsed === 'number') curTokens = p.tokensUsed;
+        if (typeof p?.costUsd === 'number') curCost = p.costUsd;
+        const merged = { ...(p as object), tokensUsed: cumTokens + curTokens, costUsd: cumCost + curCost };
         if (p && (p.status === 'done' || p.status === 'error')) {
-          emit?.({ ...p, status: 'running', batchIndex: i + 1, batchTotal: batch,
+          emit?.({ ...merged, status: 'running', batchIndex: i + 1, batchTotal: batch,
             message: `第 ${i + 1}/${batch} 条${p.status === 'done' ? '已完成 ✅' : '失败,跳过 ⏭️'}` } as any);
         } else {
-          emit?.({ ...(p as object), batchIndex: i + 1, batchTotal: batch } as any);
+          emit?.({ ...merged, batchIndex: i + 1, batchTotal: batch } as any);
         }
       } catch { try { emit?.(p); } catch { /* ignore */ } }
     };
@@ -551,8 +558,9 @@ export async function generateVideoBatch(
     try {
       r = await generateVideo({ ...inp, videoCount: 1 } as VideoCreationInput, subEmit, signal);
     } catch {
-      failed++; continue; // 单条异常 → 跳过,继续下一条
+      failed++; cumTokens += curTokens; cumCost += curCost; continue; // 单条异常 → 跳过(已扣的钱仍计入累计)
     }
+    cumTokens += curTokens; cumCost += curCost; // 把本条成本沉淀进累计,下一条在此基础上继续加
     if ((r as any)?.stopped) { stopped = true; break; }
     if (r?.ok) {
       success++;
@@ -569,6 +577,7 @@ export async function generateVideoBatch(
   emit?.({
     jobId: (inp as any).taskId, status: success > 0 ? 'done' : 'error', steps: [],
     message: summary, outputPath: outputPaths[0], videoCount: success,
+    tokensUsed: cumTokens, costUsd: cumCost, // 终态带【全批累计】成本,别让最后一刻被清
     ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
   } as any);
   return { ok: success > 0, outputPath: outputPaths[0], outputPaths, stopped } as unknown as VideoCreationResult;
@@ -727,9 +736,9 @@ async function runVideoPipeline(
     // 本任务【写稿 + 搜索词】已扣的权威 USD 之和(含 reasoner ×3),供下面平台费预扣时
     // 按 videoCount 让服务端补收剩余 (count-1) 份 AI 费。AI 只调一次,各步累加进来。
     let aiCostUsd = 0;
-    // 热搜成片计费(按下载图片数,云端代下则 ×2):由 buildHotspotImagePool 填,charge 时读。
+    // 热搜成片计费诊断量:由抖音视频/图文池(buildDouyinPool / buildDouyinImagePool)填,charge 时读。
     let hotspotImageCount = 0;
-    let hotspotUsedCloud = false;
+    const hotspotUsedCloud = false; // 配图已不走 Serper 云端代下(抖音/图文直连下载)→ 恒 false
     // 抖音混剪模式:画面是抖音视频(底部要盖黑条遮原字幕)。由下面素材分配那步置位,composeOne 读。
     let hotspotDouyinMode = false;
     let script = userText;
@@ -1402,86 +1411,6 @@ async function runVideoPipeline(
     return { assign: assignOnce, imagePool, imageByScene };
     } // end buildStockPool
 
-    // 热搜成片:用 Serper /images(英文配图词)+ og:image 建图池(纯图 Ken Burns)。
-    //   一次 Serper 查询(1 credit)拿 10-15 张铺满全片,不逐镜搜(省 credit)。
-    //   返回形状与 buildStockPool 一致:assign 恒空(无视频)→ compose 走图片运镜。
-    async function buildHotspotImagePool(): Promise<{ assign: (shuffle: boolean) => string[][]; imagePool: string[]; imageByScene: Map<number, string>; imageBySceneFor?: (videoIdx: number) => Map<number, string> }> {
-      // 配图关键词【永远只用热搜标题】(用户要求,不额外出实体词):中文话题用中文标题搜、英文话题
-      //   (web3/科技)用英文标题搜。serper 中文整句标题也有图(维基/新闻/机构源更干净)。
-      const topicTitle = hotspotTopic?.title || '';
-      const isZhTopic = String(detectLang(topicTitle)).toLowerCase().startsWith('zh');
-      const kwZh: string[] = isZhTopic && topicTitle ? [topicTitle] : [];
-      const kwEn: string[] = !isZhTopic && topicTitle ? [topicTitle.toLowerCase()] : [];
-      tracker.progress(`🔤 配图关键词(热搜标题)— 中文:${kwZh.join(' · ') || '(无)'}  |  英文:${kwEn.join(' · ') || '(无)'}`);
-
-      // ── 配图编排在【后端】:中文词优先搜→英文兜底、只大图、剔付费图库,返回大图 URL + 下发黑名单。
-      //    客户端优先自己下大图(省服务端流量),下不动的转后端代下 base64(国内主走这条)。
-      const { images, want, diag } = await fetchHotspotImagePlan(kwZh, kwEn, input.targetSeconds ?? 60, hotspotTopic?.url);
-      tracker.progress(`🔍 后端按 ${input.targetSeconds ?? 60}s 算需 ${want} 张,查 ${diag.queries} 次,候选 ${images.length} 个大图${diag.hasKey ? '' : ' · ⚠️ 后端没读到 serper key'}`);
-      // 逐词明细:每个关键词(标语言)查没查、返回几张。一眼看出中/英哪些词有图。
-      if (diag.keywordStats.length > 0) {
-        const detail = diag.keywordStats
-          .map((s) => `${s.kw}(${s.lang})${s.searched ? `→${s.found}` : '·跳过'}`)
-          .join('  |  ');
-        tracker.progress(`   📋 逐词明细:${detail}`);
-      }
-      if (diag.serperError) tracker.progress(`   ⚠️ serper 报错:${diag.serperError}`);
-
-      // 落地两阶段:客户端优先下大图 → 缺口转后端代下 base64;两端都按下发黑名单过滤。下到 want 即停。
-      tracker.progress(`⬇️ 开始下图（目标 ${want} 张）…`);
-      const dl = await downloadHotspotImages(images, assetDir, want, diag.blacklist, (stage) => {
-        if (stage === 'cloud') tracker.progress('☁️ 本地下不动，委托云端下图…');
-      });
-      const localImgs = dl.paths;
-      hotspotImageCount = localImgs.length;
-      hotspotUsedCloud = dl.usedCloud;
-      if (dl.usedCloud) tracker.progress('☁️ 本条用到云端下图，会收少量流量费用');
-
-      // 没出图时把真因打到进度里(不再静默只剩 1 张)。
-      if (localImgs.length === 0) {
-        if (!diag.reached) tracker.progress('⚠️ 配图接口没通(后端没部署最新代码 / 未登录?)');
-        else if (!diag.hasKey) tracker.progress('⚠️ 服务端没读到 serper key — 查 admin 的 serper_api_key + 后端是否已部署最新代码并重启');
-        else if (diag.serperError) tracker.progress(`⚠️ Serper 调用失败:${diag.serperError}`);
-        else if (diag.serperTotal === 0) tracker.progress('⚠️ Serper 返回 0 图(关键词无结果?)');
-        else tracker.progress('⚠️ 候选都下载失败(图床防盗链?)');
-      }
-
-      // 平铺到各镜(轮流复用);assign 恒空(无视频)→ compose 用 imageByScene 的图做 Ken Burns。
-      const imageByScene = new Map<number, string>();
-      if (localImgs.length > 0) {
-        sentences.forEach((_, i) => imageByScene.set(i, localImgs[i % localImgs.length]));
-      }
-      // 批量出片:每条按 videoIdx 错开图片起始位 → 同一批图排出不同顺序的片子(否则多条完全一样:
-      //   hotspot 的 assign 恒空、配图全靠 imageByScene)。第 0 条 offset=0(原序),之后逐条右移。
-      const imageBySceneFor = (videoIdx: number): Map<number, string> => {
-        const m = new Map<number, string>();
-        if (localImgs.length > 0) {
-          const offset = ((videoIdx % localImgs.length) + localImgs.length) % localImgs.length;
-          sentences.forEach((_, i) => m.set(i, localImgs[(i + offset) % localImgs.length]));
-        }
-        return m;
-      };
-      const imagePool = [...localImgs];
-
-      // 留档到「素材」子目录(对齐 buildStockPool)。
-      try {
-        if (localImgs.length > 0) {
-          const matDir = path.join(destDir, '素材');
-          fs.mkdirSync(matDir, { recursive: true });
-          localImgs.forEach((src, i) => {
-            try { fs.copyFileSync(src, path.join(matDir, `${String(i + 1).padStart(3, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
-          });
-        }
-      } catch { /* 留档失败不影响出片 */ }
-
-      tracker.done('visuals', localImgs.length > 0
-        ? `配图就绪:${localImgs.length} 张(Serper + og:image)→ Ken Burns 铺满 ${sentences.length} 镜`
-        : '未取到配图,使用文字卡');
-
-      const assign = (_shuffle: boolean): string[][] => sentences.map(() => [] as string[]);
-      return { assign, imagePool, imageByScene, imageBySceneFor };
-    }
-
     /**
      * 抖音视频池:【只按热搜标题搜】(用户要求,不 AI 拆分镜词 —— 拆词会让画面偏离热点太远)→ 搜抖音/下视频/
      *   切片成片段池 → assign 时每镜从池里取、used 去重(切片够多 → 铺镜不重复)。取不到 → null,上层落
@@ -1494,11 +1423,17 @@ async function runVideoPipeline(
       if (!title) return null;
       const searchTerms = [title];
       const perSceneTerms = sentences.map(() => [title]); // 每镜共用标题词,take 走全局池 + used 去重(不重复铺)
-      tracker.progress(`🎬 抖音取材:只按热搜标题搜「${title}」`);
-      // 3) 逐词【串行】搜+切片,建 poolByTerm(词→片段)。只有标题一个词,所以一次性多下几个源视频
-      //   (按目标时长算,夹[5,10]),靠多个源 + 每个切多段保证画面有变化、铺镜不重复。
+      // 3) 搜+切片,建 poolByTerm(词→片段)。【关键:切够铺一整条不重复的量】——
+      //   本条要铺多少段 = 各镜段数之和(跟下面 assign 的 want 同口径),据此倒推要切多少片、下几个源。
+      //   严禁复用切片(用户要求):池子按需求 ×1.3 切够;真不够就【多下几个源 / 每个源多切几段不一样的】,
+      //   各段起点均匀错开(最小间隔 0.6s 视为不同片),绝不重复用同一时间段。
       const segLen = Math.max(2, maxClip);
-      const wantClips = Math.max(5, Math.min(10, Math.ceil((input.targetSeconds ?? 60) / 10)));
+      const wantOfScene = (i: number) => Math.max(1, Math.min(4, Math.ceil(Math.max(1.2, sceneDurations[i]) / maxClip)));
+      const totalDemand = sentences.reduce((s, _s, i) => s + wantOfScene(i), 0);
+      const poolTarget = Math.min(80, Math.ceil(totalDemand * 1.3) + 2); // 1.3× 缓冲(给 take 挑选余地),硬顶 80 段防极端长稿
+      // 源视频数:按 poolTarget 估(每源平均能切 ~4 段),夹 [6,20];源越多画面越不雷同。
+      const wantClips = Math.max(6, Math.min(20, Math.ceil(poolTarget / 4) + 1));
+      tracker.progress(`🎬 抖音取材:只按热搜标题搜「${title}」(本条需 ${totalDemand} 段 → 目标切 ${poolTarget} 段、下 ${wantClips} 个源)`);
       const poolByTerm = new Map<string, string[]>();
       let si = 0;
       for (const term of searchTerms) {
@@ -1514,20 +1449,44 @@ async function runVideoPipeline(
             try { fs.copyFileSync(src, path.join(matDir, `素材${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
           });
         } catch { /* 留档失败不影响出片 */ }
-        // 切片是逐段 ffmpeg 重编码(慢,几十秒~分钟级),逐个源视频报进度,别让用户对着空白卡很久。
-        tracker.progress(`✂️ 下载完成,开始切片(${dy.paths.length} 个源视频 → 切成多段铺镜)…`);
-        const segs: string[] = [];
-        let vIdx = 0;
+        // 先探每个源时长 → 算「每个源最多能切几段【不同起点】」(cap,起点间隔 0.6s);再把 poolTarget
+        //   按各源 cap【按比例】分配 → 长视频多切、短视频少切,起点在整段上均匀铺开,互不重叠/雷同。
+        const srcs: { v: string; dur: number; cap: number }[] = [];
         for (const v of dy.paths) {
           if (signal?.aborted) break;
-          vIdx++;
           const dur = await probeDuration(v).catch(() => 0);
-          if (dur <= 0) continue;
-          const maxSegs = Math.max(1, Math.floor((dur - segLen) / 1.0) + 1);
-          const n = Math.max(1, Math.min(6, maxSegs)); // 每视频最多 6 段(均匀铺,起点各异)
-          const step = n > 1 ? (dur - segLen) / (n - 1) : 0;
-          tracker.progress(`✂️ 切片中:第 ${vIdx}/${dy.paths.length} 个源视频 → 切 ${n} 段(累计 ${segs.length} 段)…`);
+          if (dur <= segLen + 0.3) continue; // 太短切不出一整段,跳过
+          const cap = Math.max(1, Math.floor((dur - segLen) / 0.6) + 1); // 0.6s 间隔下最多不同起点数
+          srcs.push({ v, dur, cap });
+        }
+        if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
+        const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
+        const targetSegs = Math.min(poolTarget, totalCap); // 只有总容量 < 目标时才少切(真不够);绝不靠复用补齐
+        // 按 cap 比例派每源段数(至少 1、不超过该源 cap),再修正四舍五入误差逼近 targetSegs。
+        const quota = srcs.map((s) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * s.cap / totalCap))));
+        let qsum = quota.reduce((a, b) => a + b, 0);
+        for (let guard = 0; guard < 300 && qsum !== targetSegs; guard++) {
+          if (qsum < targetSegs) { // 还差 → 给「剩余容量最大」的源加一段
+            let bi = -1;
+            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap && (bi < 0 || srcs[i].cap - quota[i] > srcs[bi].cap - quota[bi])) bi = i;
+            if (bi < 0) break; quota[bi]++; qsum++;
+          } else { // 超了 → 从「派得最多」的源减一段
+            let bi = -1;
+            for (let i = 0; i < srcs.length; i++) if (quota[i] > 1 && (bi < 0 || quota[i] > quota[bi])) bi = i;
+            if (bi < 0) break; quota[bi]--; qsum--;
+          }
+        }
+        // 切片是逐段 ffmpeg 重编码(慢,几十秒~分钟级),逐个源报进度,别让用户对着空白卡很久。
+        tracker.progress(`✂️ 下载完成,开始切片(${srcs.length} 个源 → 目标 ${targetSegs} 段、起点均匀错开不重复)…`);
+        const segs: string[] = [];
+        for (let vi = 0; vi < srcs.length; vi++) {
+          if (signal?.aborted) break;
+          const { v, dur } = srcs[vi];
+          const n = quota[vi];
+          const step = n > 1 ? (dur - segLen) / (n - 1) : 0; // 起点铺满 [0, dur-segLen],n 段互不重叠
+          tracker.progress(`✂️ 切片中:第 ${vi + 1}/${srcs.length} 个源 → 切 ${n} 段(累计 ${segs.length}/${targetSegs} 段)…`);
           for (let k = 0; k < n; k++) {
+            if (signal?.aborted) break;
             const ss = Math.max(0, k * step);
             const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
             const r = await runFfmpeg(
@@ -1542,7 +1501,10 @@ async function runVideoPipeline(
       }
       if (poolByTerm.size === 0) return null;
       const allSegs = Array.from(poolByTerm.values()).flat();
-      hotspotImageCount = allSegs.length; // 计费按片段数(沿用 hotspot 口径)
+      hotspotImageCount = allSegs.length; // 仅诊断用(后端 hotspot 已改【按条】计费,不再读 imageCount)
+      if (allSegs.length < totalDemand) {
+        tracker.progress(`⚠️ 抖音源有限,仅切出 ${allSegs.length} 段(本条需 ${totalDemand} 段)→ 个别镜可能复用,已尽量多切不同片`);
+      }
       tracker.progress(`✂️ 抖音素材就绪:${allSegs.length} 片段(按热搜标题搜 · 切片铺镜不重复)`);
       // 4) assign:每镜先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开
       const assign = (videoIdx: number): string[][] => {
@@ -1582,8 +1544,8 @@ async function runVideoPipeline(
       const searchTerms = [title];
       const perSceneTerms = sentences.map(() => [title]);
       tracker.progress(`🖼️ 抖音图文取材:只按热搜标题搜「${title}」`);
-      // 每镜一图,所以一次性多取(按分镜数 +4 缓冲,夹[8,24]),保证每镜不重复。
-      const wantImgs = Math.max(8, Math.min(24, sentences.length + 4));
+      // 每镜一图,一次性多取:【保证 ≥ 分镜数】+ 缓冲,夹 [10,40](原上限 24 太低 → 长稿不够铺会复用)。
+      const wantImgs = Math.max(10, Math.min(40, sentences.length + 6));
       const poolByTerm = new Map<string, string[]>();
       for (const term of searchTerms) {
         if (signal?.aborted) break;
