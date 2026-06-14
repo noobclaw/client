@@ -147,21 +147,30 @@ function wrapSubtitle(text: string, maxPerLine = 14): string {
  * 把整句切成「短语」做逐句渐进字幕(无 Whisper 词边界时的兜底)。
  * 先按标点切,过长的再按 ~PHRASE_MAX 字硬切。
  */
-const PHRASE_MAX = 12;
+// 单屏字幕目标字数上限。原来按标点切的短句【各自成屏】→ 每屏字太少;现在贪心【合并相邻短句】
+// 到接近这个上限,每屏显示更多字(wrapSubtitle 再折成最多 3 行)。调大 = 每屏更多字。
+const PHRASE_MAX = 20;
 function splitPhrases(text: string): string[] {
   const clean = text.replace(/\s+/g, ' ').trim();
   if (!clean) return [];
   const rough = clean.split(/[,，、;；:：]+/).map((s) => s.trim()).filter(Boolean);
   const phrases: string[] = [];
+  let buf = '';
   for (const r of rough) {
-    if (r.length <= PHRASE_MAX) {
-      phrases.push(r);
+    if (r.length > PHRASE_MAX) {
+      // 单段本身超长:先收掉缓冲,再按 PHRASE_MAX 硬切
+      if (buf) { phrases.push(buf); buf = ''; }
+      for (let i = 0; i < r.length; i += PHRASE_MAX) phrases.push(r.slice(i, i + PHRASE_MAX));
+    } else if (!buf) {
+      buf = r;
+    } else if (buf.length + r.length <= PHRASE_MAX) {
+      buf += r;  // 合并相邻短句到同一屏(中文紧凑,不加分隔)
     } else {
-      for (let i = 0; i < r.length; i += PHRASE_MAX) {
-        phrases.push(r.slice(i, i + PHRASE_MAX));
-      }
+      phrases.push(buf);
+      buf = r;
     }
   }
+  if (buf) phrases.push(buf);
   return phrases;
 }
 
