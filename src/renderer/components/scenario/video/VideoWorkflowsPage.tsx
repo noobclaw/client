@@ -3779,6 +3779,10 @@ export const HotspotVideoModal: React.FC<{
     return () => { alive = false; };
   }, []);
 
+  // 按条平台费区间(USD)由服务端下发(/api/video/config,admin 可调),计费文案用动态值不写死。
+  const [fee, setFee] = useState<{ min: number; max: number }>({ min: 0.02, max: 0.1 });
+  useEffect(() => { fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ }); }, []);
+
   const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
   const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
 
@@ -4142,8 +4146,8 @@ export const HotspotVideoModal: React.FC<{
                 </div>
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $0.02~$0.1 平台费 + AI 写稿 token)`
-                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$0.02-0.1 platform fee + AI tokens each)`}
+                    ? `每次运行随机出 ${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
+                    : `${Math.min(countMin, countMax)}-${Math.max(countMin, countMax)} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
                 </p>
               </Field>
             </>
