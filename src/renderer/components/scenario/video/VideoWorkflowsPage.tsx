@@ -3666,6 +3666,24 @@ const TEMPLATE_STYLES: Array<{ id: VideoTemplateStyle; zh: string; en: string; e
   { id: 'stat_board', zh: '数据看板', en: 'Stat board', emoji: '📊', hint: '几个关键指标大数字' },
 ];
 
+// 模板速生「热榜做数据源」可选榜单 —— name 同时是 /api/web3/hot-search?sources= 的参数,
+// 必须跟后端 HOT_SOURCE_ORDER / GlobalHotSearchPage TAB_GROUPS 的名字【精确一致】
+// (注意:不是 HOTSPOT_SOURCES 的 zh,后者把 Google/YouTube 写成「Google 趋势/YouTube 热门」对不上)。
+const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string }> = [
+  { name: '抖音热搜', emoji: '🎵' },
+  { name: 'B站热搜', emoji: '📺' },
+  { name: '微博热搜', emoji: '🔥' },
+  { name: '知乎热榜', emoji: '💭' },
+  { name: '百度热搜', emoji: '🔍' },
+  { name: '雪球热门股', emoji: '📈' },
+  { name: 'Hacker News', emoji: '🟠' },
+  { name: 'Reddit', emoji: '👽' },
+  { name: 'Google Trends', emoji: '📊' },
+  { name: 'YouTube Trending', emoji: '▶️' },
+];
+/** 「热榜做数据源」取前 N 条标题拼成 dataText。 */
+const TEMPLATE_HOTLIST_TOPN = 12;
+
 // 版式迷你预览:在版式卡里画个小竖屏示意,让用户一眼看出每种版式画面长啥样(纯内联 JSX,不增包体)。
 const TLP_SCREEN: React.CSSProperties = { width: 50, height: 89, flexShrink: 0, background: '#14122a', borderRadius: 8, padding: 5, display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden' };
 const TemplateLayoutPreview: React.FC<{ style: string }> = ({ style }) => {
@@ -4295,6 +4313,33 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const [style, setStyle] = useState<VideoTemplateStyle>(et?.style || 'rank_list');
   const [title, setTitle] = useState<string>(et?.title || '');
   const [dataText, setDataText] = useState<string>(et?.dataText || '');
+  // 数据源二选一:'paste' 粘贴任意内容(老路) / 'hotlist' 选一个热榜取前 N 条当内容。
+  const [dataSourceMode, setDataSourceMode] = useState<'paste' | 'hotlist'>('paste');
+  const [hotlistName, setHotlistName] = useState<string>('');
+  const [hotlistItems, setHotlistItems] = useState<string[]>([]);
+  const [hotlistLoading, setHotlistLoading] = useState(false);
+  const [hotlistError, setHotlistError] = useState<string>('');
+  // 「AI 自由排版」专用:用户对风格/重点的自由描述(像 HyperFrames 那样用自然语言表达意图)。
+  const [brief, setBrief] = useState<string>(et?.brief || '');
+  // 选某个热榜 → 拉前 TOPN 条标题。失败给提示,用户可改回粘贴。
+  const loadHotlist = async (name: string) => {
+    setHotlistName(name); setHotlistItems([]); setHotlistError(''); setHotlistLoading(true);
+    try {
+      const resp = await fetch(`${getBackendApiUrl()}/api/web3/hot-search?sources=${encodeURIComponent(name)}`);
+      if (!resp.ok) throw new Error('http ' + resp.status);
+      const json: any = await resp.json();
+      const src = Array.isArray(json?.sources)
+        ? (json.sources.find((s: any) => s?.source === name) || json.sources[0]) : null;
+      const items: string[] = Array.isArray(src?.items)
+        ? src.items.map((it: any) => String(it?.title || '').trim()).filter(Boolean).slice(0, TEMPLATE_HOTLIST_TOPN) : [];
+      if (!items.length) throw new Error('empty');
+      setHotlistItems(items);
+    } catch {
+      setHotlistError(isZh ? '拉取热榜失败,稍后重试或改用「粘贴内容」' : 'Failed to load hot list — try again or paste content');
+    } finally { setHotlistLoading(false); }
+  };
+  // 实际喂给 AI 的内容:热榜模式 = 取到的标题逐行;粘贴模式 = 文本框内容。
+  const effectiveDataText = dataSourceMode === 'hotlist' ? hotlistItems.join('\n') : dataText;
   // ── Step 2:配音/字幕 ──
   // 新建:默认开配音 + 字幕(模板速生定位短视频,有配音 + 烧字幕完播率更高)。
   // 编辑:保留任务现有设置(et?.narration === true 才认为开过)。
@@ -4348,7 +4393,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // 按数据行数估算,用户手动调没意义 —— 2026-06-12 删除入口。
   const [brandColor, setBrandColor] = useState<string>(et?.brandColor || '#f0b90b');
   const [runInterval, setRunInterval] = useState<VideoRunInterval>(editTask?.runInterval || 'once');
-  // ── Step 5:出片 —— 发布平台(可选,默认不勾=仅本地)+ 自定义发布文案 ──
+  // ── Step 5:出片 —— 成片去向(仅本地/发布到平台)二选一,对齐热搜成片 ──
+  // 编辑态从 publishPlatforms 反推:有平台 = 'upload',否则 'local'。
+  const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
+      ? ((editTask!.input as any).publishPlatforms as string[]) : [];
+    return editList.length > 0 ? 'upload' : 'local';
+  });
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const init: Record<Platform, boolean> = {
       douyin: false, xhs: false, binance: false, x: false,
@@ -4367,7 +4418,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const [err, setErr] = useState<string | null>(null);
 
   const handleCreate = async () => {
-    if (!dataText.trim()) { setStep(2); setErr(isZh ? '请填写榜单/要点内容' : 'Enter the list / points'); return; }
+    if (!effectiveDataText.trim()) {
+      setStep(2);
+      setErr(dataSourceMode === 'hotlist'
+        ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
+        : (isZh ? '请填写榜单/要点内容' : 'Enter the list / points'));
+      return;
+    }
     if (submitting) return;
     setSubmitting(true); setErr(null);
     try {
@@ -4390,18 +4447,23 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
         // BGM 是 input 顶层字段(pipeline 通用)。空 = 无 BGM。
         bgmPath: bgmPath || undefined,
         bgmVolume: bgmPath ? bgmVolume : undefined,
-        // 发布平台(空数组 = 仅存本地)+ 自定义发布文案(空 = AI 自动写钩人文案)。
-        publishPlatforms: selectedPlatformIds,
-        publishTitle: selectedPlatformIds.length && publishTitle.trim() ? publishTitle.trim() : undefined,
-        publishCaption: selectedPlatformIds.length && publishCaption.trim() ? publishCaption.trim() : undefined,
+        // 成片去向:'local' → 空数组(仅存本地);'upload' → 勾选的平台。对齐热搜成片口径。
+        publishPlatforms: outputMode === 'upload' ? selectedPlatformIds : [],
+        publishTitle: outputMode === 'upload' && selectedPlatformIds.length && publishTitle.trim() ? publishTitle.trim() : undefined,
+        publishCaption: outputMode === 'upload' && selectedPlatformIds.length && publishCaption.trim() ? publishCaption.trim() : undefined,
         template: {
           // durationSec 不传:配音 ON 由真实音频决定,配音 OFF 由 pipeline.autoDuration 估算。
-          style, title: title.trim() || undefined, dataText: dataText.trim(), brandColor,
+          // dataText 用 effectiveDataText(热榜模式 = 取到的标题逐行;粘贴模式 = 文本框)。
+          style,
+          title: title.trim() || (dataSourceMode === 'hotlist' && hotlistName ? hotlistName : undefined),
+          dataText: effectiveDataText.trim(), brandColor,
           narration,
           voice: narration ? voice : undefined,
           voiceRate: narration && voiceRate !== 0 ? voiceRate : undefined,
           voiceScript: narration && voiceScript.trim() ? voiceScript.trim() : undefined,
           subtitleEnabled: narration ? subtitleEnabled : undefined,
+          // 「AI 自由排版」风格意图(其它版式忽略)。
+          brief: style === 'ai_freeform' && brief.trim() ? brief.trim() : undefined,
         },
       };
       const schedule: VideoSchedule = { runInterval };
@@ -4420,7 +4482,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // 决策①:勾了发布平台时,保存前必须先过【全平台登录校验】(全登录才放行)。
   const [showLoginCheck, setShowLoginCheck] = useState(false);
   const handleFinalClick = () => {
-    if (selectedPlatformIds.length > 0) { setErr(null); setShowLoginCheck(true); }
+    if (outputMode === 'upload' && selectedPlatformIds.length > 0) { setErr(null); setShowLoginCheck(true); }
     else { void handleCreate(); }
   };
 
@@ -4428,7 +4490,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const goNext = () => {
     // Step 2 = 内容/数据,必填校验放这里(版式默认 rank_list,不会缺)。
     if (step === 2) {
-      if (!dataText.trim()) { setErr(isZh ? '请填写内容' : 'Enter content'); return; }
+      if (!effectiveDataText.trim()) {
+        setErr(dataSourceMode === 'hotlist'
+          ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
+          : (isZh ? '请填写内容' : 'Enter content'));
+        return;
+      }
     }
     setErr(null);
     setStep((s) => (s < 5 ? ((s + 1) as TplStep) : s));
@@ -4482,16 +4549,62 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           )}
           {step === 2 && (
             <>
+              {/* 数据源二选一:粘贴任意内容 / 选一个热榜(取前 N 条) */}
+              <Field label={isZh ? '内容来源' : 'Content source'} hint={isZh ? '自己粘贴,或选一个热榜自动取前几条当内容' : 'paste your own, or pull top items from a hot list'}>
+                <div className="flex gap-2">
+                  {(['paste', 'hotlist'] as const).map((m) => (
+                    <button key={m} type="button" onClick={() => { setDataSourceMode(m); setErr(null); }}
+                      className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${dataSourceMode === m ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                      {m === 'paste' ? (isZh ? '✍️ 粘贴内容' : '✍️ Paste content') : (isZh ? '🔥 选热榜' : '🔥 Hot list')}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+
               <Field label={isZh ? '标题(可选)' : 'Title (optional)'}>
                 <input value={title} onChange={(e) => setTitle(e.target.value)}
-                  placeholder={isZh ? '如:今日涨幅榜' : 'e.g. Today Top Gainers'}
+                  placeholder={isZh ? '如:今日涨幅榜(留空 AI 自拟)' : 'e.g. Today Top Gainers (AI writes if empty)'}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
               </Field>
-              <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '每行一条,AI 自动排版成动效画面' : 'one per line; AI lays it out'}>
-                <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={8}
-                  placeholder={isZh ? 'DOGE +18.96%\nSOL +12.47%\nBNB +8.13%' : 'DOGE +18.96%\nSOL +12.47%'}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
-              </Field>
+
+              {dataSourceMode === 'paste' ? (
+                <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '粘贴任意内容,AI 自动排版(每行一条更佳)' : 'paste anything; AI lays it out (one per line works best)'}>
+                  <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={8}
+                    placeholder={isZh ? 'DOGE +18.96%\nSOL +12.47%\nBNB +8.13%' : 'DOGE +18.96%\nSOL +12.47%'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
+                </Field>
+              ) : (
+                <Field label={isZh ? '选一个热榜' : 'Pick a hot list'} hint={isZh ? `取该榜前 ${TEMPLATE_HOTLIST_TOPN} 条标题作为内容` : `uses the top ${TEMPLATE_HOTLIST_TOPN} titles as content`}>
+                  <div className="grid grid-cols-2 gap-2">
+                    {TEMPLATE_HOTLISTS.map((h) => (
+                      <button key={h.name} type="button" onClick={() => void loadHotlist(h.name)}
+                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm transition-colors ${hotlistName === h.name ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-200 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
+                        <span>{h.emoji}</span><span className="dark:text-gray-200 truncate">{h.name}</span>
+                        {hotlistName === h.name && <span className="ml-auto text-fuchsia-500">✓</span>}
+                      </button>
+                    ))}
+                  </div>
+                  {hotlistLoading && <div className="text-[11px] text-gray-400 mt-2">{isZh ? '⏳ 加载中…' : '⏳ Loading…'}</div>}
+                  {hotlistError && <div className="text-[11px] text-red-500 mt-2">{hotlistError}</div>}
+                  {hotlistItems.length > 0 && (
+                    <div className="mt-2 rounded-lg border border-gray-200 dark:border-gray-700 p-2 max-h-40 overflow-y-auto">
+                      <div className="text-[11px] text-gray-400 mb-1">{isZh ? `已取 ${hotlistItems.length} 条(出片时按热榜实时刷新):` : `${hotlistItems.length} items:`}</div>
+                      <ol className="text-xs text-gray-600 dark:text-gray-300 space-y-0.5 list-decimal list-inside">
+                        {hotlistItems.map((t, i) => <li key={i} className="truncate">{t}</li>)}
+                      </ol>
+                    </div>
+                  )}
+                </Field>
+              )}
+
+              {style === 'ai_freeform' && (
+                <Field label={isZh ? '风格 / 要求(选填)' : 'Style / brief (optional)'} hint={isZh ? '像跟设计师说话,描述想要的画面风格/重点' : 'talk to the AI like a designer: vibe, emphasis, layout'}>
+                  <textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={2}
+                    placeholder={isZh ? '如:深色科技风,大号数字,突出涨幅最高的那条' : 'e.g. dark tech vibe, big numbers, emphasize the top mover'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
+                </Field>
+              )}
+
               {(() => {
                 const s = TEMPLATE_STYLES.find((x) => x.id === style);
                 if (!s) return null;
@@ -4626,38 +4739,48 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                   <span className="text-xs text-gray-500">{brandColor}</span>
                 </div>
               </Field>
-              <Field label={isZh ? '发布平台（选填）' : 'Publish to (optional)'} hint={isZh ? '勾了出片后自动发,未登录的运行时跳过;不勾 = 仅存本地' : 'auto-publish after render; unlogged skipped; none = save local only'}>
-                <div className="flex flex-wrap gap-2">
-                  {PUBLISH_PLATFORMS.map((m) => (
-                    <PlatformCheck
-                      key={m.id}
-                      checked={!!platforms[m.id]}
-                      onClick={() => togglePlatform(m.id)}
-                      label={`${m.emoji} ${isZh ? m.zh : m.en}`}
-                    />
+              <Field label={isZh ? '成片去向' : 'Output'} hint={isZh ? '仅存本地,或出片后自动发布到平台(对齐热搜成片)' : 'save local only, or auto-publish after render'}>
+                <div className="flex gap-2 mb-2">
+                  {(['local', 'upload'] as OutputMode[]).map((m) => (
+                    <button key={m} type="button" onClick={() => setOutputMode(m)}
+                      className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${outputMode === m ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
+                      {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
+                    </button>
                   ))}
                 </div>
-                {selectedPlatformIds.length > 0 && (
-                  <div className="mt-2 space-y-2">
-                    <div className="text-[11px] text-amber-500 leading-relaxed">
-                      {isZh
-                        ? '💡 已登录就发,未登录的自动跳过(下次登录再跑会补传)。'
-                        : '💡 Logged-in ones publish; unlogged are skipped. Log in later and re-run.'}
+                {outputMode === 'upload' && (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {PUBLISH_PLATFORMS.map((m) => (
+                        <PlatformCheck
+                          key={m.id}
+                          checked={!!platforms[m.id]}
+                          onClick={() => togglePlatform(m.id)}
+                          label={`${m.emoji} ${isZh ? m.zh : m.en}`}
+                        />
+                      ))}
                     </div>
-                    <input
-                      value={publishTitle}
-                      onChange={(e) => setPublishTitle(e.target.value)}
-                      placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                    />
-                    <textarea
-                      value={publishCaption}
-                      onChange={(e) => setPublishCaption(e.target.value)}
-                      rows={2}
-                      placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                    />
-                  </div>
+                    <div className="mt-2 space-y-2">
+                      <div className="text-[11px] text-amber-500 leading-relaxed">
+                        {isZh
+                          ? '💡 已登录就发,未登录的自动跳过(下次登录再跑会补传)。标题/正文留空则 AI 自动写。'
+                          : '💡 Logged-in ones publish; unlogged are skipped. Title/caption auto-written if empty.'}
+                      </div>
+                      <input
+                        value={publishTitle}
+                        onChange={(e) => setPublishTitle(e.target.value)}
+                        placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                      />
+                      <textarea
+                        value={publishCaption}
+                        onChange={(e) => setPublishCaption(e.target.value)}
+                        rows={2}
+                        placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                      />
+                    </div>
+                  </>
                 )}
               </Field>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>

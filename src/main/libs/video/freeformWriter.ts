@@ -39,6 +39,8 @@ export interface FreeformInput {
   captionsOn: boolean;
   /** GSAP 是否可用(随包文件存在)。false 时禁止 AI 用 gsap,只能 data-*。 */
   gsapAvailable: boolean;
+  /** 用户对风格/重点的自由描述(如「赛博朋克风、突出第一名、多用大数字」)。空 = AI 自行决定。 */
+  brief?: string;
   /** 体检不通过时的修复上下文:带上一版 + 问题清单,让 AI 改而不是重起炉灶。 */
   fixHint?: FreeformFixHint;
 }
@@ -106,6 +108,10 @@ function buildUser(input: FreeformInput): string {
   const parts: string[] = [];
   if (input.title) parts.push(`标题倾向:${input.title}`);
   parts.push(`主色 ${input.brandColor} / 强调色 ${input.accentColor || '#0ecb81'} / 时长 ${input.durationSec.toFixed(1)}s`);
+  // 用户的风格/重点描述 —— 这是「像 HyperFrames 那样用自然语言表达意图」的核心,优先级高,认真照做。
+  if (input.brief && input.brief.trim()) {
+    parts.push(`【用户的风格/重点要求(请认真照做)】${input.brief.trim().slice(0, 400)}`);
+  }
   if (input.fixHint) {
     parts.push('');
     parts.push('【上一版有以下问题,请修复后重新输出完整 JSON(在上一版基础上改,别推倒重来)】');

@@ -41,6 +41,9 @@ export interface VideoTemplateOptions {
   subtitleEnabled?: boolean;
   /** 右下角水印文案。空字符串 = 不显示;undefined = 默认 NoobClaw。 */
   watermark?: string;
+  /** 「AI 自由排版」(ai_freeform)专用:用户对风格/重点的自由描述(如「赛博朋克风、突出第一名」)。
+   *  直接拼进 freeformWriter 的 prompt;其它版式忽略。空 = AI 自行决定。 */
+  brief?: string;
 }
 
 export interface VideoCreationInput {

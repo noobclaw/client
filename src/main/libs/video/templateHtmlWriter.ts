@@ -43,6 +43,8 @@ export interface TemplateOptions {
   voiceScript?: string;      // 用户自定义口播稿;空 = AI 按 dataText 生成
   subtitleEnabled?: boolean; // 烧字幕开关(narration on 时才有意义)。默认 true
   watermark?: string;        // 右下角水印文案。空字符串 = 不显示
+  /** 「AI 自由排版」专用:用户对风格/重点的自由描述,拼进 freeformWriter prompt。其它版式忽略。 */
+  brief?: string;
 }
 
 export interface TemplateData {

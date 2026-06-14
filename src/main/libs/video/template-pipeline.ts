@@ -105,6 +105,7 @@ interface FreeformHtmlArgs {
   fps: number;
   captionCues?: CaptionCue[];
   watermark?: string;
+  brief?: string;
 }
 
 /**
@@ -136,6 +137,7 @@ async function produceFreeformHtml(
       durationSec: args.durationSec,
       captionsOn,
       gsapAvailable,
+      brief: args.brief,
       fixHint: prev
         ? { prevCss: prev.css, prevBodyHtml: prev.bodyHtml, prevSetupScript: prev.setupScript, issues: lastIssues }
         : undefined,
@@ -352,6 +354,7 @@ export async function runTemplatePipeline(
         fps,
         captionCues,
         watermark: tpl.watermark,
+        brief: tpl.brief,
       }, tracker, (tk, usd) => tracker.addTokens(tk, usd));
     } else {
       // ── 固定精品模板:音画同步(voiceSegments + 真实音频时长反算每页时间窗)+ 渲染 ──
