@@ -3806,8 +3806,8 @@ export const HotspotVideoModal: React.FC<{
     editTask?.runInterval && editTask.runInterval !== 'daily' ? editTask.runInterval : 'daily_random');
   // 每次运行出片条数随机区间 [min,max](对齐币安「每次运行发帖条数」)。封顶 10。
   // 每次定时/手动运行,主进程在区间内随机取 N,跑 N 条各自独立选题+写稿+按条计费。
-  const [countMin, setCountMin] = useState<number>(Math.max(1, Math.min(HOTSPOT_COUNT_CAP, Math.round(ei.videoCountMin ?? ei.videoCount ?? 1))));
-  const [countMax, setCountMax] = useState<number>(Math.max(1, Math.min(HOTSPOT_COUNT_CAP, Math.round(ei.videoCountMax ?? ei.videoCount ?? 1))));
+  // 每次运行【固定】出片条数(单滑块)。老任务用 videoCount / 老的 min/max 取个初值兜底。
+  const [count, setCount] = useState<number>(Math.max(1, Math.min(HOTSPOT_COUNT_CAP, Math.round(ei.videoCount ?? (ei as any).videoCountMax ?? (ei as any).videoCountMin ?? 1))));
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState('');
   const [showLoginCheck, setShowLoginCheck] = useState(false);
@@ -3863,9 +3863,9 @@ export const HotspotVideoModal: React.FC<{
     voiceRate,
     maxClipSeconds: 4,
     // 出片条数随机区间(归一化 min≤max)。videoCount 存 max 作向后兼容/旧展示兜底。
-    videoCountMin: Math.min(countMin, countMax),
-    videoCountMax: Math.max(countMin, countMax),
-    videoCount: Math.max(countMin, countMax),
+    videoCountMin: count,
+    videoCountMax: count,
+    videoCount: count,
   });
 
   const doCreate = async () => {
@@ -4188,33 +4188,18 @@ export const HotspotVideoModal: React.FC<{
                 )}
               </Field>
 
-              {/* 每次运行条数随机区间(对齐币安「每次运行发帖条数」min-max 双滑块)。
-                  每次运行随机取 N ∈ [min,max],跑 N 条各自独立选题+写稿,【按条计费】。 */}
+              {/* 每次运行【固定】出片条数 —— 单滑块,简单明确(双 min-max 滑块易出现"最少>最多"反转,弃用)。 */}
               <Field label={isZh ? `每次运行条数(1-${HOTSPOT_COUNT_CAP})` : `Videos per run (1-${HOTSPOT_COUNT_CAP})`}>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                      {isZh ? '最少' : 'Min'}: <span className="font-semibold text-amber-500">{countMin}</span>
-                    </div>
-                    {/* 跟币安/小红书发帖条数滑块一字不差:两个独立 raw 滑块,显示原值,不夹不推
-                        (buildInput 里 Math.min/Math.max 归一化,min>max 也不会出错)。 */}
-                    <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMin}
-                      onChange={(e) => setCountMin(parseInt(e.target.value, 10))}
-                      className="w-full accent-amber-500 cursor-pointer" />
-                  </div>
-                  <div>
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
-                      {isZh ? '最多' : 'Max'}: <span className="font-semibold text-amber-500">{countMax}</span>
-                    </div>
-                    <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={countMax}
-                      onChange={(e) => setCountMax(parseInt(e.target.value, 10))}
-                      className="w-full accent-amber-500 cursor-pointer" />
-                  </div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 mb-1">
+                  {isZh ? '固定生成' : 'Generate'} <span className="font-semibold text-amber-500">{count}</span> {isZh ? '条' : 'videos'}
                 </div>
+                <input type="range" min={1} max={HOTSPOT_COUNT_CAP} value={count}
+                  onChange={(e) => setCount(parseInt(e.target.value, 10))}
+                  className="w-full accent-amber-500 cursor-pointer" />
                 <p className="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
                   {isZh
-                    ? `每次运行随机出 ${countMin}-${countMax} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
-                    : `${countMin}-${countMax} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
+                    ? `每次运行固定出 ${count} 条 · 每条独立选题+写稿 · 按条计费(每条约 $${fee.min}~$${fee.max})`
+                    : `${count} per run · each its own topic+script · billed per video (~$${fee.min}-${fee.max} each)`}
                 </p>
               </Field>
             </>
