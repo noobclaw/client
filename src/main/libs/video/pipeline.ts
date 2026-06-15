@@ -708,6 +708,9 @@ async function runVideoPipeline(
     //   不报错。后续完全复用 stock 图片模式的写稿/配图/合成/发布。
     let hotspotTopic: HotspotTopic | null = null;
     let hotspotMaterial = '';
+    // 新流程:中文热搜【先上抖音搜】下视频/图文 + 抓真实帖子标题 —— 标题给 AI 写口播稿(替掉 Serper),
+    //   视频/图同时留着后面铺镜(buildDouyinPool / buildDouyinImagePool 直接复用,不再二次下载)。
+    let douyinPrefetch: { mode: 'video' | 'image'; paths: string[]; titles: string[] } | null = null;
     if (input.engine === 'hotspot') {
       const sources = (input.hotspotSources || []).filter(Boolean);
       if (sources.length === 0) {
@@ -736,12 +739,28 @@ async function runVideoPipeline(
       const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
       tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
       throwIfAborted(signal);
-      tracker.progress('🌐 联网检索这条热点的最新资料…');
+      // 【新流程,不再 Serper 联网取材】中文热搜直接上抖音搜:下视频/图文 + 抓真实帖子标题,
+      //   拿这些抖音标题 + 热搜标题给 AI 写口播稿(很真实、贴热点);素材同时留着后面铺镜。
+      //   非中文(TikTok 路,WIP)/ 抖音没结果 → 没标题 → AI 仅按热搜标题写,绝不回 Serper。
       const tlang = detectLang(hotspotTopic.title);
-      hotspotMaterial = await fetchHotspotMaterial(hotspotTopic.title, tlang === 'zh' ? 'zh' : 'en');
-      tracker.progress(hotspotMaterial
-        ? `📰 已获取联网资料(约 ${hotspotMaterial.length} 字),AI 将紧贴资料按最新写`
-        : '⚠️ 未取到与该热点直接相关的联网资料(无网/未配 serper/搜到的全是无关报道已过滤),AI 将仅按热点标题撰写,不写无关内容');
+      if (tlang === 'zh') {
+        const dyMode: 'video' | 'image' = input.hotspotMaterialSource === 'douyin' ? 'video' : 'image';
+        const want = dyMode === 'video'
+          ? Math.max(6, Math.min(15, Math.ceil((input.targetSeconds ?? 60) / 6)))
+          : Math.max(10, Math.min(30, Math.ceil((input.targetSeconds ?? 60) / 3)));
+        tracker.progress(`🎬 上抖音搜「${hotspotTopic.title}」,下${dyMode === 'video' ? '视频' : '图文'} + 抓标题…`);
+        const dy = await fetchDouyinClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, dyMode);
+        douyinPrefetch = { mode: dyMode, paths: dy.paths, titles: dy.titles };
+        if (dy.titles.length > 0) {
+          hotspotMaterial = `抖音上关于「${hotspotTopic.title}」的热门帖子标题(供你了解大家在聊什么、按真实角度写,别照抄、别张冠李戴):\n`
+            + dy.titles.slice(0, 12).map((t, i) => `${i + 1}. ${t}`).join('\n');
+          tracker.progress(`📝 拿到 ${dy.titles.length} 个抖音标题 + ${dy.paths.length} 个素材,AI 据此 + 热搜标题写口播`);
+        } else {
+          tracker.progress('⚠️ 抖音没抓到标题(没登录/没结果),AI 仅按热搜标题写');
+        }
+      } else {
+        tracker.progress('ℹ️ 非中文热搜:TikTok 取材开发中,本条 AI 仅按热搜标题写(不走 Serper)');
+      }
     }
 
     const userText = (input.script || '').trim();
@@ -1457,7 +1476,13 @@ async function runVideoPipeline(
       let si = 0;
       for (const term of searchTerms) {
         if (signal?.aborted) break;
-        const dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+        let dy: { paths: string[]; titles: string[] };
+        if (douyinPrefetch && douyinPrefetch.mode === 'video' && douyinPrefetch.paths.length > 0) {
+          tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 个抖音视频(不重复下载)`);
+          dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
+        } else {
+          dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+        }
         if (dy.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
         // 下载的源视频留档到输出目录「素材」子目录(assetDir 是临时目录、结尾会清掉,不留档就丢了)。
         //   跟 stock / 旧 collectDouyinClips 一致 —— 用户要能在成片旁边看到/复用原素材。
@@ -1568,7 +1593,13 @@ async function runVideoPipeline(
       const poolByTerm = new Map<string, string[]>();
       for (const term of searchTerms) {
         if (signal?.aborted) break;
-        const dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+        let dy: { paths: string[]; titles: string[] };
+        if (douyinPrefetch && douyinPrefetch.mode === 'image' && douyinPrefetch.paths.length > 0) {
+          tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 张抖音图(不重复下载)`);
+          dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
+        } else {
+          dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+        }
         if (dy.paths.length) {
           poolByTerm.set(term, dy.paths);
           // 下载的图文图留档到输出目录「素材」子目录(assetDir 临时目录结尾会清,不留档就丢了)。
