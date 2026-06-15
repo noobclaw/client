@@ -123,15 +123,18 @@ async function cdpGetCookies(urls: string | string[], tabId: number): Promise<an
 export async function checkVideoLoginByCookie(
   platform: LoginPlatform,
   which: LoginWhich = 'main',
+  /** 复用现成 tab 读 cookie(如发布时已导航到平台的发布 tab)→ 不再开 video_check 空白窗。
+   *  Network.getCookies 按 url 取,不管该 tab 当前停在哪页,所以任意 tab 都能读。 */
+  reuseTabId?: number,
 ): Promise<{ loggedIn: boolean } | null> {
   // 创作中心校验 → 探 creator 子域;没登记 creator 行的平台退回 main(主站发布、无独立创作中心)。
   const cfg = VIDEO_LOGIN_COOKIES[`${platform}:${which}`] || VIDEO_LOGIN_COOKIES[`${platform}:main`];
   if (!cfg) return null;
-  const tabId = await ensureVideoCheckWindow();
+  const tabId = typeof reuseTabId === 'number' ? reuseTabId : await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return null;
   const cookies = await cdpGetCookies(cfg.url, tabId);
   if (!cookies) {
-    _checkTabId = undefined; // 可能 tab 已关:下次重开
+    if (typeof reuseTabId !== 'number') _checkTabId = undefined; // 自家检查窗可能已关 → 下次重开;复用的 tab 不动
     return null;
   }
   return { loggedIn: cookieHit(cookies, cfg) };
@@ -155,9 +158,20 @@ export async function checkVideoLoginByCookieBatch(
   if (resolved.length === 0) return out;
   const tabId = await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return out;
-  const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
-  const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie
-  if (!cookies) { _checkTabId = undefined; return out; }
-  for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
+  try {
+    const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
+    const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie
+    if (cookies) for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
+  } finally {
+    await closeVideoCheckWindow(); // 一次性查完即关,别在浏览器里留 about:blank 的「运行检查」空白窗
+  }
   return out;
+}
+
+/** 关掉「运行检查」空白窗(查完即关,避免浏览器里堆一排 about:blank 的运行检查 tab)。 */
+export async function closeVideoCheckWindow(): Promise<void> {
+  const id = _checkTabId;
+  if (typeof id !== 'number') return;
+  _checkTabId = undefined;
+  try { await sendBrowserCommand('tab_close', { tabId: id }, 5000); } catch { /* 关不掉就算了 */ }
 }

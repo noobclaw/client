@@ -144,7 +144,7 @@ async function ensureLoggedInOnTab(
   // cookie 快路径:读该平台(创作中心走 creator 子域)登录 cookie,有效直接过 —— 不依赖创作中心页
   //   是否加载好、是否被弹登录。拿不准(null/false)再退老的 tab 校验,fail-safe。
   const ckWhich = hasCreator ? 'creator' : 'main';
-  const ck0 = await checkVideoLoginByCookie(p, ckWhich).catch((): { loggedIn: boolean } | null => null);
+  const ck0 = await checkVideoLoginByCookie(p, ckWhich, tabId).catch((): { loggedIn: boolean } | null => null);
   if (ck0?.loggedIn) return 'logged_in';
   // 先探一次:用户可能早就登录了(cookie 在),navigate 过去直接就是登录态。
   let st = await check().catch(() => ({ loggedIn: false, reason: 'check_threw' } as any));
@@ -160,7 +160,7 @@ async function ensureLoggedInOnTab(
   while (Date.now() < deadline) {
     if (signal?.aborted) return 'not_logged_in';
     await sleep(2500);
-    const ckN = await checkVideoLoginByCookie(p, ckWhich).catch((): { loggedIn: boolean } | null => null);
+    const ckN = await checkVideoLoginByCookie(p, ckWhich, tabId).catch((): { loggedIn: boolean } | null => null);
     if (ckN?.loggedIn) return 'logged_in';
     st = await check().catch(() => ({ loggedIn: false } as any));
     if (st.loggedIn) return 'logged_in';
