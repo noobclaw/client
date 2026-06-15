@@ -38,6 +38,8 @@ export interface DouyinClipsDiag {
 
 export interface DouyinClipsResult {
   paths: string[];
+  /** 命中帖子的标题(desc)—— 拿真实抖音标题给 AI 写口播稿(替掉 Serper 联网取材)。 */
+  titles: string[];
   diag: DouyinClipsDiag;
 }
 
@@ -133,7 +135,7 @@ async function fetchDouyinClipsImpl(
 ): Promise<DouyinClipsResult> {
   const diag: DouyinClipsDiag = { reached: false, loggedIn: false, gotUrls: 0, downloaded: 0 };
   // 排队等待期间任务可能已被取消 → 直接降级返空,不再驱动浏览器。
-  if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], diag }; }
+  if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
 
   // 1. 拉下发脚本(走发布 driver 同款 publish-drivers 热更新;key = 文件名 douyin_search)
   const pack = await fetchPublishDrivers();
@@ -141,7 +143,7 @@ async function fetchDouyinClipsImpl(
   if (!code) {
     onLog('⚠️ 后端没下发抖音搜索脚本(video_drivers/douyin_search.js),无法取材');
     diag.reason = 'no_driver';
-    return { paths: [], diag };
+    return { paths: [], titles: [], diag };
   }
 
   // 2. 抖音登录
@@ -149,7 +151,7 @@ async function fetchDouyinClipsImpl(
   if (!ok) {
     onLog('⚠️ 抖音未登录,跳过抖音取材(退回图片配图)');
     diag.reason = 'not_logged_in';
-    return { paths: [], diag };
+    return { paths: [], titles: [], diag };
   }
   diag.loggedIn = true;
 
@@ -172,16 +174,20 @@ async function fetchDouyinClipsImpl(
   } catch (e: any) {
     onLog('⚠️ 抖音取材脚本异常:' + String(e?.message || e).slice(0, 100));
     diag.reason = 'script_threw';
-    return { paths: [], diag };
+    return { paths: [], titles: [], diag };
   }
   diag.reached = true;
   diag.scriptDiag = ret?.diag;
   const urls: string[] = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
+  // 真实抖音帖子标题(去重去空)—— 给 AI 写口播稿当素材(替掉 Serper)。
+  const titles: string[] = Array.isArray(ret?.titles)
+    ? Array.from(new Set((ret.titles as any[]).filter((t) => typeof t === 'string' && t.trim()).map((t: string) => t.trim())))
+    : [];
   diag.gotUrls = urls.length;
   if (urls.length === 0) {
     onLog(mode === 'image' ? '⚠️ 抖音没取到可用图文图片' : '⚠️ 抖音没取到可用视频源');
     diag.reason = ret?.reason || 'no_urls';
-    return { paths: [], diag };
+    return { paths: [], titles: [], diag };
   }
 
   // 4. 主进程下载到本地素材目录
@@ -202,6 +208,6 @@ async function fetchDouyinClipsImpl(
       onLog(`   ⏭️ 第 ${i + 1} 个下载失败,跳过`);
     }
   }
-  onLog(`✅ 抖音素材就绪:${paths.length}/${urls.length} 个`);
-  return { paths, diag };
+  onLog(`✅ 抖音素材就绪:${paths.length}/${urls.length} 个${titles.length ? ` · ${titles.length} 个标题` : ''}`);
+  return { paths, titles, diag };
 }
