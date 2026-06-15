@@ -4581,7 +4581,6 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                   </Field>
                   <Field label={isZh ? '自定义口播稿(可选)' : 'Custom voice script (optional)'} hint={isZh ? '空 = AI 按你的数据自动写;填了用这个稿子直接配音' : 'Empty: AI writes; Filled: use this'}>
                     <textarea value={voiceScript} onChange={(e) => setVoiceScript(e.target.value)} rows={3}
-                      placeholder={isZh ? '今日涨幅榜:DOGE 涨 18.96%、SOL 涨 12.47%、BNB 涨 8.13%。' : 'Today gainers: ...'}
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
                   </Field>
                   <div className="text-[11px] text-gray-400">{isZh ? '⚠️ 开了配音 → 视频时长由真实音频决定' : '⚠️ With voice on, duration = real audio length'}</div>
