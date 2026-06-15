@@ -1962,10 +1962,11 @@ const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: st
   { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
   { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
   { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
-  { id: 'bilibili',  zh: 'B 站',     en: 'Bilibili',    emoji: '📺' },
   { id: 'kuaishou',  zh: '快手',     en: 'Kuaishou',    emoji: '⚡' },
   { id: 'shipinhao', zh: '视频号',   en: 'Channels',    emoji: '🟢' },
   { id: 'toutiao',   zh: '头条号',   en: 'Toutiao',     emoji: '🟠' },
+  // B 站投稿步骤最多(创作声明等),放最后(用户要求)
+  { id: 'bilibili',  zh: 'B 站',     en: 'Bilibili',    emoji: '📺' },
 ];
 
 const SCRIPT_MAX = 800;
@@ -2599,7 +2600,8 @@ const VideoConfigModal: React.FC<{
   };
 
   // 用户勾选的发布平台 id 数组 —— 写到 input.publishPlatforms,pipeline 据此 forEach 调 driver。
-  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+  // 按 PUBLISH_PLATFORMS 顺序取(不用 Object.keys)→ 发布顺序 = 列表顺序(B 站在最后),改一处列表即可
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
 
   // 决策①:要发布(upload 模式 + 勾了平台)时,保存前必须先过【全平台登录校验】(全登录才放行)。
   const [showLoginCheck, setShowLoginCheck] = useState(false);
@@ -3845,7 +3847,8 @@ export const HotspotVideoModal: React.FC<{
   useEffect(() => { fetchVideoFeeRange().then(setFee).catch(() => { /* 兜底 */ }); }, []);
 
   const selectedSources = HOTSPOT_SOURCES.filter((s) => sources[s.id]).map((s) => s.id);
-  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+  // 按 PUBLISH_PLATFORMS 顺序取(不用 Object.keys)→ 发布顺序 = 列表顺序(B 站在最后),改一处列表即可
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
 
   // 任务名不再让用户填(每次随机选题,固定名没意义)→ 新建固定「热搜成片」,编辑保留旧名。
   const buildTitle = () => (title.trim() || (isZh ? '热搜成片' : 'Hotspot Video'));
@@ -4352,7 +4355,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
     return init;
   });
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
-  const selectedPlatformIds = (Object.keys(platforms) as Platform[]).filter((p) => platforms[p]);
+  // 按 PUBLISH_PLATFORMS 顺序取(不用 Object.keys)→ 发布顺序 = 列表顺序(B 站在最后),改一处列表即可
+  const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
   const [publishTitle, setPublishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
   const [publishCaption, setPublishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
   const [submitting, setSubmitting] = useState(false);
