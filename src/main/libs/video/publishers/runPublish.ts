@@ -34,13 +34,17 @@ import { getStandardBounds } from '../../scenario/subPlatformRegistry';
 import { PUBLISHER_ANCHOR_URL, bridgeOptsFor } from './publisherUtils';
 import { videoWindowTitle } from '../videoRunWindow';
 import { checkVideoLoginByCookie } from '../videoLoginCheck';
+import { getVideoConfig } from '../videoConfig';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // 提交后默认等这么久:平台(尤其抖音)是「点提交后才真正开始上传视频」,过早进入下一动作/刷新会白提交。
-const POST_SUBMIT_WAIT_MS = 120_000; // 抖音是「提交后才真正上传」→ 提交后等 120s 让上传跑完(用户要求统一 120s)
+// ⚠️ 默认值;runPublishStep 开头用 /api/video/config 的 postSubmitWaitMs 覆盖 → 改这个时间【只改后端
+//    system_config(admin 后台)、客户端不打包】(用户要求:这种时间不该发版本)。
+let POST_SUBMIT_WAIT_MS = 120_000;
 
-/** 未登录的等待上限:3 分钟(用户要求 —— 反复检测,超时跳过本条视频不补传)。 */
-const LOGIN_WAIT_MS = 3 * 60 * 1000;
+/** 未登录的等待上限:默认 3 分钟(反复检测,超时跳过本条视频不补传)。
+ *  默认值;runPublishStep 开头用 /api/video/config 的 loginWaitMs 覆盖(后端可调、不打包)。 */
+let LOGIN_WAIT_MS = 3 * 60 * 1000;
 
 /** 专用发布窗口的 sub_platform / windowKey(见 subPlatformRegistry.video_publish)。 */
 const PUBLISH_SUB_PLATFORM = 'video_publish';
@@ -277,6 +281,14 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
     opts.onLog?.('📂 未选发布平台 · 仅存本地');
     return result;
   }
+
+  // 发布时间从服务端配置拉(后端 system_config 可调、改这些不打包客户端)。拉不到用默认。
+  //   覆盖模块级 POST_SUBMIT_WAIT_MS / LOGIN_WAIT_MS —— 下面 helper 的默认参数在【调用时】求值,会拿到新值。
+  try {
+    const vc = await getVideoConfig();
+    if (vc.postSubmitWaitMs > 0) POST_SUBMIT_WAIT_MS = vc.postSubmitWaitMs;
+    if (vc.loginWaitMs > 0) LOGIN_WAIT_MS = vc.loginWaitMs;
+  } catch { /* 用默认 */ }
 
   opts.onLog?.(`🚀 准备发布到 ${list.length} 个平台:${list.map(platformLabel).join(' / ')}`);
 

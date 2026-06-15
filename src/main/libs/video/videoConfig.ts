@@ -40,6 +40,10 @@ export interface VideoPipelineConfig {
   perTermCount: number;
   /** 整体去搜的搜索词上限,避免逐词搜请求过多。 */
   maxSearchTerms: number;
+  /** 发布:点提交后等多久(ms)。抖音等平台「提交后才真正上传」,等不够白提交。服务端可调、不打包。 */
+  postSubmitWaitMs: number;
+  /** 发布:运行时某平台未登录,反复探测等多久(ms),超时跳过该平台(本条不补传)。服务端可调。 */
+  loginWaitMs: number;
 }
 
 /** 内置默认 = 历史硬编码行为。服务端拉不到时全靠这份兜底,保证离线也能跑。 */
@@ -92,6 +96,8 @@ export const DEFAULT_VIDEO_CONFIG: VideoPipelineConfig = {
   minImageEdge: 480,
   perTermCount: 6,
   maxSearchTerms: 12,
+  postSubmitWaitMs: 120_000,
+  loginWaitMs: 180_000,
 };
 
 function apiBase(): string {
@@ -150,6 +156,8 @@ export async function getVideoConfig(): Promise<VideoPipelineConfig> {
       minImageEdge: num(c?.minImageEdge, d.minImageEdge),
       perTermCount: num(c?.perTermCount, d.perTermCount),
       maxSearchTerms: num(c?.maxSearchTerms, d.maxSearchTerms),
+      postSubmitWaitMs: num(c?.postSubmitWaitMs, d.postSubmitWaitMs),
+      loginWaitMs: num(c?.loginWaitMs, d.loginWaitMs),
     };
     cache = { at: Date.now(), cfg };
     return cfg;
