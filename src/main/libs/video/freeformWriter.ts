@@ -35,6 +35,11 @@ export interface FreeformInput {
   brandColor: string;
   accentColor?: string;
   durationSec: number;
+  /**
+   * 是否开了配音。开了 = 整段时长都在朗读内容 → 画面必须跟着口播逐步推进(顺序条目沿
+   * 整段时长铺开揭示/高亮),不能前几秒一次铺完后段空转。关了 = 纯视觉短片,错峰登场到位即可。
+   */
+  narrationOn: boolean;
   /** 字幕是否开(开了要给底部留安全区,别让画面元素压到字幕)。 */
   captionsOn: boolean;
   /** GSAP 是否可用(随包文件存在)。false 时禁止 AI 用 gsap,只能 data-*。 */
@@ -65,11 +70,12 @@ const SYSTEM_PROMPT = [
   '- 内容多到一屏放不下时【绝不往下堆到屏外、也绝不压到 {{CONTENT_BOTTOM}}px 以下】:要么减量精炼到一屏,要么用时间轴分段轮播(见下方编排)。',
   '- 【禁止空占位】没有图片源(离线、禁外链),不要画空图片框 / 空圆 / 灰色占位块 / 头像位 —— 一律用文字、图形、渐变、emoji 图标填,别留空洞。',
   '',
-  '【时长 & 编排(关键:别让画面僵住!)】',
+  '【时长 & 编排(关键:别让画面僵住、也别让画面跑在口播前面!)】',
   '- 整片精确 {{DURATION}} 秒。进场动画 data-start ≥0 且 data-start+data-duration ≤ {{DURATION}}。',
-  '- 【全程必须有变化】,严禁「开头 1 秒动一下、之后一直定格不动」。按内容量二选一:',
-  '  · 一屏放得下 → 元素错峰登场,并叠【持续环境动效】让画面一直在呼吸:背景 .fx-blob 配 data-loop=float 漂浮、标题 .fx-sheen 配 data-loop=sweep 扫光、关键数字 count-up 滚动等(这些 loop 全程循环,不会停)。',
-  '  · 一屏放不下 → 【分段轮播】:第 1 段进场→停留→退场(用 data-exit-start/data-exit-duration),第 2 段在它退场后再进场……每段占一段时间、平分 {{DURATION}};保证【任意时刻屏上只有放得下的那一段】,且画面随时间推进不断切换。',
+  '- 【全程必须有变化】,严禁「开头 1 秒动一下、之后一直定格不动」。',
+  '{{NARRATION}}',
+  '- 一屏放不下时 → 【分段轮播】:第 1 段进场→停留→退场(用 data-exit-start/data-exit-duration),第 2 段在它退场后再进场……每段占一段时间、平分 {{DURATION}};保证【任意时刻屏上只有放得下的那一段】,且画面随时间推进不断切换。',
+  '- 不论哪种,都叠【持续环境动效】让画面一直在呼吸:背景 .fx-blob 配 data-loop=float 漂浮、标题 .fx-sheen 配 data-loop=sweep 扫光、关键数字 count-up 滚动(这些 loop 全程循环);但环境动效【只是点缀,不能替代「内容随时间推进」】。',
   '- 结尾最后 0.5s 可收稳,但不要整个后半段都静止不动。',
   '',
   '【动画 —— 只能用这两套机制,二选一或混用;严禁 CSS @keyframes / animation / transition / setInterval / setTimeout / requestAnimationFrame / Date / Math.random(全是壁钟,会让逐帧渲染糊)】',
@@ -109,8 +115,13 @@ const SYSTEM_PROMPT = [
   '再次强调:输出纯 JSON,bodyHtml 里【不许有 <script>】(JS 只能放 setupScript),不许 on 事件属性,不许外链。',
 ].join('\n');
 
+// 有配音 vs 无配音的编排指令(含 {{DURATION}} token,故必须在 DURATION 全局替换【之前】先注入)。
+const NARRATION_RULE_ON = '- ⚠️【本片有配音,画面必须跟着口播逐步推进 —— 这是本次最重要的要求】:配音会从头到尾把内容念完(约 {{DURATION}} 秒)。内容若是顺序多条目(榜单/盘点/多条列表),把每条的【入场或高亮】沿整段时长均匀铺开:第 k 条约在 (k-1)/N×{{DURATION}} 秒出现或点亮(N=条目数),最后一条要到接近结尾(≥{{DURATION}}×0.8)才登场。绝不允许把所有条目挤在前几秒一次性铺完、后半段只剩环境动效空转(那样口播念到后面、画面早没东西可变了 = 废片)。一屏放得下:让已出现的条目留在屏上、当前被念到的那条高亮(放大/变色/左侧高亮条变亮);一屏放不下:逐条进场+整列上滚,或用下面的分段轮播。';
+const NARRATION_RULE_OFF = '- 本片无配音 → 元素错峰登场到位即可(不必把入场拖满全程),靠下面的环境动效持续呼吸防止僵住。';
+
 function buildSystem(input: FreeformInput): string {
   return SYSTEM_PROMPT
+    .replace('{{NARRATION}}', input.narrationOn ? NARRATION_RULE_ON : NARRATION_RULE_OFF)
     .replace(/\{\{DURATION\}\}/g, input.durationSec.toFixed(1))
     .replace(/\{\{BRAND\}\}/g, input.brandColor)
     .replace(/\{\{ACCENT\}\}/g, input.accentColor || '#0ecb81')
@@ -205,8 +216,14 @@ function fallbackScene(input: FreeformInput): FreeformResult {
   const lines = (input.dataText || '').split(/\r?\n/).map((s) => s.trim()).filter(Boolean).slice(0, 8);
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string));
   const title = esc(input.title || (lines[0] || '热点速览').slice(0, 18));
+  // 有配音:把各行入场沿整段时长均匀铺开(跟口播逐条推进,避免前几秒铺完后段静止);
+  // 无配音:错峰登场(0.25s 间隔)即可。
+  const n = lines.length || 1;
+  const step = input.narrationOn && n > 1
+    ? Math.max(0.25, (input.durationSec - 1.6) / n)
+    : 0.25;
   const rows = lines.map((l, i) =>
-    `<div class="ff-row" data-anim="fade-up" data-start="${(0.8 + i * 0.25).toFixed(2)}" data-duration="0.5" data-ease="expo">${esc(l.slice(0, 50))}</div>`,
+    `<div class="ff-row" data-anim="fade-up" data-start="${(0.8 + i * step).toFixed(2)}" data-duration="0.5" data-ease="expo">${esc(l.slice(0, 50))}</div>`,
   ).join('');
   const css = `
 #ff-title{position:absolute;top:220px;left:80px;right:80px;text-align:center;font-size:84px;font-weight:900;color:${input.brandColor};line-height:1.15}

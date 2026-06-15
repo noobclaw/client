@@ -128,6 +128,8 @@ interface FreeformHtmlArgs {
   accentColor?: string;
   durationSec: number;
   fps: number;
+  /** 是否开了配音(决定 freeform 是否要把内容揭示沿整段时长铺开、跟口播逐条推进)。 */
+  narrationOn: boolean;
   captionCues?: CaptionCue[];
   watermark?: string;
   brief?: string;
@@ -160,6 +162,7 @@ async function produceFreeformHtml(
       brandColor: args.brandColor,
       accentColor: args.accentColor,
       durationSec: args.durationSec,
+      narrationOn: args.narrationOn,
       captionsOn,
       gsapAvailable,
       brief: args.brief,
@@ -181,7 +184,7 @@ async function produceFreeformHtml(
       setupScript: useGsap ? scene.setupScript : undefined,
     });
     lastHtml = html;
-    const audit = await auditHtml(html);
+    const audit = await auditHtml(html, { narrationOn: args.narrationOn });
     if (audit.ok) {
       tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮)${scene.source === 'fallback' ? ' · 兜底版' : ''}${useGsap ? ' · GSAP' : ''}`);
       return html;
@@ -390,6 +393,7 @@ export async function runTemplatePipeline(
         accentColor: tpl.accentColor,
         durationSec,
         fps,
+        narrationOn: wantNarration,
         captionCues,
         watermark: tpl.watermark,
         brief: tpl.brief,

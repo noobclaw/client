@@ -544,12 +544,36 @@ const AUDIT_JS = `(function(){
   return out;
 })()`;
 
+// ── 内容推进体检 JS:返回 {last, n} ────────────────────────────────────────
+// last = 最后一次「内容活动」的结束时刻(秒)= 所有 data-start/data-exit 入退场结束 + GSAP
+//        时间线总时长 取最大;n = 带 data-start 的条目数。
+// 用途:有配音时,若 n 个条目在全片前 60% 就全部入场/动完(last 太小),说明内容没跟着
+//      口播逐条推进、后段只剩环境动效空转(像素级 freeze 检测会被环境动效骗过去,这里靠
+//      声明式时序硬判)。环境动效 data-loop 不计入 last(它是循环点缀、不推进内容)。
+const ACTIVITY_JS = `(function(){
+  var stage=document.getElementById('stage')||document.body;
+  var els=stage.querySelectorAll('[data-start]');
+  var last=0,n=0;
+  for(var i=0;i<els.length;i++){
+    var el=els[i];
+    var s=parseFloat(el.getAttribute('data-start'))||0;
+    var d=parseFloat(el.getAttribute('data-duration'));
+    if(isNaN(d))d=0.6;
+    last=Math.max(last,s+d);n++;
+    var es=parseFloat(el.getAttribute('data-exit-start'));
+    if(!isNaN(es)){var ed=parseFloat(el.getAttribute('data-exit-duration'));if(isNaN(ed))ed=0.6;last=Math.max(last,es+ed);}
+  }
+  try{var tls=window.__timelines||{};for(var k in tls){var tl=tls[k];if(tl&&typeof tl.duration==='function'){var td=tl.duration();if(typeof td==='number'&&isFinite(td))last=Math.max(last,td);}}}catch(e){}
+  return {last:last,n:n};
+})()`;
+
 /**
  * 布局体检:启短命无头实例,seek 到 settled 时刻(DURATION*0.92,进场已完成、尾段稳定),
  * 跑 AUDIT_JS 查溢出/裁切/重叠/动画没接上;再做【确定性自检】(同一帧渲两次像素必须一致,
  * 抓 AI 偷用 random/时钟)。给 freeform 迭代闭环当「眼睛」。绝不抛(异常 → ok:false + 原因)。
+ * opts.narrationOn=true 时额外查【内容推进】:有配音却把条目挤在前段铺完(后段无新内容跟口播)。
  */
-export async function auditHtml(html: string): Promise<AuditHtmlResult> {
+export async function auditHtml(html: string, opts?: { narrationOn?: boolean }): Promise<AuditHtmlResult> {
   const width = 1080, height = 1920;
   const session = new HeadlessSession();
   try {
@@ -582,6 +606,17 @@ export async function auditHtml(html: string): Promise<AuditHtmlResult> {
     }
     if (!eq(f1, f2)) {
       issues.push('动画非确定性(同一时间点渲两次画面不一致)— 禁止 Date/Math.random/setInterval/requestAnimationFrame,只能用 data-* 或 paused GSAP 时间线');
+    }
+    // 内容推进体检(仅有配音 + 全片≥8s):条目(≥4)若在前 60% 就全部入场/动完,说明画面没跟着
+    // 口播逐条推进、后段空转 —— 像素 freeze 检测会被环境动效骗过,这里靠声明式时序硬判。
+    if (opts?.narrationOn && dur >= 8) {
+      try {
+        const act = await session.cmd('Runtime.evaluate', { expression: ACTIVITY_JS, returnByValue: true });
+        const v = act?.result?.value as { last?: number; n?: number } | undefined;
+        if (v && typeof v.last === 'number' && typeof v.n === 'number' && v.n >= 4 && v.last < dur * 0.6) {
+          issues.push(`配音模式内容推进太靠前:${v.n} 个条目在 ${v.last.toFixed(1)}s 前就全部入场/动完(全片 ${dur.toFixed(1)}s),后段没有新内容跟着口播推进(用户会觉得「口播念到后面、画面没变」)— 把各条目入场(data-start)沿整段时长铺开:第 k 条≈(k-1)/N×${dur.toFixed(1)}s、最后一条接近结尾;或让当前被念到的条目高亮、或分段轮播(data-exit-start)`);
+        }
+      } catch { /* 取时序失败不阻塞体检 */ }
     }
     // 布局体检(在 settled 帧上)
     const r = await session.cmd('Runtime.evaluate', { expression: AUDIT_JS, returnByValue: true });
