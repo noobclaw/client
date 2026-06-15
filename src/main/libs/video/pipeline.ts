@@ -1507,17 +1507,22 @@ async function runVideoPipeline(
         if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
         const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
         const targetSegs = Math.min(poolTarget, totalCap); // 只有总容量 < 目标时才少切(真不够);绝不靠复用补齐
-        // 按 cap 比例派每源段数(至少 1、不超过该源 cap),再修正四舍五入误差逼近 targetSegs。
-        const quota = srcs.map((s) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * s.cap / totalCap))));
+        // 派每源段数:抖音搜索结果【按相关度排序】→ 越靠前越贴热点,给靠前的源更高权重(多切几段),
+        //   让混剪以【最相关】的素材为主(用户要求:第一个匹配度高、应该多切)。权重 = cap × rankW(i),
+        //   rankW 随排名衰减(首位最重);仍 ≤ 各源 cap(短视频切不出那么多就认了)。
+        const rankW = (i: number) => 1 / (1 + 0.4 * i);
+        const weights = srcs.map((s, i) => s.cap * rankW(i));
+        const totalW = weights.reduce((a, b) => a + b, 0) || 1;
+        const quota = srcs.map((s, i) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * weights[i] / totalW))));
         let qsum = quota.reduce((a, b) => a + b, 0);
         for (let guard = 0; guard < 300 && qsum !== targetSegs; guard++) {
-          if (qsum < targetSegs) { // 还差 → 给「剩余容量最大」的源加一段
+          if (qsum < targetSegs) { // 还差 → 加给【最靠前】还有余量的源(相关度优先,所以前面多切)
             let bi = -1;
-            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap && (bi < 0 || srcs[i].cap - quota[i] > srcs[bi].cap - quota[bi])) bi = i;
+            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap) { bi = i; break; }
             if (bi < 0) break; quota[bi]++; qsum++;
-          } else { // 超了 → 从「派得最多」的源减一段
+          } else { // 超了 → 从【最靠后】还能减的源减(先砍相关度低的尾部)
             let bi = -1;
-            for (let i = 0; i < srcs.length; i++) if (quota[i] > 1 && (bi < 0 || quota[i] > quota[bi])) bi = i;
+            for (let i = srcs.length - 1; i >= 0; i--) if (quota[i] > 1) { bi = i; break; }
             if (bi < 0) break; quota[bi]--; qsum--;
           }
         }
