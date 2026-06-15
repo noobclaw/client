@@ -537,8 +537,15 @@ class NoobClawApiService {
   // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
+      // ⚠️「官网行、客户端不行」根因:Electron 渲染进程的 <input> File 带 .path,直接 append 到
+      //   FormData 走 fetch 时 multipart 序列化会丢内容/发空(普通浏览器无此问题),后端遂报 "No file"。
+      //   先在渲染进程把文件读成纯 Blob(显式 type + filename)再 append,绕开 path 序列化坑;
+      //   type 不在后端白名单(png/jpeg/gif/webp)就兜底 image/png(收款码截图基本是 png/jpg)。
+      const buf = await file.arrayBuffer();
+      const okType = /^image\/(png|jpeg|gif|webp)$/.test(file.type);
+      const blob = new Blob([buf], { type: okType ? file.type : 'image/png' });
       const formData = new FormData();
-      formData.append('qr', file);
+      formData.append('qr', blob, file.name || 'qr.png');
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
         method: 'POST',
         headers: this.getAuthHeaders(), // 不要手动设 Content-Type,交给浏览器带 multipart boundary
