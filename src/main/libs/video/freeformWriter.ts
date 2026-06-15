@@ -55,6 +55,10 @@ export interface FreeformResult {
   bodyHtml: string;
   setupScript?: string;
   source: 'ai' | 'fallback';
+  /** 实际产出用的模型(诊断用):'noobclawai-reasoner'(Pro)/'noobclawai-chat'(flash 降级)。 */
+  model?: 'noobclawai-reasoner' | 'noobclawai-chat';
+  /** source==='fallback' 时,AI 失败的原因(诊断用,产物里看不到为什么掉兜底就靠它)。 */
+  failReason?: string;
   tokens: number;
   costUsd: number;
 }
@@ -234,27 +238,38 @@ function fallbackScene(input: FreeformInput): FreeformResult {
 }
 
 /**
- * 让 AI 写一版自由排版画面。失败 → 纯代码兜底(永远返回可渲染产物)。
- * temperature 拉到 0.9 提升排版多样性(数据准确性由「忠实呈现/不编造」硬约束兜)。
+ * 让 AI 写一版自由排版画面。temperature 0.9 提升排版多样性(数据准确性由「忠实呈现/不编造」硬约束兜)。
+ *
+ * 模型策略(关键!之前「自由排版每次都掉同一个丑兜底」就栽在这):
+ *   先试 Pro(reasoner,质量优先、对齐用户「视频都走 Pro」要求),但整页 HTML+CSS+GSAP 体量大,
+ *   reasoner 偶发把 JSON 输出截断/带思考链 → JSON.parse 失败 → 以前直接掉纯代码兜底(永远同一个
+ *   绿条列表)。现在:Pro 产物为空/解析失败 → 自动降级 flash(chat,支持 response_format=json_object、
+ *   不吐思考链,产结构化 JSON 最稳)重试一次;两个模型都失败才用纯代码兜底。maxTokens 4096→8000 防截断。
+ *   鉴权/余额错误立即上抛(不浪费第二次调用)。
  */
 export async function generateFreeformScene(input: FreeformInput): Promise<FreeformResult> {
-  try {
-    // 写整页 HTML 是重创作/推理活 → 走 Pro(reasoner=deepseek-v4-pro),对齐 scriptWriter「创作走 Pro」约定。
-    // 代价:Pro ~3x credits,且迭代最多 MAX_FREEFORM_ATTEMPTS 轮会乘上去。
-    const { content, tokens, costUsd } = await callNoobclawChat(
-      buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 4096, model: 'noobclawai-reasoner' },
-    );
-    const parsed = JSON.parse(extractJsonObject(content));
-    const bodyHtml = sanitizeBody(typeof parsed?.bodyHtml === 'string' ? parsed.bodyHtml : '');
-    const css = sanitizeCss(typeof parsed?.css === 'string' ? parsed.css : '');
-    if (bodyHtml.trim().length > 20) {
-      const setupScript = input.gsapAvailable ? sanitizeSetup(parsed?.setupScript) : undefined;
-      return { css, bodyHtml, setupScript, source: 'ai', tokens, costUsd };
+  const models: Array<'noobclawai-reasoner' | 'noobclawai-chat'> = ['noobclawai-reasoner', 'noobclawai-chat'];
+  let lastReason = 'AI 未产出可用 HTML';
+  for (const model of models) {
+    try {
+      const { content, tokens, costUsd } = await callNoobclawChat(
+        buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 8000, model },
+      );
+      const parsed = JSON.parse(extractJsonObject(content));
+      const bodyHtml = sanitizeBody(typeof parsed?.bodyHtml === 'string' ? parsed.bodyHtml : '');
+      const css = sanitizeCss(typeof parsed?.css === 'string' ? parsed.css : '');
+      if (bodyHtml.trim().length > 20) {
+        const setupScript = input.gsapAvailable ? sanitizeSetup(parsed?.setupScript) : undefined;
+        return { css, bodyHtml, setupScript, source: 'ai', model, tokens, costUsd };
+      }
+      lastReason = `${model} 产出的 bodyHtml 为空/过短(${bodyHtml.trim().length} 字)`;
+    } catch (e) {
+      const msg = String((e as Error)?.message || e);
+      // 鉴权/余额类错误向上抛(跟 templateHtmlWriter 同口径,让 pipeline 显式失败)
+      if (/AI_AUTH_FAILED|CREDITS_INSUFFICIENT|AI_NOT_CONFIGURED/.test(msg)) throw e;
+      lastReason = `${model} 失败:${msg.slice(0, 120)}`;
+      // 其它错误(截断/解析失败/超时)→ 继续换下一个模型重试
     }
-  } catch (e) {
-    const msg = String((e as Error)?.message || e);
-    // 鉴权/余额类错误向上抛(跟 templateHtmlWriter 同口径,让 pipeline 显式失败)
-    if (/AI_AUTH_FAILED|CREDITS_INSUFFICIENT|AI_NOT_CONFIGURED/.test(msg)) throw e;
   }
-  return fallbackScene(input);
+  return { ...fallbackScene(input), failReason: lastReason };
 }

@@ -185,14 +185,16 @@ async function produceFreeformHtml(
     });
     lastHtml = html;
     const audit = await auditHtml(html, { narrationOn: args.narrationOn });
+    const modelTag = scene.source === 'fallback' ? '兜底版' : (scene.model === 'noobclawai-chat' ? 'flash 降级' : 'Pro');
     if (audit.ok) {
-      tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮)${scene.source === 'fallback' ? ' · 兜底版' : ''}${useGsap ? ' · GSAP' : ''}`);
+      tracker.progress(`✅ 自由排版体检通过(第 ${attempt} 轮 · ${modelTag})${useGsap ? ' · GSAP' : ''}`);
       return html;
     }
     tracker.progress(`🔎 体检发现 ${audit.issues.length} 个问题:${audit.issues.slice(0, 3).join(' / ')}${audit.issues.length > 3 ? ' …' : ''}`);
-    // AI 整个挂了(走了纯代码兜底)→ 再循环也没意义,直接用兜底版出片
+    // AI 整个挂了(两个模型都失败 → 走了纯代码兜底)→ 再循环也没意义,直接用兜底版出片。
+    // 把失败原因 log 出来(产物只看得到「又是绿条兜底」,看不到为什么 —— 靠这行定位是截断/解析/超时)。
     if (scene.source === 'fallback') {
-      tracker.progress('⚠️ AI 不可用,采用纯代码兜底排版');
+      tracker.progress(`⚠️ AI 自由排版失败,采用纯代码兜底排版${scene.failReason ? ` · 原因:${scene.failReason}` : ''}`);
       return html;
     }
     prev = scene;
