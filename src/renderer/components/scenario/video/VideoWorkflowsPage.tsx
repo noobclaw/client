@@ -3700,81 +3700,13 @@ const TEMPLATE_HOTLISTS: Array<{ name: string; emoji: string }> = [
 /** 「热榜做数据源」取前 N 条标题拼成 dataText。 */
 const TEMPLATE_HOTLIST_TOPN = 12;
 
-// 版式迷你预览:在版式卡里画个小竖屏示意,让用户一眼看出每种版式画面长啥样(纯内联 JSX,不增包体)。
-const TLP_SCREEN: React.CSSProperties = { width: 50, height: 89, flexShrink: 0, background: '#14122a', borderRadius: 8, padding: 5, display: 'flex', flexDirection: 'column', gap: 3, overflow: 'hidden' };
-const TemplateLayoutPreview: React.FC<{ style: string }> = ({ style }) => {
-  const C = '#d946ef'; // 模板速生品牌色(fuchsia)
-  const bar = (w: string, bg = '#322b50') => ({ height: 5, width: w, borderRadius: 2, background: bg } as React.CSSProperties);
-  if (style === 'ai_freeform') {
-    // 自由排版没有固定形状 —— 用「✨ + 错落不规则块」示意「AI 任意排版」。
-    return (
-      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <span style={{ color: C, fontSize: 20, lineHeight: 1 }}>✨</span>
-        <span style={bar('70%', '#4a4170')} />
-        <span style={{ ...bar('40%'), alignSelf: 'flex-start', marginLeft: 6 }} />
-        <span style={{ ...bar('55%'), alignSelf: 'flex-end', marginRight: 5 }} />
-      </div>
-    );
-  }
-  if (style === 'rank_list') {
-    return (
-      <div style={TLP_SCREEN}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: i === 0 ? C : '#534AB7', flexShrink: 0 }} />
-            <span style={bar('100%')} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (style === 'news_cards') {
-    return (
-      <div style={TLP_SCREEN}>
-        {[0, 1, 2].map((i) => (
-          <div key={i} style={{ borderLeft: `2px solid ${C}`, paddingLeft: 3, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={bar('85%', '#4a4170')} />
-            <span style={bar('55%')} />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  if (style === 'quote') {
-    return (
-      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <span style={{ color: C, fontSize: 22, lineHeight: 1 }}>&ldquo;</span>
-        <span style={bar('60%', '#4a4170')} />
-        <span style={bar('42%')} />
-      </div>
-    );
-  }
-  if (style === 'countdown') {
-    return (
-      <div style={{ ...TLP_SCREEN, alignItems: 'center', justifyContent: 'center', gap: 4 }}>
-        <span style={{ color: C, fontSize: 34, fontWeight: 700, lineHeight: 1 }}>1</span>
-        <span style={bar('48%')} />
-      </div>
-    );
-  }
-  return (
-    <div style={{ ...TLP_SCREEN, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 3, alignContent: 'center' }}>
-      {[0, 1, 2, 3].map((i) => (
-        <div key={i} style={{ background: '#221d3d', borderRadius: 3, height: 26, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <span style={{ width: 16, height: 6, borderRadius: 2, background: i % 2 ? '#534AB7' : C }} />
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// 模板速生:5 步向导(2026-06-12 把版式 / 内容拆开,看清版式后再填内容比挤在一屏好用)。
-//   Step 1 版式(挑模板:排行榜 / 资讯 / 金句 / 倒数 / 数据看板)
-//   Step 2 内容(标题 + 内容/数据)
-//   Step 3 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
-//   Step 4 背景音乐(三选一 + 音量)
-//   Step 5 出片(品牌色 + 运行频率)
-type TplStep = 1 | 2 | 3 | 4 | 5;
+// 模板速生:4 步向导(2026-06-14 砍掉「版式」步 —— 新建一律 AI 自由排版,它最灵活、涵盖固定版式)。
+//   Step 1 内容(来源二选一:粘贴 / 热榜 + 标题 + 风格要求)
+//   Step 2 配音(开关 + 音色 + 语速 + 字幕开关 + 自定义口播稿)
+//   Step 3 背景音乐(三选一 + 音量)
+//   Step 4 出片(品牌色 + 成片去向 + 运行频率)
+//   注:固定版式(排行榜/资讯/金句/倒数/数据看板)仍在 templateLibrary,仅老任务编辑时保留,新建不再选。
+type TplStep = 1 | 2 | 3 | 4;
 
 // ── 热搜成片配置向导(engine='hotspot')──────────────────────────────────
 //   跟其它视频卡不同:不填赛道/关键词/稿子,只勾「热点源」。每次运行从勾选源最新 20 条
@@ -4326,7 +4258,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const et = editTask?.input?.template;
   const [step, setStep] = useState<TplStep>(1);
   // ── Step 1:内容 ──
-  const [style, setStyle] = useState<VideoTemplateStyle>(et?.style || 'rank_list');
+  // 版式步已砍掉 —— 新建一律 AI 自由排版(它最灵活、能涵盖固定版式);编辑老任务保留它原版式。
+  const [style] = useState<VideoTemplateStyle>(et?.style || 'ai_freeform');
   const [title, setTitle] = useState<string>(et?.title || '');
   const [dataText, setDataText] = useState<string>(et?.dataText || '');
   // 数据源二选一:'paste' 粘贴任意内容(老路) / 'hotlist' 选一个热榜取前 N 条当内容。
@@ -4435,7 +4368,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
 
   const handleCreate = async () => {
     if (!effectiveDataText.trim()) {
-      setStep(2);
+      setStep(1);
       setErr(dataSourceMode === 'hotlist'
         ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
         : (isZh ? '请填写榜单/要点内容' : 'Enter the list / points'));
@@ -4507,8 +4440,8 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
 
   // 「下一步」按 step 路由 + 必填校验。
   const goNext = () => {
-    // Step 2 = 内容/数据,必填校验放这里(版式默认 rank_list,不会缺)。
-    if (step === 2) {
+    // Step 1 = 内容/数据,必填校验放这里。
+    if (step === 1) {
       if (!effectiveDataText.trim()) {
         setErr(dataSourceMode === 'hotlist'
           ? (isZh ? '请先选一个热榜并等它加载出条目' : 'Pick a hot list and wait for it to load')
@@ -4517,7 +4450,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
       }
     }
     setErr(null);
-    setStep((s) => (s < 5 ? ((s + 1) as TplStep) : s));
+    setStep((s) => (s < 4 ? ((s + 1) as TplStep) : s));
   };
   const goBack = () => {
     setErr(null);
@@ -4533,15 +4466,13 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
           <div>
             <h3 className="text-lg font-bold dark:text-white">⚡ {isZh ? (isEdit ? '编辑模板速生' : '模板速生') : (isEdit ? 'Edit Template' : 'Template Speed')}</h3>
             <div className="flex items-center gap-2 mt-3 flex-wrap">
-              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '版式' : 'Style'} />
+              <StepDot n={1} active={step === 1} done={step > 1} label={isZh ? '内容' : 'Content'} />
               <div className={`h-px w-3 ${step > 1 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '内容' : 'Content'} />
+              <StepDot n={2} active={step === 2} done={step > 2} label={isZh ? '配音' : 'Voice'} />
               <div className={`h-px w-3 ${step > 2 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '配音' : 'Voice'} />
+              <StepDot n={3} active={step === 3} done={step > 3} label={isZh ? '音乐' : 'Music'} />
               <div className={`h-px w-3 ${step > 3 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={4} active={step === 4} done={step > 4} label={isZh ? '音乐' : 'Music'} />
-              <div className={`h-px w-3 ${step > 4 ? 'bg-fuchsia-500' : 'bg-gray-200 dark:bg-gray-700'}`} />
-              <StepDot n={5} active={step === 5} done={false} label={isZh ? '出片' : 'Output'} />
+              <StepDot n={4} active={step === 4} done={false} label={isZh ? '出片' : 'Output'} />
             </div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -4549,24 +4480,6 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
 
         <div className="px-6 py-4 space-y-4">
           {step === 1 && (
-            <>
-              <Field label={isZh ? '版式' : 'Style'} hint={isZh ? '决定画面长什么样,选完进下一步填内容' : 'how the visuals look — pick here, fill content next'}>
-                <div className="grid grid-cols-2 gap-2">
-                  {TEMPLATE_STYLES.map((s) => (
-                    <button key={s.id} type="button" onClick={() => setStyle(s.id)}
-                      className={`flex items-center gap-2.5 text-left px-3 py-2 rounded-lg border text-sm transition-colors ${style === s.id ? 'border-fuchsia-500 bg-fuchsia-500/10' : 'border-gray-300 dark:border-gray-700 hover:border-fuchsia-500/50'}`}>
-                      <TemplateLayoutPreview style={s.id} />
-                      <div className="min-w-0">
-                        <div className="font-medium dark:text-white">{s.emoji} {isZh ? s.zh : s.en}</div>
-                        <div className="text-[11px] text-gray-500">{s.hint}</div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </Field>
-            </>
-          )}
-          {step === 2 && (
             <>
               {/* 数据源二选一:粘贴任意内容 / 选一个热榜(取前 N 条) */}
               <Field label={isZh ? '内容来源' : 'Content source'} hint={isZh ? '自己粘贴,或选一个热榜自动取前几条当内容' : 'paste your own, or pull top items from a hot list'}>
@@ -4638,7 +4551,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               })()}
             </>
           )}
-          {step === 3 && (
+          {step === 2 && (
             <>
               <Field label={isZh ? 'AI 配音 + 字幕' : 'AI voice-over + subs'} hint={isZh ? '开了会按你的数据 AI 写口播稿、念出来、烧字幕。关 = 纯视觉。' : 'On: AI writes a script, narrates, and burns subs.'}>
                 <div className="flex items-center justify-between rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2.5">
@@ -4692,7 +4605,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               )}
             </>
           )}
-          {step === 4 && (
+          {step === 3 && (
             <>
               <Field label={isZh ? '背景音乐(选填)' : 'BGM (optional)'} hint={isZh ? '配音模式下作为氛围音垫底;纯视觉模式下是主音轨' : 'Bed for narration; main audio in silent mode'}>
                 <div className="grid grid-cols-3 gap-2 mb-2">
@@ -4754,7 +4667,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               </Field>
             </>
           )}
-          {step === 5 && (
+          {step === 4 && (
             <>
               <Field label={isZh ? '主品牌色' : 'Brand color'} hint={isZh ? '画面整体主色调:标题字色、装饰元素、数字高亮都用它' : 'Drives the title color, accent bars, and number highlights'}>
                 <div className="flex items-center gap-2">
@@ -4828,7 +4741,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
             className="flex-1 py-2.5 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">
             {step === 1 ? (isZh ? '取消' : 'Cancel') : `← ${isZh ? '上一步' : 'Back'}`}
           </button>
-          {step < 5 ? (
+          {step < 4 ? (
             <button type="button" onClick={goNext}
               className="flex-1 py-2.5 rounded-lg text-sm font-semibold bg-fuchsia-500 text-white hover:bg-fuchsia-600">
               {isZh ? '下一步 →' : 'Next →'}
