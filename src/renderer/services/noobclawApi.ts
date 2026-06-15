@@ -537,10 +537,21 @@ class NoobClawApiService {
   // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
-      // ⚠️「官网行、客户端不行」根因:Electron 渲染进程的 <input> File 带 .path,直接 append 到
-      //   FormData 走 fetch 时 multipart 序列化会丢内容/发空(普通浏览器无此问题),后端遂报 "No file"。
-      //   先在渲染进程把文件读成纯 Blob(显式 type + filename)再 append,绕开 path 序列化坑;
-      //   type 不在后端白名单(png/jpeg/gif/webp)就兜底 image/png(收款码截图基本是 png/jpg)。
+      // ⚠️「官网行、客户端不行」根因:Electron 渲染进程 fetch+FormData 发 multipart 实测不可靠(客户端必报
+      //   "No file",官网普通浏览器正常)。Electron <input> 的 File 带 .path → 交给【主进程】用 Node 全局
+      //   fetch+FormData 从文件路径读出来发(server 级稳),绕开渲染进程那条坏路。这也是本 app 其他上传的做法。
+      const path = (file as unknown as { path?: string }).path;
+      const bridge = (window as any)?.electron?.scenario?.uploadCnyQr;
+      if (path && typeof bridge === 'function') {
+        const r = await bridge({
+          path,
+          name: file.name || 'qr.png',
+          backendUrl: this.backendUrl,
+          headers: this.getAuthHeaders(),
+        });
+        return r || { error: 'main_upload_no_result' };
+      }
+      // 兜底(理论上 Electron <input> 都有 path):渲染进程读成 Blob 再发。
       const buf = await file.arrayBuffer();
       const okType = /^image\/(png|jpeg|gif|webp)$/.test(file.type);
       const blob = new Blob([buf], { type: okType ? file.type : 'image/png' });

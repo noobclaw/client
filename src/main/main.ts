@@ -2875,6 +2875,38 @@ if (!gotTheLock) {
       return { ok: true };
     });
 
+    // CNY 收款码上传:渲染进程 fetch+FormData 在 Electron 里发不出 multipart(实测客户端必报 "No file",
+    //   官网普通浏览器没事)→ 改由【主进程】用 Node 全局 fetch+FormData 从【文件路径】读出来发,server 级稳。
+    ipcMain.handle('video:uploadCnyQr', async (
+      _e,
+      args: { path: string; name?: string; backendUrl: string; headers: Record<string, string> },
+    ) => {
+      try {
+        const fs = require('fs');
+        const buf = fs.readFileSync(args.path);
+        if (!buf || buf.length === 0) return { error: 'empty_file' };
+        const name = args.name || 'qr.png';
+        const ext = String(name.split('.').pop() || '').toLowerCase();
+        const type = (ext === 'jpg' || ext === 'jpeg') ? 'image/jpeg'
+          : ext === 'gif' ? 'image/gif' : ext === 'webp' ? 'image/webp' : 'image/png';
+        const G: any = globalThis as any;
+        const fd = new G.FormData();
+        fd.append('qr', new G.Blob([buf], { type }), name);
+        const res = await G.fetch(`${args.backendUrl}/api/me/withdraw/cny/upload-qr`, {
+          method: 'POST',
+          headers: args.headers || {}, // 只有 Authorization + x-wallet-address;Content-Type 交给 FormData 带 boundary
+          body: fd,
+        });
+        const data: any = await res.json().catch(() => ({}));
+        console.log('[uploadCnyQr] main upload', { bytes: buf.length, status: res.status, ok: res.ok, url: data && data.url });
+        if (!res.ok) return { error: (data && data.error) || ('http_' + res.status) };
+        return { ok: true, url: data.url };
+      } catch (e: any) {
+        console.error('[uploadCnyQr] main upload failed', e);
+        return { error: 'main_upload_failed:' + String((e && e.message) || e).slice(0, 100) };
+      }
+    });
+
     ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await openCreatorCenter(platform);

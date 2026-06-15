@@ -95,6 +95,7 @@ contextBridge.exposeInMainWorld('electron', {
     checkVideoLoginByCookieBatch: (items: { platform: string; which?: 'main' | 'creator' }[]) => ipcRenderer.invoke('video:checkLoginByCookieBatch', items),
     openLoginInCheckWindow: (url: string, role?: string) => ipcRenderer.invoke('video:openLoginInCheckWindow', url, role),
     closeLoginCheckWindow: () => ipcRenderer.invoke('video:closeLoginCheckWindow'),
+    uploadCnyQr: (args: { path: string; name?: string; backendUrl: string; headers: Record<string, string> }) => ipcRenderer.invoke('video:uploadCnyQr', args),
   },
   // ── Multi-platform Video Creation (phase 1: local synthesis) ──
   video: {
