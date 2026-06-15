@@ -910,7 +910,7 @@ const ConfigCard: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <Row label={`⏱️ ${isZh ? '目标时长' : 'Length'}`}>{`${input.targetSeconds ?? 60}s`}</Row>
         <Row label={`🔢 ${isZh ? '每次条数' : 'Per run'}`}>{hotspotCountLabel(input, isZh)}</Row>
         <Row label={`🎤 ${isZh ? '配音' : 'Voice'}`}>{`${voiceLabel}${input.subtitleEnabled !== false ? (isZh ? ' · 烧字幕' : ' · subtitles') : (isZh ? ' · 无字幕' : '')}`}</Row>
-        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音视频混剪 · 配音' : 'Douyin remix') : (isZh ? '联网配图(Serper) · Ken Burns 运镜' : 'web images (Serper) · Ken Burns')}</Row>
+        <Row label={`🎞️ ${isZh ? '画面' : 'Visuals'}`}>{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音/TikTok 混剪 · 配音' : 'Douyin/TikTok remix') : (isZh ? '智能配图(抖音图文/TikTok · Ken Burns)' : 'Smart images (Douyin/TikTok · Ken Burns)')}</Row>
         <Row label={`🚀 ${isZh ? '发布' : 'Publish'}`}>{publishSummary(input, isZh)}</Row>
       </div>
     );
@@ -1042,7 +1042,7 @@ const ConfigRows: React.FC<{ isZh: boolean; input: VideoCreationInput }> = ({ is
         <div>⏱️ {isZh ? '目标时长' : 'Length'}：{`${input.targetSeconds ?? 60}s`}</div>
         <div>🔢 {isZh ? '每次条数' : 'Per run'}：{hotspotCountLabel(input, isZh)}</div>
         <div>🎤 {isZh ? '配音' : 'Voice'}：{voiceLabel}{subTag}</div>
-        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音视频混剪' : 'Douyin remix') : (isZh ? '联网配图(Ken Burns)' : 'Web images (Ken Burns)')}</div>
+        <div>🎞️ {isZh ? '画面' : 'Visuals'}：{(input as any).hotspotMaterialSource === 'douyin' ? (isZh ? '抖音/TikTok 混剪' : 'Douyin/TikTok remix') : (isZh ? '智能配图(抖音图文/TikTok)' : 'Smart images (Douyin/TikTok)')}</div>
         <div>🚀 {isZh ? '发布' : 'Publish'}：{publishSummary(input, isZh)}</div>
       </>
     );
@@ -1409,14 +1409,19 @@ const VideoTaskDetail: React.FC<{
   // 任务配置的发布平台(空 = 仅存本地,运行前无需登录校验)。
   const publishPlatforms: string[] = Array.isArray((task.input as any).publishPlatforms)
     ? ((task.input as any).publishPlatforms as string[]) : [];
-  // 热搜成片【抖音取材】也要登录(抖音主站,非创作者中心)。
-  //   · materialSource='image'(Serper 配图)是后端抓,不开浏览器、不需要登录,跳过。
-  //   · 设计上中文→抖音、英文→TikTok,但 TikTok 取材 pipeline 还没建(buildTiktokPool 待办,
-  //     须 VPN 真机调),目前 materialSource='douyin' 不分语言都走抖音搜 —— 所以这里一律校验抖音。
-  //     等 TikTok 取材落地,这里再按 hotspotSources 语言切 'tiktok'(EN 榜:HN/Reddit/Google/YouTube)。
-  const materialLoginPlatforms: string[] =
-    (task.input.engine === 'hotspot' && (task.input as any).hotspotMaterialSource === 'douyin')
-      ? ['douyin'] : [];
+  // 热搜成片【取材】也要登录(平台主站,非创作者中心)。新流程下视频混剪 + 智能配图【都】从
+  //   抖音/TikTok 取材(不再 Serper),所以两种 materialSource 都要校验,不再只校验 'douyin'。
+  //   平台按【选中的热点源语言】切:国内榜→中文话题→抖音;海外榜(HN/Reddit/Google/YouTube)→
+  //   英文话题→TikTok。两类源都选了就两个都校验(运行时按每条话题语言 detectLang 实际路由)。
+  const OVERSEAS_HOT_SOURCES = ['hackernews', 'reddit', 'googletrends', 'youtube'];
+  const materialLoginPlatforms: string[] = (() => {
+    if (task.input.engine !== 'hotspot') return [];
+    const srcs = Array.isArray((task.input as any).hotspotSources) ? (task.input as any).hotspotSources as string[] : [];
+    const mats: string[] = [];
+    if (srcs.some((s) => !OVERSEAS_HOT_SOURCES.includes(s))) mats.push('douyin'); // 国内源 → 抖音取材
+    if (srcs.some((s) => OVERSEAS_HOT_SOURCES.includes(s))) mats.push('tiktok');  // 海外源 → TikTok 取材
+    return mats;
+  })();
   // 手动运行前的登录校验:发布平台(创作者中心口径)∪ 取材平台(主站口径)。任一非空就先弹,
   // 全绿(插件已连 + 各平台登录)才开跑。定时调度不走这里(无人值守靠运行期超时兜底)。
   const loginCheckList = Array.from(new Set([...publishPlatforms, ...materialLoginPlatforms]));
@@ -4009,8 +4014,8 @@ export const HotspotVideoModal: React.FC<{
               <Field label={isZh ? '画面素材' : 'Footage'}>
                 <div className="flex gap-2">
                   {([
-                    { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '中文走抖音图文 · 海外谷歌图 · Ken Burns' },
-                    { v: 'douyin', zh: '🎬 抖音混剪', en: '🎬 Douyin remix', deszh: '搜抖音真实视频混剪 + 配音 · 需登录抖音' },
+                    { v: 'image', zh: '🖼️ 智能配图', en: '🖼️ Images', deszh: '中文走抖音图文 · 英文走 TikTok · Ken Burns' },
+                    { v: 'douyin', zh: '🎬 抖音/TikTok 混剪', en: '🎬 Douyin / TikTok remix', deszh: '中文搜抖音 · 英文搜 TikTok · 真实视频混剪 + 配音 · 需登录对应平台' },
                   ] as const).map((m) => (
                     <button key={m.v} type="button" onClick={() => setMaterialSource(m.v)}
                       className={`flex-1 px-3 py-2 rounded-lg text-sm border text-left ${materialSource === m.v ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
