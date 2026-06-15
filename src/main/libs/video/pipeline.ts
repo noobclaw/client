@@ -1477,8 +1477,9 @@ async function runVideoPipeline(
       for (const term of searchTerms) {
         if (signal?.aborted) break;
         let dy: { paths: string[]; titles: string[] };
-        if (douyinPrefetch && douyinPrefetch.mode === 'video' && douyinPrefetch.paths.length > 0) {
-          tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 个抖音视频(不重复下载)`);
+        if (douyinPrefetch && douyinPrefetch.mode === 'video') {
+          // 写稿前已经搜过抖音视频了:直接复用(【空也复用】→ 不重复搜、不重复等 3 分钟登录;空则上层落文字卡)。
+          if (douyinPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 个抖音视频(不重复下载)`);
           dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
         } else {
           dy = await fetchDouyinClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
@@ -1594,8 +1595,9 @@ async function runVideoPipeline(
       for (const term of searchTerms) {
         if (signal?.aborted) break;
         let dy: { paths: string[]; titles: string[] };
-        if (douyinPrefetch && douyinPrefetch.mode === 'image' && douyinPrefetch.paths.length > 0) {
-          tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 张抖音图(不重复下载)`);
+        if (douyinPrefetch && douyinPrefetch.mode === 'image') {
+          // 写稿前已经搜过抖音图文了:直接复用(【空也复用】→ 不重复搜、不重复等登录;空则上层落文字卡)。
+          if (douyinPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${douyinPrefetch.paths.length} 张抖音图(不重复下载)`);
           dy = { paths: douyinPrefetch.paths, titles: douyinPrefetch.titles };
         } else {
           dy = await fetchDouyinClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
