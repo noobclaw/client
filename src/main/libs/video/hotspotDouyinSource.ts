@@ -192,10 +192,14 @@ async function fetchDouyinClipsImpl(
   const paths: string[] = [];
   for (let i = 0; i < urls.length; i++) {
     if (signal?.aborted) break;
+    // 逐个报下载进度(大视频走 VPN 可能几十秒/个,不报的话用户以为卡死)。
+    onLog(`⬇️ 下载 ${i + 1}/${urls.length}…`);
     const dest = path.join(destDir, `${base}_${String(i).padStart(2, '0')}.${ext}`);
     if (await downloadOne(urls[i], dest)) {
       paths.push(dest);
       diag.downloaded++;
+    } else {
+      onLog(`   ⏭️ 第 ${i + 1} 个下载失败,跳过`);
     }
   }
   onLog(`✅ 抖音素材就绪:${paths.length}/${urls.length} 个`);
