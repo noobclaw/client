@@ -37,6 +37,7 @@ import type { TemplateOptions } from './templateHtmlWriter';
 import { runTemplatePipeline } from './template-pipeline';
 import { generateStoryboardAnchor } from './storyboardAnchor';
 import { resolvePublishCaption } from './publishCaptionWriter';
+import { setCurrentVideoTask, clearCurrentVideoTask, videoTypeLabel } from './videoRunWindow';
 
 export type VideoAspect = '9:16' | '16:9' | '1:1';
 export type VideoPublishTarget = 'local' | 'douyin' | 'xhs' | 'binance';
@@ -526,6 +527,8 @@ export async function generateVideoBatch(
     return { ok: false, error: '已有视频任务在运行,本次跳过' } as VideoCreationResult;
   }
   _videoBatchBusy = true;
+  // 运行窗 title 标【当前任务 id + 类型】(req 2);收尾在 finally 清。
+  setCurrentVideoTask((input as any).taskId, videoTypeLabel((input as any).engine));
   try {
   const inp = input as VideoCreationInput & { videoCountMin?: number; videoCountMax?: number };
   const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
@@ -596,7 +599,7 @@ export async function generateVideoBatch(
     ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
   } as any);
   return { ok: success > 0, outputPath: outputPaths[0], outputPaths, stopped } as unknown as VideoCreationResult;
-  } finally { _videoBatchBusy = false; }
+  } finally { _videoBatchBusy = false; clearCurrentVideoTask(); }
 }
 
 export async function generateVideo(

@@ -30,8 +30,10 @@ import {
   checkCreatorCenter, checkPlatformLogin, type LoginPlatform,
 } from '../../scenario/platformLoginDriver';
 import { sendBrowserCommand, connectionHasCapability } from '../../browserBridge';
-import { groupTitle as buildGroupTitle, getStandardBounds } from '../../scenario/subPlatformRegistry';
+import { getStandardBounds } from '../../scenario/subPlatformRegistry';
 import { PUBLISHER_ANCHOR_URL, bridgeOptsFor } from './publisherUtils';
+import { videoWindowTitle } from '../videoRunWindow';
+import { checkVideoLoginByCookie } from '../videoLoginCheck';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // 提交后默认等这么久:平台(尤其抖音)是「点提交后才真正开始上传视频」,过早进入下一动作/刷新会白提交。
@@ -60,14 +62,14 @@ async function openPublishTab(
     onLog('ℹ️ 当前扩展无 v6 窗口注册表,回退「每平台独立窗口」模式');
     return undefined;
   }
-  const idleTitle = buildGroupTitle(PUBLISH_SUB_PLATFORM, 'default', null);
+  const title = videoWindowTitle(); // 标当前任务 id+类型(取材/发布共用同一窗口、同一 title)
   const bounds = getStandardBounds(PUBLISH_SUB_PLATFORM, 'default');
   try {
     const res: any = await sendBrowserCommand(
       'task_open_tab',
       {
         windowKey: PUBLISH_WINDOW_KEY,
-        groupTitle: idleTitle,
+        groupTitle: title,
         role: 'publisher',
         url: firstUrl,
         bounds,
@@ -139,6 +141,11 @@ async function ensureLoggedInOnTab(
   try { await navigateTab(anchor, tabId); } catch { /* 继续,下面轮询会再等 */ }
   await sleep(1500);
 
+  // cookie 快路径:读该平台(创作中心走 creator 子域)登录 cookie,有效直接过 —— 不依赖创作中心页
+  //   是否加载好、是否被弹登录。拿不准(null/false)再退老的 tab 校验,fail-safe。
+  const ckWhich = hasCreator ? 'creator' : 'main';
+  const ck0 = await checkVideoLoginByCookie(p, ckWhich).catch((): { loggedIn: boolean } | null => null);
+  if (ck0?.loggedIn) return 'logged_in';
   // 先探一次:用户可能早就登录了(cookie 在),navigate 过去直接就是登录态。
   let st = await check().catch(() => ({ loggedIn: false, reason: 'check_threw' } as any));
   if (st.loggedIn) return 'logged_in';
@@ -153,6 +160,8 @@ async function ensureLoggedInOnTab(
   while (Date.now() < deadline) {
     if (signal?.aborted) return 'not_logged_in';
     await sleep(2500);
+    const ckN = await checkVideoLoginByCookie(p, ckWhich).catch((): { loggedIn: boolean } | null => null);
+    if (ckN?.loggedIn) return 'logged_in';
     st = await check().catch(() => ({ loggedIn: false } as any));
     if (st.loggedIn) return 'logged_in';
     if (st.reason === 'browser_not_connected') {
