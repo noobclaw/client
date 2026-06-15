@@ -46,7 +46,9 @@ const VIDEO_LOGIN_COOKIES: Record<string, { url: string; domain: string; names: 
   'douyin:creator':   { url: 'https://creator.douyin.com/',      domain: 'douyin.com',       names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
   'xhs:main':         { url: 'https://www.xiaohongshu.com/',     domain: 'xiaohongshu.com',  names: ['web_session'] },
   // 小红书创作中心:cookie 跟主站不一样(galaxy_creator_*),主站的 web_session 也带上兜底 —— 真机确认。
-  'xhs:creator':      { url: 'https://creator.xiaohongshu.com/', domain: 'xiaohongshu.com',  names: ['galaxy_creator_session_id', 'customer-sso-sid', 'web_session'] },
+  // 小红书创作中心:实测(2026-06-15)登录态 session 是 HttpOnly,名字按通用知识多填几个候选 —— 真实名以
+  //   诊断日志(见 checkVideoLoginByCookieBatch 的 console.log)为准,确认后收敛。这些都是登录后才有的会话项。
+  'xhs:creator':      { url: 'https://creator.xiaohongshu.com/', domain: 'xiaohongshu.com',  names: ['access-token-creator.xiaohongshu.com', 'galaxy_creator_session_id', 'galaxy.creator.beaker.session.id', 'customer-sso-sid', 'web_session'] },
   'bilibili:main':    { url: 'https://www.bilibili.com/',        domain: 'bilibili.com',     names: ['SESSDATA', 'DedeUserID'] },
   'bilibili:creator': { url: 'https://member.bilibili.com/',     domain: 'bilibili.com',     names: ['SESSDATA', 'DedeUserID'] },
   'kuaishou:main':    { url: 'https://www.kuaishou.com/',        domain: 'kuaishou.com',     names: ['passToken', 'userId'] },
@@ -163,7 +165,19 @@ export async function checkVideoLoginByCookieBatch(
   const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
   const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie(任意页都能读)
   if (!cookies) { _checkTabId = undefined; return out; }
-  for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
+  for (const { platform, cfg } of resolved) {
+    out[platform] = cookieHit(cookies, cfg);
+    // 诊断:打印该平台域名下实际读到的 cookie 名(只名字、无值,无隐私)。用来核对真实 session 名 ——
+    //   若某平台明明登录了却 hit=false,看这行就知道真实 cookie 叫啥,据此改 VIDEO_LOGIN_COOKIES。
+    try {
+      const dom = cfg.domain.replace(/^\./, '');
+      const found = cookies
+        .filter((c: any) => typeof c?.domain === 'string' && c.domain.replace(/^\./, '').includes(dom) && c.value)
+        .map((c: any) => c.name);
+      // eslint-disable-next-line no-console
+      console.log(`[videoLoginCheck] ${platform}(${cfg.domain}) hit=${out[platform]} cookieNames=[${found.join(', ')}]`);
+    } catch { /* 诊断失败不影响 */ }
+  }
   return out;
 }
 
