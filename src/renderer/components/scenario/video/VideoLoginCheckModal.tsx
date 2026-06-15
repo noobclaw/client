@@ -16,7 +16,7 @@
  * 3s 自动轮询,用户在打开的窗口里扫码 / 登录后无需手点「重新检测」就会自动转绿。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { scenarioService } from '../../../services/scenario';
 import { i18nService } from '../../../services/i18n';
 
@@ -75,6 +75,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   );
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
+  // 一旦某平台确认登录过(变绿)就【粘住】绿:本次校验不再因 tab 导航走 / cookie 暂读不到而翻回红。
+  //   登录态(cookie)是持久的,人登录着就行;真到发布时 runPublish 各平台还会再校验一次,不怕这里"宽松"。
+  const confirmedRef = useRef<Set<string>>(new Set());
 
   const checkOne = useCallback(async (id: string) => {
     const useCreator = metaOf(id).creator && !override.includes(id);
@@ -118,6 +121,12 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
         } else {
           next[id] = 'fail';
         }
+      }
+      // 粘住绿:本次确认登录过的记下;之前确认过的即使这次没验到(tab 导航走/cookie 暂读不到)也保持绿。
+      //   (扩展没连上 waiting 不强制覆盖 —— 那是插件问题,不是登录问题。)
+      for (const id of Object.keys(next)) {
+        if (next[id] === 'pass') confirmedRef.current.add(id);
+        else if (next[id] === 'fail' && confirmedRef.current.has(id)) next[id] = 'pass';
       }
       setExtensionStatus(extConnected ? 'pass' : 'fail');
       setPlatformStatus(next);
