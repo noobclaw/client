@@ -489,6 +489,8 @@ export async function renderHtmlToVideo(opts: RenderHtmlToVideoOptions): Promise
 const AUDIT_JS = `(function(){
   var W=1080,H=1920,issues=[];
   var stage=document.getElementById('stage')||document.body;
+  var capTrack=document.getElementById('caption-track');
+  var capBand=H-240; // 有字幕时,底部 240px 是字幕专属区,内容不许进入
   function cs(el){return getComputedStyle(el);}
   function vis(el){var s=cs(el);if(s.display==='none'||s.visibility==='hidden')return false;if(parseFloat(s.opacity||'1')<0.05)return false;var r=el.getBoundingClientRect();return r.width>=2&&r.height>=2;}
   function ownText(el){var t='';for(var i=0;i<el.childNodes.length;i++){if(el.childNodes[i].nodeType===3)t+=el.childNodes[i].textContent;}return t.trim();}
@@ -496,6 +498,7 @@ const AUDIT_JS = `(function(){
   var all=stage.querySelectorAll('*'),texts=[];
   for(var i=0;i<all.length;i++){
     var el=all[i];if(isFx(el)||!vis(el))continue;
+    if(capTrack&&capTrack.contains(el))continue; // 字幕轨自身不算内容
     var r=el.getBoundingClientRect(),ot=ownText(el);
     // 1) 带文字的元素超出画布
     if(ot&&(r.left<-10||r.top<-10||r.right>W+10||r.bottom>H+10)){
@@ -530,6 +533,12 @@ const AUDIT_JS = `(function(){
   }
   // 5) 画面太空(可见文字元素 < 1 条)
   if(texts.length<1)issues.push('画面几乎空白(settled 时没有可见文字内容)— 检查动画时序/元素是否被裁没');
+  // 6) 字幕区入侵:有字幕轨时,内容底边进入底部 240px → 会被烧字幕盖住
+  if(capTrack){
+    for(var z=0;z<texts.length;z++){
+      if(texts[z].r.bottom>capBand){ issues.push('内容进入字幕区(会被字幕盖住): "'+texts[z].t.slice(0,16)+'" 底边'+Math.round(texts[z].r.bottom)+'>'+capBand+' — 所有内容控制在 y≤'+capBand); }
+    }
+  }
   // 去重 + 截断
   var seen={},out=[];for(var k=0;k<issues.length;k++){if(!seen[issues[k]]){seen[issues[k]]=1;out.push(issues[k]);}if(out.length>=12)break;}
   return out;
@@ -553,19 +562,25 @@ export async function auditHtml(html: string): Promise<AuditHtmlResult> {
     }
     const dur = contract.durationSec || 5;
     const settled = Math.max(0.2, dur * 0.92);
+    const mid = Math.max(0.1, dur * 0.5);
     const issues: string[] = [];
-    // 取 t=0 与 settled 两帧:① 必须不同(否则没动画,静态图)
+    const eq = (a: Buffer, b: Buffer) => a.length === b.length && a.equals(b);
+    // 取 t=0 / 中段 / settled 三帧,判「有没有动画」「后半段是否定格」「确定性」
     await session.seekAt(0);
     const f0 = await session.shot(width, height, 8000);
-    // 确定性自检:settled 帧渲两次必须字节一致(抓 random/时钟)
+    await session.seekAt(mid);
+    const fMid = await session.shot(width, height, 8000);
     await session.seekAt(settled);
     const f1 = await session.shot(width, height, 8000);
     await session.seekAt(settled);
-    const f2 = await session.shot(width, height, 8000);
-    if (f0.length === f1.length && f0.equals(f1)) {
+    const f2 = await session.shot(width, height, 8000); // 确定性:settled 渲两次必须一致
+    if (eq(f0, f1)) {
       issues.push('画面没有动画(t=0 与结尾完全一样)— 给元素加 data-* 进场动画或 GSAP 时间线');
+    } else if (eq(fMid, f1)) {
+      // 进场后就定格(中段=结尾),正是「画面停住没变化」 —— 要持续动效或分段轮播
+      issues.push('后半段画面静止(进场后就定格不动)— 加 data-loop 环境动效(背景 float / 标题 sweep / 数字 count-up)让画面持续变化,或内容分段轮播(data-exit-start)随时间切换');
     }
-    if (!(f1.length === f2.length && f1.equals(f2))) {
+    if (!eq(f1, f2)) {
       issues.push('动画非确定性(同一时间点渲两次画面不一致)— 禁止 Date/Math.random/setInterval/requestAnimationFrame,只能用 data-* 或 paused GSAP 时间线');
     }
     // 布局体检(在 settled 帧上)

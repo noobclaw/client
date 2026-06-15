@@ -144,19 +144,24 @@ function pickTemplateVoiceTone(): string {
  * maxTokens 默认 2400;freeform 产整页 HTML 需要更大,调用方可放大。
  */
 export async function callNoobclawChat(
-  system: string, user: string, opts?: { temperature?: number; maxTokens?: number },
+  system: string, user: string,
+  opts?: { temperature?: number; maxTokens?: number; model?: 'noobclawai-chat' | 'noobclawai-reasoner' },
 ): Promise<ChatResult> {
-  return callDeepSeekData(system, user, opts?.temperature, opts?.maxTokens);
+  return callDeepSeekData(system, user, opts?.temperature, opts?.maxTokens, opts?.model);
 }
 
-async function callDeepSeekData(system: string, user: string, temperature?: number, maxTokens?: number): Promise<ChatResult> {
+// 默认走 Pro(reasoner=deepseek-v4-pro):模板数据抽取/口播稿/自由排版都是创作活,质量优先。
+async function callDeepSeekData(
+  system: string, user: string, temperature?: number, maxTokens?: number,
+  model: 'noobclawai-chat' | 'noobclawai-reasoner' = 'noobclawai-reasoner',
+): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 60_000);
   try {
     const body: Record<string, unknown> = {
-      model: 'noobclawai-chat',
+      model,
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       stream: false,
       max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 2400,

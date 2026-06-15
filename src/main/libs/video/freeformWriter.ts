@@ -61,11 +61,16 @@ const SYSTEM_PROMPT = [
   '',
   '【画布】',
   '- #stage 已是 1080(宽)×1920(高),已有暗色渐变底 + 网格 + 辉光,你可叠自己的背景层。',
-  '- 四周留 ≥60px 安全边。内容不许溢出 1080×1920。文字别被裁(给足行高/换行)。',
+  '- 四周留 ≥60px 安全边。所有可见元素的【底边不得超过 {{CONTENT_BOTTOM}}px】(下方留给字幕/安全区),不许溢出 1080×1920;文字给足行高/换行,别被容器裁掉。',
+  '- 内容多到一屏放不下时【绝不往下堆到屏外、也绝不压到 {{CONTENT_BOTTOM}}px 以下】:要么减量精炼到一屏,要么用时间轴分段轮播(见下方编排)。',
+  '- 【禁止空占位】没有图片源(离线、禁外链),不要画空图片框 / 空圆 / 灰色占位块 / 头像位 —— 一律用文字、图形、渐变、emoji 图标填,别留空洞。',
   '',
-  '【时长 & 编排】',
-  '- 整片精确 {{DURATION}} 秒。所有【进场动画】的 data-start 必须 ≥0,且 data-start+data-duration ≤ {{DURATION}}。',
-  '- 设计节奏:开头 ~1s 出主标题,内容错峰登场(stagger),结尾几秒画面稳定不动(别在最后一刻还在飞元素)。',
+  '【时长 & 编排(关键:别让画面僵住!)】',
+  '- 整片精确 {{DURATION}} 秒。进场动画 data-start ≥0 且 data-start+data-duration ≤ {{DURATION}}。',
+  '- 【全程必须有变化】,严禁「开头 1 秒动一下、之后一直定格不动」。按内容量二选一:',
+  '  · 一屏放得下 → 元素错峰登场,并叠【持续环境动效】让画面一直在呼吸:背景 .fx-blob 配 data-loop=float 漂浮、标题 .fx-sheen 配 data-loop=sweep 扫光、关键数字 count-up 滚动等(这些 loop 全程循环,不会停)。',
+  '  · 一屏放不下 → 【分段轮播】:第 1 段进场→停留→退场(用 data-exit-start/data-exit-duration),第 2 段在它退场后再进场……每段占一段时间、平分 {{DURATION}};保证【任意时刻屏上只有放得下的那一段】,且画面随时间推进不断切换。',
+  '- 结尾最后 0.5s 可收稳,但不要整个后半段都静止不动。',
   '',
   '【动画 —— 只能用这两套机制,二选一或混用;严禁 CSS @keyframes / animation / transition / setInterval / setTimeout / requestAnimationFrame / Date / Math.random(全是壁钟,会让逐帧渲染糊)】',
   '① 首选 data-* 声明式(写在任意元素上,稳、好懂):',
@@ -85,6 +90,19 @@ const SYSTEM_PROMPT = [
   '可用渐变/阴影/模糊,以及已注入的 fx 工具类:.fx-grain(颗粒) .fx-vignette(暗角) .fx-scanlines(扫描线) .fx-blob(极光球,配 data-loop=float) .fx-sheen(光泽扫过,配 data-loop=sweep)。',
   '只用系统字体(已全局设好,中日韩+Latin 都覆盖)—— 严禁 @font-face / web font / @import / 任何外链(http/https 图片、CDN 一律禁止,离线渲染会失败)。',
   '',
+  '【酷炫视觉手法(抄 HyperFrames 做法,认真用 —— 这是「好看」与「平庸」的分水岭)】',
+  '- 英雄动效优先 GSAP 时间线:形变/位移/路径 + 错峰 stagger;缓动用 power3.out / back.out(回弹) / expo,绝不用线性。',
+  '- 景深视差:分背景层(大 .fx-blob 配 data-loop=float、振幅大、慢漂)/ 中景 / 前景(小元素、快入场),不同速度造空间感,别全平铺贴一层。',
+  '- 动力学排版(kinetic typography):大标题逐字/逐词错峰入场(每字 +0.03~0.05s,配 fade-up 或 pop),像被「打」出来。',
+  '- 段间转场:换段/换页用 .fx-flash + data-anim=flash 白闪,或 wipe-left/right 擦除,别硬切。',
+  '- 数据感:关键数字用 count-up 从 0 滚到目标(data-count-from/to/...),比静态数字抓眼。',
+  '- 氛围层(克制别糊):.fx-grain 颗粒 + .fx-vignette 暗角 + 标题 .fx-sheen 扫光,薄薄叠一层提质感。',
+  '',
+  '【设计系统纪律(别瞎排,排版决定档次)】',
+  '- 字号阶梯拉开层级:主标题 84~110px/900 粗;副标题 40~52px;正文 34~44px;说明/出处 26~30px。',
+  '- 配色克制:只用 主色 {{BRAND}} + 强调色 {{ACCENT}} + 黑白灰三档,别五颜六色;重点用强调色点睛。',
+  '- 留白与对齐:模块间距 ≥40px;统一左对齐或居中(别混);卡片圆角 ≥20px + 柔和阴影 + 半透明描边,别挤成一团。',
+  '',
   '【内容】忠实呈现下方用户内容,按内容类型自选最合适的版式(榜单/卡片/金句/数据看板/头条快讯…);绝不编造用户没给的数据。保持用户内容语言。',
   '【字幕】{{CAPTIONS}}',
   '',
@@ -94,14 +112,15 @@ const SYSTEM_PROMPT = [
 function buildSystem(input: FreeformInput): string {
   return SYSTEM_PROMPT
     .replace(/\{\{DURATION\}\}/g, input.durationSec.toFixed(1))
-    .replace('{{BRAND}}', input.brandColor)
-    .replace('{{ACCENT}}', input.accentColor || '#0ecb81')
+    .replace(/\{\{BRAND\}\}/g, input.brandColor)
+    .replace(/\{\{ACCENT\}\}/g, input.accentColor || '#0ecb81')
     .replace('{{GSAP_AVAIL}}', input.gsapAvailable
       ? '   GSAP 3 已就绪 = window.gsap,可直接用。'
       : '   ⚠️ 本次 GSAP 不可用 —— 只能用 ① data-* 机制,setupScript 给空串,绝不能引用 gsap。')
+    .replace(/\{\{CONTENT_BOTTOM\}\}/g, input.captionsOn ? '1680' : '1860')
     .replace('{{CAPTIONS}}', input.captionsOn
-      ? '本片会烧字幕(底部),请给画面底部留出 ≥240px 安全区,别让任何内容元素落到那里被字幕压住。'
-      : '本片无字幕,可用满整屏(仍留 60px 安全边)。');
+      ? '本片底部会烧字幕。屏幕底部 1680–1920px 是【字幕专属区】,任何内容元素都不许进入(否则被字幕盖住);所有内容控制在 y≤1680。'
+      : '本片无字幕,内容可用到 y≤1860(仍留 60px 安全边)。');
 }
 
 function buildUser(input: FreeformInput): string {
@@ -203,8 +222,10 @@ function fallbackScene(input: FreeformInput): FreeformResult {
  */
 export async function generateFreeformScene(input: FreeformInput): Promise<FreeformResult> {
   try {
+    // 写整页 HTML 是重创作/推理活 → 走 Pro(reasoner=deepseek-v4-pro),对齐 scriptWriter「创作走 Pro」约定。
+    // 代价:Pro ~3x credits,且迭代最多 MAX_FREEFORM_ATTEMPTS 轮会乘上去。
     const { content, tokens, costUsd } = await callNoobclawChat(
-      buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 4096 },
+      buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 4096, model: 'noobclawai-reasoner' },
     );
     const parsed = JSON.parse(extractJsonObject(content));
     const bodyHtml = sanitizeBody(typeof parsed?.bodyHtml === 'string' ? parsed.bodyHtml : '');

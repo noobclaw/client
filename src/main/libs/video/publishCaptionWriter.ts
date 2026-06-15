@@ -134,7 +134,7 @@ export async function generatePublishCaption(input: PublishCaptionInput): Promis
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({
-        model: 'noobclawai-chat',
+        model: 'noobclawai-reasoner',
         messages: [
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: user },
