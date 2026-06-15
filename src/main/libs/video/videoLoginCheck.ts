@@ -88,7 +88,9 @@ let _checkTabId: number | undefined;
 /** 开/复用唯一的「视频任务运行检查」窗口的固定 tab,返回 tabId。拿不到返回 undefined(调用方回退老校验)。 */
 async function ensureVideoCheckWindow(): Promise<number | undefined> {
   if (typeof _checkTabId === 'number') return _checkTabId;
-  if (!connectionHasCapability(undefined, 'window_registry_v6')) return undefined;
+  const hasV6 = connectionHasCapability(undefined, 'window_registry_v6');
+  console.log('[videoLoginCheck] ensureVideoCheckWindow: window_registry_v6=' + hasV6);
+  if (!hasV6) return undefined; // 老扩展无 v6 → 调用方回退每平台开窗(= 多窗口的一种可能)
   try {
     const idleTitle = buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null);
     const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
@@ -104,8 +106,9 @@ async function ensureVideoCheckWindow(): Promise<number | undefined> {
       12000,
     );
     const tabId = res?.tabId ?? res?.data?.tabId;
+    console.log('[videoLoginCheck] task_open_tab res=' + JSON.stringify(res).slice(0, 200) + ' → tabId=' + tabId);
     if (typeof tabId === 'number') { _checkTabId = tabId; return tabId; }
-  } catch { /* 开窗失败 → 回退 */ }
+  } catch (e) { console.log('[videoLoginCheck] ensureVideoCheckWindow threw: ' + String((e as any)?.message || e)); }
   return undefined;
 }
 
@@ -192,6 +195,7 @@ export async function checkVideoLoginByCookieBatch(
  *  所以这里就用最稳的「导航同一个 tab」;真要多 tab 标签页保留各平台,得改扩展(role-miss 复用那段)。 */
 export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
   const tabId = await ensureVideoCheckWindow();
+  console.log('[videoLoginCheck] openLoginInCheckWindow url=' + url.slice(0, 60) + ' checkTabId=' + tabId + (typeof tabId === 'number' ? ' → navigate(ok)' : ' → FALLBACK 每平台开窗(多窗口源头)'));
   if (typeof tabId !== 'number') return { ok: false };
   // ⚠️【多窗口根因】navigate 命令在扩展侧会【等页面 load complete 才回包】,慢网/VPN 下创作中心
   //   (尤其国内站走 VPN)加载常 >20s → 之前 `await` 超时抛错 → 返回 ok:false → 调用方又 fallback
