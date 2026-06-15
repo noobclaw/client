@@ -535,35 +535,16 @@ class NoobClawApiService {
   }
 
   // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
+  // 【1:1 照抄 uploadAvatar(头像上传一直能用)】之前我自作聪明走 base64→主进程,实测主进程 Node
+  //   fetch+FormData 在 Electron 40 发出来是 text/plain/2字节的空请求(后端日志 ct="text/plain" len=2 坐实)。
+  //   渲染进程 formData.append(原始 File) + authedFetch 才是对的(头像就这么发、发的是正经 multipart)。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
-      // ⚠️「官网行、客户端不行」根因:① 渲染进程 fetch+FormData 在 Electron 里发 multipart 不可靠;
-      //   ② Electron 40 已【删除 File.path】,靠路径那条也行不通。
-      //   正解:渲染进程把文件【字节读成 base64】直接交给主进程,主进程用 Node fetch+FormData 发(server 级稳)。
-      const ab = await file.arrayBuffer();
-      const u8 = new Uint8Array(ab);
-      let bin = '';
-      const CHUNK = 0x8000; // 分块转 base64,避免 String.fromCharCode(...大数组) 爆栈
-      for (let i = 0; i < u8.length; i += CHUNK) bin += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + CHUNK)));
-      const b64 = btoa(bin);
-      const bridge = (window as any)?.electron?.scenario?.uploadCnyQr;
-      if (typeof bridge === 'function') {
-        const r = await bridge({
-          b64,
-          name: file.name || 'qr.png',
-          backendUrl: this.backendUrl,
-          headers: this.getAuthHeaders(),
-        });
-        return r || { error: 'main_upload_no_result' };
-      }
-      // 兜底(主进程桥没挂上时):渲染进程直接发(已知在 Electron 下可能失败,仅兜底)。
-      const okType = /^image\/(png|jpeg|gif|webp)$/.test(file.type);
-      const blob = new Blob([ab], { type: okType ? file.type : 'image/png' });
       const formData = new FormData();
-      formData.append('qr', blob, file.name || 'qr.png');
+      formData.append('qr', file);
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
         method: 'POST',
-        headers: this.getAuthHeaders(),
+        headers: this.getAuthHeaders(), // 不手动设 Content-Type,浏览器自带 multipart boundary
         body: formData,
       });
       const data = await res.json();
