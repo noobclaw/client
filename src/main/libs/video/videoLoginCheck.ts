@@ -140,10 +140,9 @@ export async function checkVideoLoginByCookie(
   const tabId = typeof reuseTabId === 'number' ? reuseTabId : await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return null;
   const cookies = await cdpGetCookies(cfg.url, tabId);
-  if (!cookies) {
-    if (typeof reuseTabId !== 'number') _checkTabId = undefined; // 自家检查窗可能已关 → 下次重开;复用的 tab 不动
-    return null;
-  }
+  // ⚠️ cookie 读失败【不清 _checkTabId】:窗多半还开着(只是 cdp attach/读失败),清了会导致关弹窗时
+  //   closeVideoCheckWindow 无 tabId 可关 → 留下孤儿「运行检查」空白窗。留着,关弹窗时统一收。
+  if (!cookies) return null;
   return { loggedIn: cookieHit(cookies, cfg) };
 }
 
@@ -169,7 +168,7 @@ export async function checkVideoLoginByCookieBatch(
   //   openLoginInCheckWindow),轮询也复用它。模态关闭时由 closeVideoCheckWindow 统一收掉。
   const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
   const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie(任意页都能读)
-  if (!cookies) { _checkTabId = undefined; return out; }
+  if (!cookies) return out; // 读失败不清 _checkTabId(同上:留着好关窗,别留孤儿窗)
   for (const { platform, cfg } of resolved) {
     out[platform] = cookieHit(cookies, cfg);
     // 诊断:打印该平台域名下实际读到的 cookie 名(只名字、无值,无隐私)。用来核对真实 session 名 ——
