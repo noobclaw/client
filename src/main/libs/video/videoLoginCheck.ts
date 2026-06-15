@@ -187,18 +187,15 @@ export async function checkVideoLoginByCookieBatch(
   return out;
 }
 
-/** 在【同一个检查/登录窗】里给某平台开【一个 tab】登录 —— 多平台 = 一窗多 tab(各平台 role 不同 →
- *  各占一个 tab、不互相覆盖),既能挨个登、各 tab 保持在线(给 tab 兜底校验用),又不弹 8 个窗。 */
-export async function openLoginInCheckWindow(url: string, role = 'login'): Promise<{ ok: boolean }> {
-  await ensureVideoCheckWindow(); // 确保那一个窗存在(about:blank 那个 tab 用于读 cookie)
-  if (!connectionHasCapability(undefined, 'window_registry_v6')) return { ok: false };
+/** 把【唯一的检查/登录窗】的 tab 导航到某平台登录页 —— 多平台登录【复用这一个窗口】,挨个点挨个登,
+ *  不再每点一个弹一个新窗(8 个)。cookie 读取不受影响(getCookies 按 url 读,与该 tab 当前停在哪页无关)。
+ *  注:扩展的 window-registry 对「保存前校验」窗是【一窗一 tab 复用】(role-miss 复用),做不到真·多 tab,
+ *  所以这里就用最稳的「导航同一个 tab」;真要多 tab 标签页保留各平台,得改扩展(role-miss 复用那段)。 */
+export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
+  const tabId = await ensureVideoCheckWindow();
+  if (typeof tabId !== 'number') return { ok: false };
   try {
-    const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
-    await sendBrowserCommand('task_open_tab', {
-      windowKey: CHECK_WINDOW_KEY,
-      groupTitle: buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null),
-      role, url, bounds,
-    }, 15000);
+    await sendBrowserCommand('navigate', { url, tabId }, 20000);
     return { ok: true };
   } catch { return { ok: false }; }
 }
