@@ -45,7 +45,7 @@ async function callDeepSeek(
   userMessage: string,
   jsonMode: boolean,
   timeoutMs = 60_000,
-  model: 'noobclawai-chat' | 'noobclawai-reasoner' = 'noobclawai-chat',
+  model: 'noobclawai-chat' | 'noobclawai-reasoner' = 'noobclawai-reasoner',
   /**
    * 取样温度。omit = DeepSeek 用模型默认值(reasoner 偏低,精确度优先)。
    * 创作类(写口播稿)显式传 1.0+ 提升输出多样性;搜索词那种确定性映射不传 = 用默认低温。
