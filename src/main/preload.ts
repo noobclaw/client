@@ -92,6 +92,7 @@ contextBridge.exposeInMainWorld('electron', {
     checkCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
     openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
     checkVideoLoginByCookie: (platform: string, which?: 'main' | 'creator') => ipcRenderer.invoke('video:checkLoginByCookie', platform, which),
+    checkVideoLoginByCookieBatch: (items: { platform: string; which?: 'main' | 'creator' }[]) => ipcRenderer.invoke('video:checkLoginByCookieBatch', items),
   },
   // ── Multi-platform Video Creation (phase 1: local synthesis) ──
   video: {

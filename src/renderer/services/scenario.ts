@@ -274,6 +274,15 @@ class ScenarioService {
     }
   }
 
+  /** 【多平台】一次性 cookie 预检:一次 CDP 读全部、按域名+名逐平台判。返回 { [platform]: true|false|null }。 */
+  async checkVideoLoginByCookieBatch(items: { platform: string; which?: 'main' | 'creator' }[]): Promise<Record<string, boolean | null>> {
+    try {
+      return await (window.electron.scenario as any).checkVideoLoginByCookieBatch(items) || {};
+    } catch {
+      return {};
+    }
+  }
+
   // ── Derived helpers ──
 
   /** Aggregate per-task stats the task dashboard likes to show.

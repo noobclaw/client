@@ -76,15 +76,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
 
-  const checkOne = useCallback(async (id: string, useCookie = false) => {
+  const checkOne = useCallback(async (id: string) => {
     const useCreator = metaOf(id).creator && !override.includes(id);
     try {
-      // cookie 快路径(req 3):仅首次校验用 —— 有效直接判已登录,不依赖对应页面开着。
-      //   不放进 3s 轮询:每次读 cookie 会短暂 attach CDP 闪调试横幅,轮询会一直闪。
-      if (useCookie) {
-        const ck = await scenarioService.checkVideoLoginByCookie(id, useCreator ? 'creator' : 'main');
-        if (ck?.loggedIn) return { id, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } };
-      }
       const st = useCreator
         ? await scenarioService.checkCreatorCenter(id as any)
         : await scenarioService.checkXhsLogin(id as any);
@@ -99,9 +93,24 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
     if (list.length === 0) { setExtensionStatus('pass'); return; }
     setChecking(true);
     try {
-      // 并行探所有平台(每个走 tab_list,串行会很慢)。任一返回 browser_not_connected
-      // → 扩展没连上,统一把那些平台标 waiting。useCookie 仅首次 true(cookie 快路径)。
-      const results = await Promise.all(list.map((p) => checkOne(p, useCookie)));
+      // 多平台 cookie 批量快路径(仅首次/手动 useCookie=true):一次 CDP attach 把所有勾选平台的
+      //   cookie 全读出来、按【域名+名】逐平台判(抖音/TikTok 同名 sessionid 靠域名区分,不串台)。
+      //   命中的平台直接判已登录;没命中/没配的再走老 tab 校验。不放进 3s 轮询(避免反复闪 CDP 横幅)。
+      let cookiePass: Record<string, boolean | null> = {};
+      if (useCookie) {
+        const items = list.map((id) => ({
+          platform: id,
+          which: (metaOf(id).creator && !override.includes(id)) ? ('creator' as const) : ('main' as const),
+        }));
+        cookiePass = await scenarioService.checkVideoLoginByCookieBatch(items);
+      }
+      // 并行探所有平台(每个走 tab_list,串行会很慢)。cookie 已判已登录的跳过 tab 校验。
+      // 任一返回 browser_not_connected → 扩展没连上,统一把那些平台标 waiting。
+      const results = await Promise.all(list.map((p) =>
+        cookiePass[p] === true
+          ? Promise.resolve({ id: p, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } })
+          : checkOne(p),
+      ));
       let extConnected = true;
       const next: Record<string, StepStatus> = {};
       for (const { id, st } of results) {
@@ -119,7 +128,8 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
     } finally {
       setChecking(false);
     }
-  }, [list, checkOne]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list, checkOne, override.join(',')]);
 
   useEffect(() => { void runCheck(true); }, []); // eslint-disable-line  首次走 cookie 快路径(不依赖页面开着)
 

@@ -37,22 +37,39 @@ export type LoginWhich = 'main' | 'creator';
  *
  * 没列 creator 行的平台(tiktok/youtube/binance/x)= 主站发布、无独立创作中心,只用 main。
  */
-const VIDEO_LOGIN_COOKIES: Record<string, { url: string; names: string[] }> = {
-  'douyin:main':      { url: 'https://www.douyin.com/',          names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
-  // 抖音创作中心:多数 cookie 跟主站 SSO 共享,但若创作中心另发登录 cookie 需真机补名。
-  'douyin:creator':   { url: 'https://creator.douyin.com/',      names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
-  'xhs:main':         { url: 'https://www.xiaohongshu.com/',     names: ['web_session'] },
+// domain:cookie 必须落在这个域(去前导点后 includes 匹配)。⚠️多平台同名 cookie 必须靠它区分 ——
+//   如抖音和 TikTok 的登录 cookie 都叫 sessionid,只按名匹配会串台误判;按 domain 区分(.douyin.com
+//   vs .tiktok.com)才对。主站/创作中心共用一个 base 域(creator.* 的 cookie 多挂在 base 域上)。
+const VIDEO_LOGIN_COOKIES: Record<string, { url: string; domain: string; names: string[] }> = {
+  'douyin:main':      { url: 'https://www.douyin.com/',          domain: 'douyin.com',       names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
+  // 抖音创作中心:多数 cookie 跟主站 SSO 共享(.douyin.com),若创作中心另发登录 cookie 需真机补名。
+  'douyin:creator':   { url: 'https://creator.douyin.com/',      domain: 'douyin.com',       names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
+  'xhs:main':         { url: 'https://www.xiaohongshu.com/',     domain: 'xiaohongshu.com',  names: ['web_session'] },
   // 小红书创作中心:cookie 跟主站不一样(galaxy_creator_*),主站的 web_session 也带上兜底 —— 真机确认。
-  'xhs:creator':      { url: 'https://creator.xiaohongshu.com/', names: ['galaxy_creator_session_id', 'customer-sso-sid', 'web_session'] },
-  'bilibili:main':    { url: 'https://www.bilibili.com/',        names: ['SESSDATA', 'DedeUserID'] },
-  'bilibili:creator': { url: 'https://member.bilibili.com/',     names: ['SESSDATA', 'DedeUserID'] },
-  'kuaishou:main':    { url: 'https://www.kuaishou.com/',        names: ['passToken', 'userId'] },
-  'kuaishou:creator': { url: 'https://cp.kuaishou.com/',         names: ['passToken', 'userId', 'kuaishou.web.cp.api_st'] },
-  'tiktok:main':      { url: 'https://www.tiktok.com/',          names: ['sessionid', 'sid_tt'] },
-  'youtube:main':     { url: 'https://www.youtube.com/',         names: ['LOGIN_INFO', 'SAPISID'] },
-  'binance:main':     { url: 'https://www.binance.com/',         names: ['p20t'] },
-  'x:main':           { url: 'https://x.com/',                   names: ['auth_token'] },
+  'xhs:creator':      { url: 'https://creator.xiaohongshu.com/', domain: 'xiaohongshu.com',  names: ['galaxy_creator_session_id', 'customer-sso-sid', 'web_session'] },
+  'bilibili:main':    { url: 'https://www.bilibili.com/',        domain: 'bilibili.com',     names: ['SESSDATA', 'DedeUserID'] },
+  'bilibili:creator': { url: 'https://member.bilibili.com/',     domain: 'bilibili.com',     names: ['SESSDATA', 'DedeUserID'] },
+  'kuaishou:main':    { url: 'https://www.kuaishou.com/',        domain: 'kuaishou.com',     names: ['passToken', 'userId'] },
+  'kuaishou:creator': { url: 'https://cp.kuaishou.com/',         domain: 'kuaishou.com',     names: ['passToken', 'userId', 'kuaishou.web.cp.api_st'] },
+  'tiktok:main':      { url: 'https://www.tiktok.com/',          domain: 'tiktok.com',       names: ['sessionid', 'sid_tt'] },
+  'youtube:main':     { url: 'https://www.youtube.com/',         domain: 'youtube.com',      names: ['LOGIN_INFO'] },
+  'binance:main':     { url: 'https://www.binance.com/',         domain: 'binance.com',      names: ['p20t'] },
+  'x:main':           { url: 'https://x.com/',                   domain: 'x.com',            names: ['auth_token'] },
 };
+
+/** 一组 cookie 里是否命中某「平台:子域」的登录态:域名匹配 + 名匹配 + 值非空 + 未过期。 */
+function cookieHit(cookies: any[], cfg: { domain: string; names: string[] }): boolean {
+  const nowSec = Date.now() / 1000;
+  const dom = cfg.domain.replace(/^\./, '');
+  return cfg.names.some((name) =>
+    cookies.some((c) =>
+      c && c.name === name
+      && typeof c.value === 'string' && c.value.length > 0
+      && typeof c.domain === 'string' && c.domain.replace(/^\./, '').includes(dom)   // 按域名区分同名 cookie
+      && !(typeof c.expires === 'number' && c.expires > 0 && c.expires < nowSec),    // 持久 cookie 判过期;会话 cookie 不判
+    ),
+  );
+}
 
 let _checkTabId: number | undefined;
 
@@ -80,10 +97,11 @@ async function ensureVideoCheckWindow(): Promise<number | undefined> {
   return undefined;
 }
 
-/** 读指定 URL 可用的全部 cookie(含 HttpOnly,走扩展 cdp_cookies_get)。失败返回 null。 */
-async function cdpGetCookies(url: string, tabId: number): Promise<any[] | null> {
+/** 读指定 URL(单个或多个)可用的全部 cookie(含 HttpOnly,走扩展 cdp_cookies_get)。失败返回 null。 */
+async function cdpGetCookies(urls: string | string[], tabId: number): Promise<any[] | null> {
   try {
-    const res: any = await sendBrowserCommand('cdp_cookies_get', { urls: [url], tabId }, 10000);
+    const urlArr = Array.isArray(urls) ? urls : [urls];
+    const res: any = await sendBrowserCommand('cdp_cookies_get', { urls: urlArr, tabId }, 10000);
     const cookies = res?.cookies ?? res?.data?.cookies;
     return Array.isArray(cookies) ? cookies : null;
   } catch {
@@ -111,14 +129,30 @@ export async function checkVideoLoginByCookie(
     _checkTabId = undefined; // 可能 tab 已关:下次重开
     return null;
   }
-  const nowSec = Date.now() / 1000;
-  const ok = cfg.names.some((name) =>
-    cookies.some((c) =>
-      c && c.name === name
-      && typeof c.value === 'string' && c.value.length > 0
-      // 会话 cookie(expires<=0 / session)不判过期;持久 cookie 看是否过期
-      && !(typeof c.expires === 'number' && c.expires > 0 && c.expires < nowSec),
-    ),
-  );
-  return { loggedIn: ok };
+  return { loggedIn: cookieHit(cookies, cfg) };
+}
+
+/**
+ * 【批量】多平台一次性 cookie 校验 —— 用户勾选多个上传平台时用:
+ *   ① 在【一个】视频检查窗的 tab 上【一次】cdp_cookies_get 把所有平台 url 的 cookie 全读出来
+ *      —— 避免并发各开一次 CDP attach(同 tab 只能 attach 一个 → 互相抢占失败)+ 只闪一次横幅;
+ *   ② 按【域名 + cookie 名】逐平台判(域名区分抖音/TikTok 的同名 sessionid,防串台误判)。
+ * 返回 { [platform]: true|false|null }(null = 该平台没配 / 无法判定 → 调用方对该平台回退老校验)。
+ */
+export async function checkVideoLoginByCookieBatch(
+  items: { platform: LoginPlatform; which?: LoginWhich }[],
+): Promise<Record<string, boolean | null>> {
+  const out: Record<string, boolean | null> = {};
+  for (const it of items) out[it.platform] = null;
+  const resolved = items
+    .map((it) => ({ platform: it.platform, cfg: VIDEO_LOGIN_COOKIES[`${it.platform}:${it.which || 'main'}`] || VIDEO_LOGIN_COOKIES[`${it.platform}:main`] }))
+    .filter((x): x is { platform: LoginPlatform; cfg: { url: string; domain: string; names: string[] } } => !!x.cfg);
+  if (resolved.length === 0) return out;
+  const tabId = await ensureVideoCheckWindow();
+  if (typeof tabId !== 'number') return out;
+  const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
+  const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie
+  if (!cookies) { _checkTabId = undefined; return out; }
+  for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
+  return out;
 }

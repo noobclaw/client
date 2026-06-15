@@ -2855,6 +2855,13 @@ if (!gotTheLock) {
       return await checkVideoLoginByCookie(platform, which === 'creator' ? 'creator' : 'main');
     });
 
+    // 多平台一次性 cookie 校验(用户勾选多个上传平台时用):一次 CDP 读全部、按域名+名逐平台判,
+    //   避免并发各开一次 attach 互抢 + 同名 cookie 串台。返回 { [platform]: true|false|null }。
+    ipcMain.handle('video:checkLoginByCookieBatch', async (_e, items: { platform: string; which?: 'main' | 'creator' }[]) => {
+      const { checkVideoLoginByCookieBatch } = require('./libs/video/videoLoginCheck');
+      return await checkVideoLoginByCookieBatch(Array.isArray(items) ? items : []);
+    });
+
     ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await openCreatorCenter(platform);
