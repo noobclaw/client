@@ -3773,7 +3773,8 @@ export const HotspotVideoModal: React.FC<{
   // 编辑保留任务已存值(空串描边 = 用户特意选「无」,?? 不会覆盖)。
   const [subtitleFontSize, setSubtitleFontSize] = useState<number>(ei.subtitleFontSize ?? 64);
   const [subtitleStrokeColor, setSubtitleStrokeColor] = useState<string>(ei.subtitleStrokeColor ?? '#000000');
-  const [bgmPath, setBgmPath] = useState<string>(ei.bgmPath || '');
+  // BGM 默认选中第 1 首内置曲目(新建任务,跟在线素材/模板速生一致);编辑老任务沿用其已存值(空也保留)。
+  const [bgmPath, setBgmPath] = useState<string>(isEdit ? (ei.bgmPath || '') : `${BUILTIN_BGM_PREFIX}${BUILTIN_BGM[0].id}`);
   // 云端曲库(跟模板速生 / 在线素材同源 static.noobclaw.com/bgm/manifest.json)。
   // 没这个时 hotspot 只能选 8 首内置;拉到后追加「云端曲库」optgroup。失败静默。
   const [remoteBgm, setRemoteBgm] = useState<RemoteBgm[]>([]);
