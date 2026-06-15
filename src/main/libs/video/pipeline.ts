@@ -1233,7 +1233,7 @@ async function runVideoPipeline(
         imagePool: douyinImgPool!.imagePool,
         imageByScene: douyinImgPool!.imageBySceneFor(videoIdx),
       });
-      tracker.done('visuals', '🖼️ 抖音图文就绪(按热搜标题搜 · Ken Burns)');
+      tracker.done('visuals', '🖼️ 抖音图文就绪(按热搜标题搜 · 图片缓慢运镜)');
     } else if (input.engine === 'hotspot') {
       // 热搜成片【不再用 Serper 配图】(用户决策 2026-06:中文→抖音,英文/小语种→TikTok)。
       //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题(TikTok 取材开发中,真机调后启用)。
@@ -1642,7 +1642,7 @@ async function runVideoPipeline(
       if (poolByTerm.size === 0) return null;
       const allImgs = Array.from(poolByTerm.values()).flat();
       hotspotImageCount = allImgs.length; // 计费按图片数(沿用 hotspot 口径)
-      tracker.progress(`🖼️ 抖音图文就绪:${allImgs.length} 图(按热搜标题搜 · Ken Burns)`);
+      tracker.progress(`🖼️ 抖音图文就绪:${allImgs.length} 图(按热搜标题搜 · 图片缓慢运镜)`);
       // 每镜一图:先本镜词、不够借全局、used 去重;每条 videoIdx 打乱错开。
       const imageBySceneFor = (videoIdx: number): Map<number, string> => {
         const used = new Set<string>();
