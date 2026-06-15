@@ -76,6 +76,11 @@ export const SUB_PLATFORM_REGISTRY: Record<string, SubPlatformMeta> = {
   // navigate 串行切换上传页(douyin→xhs→tiktok…),避免 9 平台开 9 窗口爆炸。domain
   // 只是占位(运行期会被 navigate 反复改写),不参与 urlToSubPlatform 推断。
   video_publish:    { label: '发布',    emoji: '🚀', domain: '(multi — navigated per platform)' },
+  // 视频任务【运行检查专用窗口】—— 独立于发布窗,固定唯一一个,跑登录/插件校验用:
+  //   在这个窗口的 tab 上 attach CDP → cdp_cookies_get 读各平台 cookie 判登录态,
+  //   不需要导航到平台页、也不需要一直开着对应页面(cookie 在 profile 里全局可读)。
+  //   domain 只是占位,不参与 urlToSubPlatform 推断。
+  video_check:      { label: '运行检查', emoji: '🔎', domain: '(cookie probe — about:blank)' },
 };
 
 /** Lookup set for fast enum validation. Derived from the registry. */

@@ -18,6 +18,7 @@ import path from 'path';
 import { fetchPublishDrivers } from './publishers/remoteDrivers';
 import { pubCmd, sleep } from './publishers/publisherUtils';
 import { checkPlatformLogin, openPlatformLogin } from '../scenario/platformLoginDriver';
+import { checkVideoLoginByCookie } from './videoLoginCheck';
 
 /** 真 async 函数沙箱(同 remoteDrivers.runRemoteDriver:无 require/fs/global,只能用注入的 ctx)。 */
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
@@ -67,6 +68,12 @@ async function downloadOne(url: string, dest: string): Promise<boolean> {
 
 /** 等抖音登录:先探一次,没登录就开抖音 tab + 轮询(最多 3 分钟)。 */
 async function ensureDouyinLoggedIn(onLog: (m: string) => void, signal?: AbortSignal): Promise<boolean> {
+  // cookie 快路径(req 3):在「视频任务运行检查」窗里读 douyin 登录 cookie,有效就直接过 ——
+  //   不需要开着抖音页。拿不准(返回 null/false)再退老的 tab 校验,绝不因此误判。
+  try {
+    const ck = await checkVideoLoginByCookie('douyin');
+    if (ck?.loggedIn) return true;
+  } catch { /* 回退老校验 */ }
   let st = await checkPlatformLogin('douyin').catch(() => ({ loggedIn: false } as { loggedIn: boolean }));
   if (st.loggedIn) return true;
   onLog('🌐 打开抖音,等待登录(请在窗口里扫码,最多 3 分钟)…');
