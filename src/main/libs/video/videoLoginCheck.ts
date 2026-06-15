@@ -61,11 +61,16 @@ const VIDEO_LOGIN_COOKIES: Record<string, { url: string; domain: string; names: 
 function cookieHit(cookies: any[], cfg: { domain: string; names: string[] }): boolean {
   const nowSec = Date.now() / 1000;
   const dom = cfg.domain.replace(/^\./, '');
+  const domOk = (cd: unknown): boolean => {
+    if (typeof cd !== 'string') return false;
+    const d = cd.replace(/^\./, '');
+    return d === dom || d.endsWith('.' + dom); // 严格:本域或其子域;不让 evildouyin.com 蒙混(includes 会)
+  };
   return cfg.names.some((name) =>
     cookies.some((c) =>
       c && c.name === name
       && typeof c.value === 'string' && c.value.length > 0
-      && typeof c.domain === 'string' && c.domain.replace(/^\./, '').includes(dom)   // 按域名区分同名 cookie
+      && domOk(c.domain)                                                            // 按域名区分同名 cookie(抖音/TikTok 都叫 sessionid)
       && !(typeof c.expires === 'number' && c.expires > 0 && c.expires < nowSec),    // 持久 cookie 判过期;会话 cookie 不判
     ),
   );
