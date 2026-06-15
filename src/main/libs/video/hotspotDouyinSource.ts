@@ -19,6 +19,7 @@ import { fetchPublishDrivers } from './publishers/remoteDrivers';
 import { pubCmd, sleep } from './publishers/publisherUtils';
 import { checkPlatformLogin, openPlatformLogin } from '../scenario/platformLoginDriver';
 import { checkVideoLoginByCookie } from './videoLoginCheck';
+import { ensureVideoRunTab } from './videoRunWindow';
 
 /** 真 async 函数沙箱(同 remoteDrivers.runRemoteDriver:无 require/fs/global,只能用注入的 ctx)。 */
 const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor as
@@ -152,14 +153,18 @@ async function fetchDouyinClipsImpl(
   }
   diag.loggedIn = true;
 
-  // 3. 跑搜+取源脚本
+  // 3. 跑搜+取源脚本 —— 钉到【视频运行窗口】的固定 tab(video_publish,跟发布共用),不抢 scenario
+  //    的抖音 tab、也不跟别的视频 pipeline 抢(物理隔离,堵串台)。拿不到(旧扩展)→ videoTabId
+  //    为 undefined,pubCmd 自动回退 tabPattern 路由(行为同改动前)。
+  const videoTabId = await ensureVideoRunTab(onLog);
+  if (typeof videoTabId === 'number') onLog('🪟 抖音取材走【视频专用窗口】(与发布共用,隔离 scenario)');
   onLog(mode === 'image' ? '🔎 按标题搜抖音图文、取图…' : '🔎 按标题搜抖音、取无水印源…');
   let ret: any;
   try {
     const fn = new AsyncFunction('ctx', code);
     const sctx = {
       input: { keywords, wantCount, mode },
-      cmd: (command: string, params: any, timeoutMs: number) => pubCmd('douyin', command, params, timeoutMs),
+      cmd: (command: string, params: any, timeoutMs: number) => pubCmd('douyin', command, params, timeoutMs, videoTabId),
       sleep,
       log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
     };
