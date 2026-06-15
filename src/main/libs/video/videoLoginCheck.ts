@@ -193,10 +193,12 @@ export async function checkVideoLoginByCookieBatch(
 export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
   const tabId = await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return { ok: false };
-  try {
-    await sendBrowserCommand('navigate', { url, tabId }, 20000);
-    return { ok: true };
-  } catch { return { ok: false }; }
+  // ⚠️【多窗口根因】navigate 命令在扩展侧会【等页面 load complete 才回包】,慢网/VPN 下创作中心
+  //   (尤其国内站走 VPN)加载常 >20s → 之前 `await` 超时抛错 → 返回 ok:false → 调用方又 fallback
+  //   开了一个【每平台窗】= 多窗口。其实扩展侧 chrome.tabs.update 是【立刻】执行的,导航已经开始,
+  //   不必等加载完成。改成【即发即返 ok】(后台导航),就只剩这一个检查窗,不再触发 fallback。
+  void sendBrowserCommand('navigate', { url, tabId }, 60000).catch(() => {});
+  return { ok: true };
 }
 
 /** 关掉「运行检查/登录」窗(模态关闭时调,避免空白窗常驻)。 */
