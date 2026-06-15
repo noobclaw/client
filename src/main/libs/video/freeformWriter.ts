@@ -247,14 +247,23 @@ function fallbackScene(input: FreeformInput): FreeformResult {
  *   不吐思考链,产结构化 JSON 最稳)重试一次;两个模型都失败才用纯代码兜底。maxTokens 4096→8000 防截断。
  *   鉴权/余额错误立即上抛(不浪费第二次调用)。
  */
-export async function generateFreeformScene(input: FreeformInput): Promise<FreeformResult> {
+export async function generateFreeformScene(
+  input: FreeformInput,
+  onProgress?: (msg: string) => void,
+): Promise<FreeformResult> {
   const models: Array<'noobclawai-reasoner' | 'noobclawai-chat'> = ['noobclawai-reasoner', 'noobclawai-chat'];
+  const label: Record<string, string> = { 'noobclawai-reasoner': 'Pro 模型', 'noobclawai-chat': 'flash 模型' };
   let lastReason = 'AI 未产出可用 HTML';
-  for (const model of models) {
+  for (let i = 0; i < models.length; i++) {
+    const model = models[i];
     try {
+      onProgress?.(i === 0
+        ? `🎨 ${label[model]}正在写整页 HTML(产物较大,通常 30–90s,请稍候)…`
+        : `🔁 改用 ${label[model]}重试(产结构化 JSON 更稳,通常 10–30s)…`);
       const { content, tokens, costUsd } = await callNoobclawChat(
-        buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 8000, model },
+        buildSystem(input), buildUser(input), { temperature: 0.9, maxTokens: 8000, model, timeoutMs: 120_000 },
       );
+      onProgress?.(`📝 ${label[model]}已返回 ${content.length} 字,正在解析…`);
       const parsed = JSON.parse(extractJsonObject(content));
       const bodyHtml = sanitizeBody(typeof parsed?.bodyHtml === 'string' ? parsed.bodyHtml : '');
       const css = sanitizeCss(typeof parsed?.css === 'string' ? parsed.css : '');
@@ -263,11 +272,14 @@ export async function generateFreeformScene(input: FreeformInput): Promise<Freef
         return { css, bodyHtml, setupScript, source: 'ai', model, tokens, costUsd };
       }
       lastReason = `${model} 产出的 bodyHtml 为空/过短(${bodyHtml.trim().length} 字)`;
+      onProgress?.(`⚠️ ${label[model]}产物不可用(${lastReason})`);
     } catch (e) {
       const msg = String((e as Error)?.message || e);
       // 鉴权/余额类错误向上抛(跟 templateHtmlWriter 同口径,让 pipeline 显式失败)
       if (/AI_AUTH_FAILED|CREDITS_INSUFFICIENT|AI_NOT_CONFIGURED/.test(msg)) throw e;
-      lastReason = `${model} 失败:${msg.slice(0, 120)}`;
+      const isTimeout = /abort/i.test(msg);
+      lastReason = `${model} ${isTimeout ? '超时(>120s)' : '失败'}:${msg.slice(0, 120)}`;
+      onProgress?.(`⚠️ ${label[model]}${isTimeout ? '超时' : '失败'},${i < models.length - 1 ? '准备降级重试' : '将用兜底排版'}…`);
       // 其它错误(截断/解析失败/超时)→ 继续换下一个模型重试
     }
   }

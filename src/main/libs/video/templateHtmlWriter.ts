@@ -145,20 +145,23 @@ function pickTemplateVoiceTone(): string {
  */
 export async function callNoobclawChat(
   system: string, user: string,
-  opts?: { temperature?: number; maxTokens?: number; model?: 'noobclawai-chat' | 'noobclawai-reasoner' },
+  opts?: { temperature?: number; maxTokens?: number; model?: 'noobclawai-chat' | 'noobclawai-reasoner'; timeoutMs?: number },
 ): Promise<ChatResult> {
-  return callDeepSeekData(system, user, opts?.temperature, opts?.maxTokens, opts?.model);
+  return callDeepSeekData(system, user, opts?.temperature, opts?.maxTokens, opts?.model, opts?.timeoutMs);
 }
 
 // 默认走 Pro(reasoner=deepseek-v4-pro):模板数据抽取/口播稿/自由排版都是创作活,质量优先。
+// timeoutMs 默认 60s;freeform 产整页 HTML(reasoner 还要吐思考链)慢,调用方放大到 ~120s,
+// 否则正常生成会被误判超时 → 白白降级/掉兜底。
 async function callDeepSeekData(
   system: string, user: string, temperature?: number, maxTokens?: number,
   model: 'noobclawai-chat' | 'noobclawai-reasoner' = 'noobclawai-reasoner',
+  timeoutMs = 60_000,
 ): Promise<ChatResult> {
   const token = getNoobClawAuthToken();
   if (!token) throw new Error('AI_NOT_CONFIGURED — 请先登录 NoobClaw 账号');
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 60_000);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs > 0 ? timeoutMs : 60_000);
   try {
     const body: Record<string, unknown> = {
       model,

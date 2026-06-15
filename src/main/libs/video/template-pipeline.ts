@@ -153,7 +153,7 @@ async function produceFreeformHtml(
   let lastHtml = '';
   for (let attempt = 1; attempt <= MAX_FREEFORM_ATTEMPTS; attempt++) {
     tracker.progress(attempt === 1
-      ? `🎨 AI 自由排版生成中…${gsapAvailable ? '(GSAP 可用)' : ''}`
+      ? `🎨 AI 自由排版生成中${gsapAvailable ? '(GSAP 可用)' : ''}…`
       : `🎨 自由排版修订第 ${attempt} 轮(修上轮 ${lastIssues.length} 个问题)…`);
     const scene = await generateFreeformScene({
       dataText: args.dataText,
@@ -169,7 +169,7 @@ async function produceFreeformHtml(
       fixHint: prev
         ? { prevCss: prev.css, prevBodyHtml: prev.bodyHtml, prevSetupScript: prev.setupScript, issues: lastIssues }
         : undefined,
-    });
+    }, (m) => tracker.progress(m)); // 把模型尝试/超时/降级的细分进度透出来,别让用户对着一句话干等
     onCost(scene.tokens, scene.costUsd);
     const useGsap = !!scene.setupScript && gsapAvailable;
     const html = wrapTemplateHtml({
@@ -184,6 +184,7 @@ async function produceFreeformHtml(
       setupScript: useGsap ? scene.setupScript : undefined,
     });
     lastHtml = html;
+    tracker.progress('🔎 正在无头浏览器体检排版(抽帧检查溢出/重叠/动画/内容推进)…');
     const audit = await auditHtml(html, { narrationOn: args.narrationOn });
     const modelTag = scene.source === 'fallback' ? '兜底版' : (scene.model === 'noobclawai-chat' ? 'flash 降级' : 'Pro');
     if (audit.ok) {
