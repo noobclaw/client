@@ -25,16 +25,33 @@ import type { LoginPlatform } from '../scenario/platformLoginDriver';
 const CHECK_SUB_PLATFORM = 'video_check';
 const CHECK_WINDOW_KEY = `${CHECK_SUB_PLATFORM}::default`;
 
-/** 各平台「登录态」cookie:命中任一个（存在、值非空、未过期）即视为已登录。【需真机确认名字】 */
-const VIDEO_LOGIN_COOKIES: Partial<Record<LoginPlatform, { url: string; names: string[] }>> = {
-  douyin:   { url: 'https://www.douyin.com/',        names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
-  xhs:      { url: 'https://www.xiaohongshu.com/',   names: ['web_session'] },
-  bilibili: { url: 'https://www.bilibili.com/',      names: ['SESSDATA', 'DedeUserID'] },
-  kuaishou: { url: 'https://www.kuaishou.com/',      names: ['passToken', 'kuaishou.web.cp.api_st'] },
-  tiktok:   { url: 'https://www.tiktok.com/',        names: ['sessionid', 'sid_tt'] },
-  youtube:  { url: 'https://www.youtube.com/',       names: ['LOGIN_INFO', 'SAPISID'] },
-  binance:  { url: 'https://www.binance.com/',       names: ['p20t'] },
-  x:        { url: 'https://x.com/',                 names: ['auth_token'] },
+/** 探哪个子域(主站 vs 创作者中心)。⚠️ 创作中心 cookie 可能跟主站不同名 —— 取材走 main,发布多走 creator。 */
+export type LoginWhich = 'main' | 'creator';
+
+/**
+ * 各「平台:子域」的登录态 cookie:命中任一个（存在、值非空、未过期）即视为已登录。【需真机确认名字】
+ *
+ * 用 cdp_cookies_get 探【对应子域的 url】:Network.getCookies 会返回「能发给该 url」的全部 cookie,
+ * 即父域(.douyin.com)共享的 + 该子域专属的都在里头。所以校验创作中心登录就探 creator.* 的 url,
+ * 别拿主站 url 顶替(创作中心可能另发独立登录 cookie —— 用户明确提示)。
+ *
+ * 没列 creator 行的平台(tiktok/youtube/binance/x)= 主站发布、无独立创作中心,只用 main。
+ */
+const VIDEO_LOGIN_COOKIES: Record<string, { url: string; names: string[] }> = {
+  'douyin:main':      { url: 'https://www.douyin.com/',          names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
+  // 抖音创作中心:多数 cookie 跟主站 SSO 共享,但若创作中心另发登录 cookie 需真机补名。
+  'douyin:creator':   { url: 'https://creator.douyin.com/',      names: ['sessionid_ss', 'sessionid', 'sid_guard'] },
+  'xhs:main':         { url: 'https://www.xiaohongshu.com/',     names: ['web_session'] },
+  // 小红书创作中心:cookie 跟主站不一样(galaxy_creator_*),主站的 web_session 也带上兜底 —— 真机确认。
+  'xhs:creator':      { url: 'https://creator.xiaohongshu.com/', names: ['galaxy_creator_session_id', 'customer-sso-sid', 'web_session'] },
+  'bilibili:main':    { url: 'https://www.bilibili.com/',        names: ['SESSDATA', 'DedeUserID'] },
+  'bilibili:creator': { url: 'https://member.bilibili.com/',     names: ['SESSDATA', 'DedeUserID'] },
+  'kuaishou:main':    { url: 'https://www.kuaishou.com/',        names: ['passToken', 'userId'] },
+  'kuaishou:creator': { url: 'https://cp.kuaishou.com/',         names: ['passToken', 'userId', 'kuaishou.web.cp.api_st'] },
+  'tiktok:main':      { url: 'https://www.tiktok.com/',          names: ['sessionid', 'sid_tt'] },
+  'youtube:main':     { url: 'https://www.youtube.com/',         names: ['LOGIN_INFO', 'SAPISID'] },
+  'binance:main':     { url: 'https://www.binance.com/',         names: ['p20t'] },
+  'x:main':           { url: 'https://x.com/',                   names: ['auth_token'] },
 };
 
 let _checkTabId: number | undefined;
@@ -82,8 +99,10 @@ async function cdpGetCookies(url: string, tabId: number): Promise<any[] | null> 
  */
 export async function checkVideoLoginByCookie(
   platform: LoginPlatform,
+  which: LoginWhich = 'main',
 ): Promise<{ loggedIn: boolean } | null> {
-  const cfg = VIDEO_LOGIN_COOKIES[platform];
+  // 创作中心校验 → 探 creator 子域;没登记 creator 行的平台退回 main(主站发布、无独立创作中心)。
+  const cfg = VIDEO_LOGIN_COOKIES[`${platform}:${which}`] || VIDEO_LOGIN_COOKIES[`${platform}:main`];
   if (!cfg) return null;
   const tabId = await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return null;
