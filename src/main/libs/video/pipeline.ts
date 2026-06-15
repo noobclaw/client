@@ -855,7 +855,14 @@ async function runVideoPipeline(
       const txt = [
         `# ${input.taskTitle || '视频文案'}`,
         `生成时间: ${new Date().toLocaleString()}`,
+        ...(hotspotTopic ? [`热搜标题: ${hotspotTopic.title}`] : []),
         '',
+        // 写稿参考的真实抖音帖子标题(新流程:替掉 Serper)—— 留档方便核对 AI 是不是贴着热点写。
+        ...(douyinPrefetch && douyinPrefetch.titles.length > 0 ? [
+          `【写稿参考的抖音标题 ${douyinPrefetch.titles.length} 条】`,
+          ...douyinPrefetch.titles.map((t, i) => `${i + 1}. ${t}`),
+          '',
+        ] : []),
         '【完整口播文案】',
         script,
         '',
