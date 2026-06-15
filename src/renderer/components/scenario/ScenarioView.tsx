@@ -86,6 +86,9 @@ interface ScenarioViewProps {
    *  任务详情逻辑上属于「我的涨粉任务」→ App 据此把左侧菜单高亮切到「我的涨粉任务」,
    *  使侧栏高亮 + 顶栏标题不再停在「新建涨粉任务 / 涨粉运行记录」。 */
   onInDetailChange?: (inDetail: boolean) => void;
+  /** 侧栏每次点同一/任一涨粉菜单时 App 递增此值 → 本组件退回列表(修:在运行记录/任务详情里点
+   *  侧栏菜单,setMainView 同值是 no-op、退不出详情)。 */
+  navNonce?: number;
 }
 
 const PLATFORM_TABS: Array<{ id: PlatformId; labelKey: string; icon: string; enabled: boolean }> = [
@@ -118,6 +121,7 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   onSwitchToCreate,
   onSwitchToManage,
   onInDetailChange,
+  navNonce,
 }) => {
   const isMac = window.electron.platform === 'darwin';
   // v6.x: 菜单拆分后,本实例的「主页/落地段」由 mode 决定:
@@ -146,6 +150,13 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
   const inDetailView = view.kind === 'task_detail' || view.kind === 'record_detail' || videoInDetail;
   useEffect(() => { onInDetailChange?.(inDetailView); }, [inDetailView, onInDetailChange]);
   useEffect(() => () => { onInDetailChange?.(false); }, [onInDetailChange]);
+  // 侧栏点涨粉菜单(navNonce 递增)→ 退回本 mode 的列表页(不重挂、不重拉数据)。修:在运行记录详情里
+  //   点「涨粉运行记录」,App setMainView 同值是 no-op,原来退不出详情、且高亮乱跳。mount 时无害(等于初值)。
+  useEffect(() => {
+    setView({ kind: 'main', section: baseSection, platform: initialPlatform || 'video' });
+    setVideoInDetail(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navNonce]);
 
   // Wizard state (keyword/track tasks)
   const [wizardScenario, setWizardScenario] = useState<Scenario | null>(null);

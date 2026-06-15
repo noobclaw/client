@@ -56,6 +56,8 @@ const App: React.FC = () => {
   // ScenarioView 下钻到任务/运行记录详情时为 true:任务详情逻辑上属于「我的涨粉任务」,
   // 在「新建涨粉任务 / 涨粉运行记录」菜单下钻时,把左侧菜单高亮临时切到「我的涨粉任务」。
   const [scenarioInDetail, setScenarioInDetail] = useState(false);
+  // 侧栏每次点涨粉菜单就 +1,传给 ScenarioView 让它退回列表(即使 mainView 同值、setMainView 是 no-op)。
+  const [scenarioNavNonce, setScenarioNavNonce] = useState(0);
   const [isInitialized, setIsInitialized] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -885,6 +887,7 @@ const App: React.FC = () => {
   const handleShowScenarioCreate = (platform?: 'xhs' | 'x' | 'binance' | 'youtube' | 'tiktok' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao' | 'video') => {
     setQuickUseInitialPlatform(platform);
     setMainView('scenarioCreate');
+    setScenarioNavNonce((n) => n + 1);
   };
   // 带平台调用(首页快捷入口「立即在 X 平台涨粉」)→ 直接进新建页;无参(侧栏
   // 「我的涨粉任务」)→ 管理页。
@@ -892,11 +895,13 @@ const App: React.FC = () => {
     if (platform) { handleShowScenarioCreate(platform); return; }
     setQuickUseInitialPlatform(undefined);
     setMainView('quickuse');
+    setScenarioNavNonce((n) => n + 1);
   };
   // v6.x:「涨粉运行记录」独立菜单(原 manage 内的「运行记录」L1 段拆出来)。
   const handleShowScenarioRuns = () => {
     setQuickUseInitialPlatform(undefined);
     setMainView('scenarioRuns');
+    setScenarioNavNonce((n) => n + 1);
   };
   const handleShowWeb3News = () => setMainView('web3news');
   const handleShowHotSearch = () => setMainView('hotsearch');
@@ -937,7 +942,7 @@ const App: React.FC = () => {
           onShowSettings={handleShowSettings}
           /* create/runs 菜单下钻到任务详情时,高亮临时归到「我的涨粉任务」(quickuse),
              保持「任务详情属于我的涨粉任务」的认知一致;其余情况按真实 mainView 高亮。 */
-          activeView={scenarioInDetail && (mainView === 'scenarioCreate' || mainView === 'scenarioRuns') ? 'quickuse' : mainView}
+          activeView={scenarioInDetail && mainView === 'scenarioCreate' ? 'quickuse' : mainView}
           onShowSkills={handleShowSkills}
           onShowCowork={handleShowCowork}
           onShowScheduledTasks={handleShowScheduledTasks}
@@ -1009,6 +1014,7 @@ const App: React.FC = () => {
                    顶栏标题、内容三者都切到「我的涨粉任务」,而不是停在「新建涨粉任务」。 */
                 onSwitchToManage={(platform) => { setQuickUseInitialPlatform(platform); setMainView('quickuse'); }}
                 onInDetailChange={setScenarioInDetail}
+                navNonce={scenarioNavNonce}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
@@ -1021,6 +1027,7 @@ const App: React.FC = () => {
                 mode="manage"
                 onSwitchToCreate={handleShowScenarioCreate}
                 onInDetailChange={setScenarioInDetail}
+                navNonce={scenarioNavNonce}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
@@ -1033,6 +1040,7 @@ const App: React.FC = () => {
                 mode="runs"
                 onSwitchToCreate={handleShowScenarioCreate}
                 onInDetailChange={setScenarioInDetail}
+                navNonce={scenarioNavNonce}
                 isSidebarCollapsed={isSidebarCollapsed}
                 onToggleSidebar={handleToggleSidebar}
                 onNewChat={handleNewChat}
