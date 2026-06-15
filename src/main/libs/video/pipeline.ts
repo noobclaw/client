@@ -507,11 +507,26 @@ export function throwIfAborted(signal?: AbortSignal): void {
  *    batch,hotspot/stock 永远只出 1 条(用户实测:设 2 条却只出 1 条就结束)。
  *    每条都【完整跑完】(本地保存 + 按需发布)才进下一条,中途不提前结束。
  */
+let _videoBatchBusy = false; // ③ 进程级单飞闸:同一进程同时只跑一条视频流水线
+
 export async function generateVideoBatch(
   input: VideoCreationInput,
   emit?: ProgressEmitter,
   signal?: AbortSignal,
 ): Promise<VideoCreationResult> {
+  // ③ 已有视频流水线在跑 → 跳过本次(匹配 videoQueue「占用即跳过、不排队」),防两条视频任务并发
+  //    抢同一个 video_publish 窗口 / 抖音 tab 串台(用户实测:要 2 条却出 3 条 + 画面串台)。
+  //    无论从哪条入口(main IPC / sidecar / createAndRun / 调度)进来,都在此唯一汇合点拦住。
+  if (_videoBatchBusy) {
+    emit?.({
+      jobId: (input as any).taskId, status: 'error', steps: [],
+      message: '已有视频任务在运行,本次跳过(同时只跑一条,避免抢占视频窗口)',
+      error: 'video_pipeline_busy',
+    } as any);
+    return { ok: false, error: '已有视频任务在运行,本次跳过' } as VideoCreationResult;
+  }
+  _videoBatchBusy = true;
+  try {
   const inp = input as VideoCreationInput & { videoCountMin?: number; videoCountMax?: number };
   const clampCount = (n: unknown, hi: number) => Math.max(1, Math.min(hi, Math.round(Number(n) || 1)));
   let batch = 1;
@@ -581,6 +596,7 @@ export async function generateVideoBatch(
     ...(success > 0 ? {} : { error: stopped ? '已停止' : '全部失败' }),
   } as any);
   return { ok: success > 0, outputPath: outputPaths[0], outputPaths, stopped } as unknown as VideoCreationResult;
+  } finally { _videoBatchBusy = false; }
 }
 
 export async function generateVideo(
