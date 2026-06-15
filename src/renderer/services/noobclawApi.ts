@@ -537,29 +537,33 @@ class NoobClawApiService {
   // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
-      // ⚠️「官网行、客户端不行」根因:Electron 渲染进程 fetch+FormData 发 multipart 实测不可靠(客户端必报
-      //   "No file",官网普通浏览器正常)。Electron <input> 的 File 带 .path → 交给【主进程】用 Node 全局
-      //   fetch+FormData 从文件路径读出来发(server 级稳),绕开渲染进程那条坏路。这也是本 app 其他上传的做法。
-      const path = (file as unknown as { path?: string }).path;
+      // ⚠️「官网行、客户端不行」根因:① 渲染进程 fetch+FormData 在 Electron 里发 multipart 不可靠;
+      //   ② Electron 40 已【删除 File.path】,靠路径那条也行不通。
+      //   正解:渲染进程把文件【字节读成 base64】直接交给主进程,主进程用 Node fetch+FormData 发(server 级稳)。
+      const ab = await file.arrayBuffer();
+      const u8 = new Uint8Array(ab);
+      let bin = '';
+      const CHUNK = 0x8000; // 分块转 base64,避免 String.fromCharCode(...大数组) 爆栈
+      for (let i = 0; i < u8.length; i += CHUNK) bin += String.fromCharCode.apply(null, Array.from(u8.subarray(i, i + CHUNK)));
+      const b64 = btoa(bin);
       const bridge = (window as any)?.electron?.scenario?.uploadCnyQr;
-      if (path && typeof bridge === 'function') {
+      if (typeof bridge === 'function') {
         const r = await bridge({
-          path,
+          b64,
           name: file.name || 'qr.png',
           backendUrl: this.backendUrl,
           headers: this.getAuthHeaders(),
         });
         return r || { error: 'main_upload_no_result' };
       }
-      // 兜底(理论上 Electron <input> 都有 path):渲染进程读成 Blob 再发。
-      const buf = await file.arrayBuffer();
+      // 兜底(主进程桥没挂上时):渲染进程直接发(已知在 Electron 下可能失败,仅兜底)。
       const okType = /^image\/(png|jpeg|gif|webp)$/.test(file.type);
-      const blob = new Blob([buf], { type: okType ? file.type : 'image/png' });
+      const blob = new Blob([ab], { type: okType ? file.type : 'image/png' });
       const formData = new FormData();
       formData.append('qr', blob, file.name || 'qr.png');
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
         method: 'POST',
-        headers: this.getAuthHeaders(), // 不要手动设 Content-Type,交给浏览器带 multipart boundary
+        headers: this.getAuthHeaders(),
         body: formData,
       });
       const data = await res.json();

@@ -2879,11 +2879,11 @@ if (!gotTheLock) {
     //   官网普通浏览器没事)→ 改由【主进程】用 Node 全局 fetch+FormData 从【文件路径】读出来发,server 级稳。
     ipcMain.handle('video:uploadCnyQr', async (
       _e,
-      args: { path: string; name?: string; backendUrl: string; headers: Record<string, string> },
+      args: { b64: string; name?: string; backendUrl: string; headers: Record<string, string> },
     ) => {
       try {
-        const fs = require('fs');
-        const buf = fs.readFileSync(args.path);
+        // ⚠️ Electron 40 已删除 File.path,所以不能靠路径读文件 —— 渲染进程把文件字节(base64)直接传进来。
+        const buf = Buffer.from(String(args.b64 || ''), 'base64');
         if (!buf || buf.length === 0) return { error: 'empty_file' };
         const name = args.name || 'qr.png';
         const ext = String(name.split('.').pop() || '').toLowerCase();
