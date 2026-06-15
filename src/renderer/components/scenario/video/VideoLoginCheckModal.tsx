@@ -76,9 +76,15 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   const [checking, setChecking] = useState(false);
   const [opening, setOpening] = useState<string | null>(null);
 
-  const checkOne = useCallback(async (id: string) => {
+  const checkOne = useCallback(async (id: string, useCookie = false) => {
     const useCreator = metaOf(id).creator && !override.includes(id);
     try {
+      // cookie 快路径(req 3):仅首次校验用 —— 有效直接判已登录,不依赖对应页面开着。
+      //   不放进 3s 轮询:每次读 cookie 会短暂 attach CDP 闪调试横幅,轮询会一直闪。
+      if (useCookie) {
+        const ck = await scenarioService.checkVideoLoginByCookie(id, useCreator ? 'creator' : 'main');
+        if (ck?.loggedIn) return { id, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } };
+      }
       const st = useCreator
         ? await scenarioService.checkCreatorCenter(id as any)
         : await scenarioService.checkXhsLogin(id as any);
@@ -89,13 +95,13 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [override.join(',')]);
 
-  const runCheck = useCallback(async () => {
+  const runCheck = useCallback(async (useCookie = false) => {
     if (list.length === 0) { setExtensionStatus('pass'); return; }
     setChecking(true);
     try {
       // 并行探所有平台(每个走 tab_list,串行会很慢)。任一返回 browser_not_connected
-      // → 扩展没连上,统一把那些平台标 waiting。
-      const results = await Promise.all(list.map((p) => checkOne(p)));
+      // → 扩展没连上,统一把那些平台标 waiting。useCookie 仅首次 true(cookie 快路径)。
+      const results = await Promise.all(list.map((p) => checkOne(p, useCookie)));
       let extConnected = true;
       const next: Record<string, StepStatus> = {};
       for (const { id, st } of results) {
@@ -115,11 +121,11 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
     }
   }, [list, checkOne]);
 
-  useEffect(() => { void runCheck(); }, []); // eslint-disable-line
+  useEffect(() => { void runCheck(true); }, []); // eslint-disable-line  首次走 cookie 快路径(不依赖页面开着)
 
-  // 3s 自动轮询:用户开浏览器 / 登录后自动转绿,无需手点重新检测。
+  // 3s 自动轮询:用户开浏览器 / 登录后自动转绿,无需手点重新检测。【不带 cookie】避免反复闪 CDP 横幅。
   useEffect(() => {
-    const h = setInterval(() => { void runCheck(); }, 3000);
+    const h = setInterval(() => { void runCheck(false); }, 3000);
     return () => clearInterval(h);
   }, [runCheck]);
 
@@ -170,7 +176,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
           {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
         </button>
       </div>
-      <button type="button" onClick={runCheck} disabled={checking}
+      <button type="button" onClick={() => { void runCheck(true); }} disabled={checking}
         className="text-xs text-blue-500 hover:underline mt-1">
         {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
       </button>

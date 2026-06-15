@@ -2848,6 +2848,13 @@ if (!gotTheLock) {
       return await checkCreatorCenter(platform);
     });
 
+    // 视频任务【保存/运行前】登录预检 cookie 快路径:读各平台(创作中心走 creator 子域)登录 cookie,
+    //   有效即过,不依赖对应页面开着(req 3)。fail-safe:拿不准返回 null,modal 回退老 tab 校验。
+    ipcMain.handle('video:checkLoginByCookie', async (_e, platform: string, which?: 'main' | 'creator') => {
+      const { checkVideoLoginByCookie } = require('./libs/video/videoLoginCheck');
+      return await checkVideoLoginByCookie(platform, which === 'creator' ? 'creator' : 'main');
+    });
+
     ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await openCreatorCenter(platform);

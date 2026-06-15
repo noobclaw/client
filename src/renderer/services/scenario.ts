@@ -265,6 +265,15 @@ class ScenarioService {
     }
   }
 
+  /** 视频任务登录预检【cookie 快路径】(req 3):返回 {loggedIn} 或 null(拿不准 → 调用方回退老校验)。 */
+  async checkVideoLoginByCookie(platform: string, which?: 'main' | 'creator'): Promise<{ loggedIn: boolean } | null> {
+    try {
+      return await (window.electron.scenario as any).checkVideoLoginByCookie(platform, which);
+    } catch {
+      return null;
+    }
+  }
+
   // ── Derived helpers ──
 
   /** Aggregate per-task stats the task dashboard likes to show.

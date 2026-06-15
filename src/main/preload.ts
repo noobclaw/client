@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('electron', {
     openXhsLogin: (platform?: 'xhs' | 'x' | 'binance' | 'tiktok' | 'youtube' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:openXhsLogin', platform),
     checkCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:checkCreatorCenter', platform),
     openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => ipcRenderer.invoke('scenario:openCreatorCenter', platform),
+    checkVideoLoginByCookie: (platform: string, which?: 'main' | 'creator') => ipcRenderer.invoke('video:checkLoginByCookie', platform, which),
   },
   // ── Multi-platform Video Creation (phase 1: local synthesis) ──
   video: {
