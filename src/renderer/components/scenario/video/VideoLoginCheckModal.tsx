@@ -195,7 +195,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
+      <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-2xl overflow-hidden">
         <div className="px-6 pt-5 pb-2 text-center shrink-0">
           <div className="text-3xl mb-1">🔐</div>
           <h3 className="text-lg font-bold dark:text-white">{title || (isZh ? '发布平台登录校验' : 'Publish Platform Login Check')}</h3>
@@ -230,6 +230,8 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
           <div className="text-sm font-medium dark:text-white px-1 pt-1">
             {isZh ? `② 登录所选 ${list.length} 个发布平台` : `② Log in to ${list.length} selected platform(s)`}
           </div>
+          {/* 平台多(常 8 个)→ 两列排,省竖向空间 */}
+          <div className="grid grid-cols-2 gap-2">
           {list.map((id) => {
             const m = metaOf(id);
             const raw = platformStatus[id] || 'checking';
@@ -269,6 +271,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
               </div>
             );
           })}
+          </div>
 
           {/* Step 3: 使用须知 */}
           <div className="rounded-xl p-3 border border-gray-200 dark:border-gray-700">
