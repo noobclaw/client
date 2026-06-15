@@ -103,8 +103,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       const cookiePass = await scenarioService.checkVideoLoginByCookieBatch(items);
       const results = await Promise.all(list.map((p) => {
         if (cookiePass[p] === true) return Promise.resolve({ id: p, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } });
-        if (cookiePass[p] === false) return Promise.resolve({ id: p, st: { loggedIn: false } as { loggedIn: boolean; reason?: string } });
-        return checkOne(p); // cookie 判不了(null)→ tab 兜底
+        // cookie 没命中(false/null)—— 可能该平台 session 是 HttpOnly、扩展读不到 → 退【tab 兜底】:
+        //   看该平台的 tab 在不在线且已登录(用户在登录窗里开着的那个 tab 就算)。在 → 放过。
+        return checkOne(p);
       }));
       let extConnected = true;
       const next: Record<string, StepStatus> = {};
@@ -145,7 +146,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       // 复用【同一个】检查/登录窗:把它导航到该平台登录页(不再每点一个开新窗 → 8 平台 8 个窗)。
       //   用户在这一个窗里挨个登录,cookie 轮询从同一个窗读 → 全部平台都能转绿。
       const loginUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
-      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl);
+      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl, 'login:' + id);
       if (!res.ok) {
         // 复用窗开不出(老扩展无 window_registry_v6 / 没连)→ 退回老的每平台开窗,至少能登。
         try {

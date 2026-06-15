@@ -283,10 +283,10 @@ class ScenarioService {
     }
   }
 
-  /** 把唯一的检查/登录窗导航到某平台登录页(多平台登录复用一个窗口,不再每点开新窗)。 */
-  async openVideoLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
+  /** 在唯一的检查/登录窗里给某平台开一个 tab 登录(一窗多 tab,不再每点开新窗;role 各平台不同)。 */
+  async openVideoLoginInCheckWindow(url: string, role?: string): Promise<{ ok: boolean }> {
     try {
-      return await (window.electron.scenario as any).openLoginInCheckWindow(url) || { ok: false };
+      return await (window.electron.scenario as any).openLoginInCheckWindow(url, role) || { ok: false };
     } catch {
       return { ok: false };
     }

@@ -187,13 +187,18 @@ export async function checkVideoLoginByCookieBatch(
   return out;
 }
 
-/** 把【唯一的检查/登录窗】导航到某平台登录页 —— 多平台登录【复用这一个窗口】,不再每点一个开新窗。
- *  用户在这个窗里挨个登录,cookie 批量读从同一个窗取 → 开一个窗就能知道所有平台登录态。 */
-export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
-  const tabId = await ensureVideoCheckWindow();
-  if (typeof tabId !== 'number') return { ok: false };
+/** 在【同一个检查/登录窗】里给某平台开【一个 tab】登录 —— 多平台 = 一窗多 tab(各平台 role 不同 →
+ *  各占一个 tab、不互相覆盖),既能挨个登、各 tab 保持在线(给 tab 兜底校验用),又不弹 8 个窗。 */
+export async function openLoginInCheckWindow(url: string, role = 'login'): Promise<{ ok: boolean }> {
+  await ensureVideoCheckWindow(); // 确保那一个窗存在(about:blank 那个 tab 用于读 cookie)
+  if (!connectionHasCapability(undefined, 'window_registry_v6')) return { ok: false };
   try {
-    await sendBrowserCommand('navigate', { url, tabId }, 15000);
+    const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
+    await sendBrowserCommand('task_open_tab', {
+      windowKey: CHECK_WINDOW_KEY,
+      groupTitle: buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null),
+      role, url, bounds,
+    }, 15000);
     return { ok: true };
   } catch { return { ok: false }; }
 }
