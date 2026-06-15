@@ -189,20 +189,31 @@ export async function checkVideoLoginByCookieBatch(
   return out;
 }
 
-/** 把【唯一的检查/登录窗】的 tab 导航到某平台登录页 —— 多平台登录【复用这一个窗口】,挨个点挨个登,
- *  不再每点一个弹一个新窗(8 个)。cookie 读取不受影响(getCookies 按 url 读,与该 tab 当前停在哪页无关)。
- *  注:扩展的 window-registry 对「保存前校验」窗是【一窗一 tab 复用】(role-miss 复用),做不到真·多 tab,
- *  所以这里就用最稳的「导航同一个 tab」;真要多 tab 标签页保留各平台,得改扩展(role-miss 复用那段)。 */
-export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
+/** 在【同一个检查/登录窗】里给某平台开登录页。多平台登录【全在这一个窗口】:
+ *  - 扩展支持(role-miss 复用对 'login:' 角色跳过)时 → 每个平台各占一个 tab = 一窗多 tab(用户要的);
+ *  - 老扩展(还会复用)时 → 复用那一个 tab(一窗一 tab)。两种都只有【一个窗口】,绝不每平台开新窗。
+ *  role 形如 'login:douyin' —— 不同平台不同 role,扩展据此各开各的 tab。
+ *  cookie 读取不受影响(getCookies 按 url 读,与 tab 停在哪页无关)。 */
+export async function openLoginInCheckWindow(url: string, role = 'login'): Promise<{ ok: boolean }> {
+  // 先确保检查窗存在(checker 占位 tab);开不出(老扩展无 v6)→ ok:false,但调用方【也不再 fallback 开新窗】。
   const tabId = await ensureVideoCheckWindow();
-  console.log('[videoLoginCheck] openLoginInCheckWindow url=' + url.slice(0, 60) + ' checkTabId=' + tabId + (typeof tabId === 'number' ? ' → navigate(ok)' : ' → FALLBACK 每平台开窗(多窗口源头)'));
-  if (typeof tabId !== 'number') return { ok: false };
-  // ⚠️【多窗口根因】navigate 命令在扩展侧会【等页面 load complete 才回包】,慢网/VPN 下创作中心
-  //   (尤其国内站走 VPN)加载常 >20s → 之前 `await` 超时抛错 → 返回 ok:false → 调用方又 fallback
-  //   开了一个【每平台窗】= 多窗口。其实扩展侧 chrome.tabs.update 是【立刻】执行的,导航已经开始,
-  //   不必等加载完成。改成【即发即返 ok】(后台导航),就只剩这一个检查窗,不再触发 fallback。
-  void sendBrowserCommand('navigate', { url, tabId }, 60000).catch(() => {});
-  return { ok: true };
+  if (typeof tabId !== 'number') {
+    console.log('[videoLoginCheck] openLoginInCheckWindow: 检查窗开不出(无 v6?),跳过');
+    return { ok: false };
+  }
+  try {
+    const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
+    // 即发即返:task_open_tab 建好 tab 即可,不等页面 load(慢网/VPN 不卡)。同 windowKey、按 role 各开 tab。
+    void sendBrowserCommand('task_open_tab', {
+      windowKey: CHECK_WINDOW_KEY,
+      groupTitle: buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null),
+      role,
+      url,
+      bounds,
+    }, 15000).catch(() => {});
+    console.log('[videoLoginCheck] openLoginInCheckWindow role=' + role + ' url=' + url.slice(0, 50) + ' → task_open_tab(一窗多 tab)');
+    return { ok: true };
+  } catch { return { ok: false }; }
 }
 
 /** 关掉「运行检查/登录」窗(模态关闭时调,避免空白窗常驻)。 */

@@ -155,14 +155,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       // 复用【同一个】检查/登录窗:把它导航到该平台登录页(不再每点一个开新窗 → 8 平台 8 个窗)。
       //   用户在这一个窗里挨个登录,cookie 轮询从同一个窗读 → 全部平台都能转绿。
       const loginUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
-      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl, 'login:' + id);
-      if (!res.ok) {
-        // 复用窗开不出(老扩展无 window_registry_v6 / 没连)→ 退回老的每平台开窗,至少能登。
-        try {
-          if (useCreator) await scenarioService.openCreatorCenter(id as any);
-          else await scenarioService.openXhsLogin(id as any);
-        } catch { /* ignore */ }
-      }
+      // 全部平台都在【同一个检查/登录窗】里开 tab(role=login:<平台>)。⚠️ 不再 fallback 到 openCreatorCenter/
+      //   openXhsLogin —— 那个会【每平台开一个新窗】= 用户反复抱怨的多窗口。开不出就开不出(日志记),绝不弹新窗。
+      await scenarioService.openVideoLoginInCheckWindow(loginUrl, 'login:' + id);
       setTimeout(() => void runCheck(), 2500);
     } finally {
       setOpening(null);
