@@ -4481,14 +4481,12 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
 
               <Field label={isZh ? '标题(可选)' : 'Title (optional)'}>
                 <input value={title} onChange={(e) => setTitle(e.target.value)}
-                  placeholder={isZh ? '如:今日涨幅榜(留空 AI 自拟)' : 'e.g. Today Top Gainers (AI writes if empty)'}
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white" />
               </Field>
 
               {dataSourceMode === 'paste' ? (
                 <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '粘贴任意内容,AI 自动排版(每行一条更佳)' : 'paste anything; AI lays it out (one per line works best)'}>
                   <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={8}
-                    placeholder={isZh ? 'DOGE +18.96%\nSOL +12.47%\nBNB +8.13%' : 'DOGE +18.96%\nSOL +12.47%'}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
                 </Field>
               ) : (
