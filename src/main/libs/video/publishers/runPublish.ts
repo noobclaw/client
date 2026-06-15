@@ -37,7 +37,7 @@ import { checkVideoLoginByCookie } from '../videoLoginCheck';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 // 提交后默认等这么久:平台(尤其抖音)是「点提交后才真正开始上传视频」,过早进入下一动作/刷新会白提交。
-const POST_SUBMIT_WAIT_MS = 45_000;
+const POST_SUBMIT_WAIT_MS = 60_000; // 45s→60s(用户要求,给上传更充裕时间)
 
 /** 未登录的等待上限:3 分钟(用户要求 —— 反复检测,超时跳过本条视频不补传)。 */
 const LOGIN_WAIT_MS = 3 * 60 * 1000;
