@@ -334,12 +334,17 @@ function extractJsonObject(raw: string): string {
   // 截取第一个完整的 {...}(按花括号配平,容忍前后多余文字)
   const start = t.indexOf('{');
   if (start >= 0) {
-    let depth = 0;
+    let depth = 0, inStr = false, esc = false;
     for (let i = start; i < t.length; i++) {
-      if (t[i] === '{') depth++;
-      else if (t[i] === '}') {
-        depth--;
-        if (depth === 0) return t.slice(start, i + 1);
+      const c = t[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+      } else {
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
       }
     }
   }

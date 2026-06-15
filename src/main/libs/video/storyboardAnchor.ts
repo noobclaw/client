@@ -89,10 +89,18 @@ function extractJsonObject(raw: string): string {
   if (fence && fence[1]) t = fence[1].trim();
   const start = t.indexOf('{');
   if (start >= 0) {
-    let depth = 0;
+    let depth = 0, inStr = false, esc = false;
     for (let i = start; i < t.length; i++) {
-      if (t[i] === '{') depth++;
-      else if (t[i] === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
+      const c = t[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+      } else {
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
+      }
     }
   }
   return t;
@@ -157,7 +165,8 @@ export async function generateStoryboardAnchor(input: AnchorInput): Promise<Anch
         max_tokens: 800,
         // 适度提温,避免每个任务都被锁到同一类视觉(0.9 比默认略高,但还在受控范围)
         temperature: 0.9,
-        response_format: { type: 'json_object' },
+        // 不带 response_format=json_object:reasoner(Pro)不支持该开关(带上会被拒/失效),
+        //   JSON 契约靠 prompt(「输出 5 字段 JSON,严格按 schema」)+ extractJsonObject 宽松解析兜底。
       }),
       signal: ctrl.signal,
     });

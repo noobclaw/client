@@ -168,8 +168,10 @@ async function callDeepSeekData(
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       stream: false,
       max_tokens: maxTokens && maxTokens > 0 ? maxTokens : 2400,
-      response_format: { type: 'json_object' },
     };
+    // response_format=json_object 仅 chat(flash)支持;reasoner(Pro)不支持(强行带上会被拒/失效,
+    //   正是历史上 Pro「解析不出来」的根因)。Pro 改靠 prompt 强约束 + extractJsonObject 宽松解析兜底。
+    if (model === 'noobclawai-chat') body.response_format = { type: 'json_object' };
     // 创作类(voiceScript)显式拉高温度提升多样性;纯数据 items 抽取不传 = 用默认低温保稳定。
     if (typeof temperature === 'number' && Number.isFinite(temperature)) {
       body.temperature = temperature;
@@ -206,10 +208,18 @@ function extractJsonObject(raw: string): string {
   if (fence && fence[1]) t = fence[1].trim();
   const start = t.indexOf('{');
   if (start >= 0) {
-    let depth = 0;
+    let depth = 0, inStr = false, esc = false;
     for (let i = start; i < t.length; i++) {
-      if (t[i] === '{') depth++;
-      else if (t[i] === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
+      const c = t[i];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === '\\') esc = true;
+        else if (c === '"') inStr = false;
+      } else {
+        if (c === '"') inStr = true;
+        else if (c === '{') depth++;
+        else if (c === '}') { depth--; if (depth === 0) return t.slice(start, i + 1); }
+      }
     }
   }
   return t;
