@@ -27,6 +27,7 @@ import { fetchStockImages, fetchStockVideosByTerms, type StockVideoAsset, type S
 import { pickHotspotTopic, fetchHotspotMaterial, type HotspotTopic } from './hotspotProvider';
 import { getUsedHotspots, markHotspotUsed } from './usedHotspotStore';
 import { fetchDouyinClips } from './hotspotDouyinSource';
+import { fetchTiktokClips } from './hotspotTiktokSource';
 import { composeVideo, type SceneSpec, type SubtitleStyle, type SubtitleCue } from './compose';
 import { generateScript, generateSearchTerms, detectLang } from './scriptWriter';
 import { getVideoConfig, localeFor } from './videoConfig';
@@ -712,6 +713,8 @@ async function runVideoPipeline(
     // 新流程:中文热搜【先上抖音搜】下视频/图文 + 抓真实帖子标题 —— 标题给 AI 写口播稿(替掉 Serper),
     //   视频/图同时留着后面铺镜(buildDouyinPool / buildDouyinImagePool 直接复用,不再二次下载)。
     let douyinPrefetch: { mode: 'video' | 'image'; paths: string[]; titles: string[] } | null = null;
+    // 同上,英文/小语种热搜【先上 TikTok 搜】(对称抖音 prefetch,buildTiktokPool/buildTiktokImagePool 复用)。
+    let tiktokPrefetch: { mode: 'video' | 'image'; paths: string[]; titles: string[] } | null = null;
     if (input.engine === 'hotspot') {
       const sources = (input.hotspotSources || []).filter(Boolean);
       if (sources.length === 0) {
@@ -772,7 +775,21 @@ async function runVideoPipeline(
           tracker.progress('⚠️ 抖音没抓到标题(没登录/没结果),AI 仅按热搜标题写');
         }
       } else {
-        tracker.progress('ℹ️ 非中文热搜:TikTok 取材开发中,本条 AI 仅按热搜标题写(不走 Serper)');
+        // 非中文热搜:上 TikTok 搜(对称抖音)——下视频/图集 + 抓真实帖子标题,标题给 AI 写口播稿。
+        const tkMode: 'video' | 'image' = input.hotspotMaterialSource === 'douyin' ? 'video' : 'image';
+        const want = tkMode === 'video'
+          ? Math.max(6, Math.min(15, Math.ceil((input.targetSeconds ?? 60) / 6)))
+          : Math.max(10, Math.min(30, Math.ceil((input.targetSeconds ?? 60) / 3)));
+        tracker.progress(`🎬 上 TikTok 搜「${hotspotTopic.title}」,下${tkMode === 'video' ? '视频' : '图集'} + 抓标题…`);
+        const tk = await fetchTiktokClips([hotspotTopic.title], want, assetDir, (m) => tracker.progress(m), signal, tkMode);
+        tiktokPrefetch = { mode: tkMode, paths: tk.paths, titles: tk.titles };
+        if (tk.titles.length > 0) {
+          hotspotMaterial = `TikTok 上关于「${hotspotTopic.title}」的热门帖子标题(供你了解大家在聊什么、按真实角度写,别照抄、别张冠李戴):\n`
+            + tk.titles.slice(0, 12).map((t, i) => `${i + 1}. ${t}`).join('\n');
+          tracker.progress(`📝 拿到 ${tk.titles.length} 个 TikTok 标题 + ${tk.paths.length} 个素材,AI 据此 + 热搜标题写口播`);
+        } else {
+          tracker.progress('⚠️ TikTok 没抓到标题(没登录/没结果/未开 VPN),AI 仅按热搜标题写');
+        }
       }
     }
 
@@ -874,6 +891,12 @@ async function runVideoPipeline(
         ...(douyinPrefetch && douyinPrefetch.titles.length > 0 ? [
           `【写稿参考的抖音标题 ${douyinPrefetch.titles.length} 条】`,
           ...douyinPrefetch.titles.map((t, i) => `${i + 1}. ${t}`),
+          '',
+        ] : []),
+        // 英文/小语种:写稿参考的真实 TikTok 帖子标题(对称抖音)。
+        ...(tiktokPrefetch && tiktokPrefetch.titles.length > 0 ? [
+          `【写稿参考的 TikTok 标题 ${tiktokPrefetch.titles.length} 条】`,
+          ...tiktokPrefetch.titles.map((t, i) => `${i + 1}. ${t}`),
           '',
         ] : []),
         '【完整口播文案】',
@@ -1057,6 +1080,9 @@ async function runVideoPipeline(
   // 抖音【分段铺镜】池(buildDouyinPool):每镜中文词→逐词搜→按段铺,画面跟每镜内容走。null=没取到。
   let douyinPool: { assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null = null;
   let douyinImgPool: { imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null = null; // 抖音分段图文池
+  // TikTok 池(英文/小语种话题,对称抖音):buildTiktokPool 视频混剪 / buildTiktokImagePool 图集图。null=没取到。
+  let tiktokPool: { assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null = null;
+  let tiktokImgPool: { imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null = null;
 
     if (input.engine === 'ai') {
       // ── AI 自动成片(Seedance):逐镜生成视频片段,参考图(≤2)统一风格 ──
@@ -1234,12 +1260,30 @@ async function runVideoPipeline(
         imageByScene: douyinImgPool!.imageBySceneFor(videoIdx),
       });
       tracker.done('visuals', '🖼️ 抖音图文就绪(按热搜标题搜 · 图片缓慢运镜)');
+    } else if (input.engine === 'hotspot' && input.hotspotMaterialSource === 'douyin'
+               && !String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && (tiktokPool = await buildTiktokPool())) {
+      // 英文/小语种话题 + 选「视频混剪」:TikTok 混剪 —— 只按热搜标题搜、切片铺镜(对称抖音 buildDouyinPool)。
+      //   取不到 → 短路落下面 TikTok 图集 / 文字卡。中文话题应走上面抖音。
+      hotspotDouyinMode = true; // 复用「平台混剪模式」:视频底部黑条盖原字幕 + 字幕走中下 lower
+      assignVisuals = (videoIdx: number) => ({ sceneClips: tiktokPool!.assign(videoIdx), imagePool: [] });
+      tracker.done('visuals', '🎬 TikTok 混剪就绪(按热搜标题搜 · 底部黑条盖原字幕)');
+    } else if (input.engine === 'hotspot'
+               && !String(detectLang(hotspotTopic?.title || '')).toLowerCase().startsWith('zh')
+               && (tiktokImgPool = await buildTiktokImagePool())) {
+      // 英文/小语种话题:选了图片配图、或选了视频混剪但视频没取到 → TikTok 图集图(Ken Burns,对称抖音图文)。
+      hotspotDouyinMode = true;
+      assignVisuals = (videoIdx: number) => ({
+        sceneClips: sentences.map(() => [] as string[]),
+        imagePool: tiktokImgPool!.imagePool,
+        imageByScene: tiktokImgPool!.imageBySceneFor(videoIdx),
+      });
+      tracker.done('visuals', '🖼️ TikTok 图集就绪(按热搜标题搜 · 图片缓慢运镜)');
     } else if (input.engine === 'hotspot') {
       // 热搜成片【不再用 Serper 配图】(用户决策 2026-06:中文→抖音,英文/小语种→TikTok)。
-      //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题(TikTok 取材开发中,真机调后启用)。
+      //   走到这 = 中文话题抖音视频+图文都没取到,或英文/小语种话题 TikTok 视频+图集也没取到(没登录/没源/未开 VPN)。
       //   暂无素材 → assignVisuals 返回空 → compose 落「纯色文字卡」兜底(绝不再下 Serper 谷歌杂图)。
-      // TODO(TikTok):英文/小语种接 collectTiktokClips / collectTiktokImages(对称抖音,须 VPN 真机调)。
-      tracker.progress('⚠️ 未取到平台素材(中文走抖音 / 英文走 TikTok·开发中)→ 本条用文字卡兜底');
+      tracker.progress('⚠️ 未取到平台素材(中文走抖音 / 英文走 TikTok)→ 本条用文字卡兜底');
       assignVisuals = () => ({ sceneClips: sentences.map(() => [] as string[]), imagePool: [] });
     } else {
       // 在线素材库(若有本地上传则混拼:本地片段优先露出 + 在线空镜补满)→ Pexels 素材库。
@@ -1659,6 +1703,180 @@ async function runVideoPipeline(
           }
           if (!pick) pick = all.find((p) => !used.has(p));
           if (!pick) pick = all[i % Math.max(1, all.length)]; // 全用过 → 循环兜底
+          used.add(pick); m.set(i, pick);
+        });
+        return m;
+      };
+      return { imageBySceneFor, imagePool: allImgs };
+    }
+
+    /**
+     * TikTok 视频池(英文/小语种话题,对称抖音 buildDouyinPool):【只按热搜标题搜】→ 搜 TikTok/下无水印
+     *   视频/切片成片段池 → assign 每镜从池里取、used 去重。取不到 → null,上层落 TikTok 图集/文字卡。
+     *   切片/铺镜逻辑与 buildDouyinPool 完全一致(平台无关,只换 fetchTiktokClips + 文案)。
+     */
+    async function buildTiktokPool(): Promise<{ assign: (videoIdx: number) => string[][]; imageByScene: Map<number, string> } | null> {
+      const title = (hotspotTopic?.title || '').trim();
+      if (!title) return null;
+      const searchTerms = [title];
+      const perSceneTerms = sentences.map(() => [title]); // 每镜共用标题词,take 走全局池 + used 去重
+      const segLen = Math.max(2, maxClip);
+      const wantOfScene = (i: number) => Math.max(1, Math.min(4, Math.ceil(Math.max(1.2, sceneDurations[i]) / maxClip)));
+      const totalDemand = sentences.reduce((s, _s, i) => s + wantOfScene(i), 0);
+      const poolTarget = Math.min(80, Math.ceil(totalDemand * 1.3) + 2);
+      const wantClips = Math.max(6, Math.min(20, Math.ceil(poolTarget / 4) + 1));
+      tracker.progress(`🎬 TikTok 取材:只按热搜标题搜「${title}」(本条需 ${totalDemand} 段 → 目标切 ${poolTarget} 段、下 ${wantClips} 个源)`);
+      const poolByTerm = new Map<string, string[]>();
+      let si = 0;
+      for (const term of searchTerms) {
+        if (signal?.aborted) break;
+        let tk: { paths: string[]; titles: string[] };
+        if (tiktokPrefetch && tiktokPrefetch.mode === 'video') {
+          // 写稿前已经搜过 TikTok 视频了:直接复用(【空也复用】→ 不重复搜、不重复等登录;空则上层落文字卡)。
+          if (tiktokPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${tiktokPrefetch.paths.length} 个 TikTok 视频(不重复下载)`);
+          tk = { paths: tiktokPrefetch.paths, titles: tiktokPrefetch.titles };
+        } else {
+          tk = await fetchTiktokClips([term], wantClips, assetDir, (m) => tracker.progress(`   ${m}`), signal);
+        }
+        if (tk.paths.length === 0) { tracker.progress(`   ⚠️「${term}」没取到视频`); continue; }
+        try {
+          const matDir = path.join(destDir, '素材');
+          fs.mkdirSync(matDir, { recursive: true });
+          tk.paths.forEach((src, i) => {
+            try { fs.copyFileSync(src, path.join(matDir, `素材${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+          });
+        } catch { /* 留档失败不影响出片 */ }
+        const srcs: { v: string; dur: number; cap: number }[] = [];
+        for (const v of tk.paths) {
+          if (signal?.aborted) break;
+          const dur = await probeDuration(v).catch(() => 0);
+          if (dur <= segLen + 0.3) continue;
+          const cap = Math.max(1, Math.floor((dur - segLen) / 0.6) + 1);
+          srcs.push({ v, dur, cap });
+        }
+        if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
+        const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
+        const targetSegs = Math.min(poolTarget, totalCap);
+        const quota = srcs.map((s) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * s.cap / totalCap))));
+        let qsum = quota.reduce((a, b) => a + b, 0);
+        for (let guard = 0; guard < 300 && qsum !== targetSegs; guard++) {
+          if (qsum < targetSegs) {
+            let bi = -1;
+            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap && (bi < 0 || srcs[i].cap - quota[i] > srcs[bi].cap - quota[bi])) bi = i;
+            if (bi < 0) break; quota[bi]++; qsum++;
+          } else {
+            let bi = -1;
+            for (let i = 0; i < srcs.length; i++) if (quota[i] > 1 && (bi < 0 || quota[i] > quota[bi])) bi = i;
+            if (bi < 0) break; quota[bi]--; qsum--;
+          }
+        }
+        tracker.progress(`✂️ 下载完成,开始切片(${srcs.length} 个源 → 目标 ${targetSegs} 段、起点均匀错开不重复)…`);
+        const segs: string[] = [];
+        for (let vi = 0; vi < srcs.length; vi++) {
+          if (signal?.aborted) break;
+          const { v, dur } = srcs[vi];
+          const n = quota[vi];
+          const step = n > 1 ? (dur - segLen) / (n - 1) : 0;
+          tracker.progress(`✂️ 切片中:第 ${vi + 1}/${srcs.length} 个源 → 切 ${n} 段(累计 ${segs.length}/${targetSegs} 段)…`);
+          for (let k = 0; k < n; k++) {
+            if (signal?.aborted) break;
+            const ss = Math.max(0, k * step);
+            const out = path.join(assetDir, `seg_${String(si).padStart(3, '0')}.mp4`);
+            const r = await runFfmpeg(
+              ['-y', '-ss', ss.toFixed(2), '-i', v, '-t', String(segLen), '-an',
+                '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', out],
+              { timeoutMs: 120_000 },
+            );
+            if (r.ok && fs.existsSync(out)) { segs.push(out); si++; }
+          }
+        }
+        if (segs.length) poolByTerm.set(term, segs);
+      }
+      if (poolByTerm.size === 0) return null;
+      const allSegs = Array.from(poolByTerm.values()).flat();
+      hotspotImageCount = allSegs.length; // 仅诊断用(后端 hotspot 已改【按条】计费)
+      if (allSegs.length < totalDemand) {
+        tracker.progress(`⚠️ TikTok 源有限,仅切出 ${allSegs.length} 段(本条需 ${totalDemand} 段)→ 个别镜可能复用,已尽量多切不同片`);
+      }
+      tracker.progress(`✂️ TikTok 素材就绪:${allSegs.length} 片段(按热搜标题搜 · 切片铺镜不重复)`);
+      const assign = (videoIdx: number): string[][] => {
+        const used = new Set<string>();
+        const shuffle = videoIdx > 0;
+        const byTerm = new Map<string, string[]>();
+        for (const [k, v] of poolByTerm) byTerm.set(k, shuffle ? shuffled(v) : [...v]);
+        const all = shuffle ? shuffled(allSegs) : [...allSegs];
+        const take = (i: number): string => {
+          for (const term of perSceneTerms[i] || []) {
+            const q = byTerm.get(term);
+            if (q) { const v = q.find((p) => !used.has(p)); if (v) { used.add(v); return v; } }
+          }
+          const any = all.find((p) => !used.has(p));
+          if (any) { used.add(any); return any; }
+          return all[used.size % Math.max(1, all.length)];
+        };
+        return sentences.map((_, i) => {
+          const dur = Math.max(1.2, sceneDurations[i]);
+          const want = Math.max(1, Math.min(4, Math.ceil(dur / maxClip)));
+          const clips: string[] = [];
+          for (let k = 0; k < want; k++) clips.push(take(i));
+          return clips;
+        });
+      };
+      return { assign, imageByScene: new Map() };
+    }
+
+    /**
+     * TikTok 图集池(英文/小语种话题,对称抖音 buildDouyinImagePool):【只按热搜标题搜】→ 搜 TikTok 图集帖
+     *   的图 → imageBySceneFor 每镜取一图、used 去重。取不到 → null,上层落文字卡。
+     */
+    async function buildTiktokImagePool(): Promise<{ imageBySceneFor: (videoIdx: number) => Map<number, string>; imagePool: string[] } | null> {
+      const title = (hotspotTopic?.title || '').trim();
+      if (!title) return null;
+      const searchTerms = [title];
+      const perSceneTerms = sentences.map(() => [title]);
+      tracker.progress(`🖼️ TikTok 图集取材:只按热搜标题搜「${title}」`);
+      const wantImgs = Math.max(10, Math.min(40, sentences.length + 6));
+      const poolByTerm = new Map<string, string[]>();
+      for (const term of searchTerms) {
+        if (signal?.aborted) break;
+        let tk: { paths: string[]; titles: string[] };
+        if (tiktokPrefetch && tiktokPrefetch.mode === 'image') {
+          // 写稿前已经搜过 TikTok 图集了:直接复用(【空也复用】→ 不重复搜、不重复等登录;空则上层落文字卡)。
+          if (tiktokPrefetch.paths.length > 0) tracker.progress(`   ♻️ 复用写稿前已下好的 ${tiktokPrefetch.paths.length} 张 TikTok 图(不重复下载)`);
+          tk = { paths: tiktokPrefetch.paths, titles: tiktokPrefetch.titles };
+        } else {
+          tk = await fetchTiktokClips([term], wantImgs, assetDir, (m) => tracker.progress(`   ${m}`), signal, 'image');
+        }
+        if (tk.paths.length) {
+          poolByTerm.set(term, tk.paths);
+          try {
+            const matDir = path.join(destDir, '素材');
+            fs.mkdirSync(matDir, { recursive: true });
+            tk.paths.forEach((src, i) => {
+              try { fs.copyFileSync(src, path.join(matDir, `配图${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
+            });
+          } catch { /* 留档失败不影响出片 */ }
+        } else tracker.progress(`   ⚠️「${term}」没取到图集图`);
+      }
+      if (poolByTerm.size === 0) return null;
+      const allImgs = Array.from(poolByTerm.values()).flat();
+      hotspotImageCount = allImgs.length; // 计费按图片数(沿用 hotspot 口径)
+      tracker.progress(`🖼️ TikTok 图集就绪:${allImgs.length} 图(按热搜标题搜 · 图片缓慢运镜)`);
+      const imageBySceneFor = (videoIdx: number): Map<number, string> => {
+        const used = new Set<string>();
+        const shuffle = videoIdx > 0;
+        const byTerm = new Map<string, string[]>();
+        for (const [k, v] of poolByTerm) byTerm.set(k, shuffle ? shuffled(v) : [...v]);
+        const all = shuffle ? shuffled(allImgs) : [...allImgs];
+        const m = new Map<number, string>();
+        sentences.forEach((_, i) => {
+          let pick: string | undefined;
+          for (const term of perSceneTerms[i] || []) {
+            const q = byTerm.get(term);
+            if (q) { const v = q.find((p) => !used.has(p)); if (v) { pick = v; break; } }
+          }
+          if (!pick) pick = all.find((p) => !used.has(p));
+          if (!pick) pick = all[i % Math.max(1, all.length)];
           used.add(pick); m.set(i, pick);
         });
         return m;
