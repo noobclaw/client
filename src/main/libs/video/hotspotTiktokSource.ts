@@ -20,7 +20,6 @@ import path from 'path';
 import { fetchPublishDrivers } from './publishers/remoteDrivers';
 import { pubCmd, sleep } from './publishers/publisherUtils';
 import { checkPlatformLogin, openPlatformLogin } from '../scenario/platformLoginDriver';
-import { checkVideoLoginByCookie } from './videoLoginCheck';
 import { ensureVideoRunTab } from './videoRunWindow';
 
 /** 真 async 函数沙箱(同 hotspotDouyinSource:无 require/fs/global,只能用注入的 ctx)。 */
@@ -103,11 +102,8 @@ async function downloadOne(url: string, dest: string, videoTabId?: number): Prom
 
 /** 等 TikTok 登录:cookie 快路径 → 先探一次 → 没登录就开 tiktok.com tab + 轮询(最多 3 分钟)。 */
 async function ensureTiktokLoggedIn(onLog: (m: string) => void, signal?: AbortSignal): Promise<boolean> {
-  // cookie 快路径:在「视频任务运行检查」窗里读 tiktok 登录 cookie,有效就直接过 —— 不需要开着 TikTok 页。
-  try {
-    const ck = await checkVideoLoginByCookie('tiktok');
-    if (ck?.loggedIn) return true;
-  } catch { /* 回退老校验 */ }
+  // ⚠️ 不再用 cookie 快路径:checkVideoLoginByCookie 会开「运行检查」窗读 cookie 但取材不负责关 → 孤儿窗。
+  //   取材反正要开 TikTok tab 搜素材,直接 tab 校验(不开窗),没登录再开 TikTok。
   let st = await checkPlatformLogin('tiktok').catch(() => ({ loggedIn: false } as { loggedIn: boolean }));
   if (st.loggedIn) return true;
   onLog('🌐 打开 TikTok,等待登录(请在窗口里登录,大陆用户需开 VPN,最多 3 分钟)…');
