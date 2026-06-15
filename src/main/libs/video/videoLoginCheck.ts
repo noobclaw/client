@@ -57,6 +57,11 @@ const VIDEO_LOGIN_COOKIES: Record<string, { url: string; domain: string; names: 
   'youtube:main':     { url: 'https://www.youtube.com/',         domain: 'youtube.com',      names: ['LOGIN_INFO'] },
   'binance:main':     { url: 'https://www.binance.com/',         domain: 'binance.com',      names: ['p20t'] },
   'x:main':           { url: 'https://x.com/',                   domain: 'x.com',            names: ['auth_token'] },
+  // 头条号:字节系 passport,实测(2026-06-15)mp.toutiao.com 登录态可见 passport_csrf_token,session 是
+  //   HttpOnly(sessionid 等)。creator:false → 走 which='main'。真实名以诊断日志为准。
+  'toutiao:main':     { url: 'https://mp.toutiao.com/',           domain: 'toutiao.com',      names: ['sessionid', 'sessionid_ss', 'sid_guard'] },
+  // 视频号:微信系(channels.weixin.qq.com),站点被安全策略挡未能真机看 cookie,名先按已知填,以诊断为准。
+  'shipinhao:main':   { url: 'https://channels.weixin.qq.com/',   domain: 'weixin.qq.com',    names: ['sessionid', 'wxuin', 'sessionid_ss', 'slave_sid'] },
 };
 
 /** 一组 cookie 里是否命中某「平台:子域」的登录态:域名匹配 + 名匹配 + 值非空 + 未过期。 */
