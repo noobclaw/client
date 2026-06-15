@@ -171,11 +171,12 @@ export async function checkVideoLoginByCookieBatch(
     //   若某平台明明登录了却 hit=false,看这行就知道真实 cookie 叫啥,据此改 VIDEO_LOGIN_COOKIES。
     try {
       const dom = cfg.domain.replace(/^\./, '');
-      const found = cookies
-        .filter((c: any) => typeof c?.domain === 'string' && c.domain.replace(/^\./, '').includes(dom) && c.value)
-        .map((c: any) => c.name);
+      const onDom = cookies.filter((c: any) => typeof c?.domain === 'string' && c.domain.replace(/^\./, '').includes(dom) && c.value);
+      // 标 (h)=HttpOnly:若整组都没有 (h),说明扩展的 cdp_cookies_get 没返回 HttpOnly cookie(根因之一)。
+      const found = onDom.map((c: any) => c.name + (c.httpOnly ? '(h)' : ''));
+      const httpOnlyCount = onDom.filter((c: any) => c.httpOnly).length;
       // eslint-disable-next-line no-console
-      console.log(`[videoLoginCheck] ${platform}(${cfg.domain}) hit=${out[platform]} cookieNames=[${found.join(', ')}]`);
+      console.log(`[videoLoginCheck] ${platform}(${cfg.domain}) hit=${out[platform]} httpOnly=${httpOnlyCount} cookieNames=[${found.join(', ')}]`);
     } catch { /* 诊断失败不影响 */ }
   }
   return out;
