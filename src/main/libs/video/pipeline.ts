@@ -692,7 +692,8 @@ async function runVideoPipeline(
 
   // 出片目录开跑即确定,emit 一次让详情页顶部立刻能显示「输出目录」。
   // taskDir = 任务总目录(详情页顶部稳定指向它);destDir = 本次运行 <日期>/<批次号>/(实际写成片)。
-  const { taskDir, runDir: destDir } = resolveOutputDirs(input);
+  const { taskDir, runDir } = resolveOutputDirs(input);
+  let destDir = runDir; // 热搜成片选题后会给批次目录加「_标题」后缀(见下),所以用 let
   tracker.setOutputDir(taskDir);
 
   try {
@@ -738,6 +739,18 @@ async function runVideoPipeline(
       markHotspotUsed(input.taskId || '', hotspotTopic.id);
       const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
       tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
+      // 批次目录加「_热搜标题」后缀,方便区分(1_众星悼念… / 2_…)。此刻还没往 destDir 写任何文件 →
+      //   改名安全;getNextBatch 用 parseInt 取前导数字,带后缀也能正确续号、不重号。失败则照用原目录。
+      try {
+        const titleSuffix = sanitizeFolderName(hotspotTopic.title).slice(0, 40);
+        if (titleSuffix) {
+          const newDir = path.join(path.dirname(destDir), `${path.basename(destDir)}_${titleSuffix}`);
+          if (newDir !== destDir && !fs.existsSync(newDir)) {
+            fs.renameSync(destDir, newDir);
+            destDir = newDir;
+          }
+        }
+      } catch { /* 改名失败不影响出片 */ }
       throwIfAborted(signal);
       // 【新流程,不再 Serper 联网取材】中文热搜直接上抖音搜:下视频/图文 + 抓真实帖子标题,
       //   拿这些抖音标题 + 热搜标题给 AI 写口播稿(很真实、贴热点);素材同时留着后面铺镜。
