@@ -283,6 +283,20 @@ class ScenarioService {
     }
   }
 
+  /** 把唯一的检查/登录窗导航到某平台登录页(多平台登录复用一个窗口,不再每点开新窗)。 */
+  async openVideoLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
+    try {
+      return await (window.electron.scenario as any).openLoginInCheckWindow(url) || { ok: false };
+    } catch {
+      return { ok: false };
+    }
+  }
+
+  /** 模态关闭时收掉检查/登录窗。 */
+  async closeVideoLoginCheckWindow(): Promise<void> {
+    try { await (window.electron.scenario as any).closeLoginCheckWindow(); } catch { /* ignore */ }
+  }
+
   // ── Derived helpers ──
 
   /** Aggregate per-task stats the task dashboard likes to show.

@@ -89,28 +89,23 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [override.join(',')]);
 
-  const runCheck = useCallback(async (useCookie = false) => {
+  const runCheck = useCallback(async () => {
     if (list.length === 0) { setExtensionStatus('pass'); return; }
     setChecking(true);
     try {
-      // 多平台 cookie 批量快路径(仅首次/手动 useCookie=true):一次 CDP attach 把所有勾选平台的
-      //   cookie 全读出来、按【域名+名】逐平台判(抖音/TikTok 同名 sessionid 靠域名区分,不串台)。
-      //   命中的平台直接判已登录;没命中/没配的再走老 tab 校验。不放进 3s 轮询(避免反复闪 CDP 横幅)。
-      let cookiePass: Record<string, boolean | null> = {};
-      if (useCookie) {
-        const items = list.map((id) => ({
-          platform: id,
-          which: (metaOf(id).creator && !override.includes(id)) ? ('creator' as const) : ('main' as const),
-        }));
-        cookiePass = await scenarioService.checkVideoLoginByCookieBatch(items);
-      }
-      // 并行探所有平台(每个走 tab_list,串行会很慢)。cookie 已判已登录的跳过 tab 校验。
-      // 任一返回 browser_not_connected → 扩展没连上,统一把那些平台标 waiting。
-      const results = await Promise.all(list.map((p) =>
-        cookiePass[p] === true
-          ? Promise.resolve({ id: p, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } })
-          : checkOne(p),
-      ));
+      // 【cookie 批量为主】一次 CDP attach 把所有勾选平台的 cookie 全读出来,按【域名+名】逐平台判
+      //   (抖音/TikTok 同名 sessionid 靠域名区分)。这样【开一个窗口就知道所有平台登录态】,不需要
+      //   每个平台页面都在线。cookie 判不了的(null:没配/没读到)才退老 tab 校验(需页面在线)。
+      const items = list.map((id) => ({
+        platform: id,
+        which: (metaOf(id).creator && !override.includes(id)) ? ('creator' as const) : ('main' as const),
+      }));
+      const cookiePass = await scenarioService.checkVideoLoginByCookieBatch(items);
+      const results = await Promise.all(list.map((p) => {
+        if (cookiePass[p] === true) return Promise.resolve({ id: p, st: { loggedIn: true } as { loggedIn: boolean; reason?: string } });
+        if (cookiePass[p] === false) return Promise.resolve({ id: p, st: { loggedIn: false } as { loggedIn: boolean; reason?: string } });
+        return checkOne(p); // cookie 判不了(null)→ tab 兜底
+      }));
       let extConnected = true;
       const next: Record<string, StepStatus> = {};
       for (const { id, st } of results) {
@@ -131,35 +126,34 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [list, checkOne, override.join(',')]);
 
-  useEffect(() => { void runCheck(true); }, []); // eslint-disable-line  首次走 cookie 快路径(不依赖页面开着)
+  useEffect(() => { void runCheck(); }, []); // eslint-disable-line  首次读 cookie
 
-  // 3s 自动轮询:用户开浏览器 / 登录后自动转绿,无需手点重新检测。【不带 cookie】避免反复闪 CDP 横幅。
+  // 自动轮询(cookie 批量,4s):用户在【那一个登录窗】里挨个登录后自动转绿,不需保持各平台页面在线。
   useEffect(() => {
-    const h = setInterval(() => { void runCheck(false); }, 3000);
+    const h = setInterval(() => { void runCheck(); }, 4000);
     return () => clearInterval(h);
   }, [runCheck]);
+
+  // 模态卸载:收掉那个唯一的检查/登录窗(别让它常驻)。
+  useEffect(() => () => { void scenarioService.closeVideoLoginCheckWindow(); }, []);
 
   const handleOpen = async (id: string) => {
     const m = metaOf(id);
     const useCreator = useCreatorFor(id);
     setOpening(id);
     try {
-      const res = useCreator
-        ? await scenarioService.openCreatorCenter(id as any)
-        : await scenarioService.openXhsLogin(id as any);
+      // 复用【同一个】检查/登录窗:把它导航到该平台登录页(不再每点一个开新窗 → 8 平台 8 个窗)。
+      //   用户在这一个窗里挨个登录,cookie 轮询从同一个窗读 → 全部平台都能转绿。
+      const loginUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
+      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl);
       if (!res.ok) {
-        // race 修复(同 LoginRequiredModal):扩展开 tab 可能比 3s timeout 慢,先 probe
-        // 一次,已经开了就别再 window.open 双开。
-        await new Promise((r) => setTimeout(r, 1500));
-        const probe = useCreator
-          ? await scenarioService.checkCreatorCenter(id as any)
-          : await scenarioService.checkXhsLogin(id as any);
-        if (!probe.loggedIn) {
-          const fallbackUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
-          try { window.open(fallbackUrl, '_blank'); } catch { /* ignore */ }
-        }
+        // 复用窗开不出(老扩展无 window_registry_v6 / 没连)→ 退回老的每平台开窗,至少能登。
+        try {
+          if (useCreator) await scenarioService.openCreatorCenter(id as any);
+          else await scenarioService.openXhsLogin(id as any);
+        } catch { /* ignore */ }
       }
-      setTimeout(() => void runCheck(), 2000);
+      setTimeout(() => void runCheck(), 2500);
     } finally {
       setOpening(null);
     }
@@ -186,7 +180,7 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
           {isZh ? '🔷 安装 Edge 浏览器插件' : '🔷 Install Edge Extension'}
         </button>
       </div>
-      <button type="button" onClick={() => { void runCheck(true); }} disabled={checking}
+      <button type="button" onClick={() => { void runCheck(); }} disabled={checking}
         className="text-xs text-blue-500 hover:underline mt-1">
         {checking ? (isZh ? '检测中...' : 'Checking...') : (isZh ? '🔄 重新检测' : '🔄 Re-check')}
       </button>

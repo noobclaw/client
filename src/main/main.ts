@@ -2862,6 +2862,19 @@ if (!gotTheLock) {
       return await checkVideoLoginByCookieBatch(Array.isArray(items) ? items : []);
     });
 
+    // 多平台登录【复用同一个窗口】:把唯一的检查/登录窗导航到该平台登录页(不再每点一个开新窗)。
+    ipcMain.handle('video:openLoginInCheckWindow', async (_e, url: string) => {
+      const { openLoginInCheckWindow } = require('./libs/video/videoLoginCheck');
+      return await openLoginInCheckWindow(String(url || ''));
+    });
+
+    // 模态关闭时收掉检查/登录窗(避免空白窗常驻)。
+    ipcMain.handle('video:closeLoginCheckWindow', async () => {
+      const { closeVideoCheckWindow } = require('./libs/video/videoLoginCheck');
+      await closeVideoCheckWindow();
+      return { ok: true };
+    });
+
     ipcMain.handle('scenario:openCreatorCenter', async (_e, platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili' | 'shipinhao' | 'toutiao') => {
       const { openCreatorCenter } = require('./libs/scenario/platformLoginDriver');
       return await openCreatorCenter(platform);

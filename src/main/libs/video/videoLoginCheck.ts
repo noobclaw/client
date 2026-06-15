@@ -158,17 +158,27 @@ export async function checkVideoLoginByCookieBatch(
   if (resolved.length === 0) return out;
   const tabId = await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') return out;
-  try {
-    const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
-    const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie
-    if (cookies) for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
-  } finally {
-    await closeVideoCheckWindow(); // 一次性查完即关,别在浏览器里留 about:blank 的「运行检查」空白窗
-  }
+  // 【不关窗】窗口留着:它既是 cookie 读取窗,又是「打开 X 登录」复用的那一个登录窗(见
+  //   openLoginInCheckWindow),轮询也复用它。模态关闭时由 closeVideoCheckWindow 统一收掉。
+  const urls = Array.from(new Set(resolved.map((x) => x.cfg.url)));
+  const cookies = await cdpGetCookies(urls, tabId); // 一次读全部 url 的 cookie(任意页都能读)
+  if (!cookies) { _checkTabId = undefined; return out; }
+  for (const { platform, cfg } of resolved) out[platform] = cookieHit(cookies, cfg);
   return out;
 }
 
-/** 关掉「运行检查」空白窗(查完即关,避免浏览器里堆一排 about:blank 的运行检查 tab)。 */
+/** 把【唯一的检查/登录窗】导航到某平台登录页 —— 多平台登录【复用这一个窗口】,不再每点一个开新窗。
+ *  用户在这个窗里挨个登录,cookie 批量读从同一个窗取 → 开一个窗就能知道所有平台登录态。 */
+export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
+  const tabId = await ensureVideoCheckWindow();
+  if (typeof tabId !== 'number') return { ok: false };
+  try {
+    await sendBrowserCommand('navigate', { url, tabId }, 15000);
+    return { ok: true };
+  } catch { return { ok: false }; }
+}
+
+/** 关掉「运行检查/登录」窗(模态关闭时调,避免空白窗常驻)。 */
 export async function closeVideoCheckWindow(): Promise<void> {
   const id = _checkTabId;
   if (typeof id !== 'number') return;
