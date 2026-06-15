@@ -4485,7 +4485,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
               </Field>
 
               {dataSourceMode === 'paste' ? (
-                <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '粘贴任意内容,AI 自动排版(每行一条更佳)' : 'paste anything; AI lays it out (one per line works best)'}>
+                <Field label={isZh ? '内容 / 数据' : 'Content / data'} hint={isZh ? '粘贴任意内容——榜单、一段话、文章、要点都行,AI 自动理解并排版' : 'paste anything — a list, a paragraph, an article, or key points; AI understands and lays it out'}>
                   <textarea value={dataText} onChange={(e) => setDataText(e.target.value)} rows={8}
                     className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm font-mono dark:text-white" />
                 </Field>
