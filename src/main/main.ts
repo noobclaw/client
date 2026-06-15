@@ -2863,9 +2863,10 @@ if (!gotTheLock) {
     });
 
     // 多平台登录【复用同一个窗口】:把唯一的检查/登录窗导航到该平台登录页(不再每点一个开新窗)。
-    ipcMain.handle('video:openLoginInCheckWindow', async (_e, url: string, role?: string) => {
+    ipcMain.handle('video:openLoginInCheckWindow', async (_e, url: string, _role?: string) => {
+      // _role 仅为兼容旧渲染端调用签名,已不用:登录检查是【一窗一 tab navigate】,不按 role 分 tab。
       const { openLoginInCheckWindow } = require('./libs/video/videoLoginCheck');
-      return await openLoginInCheckWindow(String(url || ''), role || 'login');
+      return await openLoginInCheckWindow(String(url || ''));
     });
 
     // 模态关闭时收掉检查/登录窗(避免空白窗常驻)。

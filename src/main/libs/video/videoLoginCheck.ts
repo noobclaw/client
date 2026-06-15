@@ -189,31 +189,24 @@ export async function checkVideoLoginByCookieBatch(
   return out;
 }
 
-/** 在【同一个检查/登录窗】里给某平台开登录页。多平台登录【全在这一个窗口】:
- *  - 扩展支持(role-miss 复用对 'login:' 角色跳过)时 → 每个平台各占一个 tab = 一窗多 tab(用户要的);
- *  - 老扩展(还会复用)时 → 复用那一个 tab(一窗一 tab)。两种都只有【一个窗口】,绝不每平台开新窗。
- *  role 形如 'login:douyin' —— 不同平台不同 role,扩展据此各开各的 tab。
- *  cookie 读取不受影响(getCookies 按 url 读,与 tab 停在哪页无关)。 */
-export async function openLoginInCheckWindow(url: string, role = 'login'): Promise<{ ok: boolean }> {
-  // 先确保检查窗存在(checker 占位 tab);开不出(老扩展无 v6)→ ok:false,但调用方【也不再 fallback 开新窗】。
+/** 在【同一个检查/登录窗、同一个 tab】里给某平台开登录页:navigate 那个固定 checker tab 过去。
+ *  一窗一 tab:点抖音 → navigate 这个 tab 到抖音登录;再点小红书 → 【同一个 tab】navigate 到小红书登录。
+ *  绝不开新窗、不开新 tab(照抄视频发布的「9 平台共用一个 video_publish tab + navigateTab」单 tab 模式,
+ *  见 runPublish.openPublishTab / navigateTab)。
+ *  cookie 读取不受影响(getCookies 按 url 读,与该 tab 当前停在哪页无关);登过的平台 cookie 留在 profile、
+ *  绿会粘住(见 VideoLoginCheckModal confirmedRef),所以挨个 navigate 登录,各平台都能转绿且不掉。
+ *  检查窗开不出(无 v6)→ ok:false,调用方跳过(不再 fallback 弹多窗)。 */
+export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
   const tabId = await ensureVideoCheckWindow();
   if (typeof tabId !== 'number') {
     console.log('[videoLoginCheck] openLoginInCheckWindow: 检查窗开不出(无 v6?),跳过');
     return { ok: false };
   }
-  try {
-    const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
-    // 即发即返:task_open_tab 建好 tab 即可,不等页面 load(慢网/VPN 不卡)。同 windowKey、按 role 各开 tab。
-    void sendBrowserCommand('task_open_tab', {
-      windowKey: CHECK_WINDOW_KEY,
-      groupTitle: buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null),
-      role,
-      url,
-      bounds,
-    }, 15000).catch(() => {});
-    console.log('[videoLoginCheck] openLoginInCheckWindow role=' + role + ' url=' + url.slice(0, 50) + ' → task_open_tab(一窗多 tab)');
-    return { ok: true };
-  } catch { return { ok: false }; }
+  // 即发即返 navigate【同一个 checker tab】,不等页面 load(慢网/VPN 不卡):扩展 chrome.tabs.update
+  //   立刻执行、导航已开始,不必等 complete。按 tabId 直接寻址,跟 runPublish.navigateTab 一致。
+  void sendBrowserCommand('navigate', { url, tabId }, 60000).catch(() => {});
+  console.log('[videoLoginCheck] openLoginInCheckWindow → navigate(checkTabId=' + tabId + ', ' + url.slice(0, 50) + ')');
+  return { ok: true };
 }
 
 /** 关掉「运行检查/登录」窗(模态关闭时调,避免空白窗常驻)。 */
