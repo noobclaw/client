@@ -158,9 +158,9 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       // 一窗一 tab:直接 task_open_tab(windowKey=video_check)复用同一个 tab。【不再 fallback 开多窗。】
       const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl) as { ok: boolean; diag?: string };
       if (!res.ok) {
-        // 主进程 console.log 在打包版被屏蔽 → 把检查窗失败的【原始诊断】弹到屏幕上,据此定位。
-        // eslint-disable-next-line no-alert
-        window.alert('检查窗打开失败,诊断如下(截图发我):\n\n' + (res.diag || '(无 diag)'));
+        // 开不出检查窗时静默(不再弹诊断窗);留一行 console 便于排查,不打扰用户。
+        // eslint-disable-next-line no-console
+        console.warn('[videoLoginCheck] openLoginInCheckWindow failed:', res.diag || '(no diag)');
       }
       setTimeout(() => void runCheck(), 2500);
     } finally {
