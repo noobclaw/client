@@ -148,6 +148,12 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
   useEffect(() => () => { void scenarioService.closeVideoLoginCheckWindow(); }, []);
 
   const handleOpen = async (id: string) => {
+    // 插件没连上(未安装/连不上)→ 跟 ①「安装并连接浏览器插件」同逻辑:先去装插件,默认打开 Edge 安装页。
+    //   没插件时登录窗根本开不出,引导装插件比点了没反应强。
+    if (extensionStatus !== 'pass') {
+      window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank');
+      return;
+    }
     const m = metaOf(id);
     const useCreator = useCreatorFor(id);
     setOpening(id);
