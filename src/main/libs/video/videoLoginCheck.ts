@@ -88,9 +88,13 @@ let _checkTabId: number | undefined;
 /** 开/复用唯一的「视频任务运行检查」窗口的固定 tab,返回 tabId。拿不到返回 undefined(调用方回退老校验)。 */
 async function ensureVideoCheckWindow(): Promise<number | undefined> {
   if (typeof _checkTabId === 'number') return _checkTabId;
-  const hasV6 = connectionHasCapability(undefined, 'window_registry_v6');
-  console.log('[videoLoginCheck] ensureVideoCheckWindow: window_registry_v6=' + hasV6);
-  if (!hasV6) return undefined; // 老扩展无 v6 → 调用方回退每平台开窗(= 多窗口的一种可能)
+  // ⚠️ 不靠 window_registry_v6 旗标早退:task_open_tab 的 handler 从扩展 v1.6.0 就有,而广播这个
+  //   旗标是 v1.6.2 才加的 —— 中间版本(1.6.0/1.6.1)功能在、旗标无,旧 gate 会误判没能力直接
+  //   return undefined → 检查窗永远开不出(全红 + 点登录没反应)。改成【直接试 task_open_tab】:
+  //   扩展支持 → 返回 tabId(一窗一 tab navigate);真不支持(更老扩展)→ 无 tabId → 返回 undefined,
+  //   调用方回退每平台开窗。旗标只留作诊断日志,不再用来早退。
+  const advertisesV6 = connectionHasCapability(undefined, 'window_registry_v6');
+  console.log('[videoLoginCheck] ensureVideoCheckWindow: advertisesV6=' + advertisesV6 + ' (直接试 task_open_tab,不靠旗标早退)');
   try {
     const idleTitle = buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null);
     const bounds = getStandardBounds(CHECK_SUB_PLATFORM, 'default');
