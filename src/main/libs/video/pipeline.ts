@@ -1575,14 +1575,17 @@ async function runVideoPipeline(
             try { fs.copyFileSync(src, path.join(matDir, `素材${String(i + 1).padStart(2, '0')}_${path.basename(src)}`)); } catch { /* 单个失败忽略 */ }
           });
         } catch { /* 留档失败不影响出片 */ }
-        // 先探每个源时长 → 算「每个源最多能切几段【不同起点】」(cap,起点间隔 0.6s);再把 poolTarget
-        //   按各源 cap【按比例】分配 → 长视频多切、短视频少切,起点在整段上均匀铺开,互不重叠/雷同。
+        // 先探每个源时长 → 算「每个源最多能切几段【不重叠】」(cap,起点间隔 ≥ segLen);再把 poolTarget
+        //   按各源 cap【按比例】分配 → 长视频多切、短视频少切,起点在整段上均匀铺开,段间互不重叠。
+        // ⚠️【2026-06-17 用户实测"画面重复"根因】旧 cap 用 0.6s 间隔 → 同一源能切出几十段【85% 重叠的近重复片】
+        //   (是不同文件、used 去重抓不到,但画面几乎一样)→ 用户看到重复。改成间隔 ≥ segLen(段长)→ 段间【真不
+        //   重叠】,每段是真正不同的画面;短视频自然少切(切不出那么多不同画面就认了,不靠近重复片凑数)。
         const srcs: { v: string; dur: number; cap: number }[] = [];
         for (const v of dy.paths) {
           if (signal?.aborted) break;
           const dur = await probeDuration(v).catch(() => 0);
           if (dur <= segLen + 0.3) continue; // 太短切不出一整段,跳过
-          const cap = Math.max(1, Math.floor((dur - segLen) / 0.6) + 1); // 0.6s 间隔下最多不同起点数
+          const cap = Math.max(1, Math.floor((dur - segLen) / segLen) + 1); // 间隔≥segLen 的【不重叠】段数
           srcs.push({ v, dur, cap });
         }
         if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
