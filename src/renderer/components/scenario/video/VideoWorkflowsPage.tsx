@@ -3913,9 +3913,13 @@ export const HotspotVideoModal: React.FC<{
     void doCreate();
   };
 
-  // 「下一步」按 step 校验后推进;step 1 必须至少勾一个源。
+  // 「下一步」按 step 校验后推进;step 1 必须至少勾一个源;step 4 选了「发布到平台」必须至少勾一个平台。
   const goNext = () => {
     if (step === 1 && selectedSources.length === 0) { setErr(isZh ? '请至少勾选一个热点源' : 'Pick at least one source'); return; }
+    if (step === 4 && outputMode === 'upload' && selectedPlatformIds.length === 0) {
+      setErr(isZh ? '已选「发布到平台」,请至少勾选一个平台(或改回「仅存本地」)' : 'Pick at least one platform, or switch to "Local only"');
+      return;
+    }
     setErr('');
     setStep((s) => (s < 5 ? ((s + 1) as 1 | 2 | 3 | 4 | 5) : s));
   };
