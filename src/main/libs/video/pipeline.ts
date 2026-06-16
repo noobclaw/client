@@ -1590,21 +1590,19 @@ async function runVideoPipeline(
         // 派每源段数:抖音搜索结果【按相关度排序】→ 越靠前越贴热点,给靠前的源更高权重(多切几段),
         //   让混剪以【最相关】的素材为主(用户要求:第一个匹配度高、应该多切)。权重 = cap × rankW(i),
         //   rankW 随排名衰减(首位最重);仍 ≤ 各源 cap(短视频切不出那么多就认了)。
-        const rankW = (i: number) => 1 / (1 + 0.4 * i);
-        const weights = srcs.map((s, i) => s.cap * rankW(i));
-        const totalW = weights.reduce((a, b) => a + b, 0) || 1;
-        const quota = srcs.map((s, i) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * weights[i] / totalW))));
+        // 各源【尽量均匀】分配段数。原来按相关度 rankW=1/(1+0.4i) 前倾 + 补齐时全加给最靠前的源 →
+        //   第 1 个源被堆十几段、后面几乎全 1 段(用户实测 17/4/1/1…),太偏。改成:基础平均分
+        //   floor(target/n),余数给靠前的几个源(保留一点轻微前倾);受各源 cap 限制放不下的,
+        //   【从前往后轮转】补给还有余量的源,整体保持均衡。
+        const nSrc = srcs.length;
+        const base = Math.floor(targetSegs / nSrc);
+        const remN = targetSegs - base * nSrc;
+        const quota = srcs.map((s, i) => Math.min(s.cap, base + (i < remN ? 1 : 0)));
         let qsum = quota.reduce((a, b) => a + b, 0);
-        for (let guard = 0; guard < 300 && qsum !== targetSegs; guard++) {
-          if (qsum < targetSegs) { // 还差 → 加给【最靠前】还有余量的源(相关度优先,所以前面多切)
-            let bi = -1;
-            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap) { bi = i; break; }
-            if (bi < 0) break; quota[bi]++; qsum++;
-          } else { // 超了 → 从【最靠后】还能减的源减(先砍相关度低的尾部)
-            let bi = -1;
-            for (let i = srcs.length - 1; i >= 0; i--) if (quota[i] > 1) { bi = i; break; }
-            if (bi < 0) break; quota[bi]--; qsum--;
-          }
+        for (let guard = 0; guard < 2000 && qsum < targetSegs; guard++) {
+          let added = false;
+          for (let i = 0; i < nSrc && qsum < targetSegs; i++) if (quota[i] < srcs[i].cap) { quota[i]++; qsum++; added = true; }
+          if (!added) break; // 所有源都到 cap 了,凑不满也只能这样
         }
         // 切片是逐段 ffmpeg 重编码(慢,几十秒~分钟级),逐个源报进度,别让用户对着空白卡很久。
         tracker.progress(`✂️ 下载完成,开始切片(${srcs.length} 个源 → 目标 ${targetSegs} 段、起点均匀错开不重复)…`);
@@ -1773,18 +1771,16 @@ async function runVideoPipeline(
         if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
         const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
         const targetSegs = Math.min(poolTarget, totalCap);
-        const quota = srcs.map((s) => Math.max(1, Math.min(s.cap, Math.round(targetSegs * s.cap / totalCap))));
+        // 各源尽量均匀分配段数(同上:平均分 + 余数给靠前几个 + cap 限制时轮转补),不再按 cap 比例前倾。
+        const nSrc = srcs.length;
+        const base = Math.floor(targetSegs / nSrc);
+        const remN = targetSegs - base * nSrc;
+        const quota = srcs.map((s, i) => Math.min(s.cap, base + (i < remN ? 1 : 0)));
         let qsum = quota.reduce((a, b) => a + b, 0);
-        for (let guard = 0; guard < 300 && qsum !== targetSegs; guard++) {
-          if (qsum < targetSegs) {
-            let bi = -1;
-            for (let i = 0; i < srcs.length; i++) if (quota[i] < srcs[i].cap && (bi < 0 || srcs[i].cap - quota[i] > srcs[bi].cap - quota[bi])) bi = i;
-            if (bi < 0) break; quota[bi]++; qsum++;
-          } else {
-            let bi = -1;
-            for (let i = 0; i < srcs.length; i++) if (quota[i] > 1 && (bi < 0 || quota[i] > quota[bi])) bi = i;
-            if (bi < 0) break; quota[bi]--; qsum--;
-          }
+        for (let guard = 0; guard < 2000 && qsum < targetSegs; guard++) {
+          let added = false;
+          for (let i = 0; i < nSrc && qsum < targetSegs; i++) if (quota[i] < srcs[i].cap) { quota[i]++; qsum++; added = true; }
+          if (!added) break;
         }
         tracker.progress(`✂️ 下载完成,开始切片(${srcs.length} 个源 → 目标 ${targetSegs} 段、起点均匀错开不重复)…`);
         const segs: string[] = [];
