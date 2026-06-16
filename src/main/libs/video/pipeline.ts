@@ -311,11 +311,24 @@ export class ProgressTracker {
   private tokensUsed = 0;
   private costUsd = 0;
   private outputDir?: string;
+  // 运行日志落盘:每行 message 同步追加到本地文件(详情页/排查用,跟成片放一起)。
+  private logFile?: string;
   // stepDefs 可定制:stock/ai 用默认 4 步;template 速生传自己的步骤集。
   constructor(private jobId: string, private emit?: ProgressEmitter, stepDefs: { key: string; label: string }[] = STEP_DEFS) {
     this.steps = stepDefs.map((s) => ({ ...s, status: 'waiting' as const }));
   }
+  /** 设运行日志文件(写一行头)。runVideoPipeline 在拿到 runDir 后调一次;失败不影响主流程。 */
+  setLogFile(p: string) {
+    try {
+      fs.mkdirSync(path.dirname(p), { recursive: true });
+      fs.appendFileSync(p, `==== 运行日志 ${new Date().toLocaleString('zh-CN', { hour12: false })} (job ${this.jobId}) ====\n`);
+      this.logFile = p;
+    } catch { /* 落盘失败不影响任务 */ }
+  }
   private send(status: 'running' | 'done' | 'error', message?: string, extra?: Partial<VideoCreationProgress>) {
+    if (message && this.logFile) {
+      try { fs.appendFileSync(this.logFile, `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${message}\n`); } catch { /* 忽略落盘错误 */ }
+    }
     this.emit?.({
       jobId: this.jobId,
       status,
@@ -696,6 +709,8 @@ async function runVideoPipeline(
   const { taskDir, runDir } = resolveOutputDirs(input);
   let destDir = runDir; // 热搜成片选题后会给批次目录加「_标题」后缀(见下),所以用 let
   tracker.setOutputDir(taskDir);
+  // 运行日志落本地一份(跟本次成片同目录,文件名 run.log);之后每行 tracker 日志自动追加。
+  tracker.setLogFile(path.join(runDir, 'run.log'));
 
   try {
     // 0. 文案:strict = 逐字用用户文案;ai = DeepSeek 写稿(用户文案作参考)。
