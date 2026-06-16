@@ -76,9 +76,9 @@ async function upload(input: PublishInput, onLog?: (msg: string) => void, ctx?: 
     });
     if (!upR.ok) return { ok: false, reason: 'video_upload_failed:' + upR.reason };
 
-    // Step 3: 等推特处理(无显眼 DOM 信号,固定 60s)
-    log('⏳ 等推特处理视频 60s…');
-    await sleep(60000);
+    // Step 3: 等推特处理(无显眼 DOM 信号,固定 120s)
+    log('⏳ 等推特处理视频 120s…');
+    await sleep(120000);
 
     // Step 4: 写正文
     if (text) {
