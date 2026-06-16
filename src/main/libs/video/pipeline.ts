@@ -1588,17 +1588,18 @@ async function runVideoPipeline(
         if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
         const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
         const targetSegs = Math.min(poolTarget, totalCap); // 只有总容量 < 目标时才少切(真不够);绝不靠复用补齐
-        // 派每源段数:抖音搜索结果【按相关度排序】→ 越靠前越贴热点,给靠前的源更高权重(多切几段),
-        //   让混剪以【最相关】的素材为主(用户要求:第一个匹配度高、应该多切)。权重 = cap × rankW(i),
-        //   rankW 随排名衰减(首位最重);仍 ≤ 各源 cap(短视频切不出那么多就认了)。
-        // 各源【尽量均匀】分配段数。原来按相关度 rankW=1/(1+0.4i) 前倾 + 补齐时全加给最靠前的源 →
-        //   第 1 个源被堆十几段、后面几乎全 1 段(用户实测 17/4/1/1…),太偏。改成:基础平均分
-        //   floor(target/n),余数给靠前的几个源(保留一点轻微前倾);受各源 cap 限制放不下的,
-        //   【从前往后轮转】补给还有余量的源,整体保持均衡。
+        // 派每源段数:抖音搜索按相关度排序,【第 1 个源最贴近热点】→ 给它约 35%(用户要求:第一个多给点),
+        //   其余 ~65% 在后面的源里平均分。两头都受各源 cap 限制(短视频切不出那么多就认了),凑不满的从前
+        //   往后轮转补。历史教训:纯 rankW 前倾会堆成 17/4/1…(太偏);纯平均又把最相关的摊薄(太平)→ 取中。
         const nSrc = srcs.length;
-        const base = Math.floor(targetSegs / nSrc);
-        const remN = targetSegs - base * nSrc;
-        const quota = srcs.map((s, i) => Math.min(s.cap, base + (i < remN ? 1 : 0)));
+        const firstQuota = Math.min(srcs[0].cap, Math.max(1, Math.round(targetSegs * 0.35)));
+        const restTarget = Math.max(0, targetSegs - firstQuota);
+        const restN = nSrc - 1;
+        const restBase = restN > 0 ? Math.floor(restTarget / restN) : 0;
+        const restRem = restN > 0 ? restTarget - restBase * restN : 0;
+        const quota = srcs.map((s, i) => (i === 0)
+          ? Math.min(s.cap, firstQuota)
+          : Math.min(s.cap, restBase + ((i - 1) < restRem ? 1 : 0)));
         let qsum = quota.reduce((a, b) => a + b, 0);
         for (let guard = 0; guard < 2000 && qsum < targetSegs; guard++) {
           let added = false;
@@ -1772,11 +1773,16 @@ async function runVideoPipeline(
         if (srcs.length === 0) { tracker.progress(`   ⚠️ 源视频都太短,切不出片`); continue; }
         const totalCap = srcs.reduce((n, s) => n + s.cap, 0);
         const targetSegs = Math.min(poolTarget, totalCap);
-        // 各源尽量均匀分配段数(同上:平均分 + 余数给靠前几个 + cap 限制时轮转补),不再按 cap 比例前倾。
+        // 第 1 个源最贴近 → 给约 35%,其余 ~65% 在后面的源里平均分(同上,受各源 cap 限制 + 轮转补)。
         const nSrc = srcs.length;
-        const base = Math.floor(targetSegs / nSrc);
-        const remN = targetSegs - base * nSrc;
-        const quota = srcs.map((s, i) => Math.min(s.cap, base + (i < remN ? 1 : 0)));
+        const firstQuota = Math.min(srcs[0].cap, Math.max(1, Math.round(targetSegs * 0.35)));
+        const restTarget = Math.max(0, targetSegs - firstQuota);
+        const restN = nSrc - 1;
+        const restBase = restN > 0 ? Math.floor(restTarget / restN) : 0;
+        const restRem = restN > 0 ? restTarget - restBase * restN : 0;
+        const quota = srcs.map((s, i) => (i === 0)
+          ? Math.min(s.cap, firstQuota)
+          : Math.min(s.cap, restBase + ((i - 1) < restRem ? 1 : 0)));
         let qsum = quota.reduce((a, b) => a + b, 0);
         for (let guard = 0; guard < 2000 && qsum < targetSegs; guard++) {
           let added = false;
