@@ -367,6 +367,8 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // ────────────────────────────────────────────────────────────────────
 
   const handleOpenXhs = async () => {
+    // 插件【确认没连上】→ 先引导装插件(默认 Edge 安装页),没插件登录窗开不出,免得点了没反应。
+    if (extensionStatus === 'fail') { window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank'); return; }
     setOpening(true);
     try {
       // platform-aware: opens xiaohongshu.com or x.com based on prop. The
@@ -402,6 +404,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   // 一键打开 secondary 平台 tab(跨 tab scenario 用)
   const handleOpenSecondary = async () => {
     if (!secondaryPlatform) return;
+    if (extensionStatus === 'fail') { window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank'); return; }
     setOpening(true);
     try {
       const res = await scenarioService.openXhsLogin(secondaryPlatform);
@@ -438,6 +441,7 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
   const handleOpenCreator = async () => {
     if (!requireCreatorCenter) return;
     const p = platform as 'xhs' | 'douyin' | 'kuaishou' | 'bilibili';
+    if (extensionStatus === 'fail') { window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank'); return; }
     setOpening(true);
     try {
       const res = await scenarioService.openCreatorCenter(p);
