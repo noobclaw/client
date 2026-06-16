@@ -746,7 +746,9 @@ async function runVideoPipeline(
       const srcNames = sources.map((s) => HOTSPOT_SRC_LABEL[s] || s).join('、');
       tracker.progress(`🔥 已勾选热点源:${srcNames} —— 正在从这些榜单最新条目里随机选题…`);
       // 按任务读出已用过的热点 id 传给后端排除:一次跑 N 条(主进程外层循环逐条调本 pipeline)
-      //   每条都排掉前面已选的 → 各不相同;跨次运行也不会重复同一热点。选中后立刻记一笔。
+      //   每条都排掉前面已选的 → 各不相同;跨次运行也不会重复同一热点。
+      //   ⚠️ 不在这里 markHotspotUsed —— 改到【发布后、≥1 平台成功(或仅存本地已出片)】才记一笔
+      //   (用户要求:只有上传成功才算用过;发布全失败的选题下次还能重试)。见下方 publish 段。
       const usedIds = getUsedHotspots(input.taskId || '');
       hotspotTopic = await pickHotspotTopic(sources, usedIds);
       if (!hotspotTopic) {
@@ -754,7 +756,6 @@ async function runVideoPipeline(
         tracker.fail('script', err);
         return { ok: false, error: err };
       }
-      markHotspotUsed(input.taskId || '', hotspotTopic.id);
       const pickedSrc = HOTSPOT_SRC_LABEL[hotspotTopic.source] || hotspotTopic.source || '未知来源';
       tracker.progress(`📌 本次选中【${pickedSrc}】的热点:「${hotspotTopic.title}」`);
       // 批次目录加「_热搜标题」后缀,方便区分(1_众星悼念… / 2_…)。此刻还没往 destDir 写任何文件 →
@@ -2160,7 +2161,7 @@ async function runVideoPipeline(
         onCost: (tk, usd) => tracker.addTokens(tk, usd),
       });
       const { runPublishStep } = require('./publishers/runPublish');
-      await runPublishStep({
+      const pubResult = await runPublishStep({
         platforms: Array.isArray(input.publishPlatforms) ? input.publishPlatforms : [],
         videoPath: outputPaths[0],
         title: cap.title,
@@ -2169,6 +2170,17 @@ async function runVideoPipeline(
         onLog: (msg: string) => tracker.progress(msg),
         signal,
       });
+      // 热搜成片:把该选题记为【已用】(下次选题排除)——只在【至少一个平台发布成功】、或【仅存本地已出片】
+      //   时才记;发布全失败 → 不记 → 下次还能重试同一热点。(用户要求:有一个平台上传成功才记录。)
+      if (input.engine === 'hotspot' && hotspotTopic?.id) {
+        const published = !wantPublish || ((pubResult && pubResult.publishedCount) || 0) > 0;
+        if (published) {
+          markHotspotUsed(input.taskId || '', hotspotTopic.id);
+          tracker.progress(`🗂️ 已记录该热点为「已用」,下次选题不再重复:「${hotspotTopic.title}」`);
+        } else {
+          tracker.progress('↩️ 本条未发布成功,该热点不记为已用,下次可重试');
+        }
+      }
     } catch (e) {
       // runPublishStep 自身就吞所有错,这层 catch 只是兜底(import 失败等极端情况)
       tracker.progress(`⚠️ 发布步骤异常:${String((e as Error)?.message || e).slice(0, 120)}`);

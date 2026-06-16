@@ -7,14 +7,17 @@
  * 每任务封顶 CAP 条(热榜每天滚动,旧 id 早已不在池里,封顶只为防文件无限增长)。
  * 所有读写都【不抛】—— 持久化失败只记内存/静默,绝不阻塞出片。
  */
-import { app } from 'electron';
+// ⚠️ 不能用 electron 的 app.getPath:视频管线跑在 sidecar 进程(pkg node,无 electron app)→ app
+//   undefined → 读写全静默失败 → 已用列表永远空 → 去重根本不生效(热搜成片跨次跑选到同一热点的真因)。
+//   改用 platformAdapter.getUserDataPath():electron 模式走 app、sidecar 模式回退 OS 标准路径(同一目录)。
+import { getUserDataPath } from '../platformAdapter';
 import * as fs from 'fs';
 import * as path from 'path';
 
 const CAP = 500;
 
 function storePath(): string {
-  return path.join(app.getPath('userData'), 'used-hotspots.json');
+  return path.join(getUserDataPath(), 'used-hotspots.json');
 }
 
 function readAll(): Record<string, string[]> {
