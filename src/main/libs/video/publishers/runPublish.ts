@@ -384,8 +384,8 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
       result.publishedCount++;
       result.details.push({ platform: id, status: 'published' });
       // 提交后默认等上传完成:多数平台点提交后才真正上传视频,过早进入下一动作/刷新会把刚提交的作品弄丢。
-      // 例外【用户要求】:小红书/币安是【点发布前就要求视频传完】→ 提交时视频已在平台,不用久等 → 封顶 20s。
-      const postWaitMs = (id === 'xhs' || id === 'binance') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
+      // 例外【用户要求】:小红书/币安/推特是【点发布前就要求视频传完】→ 提交时视频已在平台,不用久等 → 封顶 20s。
+      const postWaitMs = (id === 'xhs' || id === 'binance' || id === 'x') ? Math.min(20_000, POST_SUBMIT_WAIT_MS) : POST_SUBMIT_WAIT_MS;
       opts.onLog?.(`   ⏳ 等 ${Math.round(postWaitMs / 1000)}s 让平台把视频上传完…`);
       await sleep(postWaitMs);
     } else {
