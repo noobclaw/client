@@ -284,11 +284,17 @@ class ScenarioService {
   }
 
   /** 在唯一的检查/登录窗里给某平台开一个 tab 登录(一窗多 tab,不再每点开新窗;role 各平台不同)。 */
-  async openVideoLoginInCheckWindow(url: string, role?: string): Promise<{ ok: boolean }> {
+  async openVideoLoginInCheckWindow(url: string, role?: string): Promise<{ ok: boolean; diag?: string }> {
+    const fn = (window.electron?.scenario as any)?.openLoginInCheckWindow;
+    if (typeof fn !== 'function') {
+      return { ok: false, diag: 'preload 没暴露 openLoginInCheckWindow(typeof=' + typeof fn + ')' };
+    }
     try {
-      return await (window.electron.scenario as any).openLoginInCheckWindow(url, role) || { ok: false };
-    } catch {
-      return { ok: false };
+      const r: any = await fn(url, role);
+      if (r && typeof r === 'object' && typeof r.diag === 'string') return r;   // 主进程新代码:带 diag,透传
+      return { ok: !!(r && r.ok), diag: '主进程返回无 diag(=主bundle可能是旧的): ' + JSON.stringify(r) };
+    } catch (e: any) {
+      return { ok: false, diag: 'IPC 抛错: ' + String(e?.message || e) };       // reject:无 handler / 主进程抛异常
     }
   }
 
