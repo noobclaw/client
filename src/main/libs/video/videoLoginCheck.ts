@@ -197,25 +197,38 @@ export async function checkVideoLoginByCookieBatch(
   return out;
 }
 
-/** 在【同一个检查/登录窗、同一个 tab】里给某平台开登录页:navigate 那个固定 checker tab 过去。
- *  一窗一 tab:点抖音 → navigate 这个 tab 到抖音登录;再点小红书 → 【同一个 tab】navigate 到小红书登录。
- *  绝不开新窗、不开新 tab(照抄视频发布的「9 平台共用一个 video_publish tab + navigateTab」单 tab 模式,
- *  见 runPublish.openPublishTab / navigateTab)。
- *  cookie 读取不受影响(getCookies 按 url 读,与该 tab 当前停在哪页无关);登过的平台 cookie 留在 profile、
- *  绿会粘住(见 VideoLoginCheckModal confirmedRef),所以挨个 navigate 登录,各平台都能转绿且不掉。
- *  检查窗开不出(无 v6)→ ok:false,调用方跳过(不再 fallback 弹多窗)。 */
-export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
-  // 用登录 url 自身开窗:窗不存在时直接开在该登录页(真实 url,扩展能返回 tabId);已存在则下面 navigate 切过去。
-  const tabId = await ensureVideoCheckWindow(url);
-  if (typeof tabId !== 'number') {
-    console.log('[videoLoginCheck] openLoginInCheckWindow: 检查窗开不出(task_open_tab 没返回 tabId),跳过');
-    return { ok: false };
+/** 一窗一 tab 登录:直接发 task_open_tab(windowKey=video_check, role='checker'),跟 publish 的 openPublishTab
+ *  同一套机制。同 windowKey+role → 扩展按 v6 注册表【复用同一个 tab】并 navigate 到新 url → 一个窗、一个 tab。
+ *  返回里带 diag:把扩展 task_open_tab 的【原始返回值】抓出来 —— 主进程 console.log 在打包版里被屏蔽,
+ *  所以靠返回值把诊断带回渲染层弹窗显示。绝不 fallback 开多窗。 */
+export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean; diag?: string }> {
+  // 已有检查 tab → 直接 navigate 复用(一窗一 tab)。
+  if (typeof _checkTabId === 'number') {
+    void sendBrowserCommand('navigate', { url, tabId: _checkTabId }, 60000).catch(() => {});
+    return { ok: true, diag: 'reuse checkTab=' + _checkTabId };
   }
-  // 即发即返 navigate【同一个 checker tab】,不等页面 load(慢网/VPN 不卡):扩展 chrome.tabs.update
-  //   立刻执行、导航已开始,不必等 complete。按 tabId 直接寻址,跟 runPublish.navigateTab 一致。
-  void sendBrowserCommand('navigate', { url, tabId }, 60000).catch(() => {});
-  console.log('[videoLoginCheck] openLoginInCheckWindow → navigate(checkTabId=' + tabId + ', ' + url.slice(0, 50) + ')');
-  return { ok: true };
+  let diag = '';
+  try {
+    const res: any = await sendBrowserCommand(
+      'task_open_tab',
+      {
+        windowKey: CHECK_WINDOW_KEY,
+        groupTitle: buildGroupTitle(CHECK_SUB_PLATFORM, 'default', null),
+        role: 'checker',
+        url,
+        bounds: getStandardBounds(CHECK_SUB_PLATFORM, 'default'),
+      },
+      12000,
+    );
+    const tabId = res?.tabId ?? res?.data?.tabId;
+    let resStr = '';
+    try { resStr = JSON.stringify(res); } catch { resStr = String(res); }
+    diag = 'task_open_tab res=' + (resStr || '∅').slice(0, 400) + ' → tabId=' + tabId;
+    if (typeof tabId === 'number') { _checkTabId = tabId; return { ok: true, diag }; }
+  } catch (e) {
+    diag = 'task_open_tab threw: ' + String((e as any)?.message || e);
+  }
+  return { ok: false, diag };
 }
 
 /** 关掉「运行检查/登录」窗(模态关闭时调,避免空白窗常驻)。 */

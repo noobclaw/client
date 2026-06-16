@@ -155,16 +155,12 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       // 复用【同一个】检查/登录窗:把它导航到该平台登录页(不再每点一个开新窗 → 8 平台 8 个窗)。
       //   用户在这一个窗里挨个登录,cookie 轮询从同一个窗读 → 全部平台都能转绿。
       const loginUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
-      // 先试【一窗一 tab】:navigate 同一个检查 tab 到该平台登录页(同 video 发布的单 tab 模式)。
-      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl);
+      // 一窗一 tab:直接 task_open_tab(windowKey=video_check)复用同一个 tab。【不再 fallback 开多窗。】
+      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl) as { ok: boolean; diag?: string };
       if (!res.ok) {
-        // 检查窗开不出(扩展无 window_registry_v6)→ 跟 video 发布的回退一样:openCreatorCenter/
-        //   openXhsLogin 每平台开窗,至少能登。有 v6 时这条不触发 = 一窗一 tab;没 v6 才多窗,
-        //   绝不让按钮变死(这就是 publish 在无 v6 下也能跑的那条腿,3fa4f8d 误删、现补回)。
-        try {
-          if (useCreator) await scenarioService.openCreatorCenter(id as any);
-          else await scenarioService.openXhsLogin(id as any);
-        } catch { /* ignore */ }
+        // 主进程 console.log 在打包版被屏蔽 → 把检查窗失败的【原始诊断】弹到屏幕上,据此定位。
+        // eslint-disable-next-line no-alert
+        window.alert('检查窗打开失败,诊断如下(截图发我):\n\n' + (res.diag || '(无 diag)'));
       }
       setTimeout(() => void runCheck(), 2500);
     } finally {
