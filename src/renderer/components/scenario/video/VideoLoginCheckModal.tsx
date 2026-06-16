@@ -155,9 +155,17 @@ export const VideoLoginCheckModal: React.FC<Props> = ({ platforms, onCancel, onC
       // 复用【同一个】检查/登录窗:把它导航到该平台登录页(不再每点一个开新窗 → 8 平台 8 个窗)。
       //   用户在这一个窗里挨个登录,cookie 轮询从同一个窗读 → 全部平台都能转绿。
       const loginUrl = useCreator ? m.url : (MAIN_SITE_URL[id] || m.url);
-      // 一窗一 tab:navigate【同一个检查 tab】到该平台登录页(照抄 video 发布的单 tab 模式)。
-      //   点一个登一个,同一个 tab 切页;绝不开新窗/新 tab。开不出(无 v6)就跳过,不弹多窗。
-      await scenarioService.openVideoLoginInCheckWindow(loginUrl);
+      // 先试【一窗一 tab】:navigate 同一个检查 tab 到该平台登录页(同 video 发布的单 tab 模式)。
+      const res = await scenarioService.openVideoLoginInCheckWindow(loginUrl);
+      if (!res.ok) {
+        // 检查窗开不出(扩展无 window_registry_v6)→ 跟 video 发布的回退一样:openCreatorCenter/
+        //   openXhsLogin 每平台开窗,至少能登。有 v6 时这条不触发 = 一窗一 tab;没 v6 才多窗,
+        //   绝不让按钮变死(这就是 publish 在无 v6 下也能跑的那条腿,3fa4f8d 误删、现补回)。
+        try {
+          if (useCreator) await scenarioService.openCreatorCenter(id as any);
+          else await scenarioService.openXhsLogin(id as any);
+        } catch { /* ignore */ }
+      }
       setTimeout(() => void runCheck(), 2500);
     } finally {
       setOpening(null);
