@@ -185,31 +185,46 @@ async function fetchTiktokClipsImpl(
   const videoTabId = await ensureVideoRunTab(onLog);
   if (typeof videoTabId === 'number') onLog('🪟 TikTok 取材走【视频专用窗口】(与发布共用,隔离 scenario)');
   onLog(mode === 'image' ? '🔎 按标题搜 TikTok 图集、取图…' : '🔎 按标题搜 TikTok、取无水印源…');
-  let ret: any;
-  try {
-    const fn = new AsyncFunction('ctx', code);
-    const sctx = {
-      input: { keywords, wantCount, mode },
-      cmd: (command: string, params: any, timeoutMs: number) => pubCmd('tiktok', command, params, timeoutMs, videoTabId),
-      sleep,
-      log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
-    };
-    ret = await fn(sctx);
-  } catch (e: any) {
-    onLog('⚠️ TikTok 取材脚本异常:' + String(e?.message || e).slice(0, 100));
-    diag.reason = 'script_threw';
-    return { paths: [], titles: [], diag };
+  // 【搜空重试】(对称抖音 hotspotDouyinSource:搜了没视频多重试 2 次 + 每次重试前固定等待)。
+  //   TikTok 走 VPN、更易瞬断 → 没网时 driver navigate 失败就返 0(同一秒没视频)→ 重跑整个搜索(网络/VPN 恢复
+  //   后下一次就成);登录/开窗在循环外只做一次,只重试【搜+取源】。
+  const MAX_TRIES = 3;          // 1 次 + 2 次重试
+  const RETRY_WAIT_MS = 8000;   // 每次重试前的固定等待
+  let ret: any = null;
+  let urls: string[] = [];
+  let titles: string[] = [];
+  for (let attempt = 1; attempt <= MAX_TRIES; attempt++) {
+    if (signal?.aborted) { diag.reason = 'aborted'; return { paths: [], titles: [], diag }; }
+    try {
+      const fn = new AsyncFunction('ctx', code);
+      const sctx = {
+        input: { keywords, wantCount, mode },
+        cmd: (command: string, params: any, timeoutMs: number) => pubCmd('tiktok', command, params, timeoutMs, videoTabId),
+        sleep,
+        log: (m: string) => { try { onLog('   ' + m); } catch { /* ignore */ } },
+      };
+      ret = await fn(sctx);
+    } catch (e: any) {
+      onLog('⚠️ TikTok 取材脚本异常:' + String(e?.message || e).slice(0, 100));
+      ret = null;
+    }
+    diag.reached = true;
+    urls = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
+    // 真实 TikTok 帖子标题(去重去空)—— 给 AI 写口播稿当素材(替掉 Serper)。
+    const t = Array.isArray(ret?.titles)
+      ? Array.from(new Set((ret.titles as any[]).filter((s) => typeof s === 'string' && s.trim()).map((s: string) => s.trim())))
+      : [];
+    if (t.length > titles.length) titles = t; // 跨重试保留拿到最多标题的那次
+    if (urls.length > 0) break;
+    if (attempt < MAX_TRIES) {
+      onLog(`   ⚠️ 第 ${attempt}/${MAX_TRIES} 次没搜到${mode === 'image' ? '图集' : '视频'},等 ${Math.round(RETRY_WAIT_MS / 1000)}s 再试(可能瞬时没网/VPN 抖动)…`);
+      await sleep(RETRY_WAIT_MS);
+    }
   }
-  diag.reached = true;
   diag.scriptDiag = ret?.diag;
-  const urls: string[] = Array.isArray(ret?.urls) ? ret.urls.filter((u: any) => typeof u === 'string') : [];
-  // 真实 TikTok 帖子标题(去重去空)—— 给 AI 写口播稿当素材(替掉 Serper)。
-  const titles: string[] = Array.isArray(ret?.titles)
-    ? Array.from(new Set((ret.titles as any[]).filter((t) => typeof t === 'string' && t.trim()).map((t: string) => t.trim())))
-    : [];
   diag.gotUrls = urls.length;
   if (urls.length === 0) {
-    onLog(mode === 'image' ? '⚠️ TikTok 没取到可用图集图片' : '⚠️ TikTok 没取到可用视频源');
+    onLog(mode === 'image' ? `⚠️ TikTok 没取到可用图集图片(已试 ${MAX_TRIES} 次)` : `⚠️ TikTok 没取到可用视频源(已试 ${MAX_TRIES} 次)`);
     diag.reason = ret?.reason || 'no_urls';
     return { paths: [], titles, diag };
   }
