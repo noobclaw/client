@@ -337,6 +337,16 @@ export function createTauriElectronShim(): typeof window.electron {
         ipcInvoke('scenario:checkCreatorCenter', platform).then(r => r ?? { loggedIn: false, reason: 'ipc_error' }),
       openCreatorCenter: (platform: 'xhs' | 'douyin' | 'kuaishou' | 'bilibili') =>
         ipcInvoke('scenario:openCreatorCenter', platform).then(r => r ?? { ok: false }),
+      // ── 视频发布前登录检查:之前只加进了【没用的 Electron preload.ts】,漏了【Tauri 真正用的这份 shim】
+      //   → 渲染层调 window.electron.scenario.openLoginInCheckWindow 拿到 undefined → 掉进回退开多窗。
+      //   走 sidecar 的 video:* channel(sidecar 才有扩展连接,task_open_tab 才到得了扩展 = 一窗一 tab)。
+      checkVideoLoginByCookie: (platform: string, which?: 'main' | 'creator') =>
+        ipcInvoke('video:checkLoginByCookie', platform, which),
+      checkVideoLoginByCookieBatch: (items: { platform: string; which?: 'main' | 'creator' }[]) =>
+        ipcInvoke('video:checkLoginByCookieBatch', items).then((r: any) => r ?? {}),
+      openLoginInCheckWindow: (url: string, role?: string) =>
+        ipcInvoke('video:openLoginInCheckWindow', url, role).then((r: any) => r ?? { ok: false }),
+      closeLoginCheckWindow: () => ipcInvoke('video:closeLoginCheckWindow'),
     },
 
     // ── API proxy (for Settings provider validation) ──

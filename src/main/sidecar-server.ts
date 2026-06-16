@@ -1822,6 +1822,33 @@ const server = http.createServer(async (req, res) => {
               return writeJSON(res, 200, { ok: false, reason: e.message });
             }
           }
+          // ── 视频发布前登录检查:必须在 sidecar 跑(扩展连接在这,task_open_tab 才到得了扩展)。
+          //   之前只注册在没用的 Electron main.ts ipcMain,Tauri 包里调不到 → 一直失败回退多窗。
+          case 'video:checkLoginByCookie': {
+            try {
+              const { checkVideoLoginByCookie } = require('./libs/video/videoLoginCheck');
+              return writeJSON(res, 200, await checkVideoLoginByCookie(args && args[0], args && args[1]));
+            } catch (e: any) { return writeJSON(res, 200, null); }
+          }
+          case 'video:checkLoginByCookieBatch': {
+            try {
+              const { checkVideoLoginByCookieBatch } = require('./libs/video/videoLoginCheck');
+              return writeJSON(res, 200, await checkVideoLoginByCookieBatch((args && args[0]) || []));
+            } catch (e: any) { return writeJSON(res, 200, {}); }
+          }
+          case 'video:openLoginInCheckWindow': {
+            try {
+              const { openLoginInCheckWindow } = require('./libs/video/videoLoginCheck');
+              return writeJSON(res, 200, await openLoginInCheckWindow(String((args && args[0]) || '')));
+            } catch (e: any) { return writeJSON(res, 200, { ok: false, diag: 'sidecar error: ' + e.message }); }
+          }
+          case 'video:closeLoginCheckWindow': {
+            try {
+              const { closeVideoCheckWindow } = require('./libs/video/videoLoginCheck');
+              await closeVideoCheckWindow();
+              return writeJSON(res, 200, { ok: true });
+            } catch (e: any) { return writeJSON(res, 200, { ok: false }); }
+          }
 
           default:
             coworkLog('WARN', 'sidecar-server', `Unhandled IPC channel: ${channel}`);
