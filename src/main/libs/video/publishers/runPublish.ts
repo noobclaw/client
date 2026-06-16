@@ -393,12 +393,29 @@ export async function runPublishStep(opts: RunPublishOptions): Promise<RunPublis
     }
   }
 
-  // 汇总日志
-  const parts: string[] = [];
-  if (result.publishedCount > 0) parts.push(`✅ ${result.publishedCount} 已发`);
-  if (result.skippedCount > 0)   parts.push(`⏭️ ${result.skippedCount} 跳过`);
-  if (result.failedCount > 0)    parts.push(`❌ ${result.failedCount} 失败`);
-  if (parts.length) opts.onLog?.(`📊 发布汇总:${parts.join(' · ')}`);
+  // 汇总日志:具体列出每个平台落在哪一类(已发/跳过/失败),失败和跳过附简短原因。
+  const reasonZh = (r?: string): string => {
+    if (!r) return '';
+    if (r.startsWith('not_logged_in')) return '未登录';
+    if (r.startsWith('browser_not_connected')) return '浏览器未连接';
+    if (r.startsWith('driver_not_implemented')) return '未实装';
+    if (r.startsWith('upload_input_not_found')) return '没找到上传框';
+    if (r.startsWith('video_upload_failed')) return '视频上传失败';
+    if (r.startsWith('publish_click_failed')) return '点发布失败';
+    if (r.startsWith('remote_compile_failed')) return '脚本编译失败';
+    if (r.startsWith('driver_threw')) return 'driver 异常';
+    return r.slice(0, 40);
+  };
+  const named = (list: typeof result.details, withReason: boolean) =>
+    list.map((d) => platformLabel(d.platform) + (withReason && d.reason ? `(${reasonZh(d.reason)})` : '')).join('、');
+  const pub  = result.details.filter((d) => d.status === 'published');
+  const skip = result.details.filter((d) => d.status === 'skipped');
+  const fail = result.details.filter((d) => d.status === 'failed');
+  opts.onLog?.('📊 发布汇总:');
+  if (pub.length)  opts.onLog?.(`   ✅ 已发(${pub.length}):${named(pub, false)}`);
+  if (skip.length) opts.onLog?.(`   ⏭️ 跳过(${skip.length}):${named(skip, true)}`);
+  if (fail.length) opts.onLog?.(`   ❌ 失败(${fail.length}):${named(fail, true)}`);
+  if (!pub.length && !skip.length && !fail.length) opts.onLog?.('   (无平台结果)');
 
   return result;
 }
