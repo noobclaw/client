@@ -86,7 +86,7 @@ function cookieHit(cookies: any[], cfg: { domain: string; names: string[] }): bo
 let _checkTabId: number | undefined;
 
 /** 开/复用唯一的「视频任务运行检查」窗口的固定 tab,返回 tabId。拿不到返回 undefined(调用方回退老校验)。 */
-async function ensureVideoCheckWindow(): Promise<number | undefined> {
+async function ensureVideoCheckWindow(initialUrl: string): Promise<number | undefined> {
   if (typeof _checkTabId === 'number') return _checkTabId;
   // ⚠️ 不靠 window_registry_v6 旗标早退:task_open_tab 的 handler 从扩展 v1.6.0 就有,而广播这个
   //   旗标是 v1.6.2 才加的 —— 中间版本(1.6.0/1.6.1)功能在、旗标无,旧 gate 会误判没能力直接
@@ -104,7 +104,11 @@ async function ensureVideoCheckWindow(): Promise<number | undefined> {
         windowKey: CHECK_WINDOW_KEY,
         groupTitle: idleTitle,
         role: 'checker',
-        url: 'about:blank', // 不导航到任何平台:只在这个 tab 上 attach CDP 读 cookie
+        // ⚠️ 必须用【真实 url】开窗,不能 about:blank:实测扩展 task_open_tab 对 about:blank 创建的窗
+        //   【不返回 tabId】→ ensureVideoCheckWindow 失败 → 调用方回退每平台开窗(= 你看到的多窗)。
+        //   publish(openPublishTab)和回退路径(openPlatformLogin)都用真实 url 才成功。检查窗只需任意
+        //   一个真实页挂 CDP 读 cookie,开在哪页无所谓,navigate 随后会切到目标登录页。
+        url: initialUrl,
         bounds,
       },
       12000,
@@ -144,7 +148,7 @@ export async function checkVideoLoginByCookie(
   // 创作中心校验 → 探 creator 子域;没登记 creator 行的平台退回 main(主站发布、无独立创作中心)。
   const cfg = VIDEO_LOGIN_COOKIES[`${platform}:${which}`] || VIDEO_LOGIN_COOKIES[`${platform}:main`];
   if (!cfg) return null;
-  const tabId = typeof reuseTabId === 'number' ? reuseTabId : await ensureVideoCheckWindow();
+  const tabId = typeof reuseTabId === 'number' ? reuseTabId : await ensureVideoCheckWindow(cfg.url);
   if (typeof tabId !== 'number') return null;
   const cookies = await cdpGetCookies(cfg.url, tabId);
   // ⚠️ cookie 读失败【不清 _checkTabId】:窗多半还开着(只是 cdp attach/读失败),清了会导致关弹窗时
@@ -169,7 +173,7 @@ export async function checkVideoLoginByCookieBatch(
     .map((it) => ({ platform: it.platform, cfg: VIDEO_LOGIN_COOKIES[`${it.platform}:${it.which || 'main'}`] || VIDEO_LOGIN_COOKIES[`${it.platform}:main`] }))
     .filter((x): x is { platform: LoginPlatform; cfg: { url: string; domain: string; names: string[] } } => !!x.cfg);
   if (resolved.length === 0) return out;
-  const tabId = await ensureVideoCheckWindow();
+  const tabId = await ensureVideoCheckWindow(resolved[0].cfg.url);
   if (typeof tabId !== 'number') return out;
   // 【不关窗】窗口留着:它既是 cookie 读取窗,又是「打开 X 登录」复用的那一个登录窗(见
   //   openLoginInCheckWindow),轮询也复用它。模态关闭时由 closeVideoCheckWindow 统一收掉。
@@ -201,9 +205,10 @@ export async function checkVideoLoginByCookieBatch(
  *  绿会粘住(见 VideoLoginCheckModal confirmedRef),所以挨个 navigate 登录,各平台都能转绿且不掉。
  *  检查窗开不出(无 v6)→ ok:false,调用方跳过(不再 fallback 弹多窗)。 */
 export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean }> {
-  const tabId = await ensureVideoCheckWindow();
+  // 用登录 url 自身开窗:窗不存在时直接开在该登录页(真实 url,扩展能返回 tabId);已存在则下面 navigate 切过去。
+  const tabId = await ensureVideoCheckWindow(url);
   if (typeof tabId !== 'number') {
-    console.log('[videoLoginCheck] openLoginInCheckWindow: 检查窗开不出(无 v6?),跳过');
+    console.log('[videoLoginCheck] openLoginInCheckWindow: 检查窗开不出(task_open_tab 没返回 tabId),跳过');
     return { ok: false };
   }
   // 即发即返 navigate【同一个 checker tab】,不等页面 load(慢网/VPN 不卡):扩展 chrome.tabs.update
