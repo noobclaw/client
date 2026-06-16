@@ -1956,18 +1956,21 @@ type OutputMode = 'local' | 'upload';
 // 改这一行必须同步改 publishers/types.ts,否则 pipeline 运行期收不到对应 platform id。
 // TikTok / YouTube 暂不支持视频发布,从可选平台里去掉(driver/枚举保留,以后支持再加回 UI)。
 type Platform = 'douyin' | 'xhs' | 'binance' | 'x' | 'tiktok' | 'bilibili' | 'kuaishou' | 'shipinhao' | 'toutiao';
+// 顺序 = 展示顺序 = 发布顺序(改一处即可)。用户要求:抖音/小红书/快手【最前】;币安/推特/TikTok【最后】。
 const PUBLISH_PLATFORMS: Array<{ id: Platform; zh: string; en: string; emoji: string }> = [
   { id: 'douyin',    zh: '抖音',     en: 'Douyin',      emoji: '🎵' },
   { id: 'xhs',       zh: '小红书',   en: 'Xiaohongshu', emoji: '📕' },
-  { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
-  { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
-  { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
   { id: 'kuaishou',  zh: '快手',     en: 'Kuaishou',    emoji: '⚡' },
   { id: 'shipinhao', zh: '视频号',   en: 'Channels',    emoji: '🟢' },
   { id: 'toutiao',   zh: '头条号',   en: 'Toutiao',     emoji: '🟠' },
-  // B 站投稿步骤最多(创作声明等),放最后(用户要求)
   { id: 'bilibili',  zh: 'B 站',     en: 'Bilibili',    emoji: '📺' },
+  { id: 'binance',   zh: '币安广场', en: 'Binance',     emoji: '🟡' },
+  { id: 'x',         zh: '推特',     en: 'X / Twitter', emoji: '🐦' },
+  { id: 'tiktok',    zh: 'TikTok',   en: 'TikTok',      emoji: '🎬' },
 ];
+// 新建任务默认勾选的平台(用户要求):抖音/小红书/快手/视频号/头条号/B站;币安/推特/TikTok 默认不勾。
+// 四个视频任务(ai/stock/hotspot/template)新建时都默认「发布到平台」+ 勾这 6 个;编辑老任务仍恢复保存值。
+const DEFAULT_PUBLISH_PLATFORMS: Platform[] = ['douyin', 'xhs', 'kuaishou', 'shipinhao', 'toutiao', 'bilibili'];
 
 const SCRIPT_MAX = 800;
 // 严格模式:视频文案逐字朗读,直接决定时长 → 必填且不少于此字数。
@@ -2384,6 +2387,7 @@ const VideoConfigModal: React.FC<{
   // outputMode 恒为 'local' → 平台勾选区被隐藏、buildInput 又把 publishPlatforms 写成 []
   // → 保存后任务被悄悄改回「仅存本地」(详情页看不见发布信息、运行也只存本地)。
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    if (!editTask) return 'upload'; // 新建默认「发布到平台」(用户要求)
     const pub = (editTask?.input as any)?.publishPlatforms;
     return Array.isArray(pub) && pub.length > 0 ? 'upload' : 'local';
   });
@@ -2398,8 +2402,8 @@ const VideoConfigModal: React.FC<{
     if (editList && editList.length > 0) {
       editList.forEach((p) => { if (p in init) init[p as Platform] = true; });
     } else if (!editTask) {
-      // 新建默认开两个国内主力
-      init.douyin = true; init.xhs = true;
+      // 新建默认勾选(用户要求):抖音/小红书/快手/视频号/头条号/B站
+      DEFAULT_PUBLISH_PLATFORMS.forEach((p) => { init[p] = true; });
     }
     return init;
   });
@@ -3802,11 +3806,14 @@ export const HotspotVideoModal: React.FC<{
     return () => { alive = false; };
   }, []);
   const [outputMode, setOutputMode] = useState<OutputMode>(
-    Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local');
+    !editTask ? 'upload' // 新建默认「发布到平台」(用户要求)
+      : (Array.isArray(ei.publishPlatforms) && ei.publishPlatforms.length > 0 ? 'upload' : 'local'));
   const [platforms, setPlatforms] = useState<Record<Platform, boolean>>(() => {
     const saved: string[] = Array.isArray(ei.publishPlatforms) ? ei.publishPlatforms : [];
     const init = {} as Record<Platform, boolean>;
-    PUBLISH_PLATFORMS.forEach((p) => { init[p.id] = saved.includes(p.id); });
+    // 新建默认勾选(用户要求):抖音/小红书/快手/视频号/头条号/B站;编辑老任务恢复保存值。
+    const base: string[] = !editTask ? DEFAULT_PUBLISH_PLATFORMS : saved;
+    PUBLISH_PLATFORMS.forEach((p) => { init[p.id] = base.includes(p.id); });
     return init;
   });
   // 对齐币安:不提供「每天定时」(固定钟点易被风控判机器人),默认/兜底走「每日随机时间」。
@@ -4344,6 +4351,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   // ── Step 5:出片 —— 成片去向(仅本地/发布到平台)二选一,对齐热搜成片 ──
   // 编辑态从 publishPlatforms 反推:有平台 = 'upload',否则 'local'。
   const [outputMode, setOutputMode] = useState<OutputMode>(() => {
+    if (!editTask) return 'upload'; // 新建默认「发布到平台」(用户要求)
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
       ? ((editTask!.input as any).publishPlatforms as string[]) : [];
     return editList.length > 0 ? 'upload' : 'local';
@@ -4356,6 +4364,7 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
     const editList = Array.isArray((editTask?.input as any)?.publishPlatforms)
       ? ((editTask!.input as any).publishPlatforms as string[]) : null;
     if (editList && editList.length > 0) editList.forEach((p) => { if (p in init) init[p as Platform] = true; });
+    else if (!editTask) DEFAULT_PUBLISH_PLATFORMS.forEach((p) => { init[p] = true; }); // 新建默认勾 6 个(用户要求)
     return init;
   });
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
