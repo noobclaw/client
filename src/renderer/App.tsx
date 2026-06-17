@@ -41,7 +41,7 @@ import LoginWall from './components/LoginWall';
 import TokenInsufficientDialog from './components/TokenInsufficientDialog';
 import { noobClawAuth } from './services/noobclawAuth';
 import { noobClawApi } from './services/noobclawApi';
-import { writeCachedPaymentInfo } from './services/paymentInfoCache';
+import { writeCachedPaymentInfo, writeCachedRedeemInfo } from './services/paymentInfoCache';
 import { noobClawSSE } from './services/noobclawSSE';
 
 const App: React.FC = () => {
@@ -543,6 +543,11 @@ const App: React.FC = () => {
     noobClawApi.getPaymentInfo().then((info) => {
       if (info) writeCachedPaymentInfo(info);
     }).catch(() => { /* 静默 — 失败不影响主流程,WalletView mount 时会自己重试 */ });
+    // CNY 卡密档位也启动预取(对齐 USDT/BNB),写 redeem 缓存 → WalletView lazy-init 从 cache 秒出,
+    //   首次进我的充值不用再等 getRedeemPackages 网络。没配卡密通道(packages 空)就不写,CNY tab 自然不露。
+    noobClawApi.getRedeemPackages().then((info) => {
+      if (info && info.packages && info.packages.length > 0) writeCachedRedeemInfo(info);
+    }).catch(() => { /* 静默 — WalletView mount 时会自己重试 */ });
   }, [authState.isAuthenticated]);
 
   // v1.x: SSE 实时推送通道。认证后 open EventSource('/api/me/events/stream'),
