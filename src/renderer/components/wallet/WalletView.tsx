@@ -1469,13 +1469,13 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
             <div className="flex-1 flex flex-col items-center justify-center border-l dark:border-claude-darkBorder border-claude-border pl-4">
               <p className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-1">{isZh ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</p>
               <div className="flex items-center gap-2">
-                <span className="text-xl font-bold text-green-500">
+                <span className="text-xl font-bold text-primary">
                   ¥{parseFloat(usdtRebateSummary?.cny_total_earned || '0').toFixed(2)}
                 </span>
                 <button
                   type="button"
                   onClick={() => setShowCnyWithdraw(true)}
-                  className="text-xs text-green-500 hover:underline flex items-center gap-0.5"
+                  className="text-xs text-primary hover:underline flex items-center gap-0.5"
                 >
                   {isZh ? '提现' : 'Withdraw'}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>

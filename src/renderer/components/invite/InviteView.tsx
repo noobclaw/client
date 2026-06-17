@@ -647,8 +647,8 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
               {/* 卡框内右侧:收到返佣(CNY)+ 提现(用户要求放在钱包框的右边) */}
               <div className="shrink-0 self-stretch flex flex-col justify-center text-right border-l dark:border-claude-darkBorder border-claude-border pl-3">
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</div>
-                <div className="text-lg font-bold text-green-500 tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
-                <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-green-500 hover:underline flex items-center gap-0.5 justify-end mt-0.5">
+                <div className="text-lg font-bold text-primary tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
+                <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-primary hover:underline flex items-center gap-0.5 justify-end mt-0.5">
                   {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
                 </button>
