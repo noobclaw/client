@@ -446,6 +446,26 @@ function scriptSummary(input: VideoCreationInput, isZh: boolean): string {
   return s.length > 60 ? s.slice(0, 60) + '…' : s;
 }
 
+// 视频创作卖点标签(空状态 + 新建页都用,改一处即可)。突出:批量日更 100 条、百条成本 < $4、全自动、一键全平台。
+const VIDEO_FEATURE_PILLS: Array<{ icon: string; zh: string; en: string }> = [
+  { icon: '🔥', zh: '批量日更,一次最多 100 条', en: 'Batch up to 100 shorts per run' },
+  { icon: '💰', zh: '100 条成本低于 $4 · 单条低至 $0.04', en: 'Under $4 for 100 clips · from $0.04 each' },
+  { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕,全程零剪辑', en: 'AI script + voiceover + subtitles, zero editing' },
+  { icon: '🚀', zh: '一键发抖音 / 小红书 / 快手 / 视频号 等全平台', en: 'One-click to Douyin / XHS / Kuaishou / Channels & more' },
+];
+const VideoFeaturePills: React.FC<{ isZh: boolean }> = ({ isZh }) => (
+  <div className="flex flex-wrap gap-2 justify-center">
+    {VIDEO_FEATURE_PILLS.map((p, i) => (
+      <span
+        key={i}
+        className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-rose-500/20 bg-rose-500/5 text-gray-700 dark:text-gray-300"
+      >
+        {p.icon} {isZh ? p.zh : p.en}
+      </span>
+    ))}
+  </div>
+);
+
 // ── 落地页:有任务显示发光卡片列表,无任务显示占位框 ────────────────────
 
 const VideoLanding: React.FC<{
@@ -493,20 +513,7 @@ const VideoLanding: React.FC<{
         </button>
 
         <section className="mt-6">
-          <div className="flex flex-wrap gap-2 justify-center">
-            {[
-              { icon: '🎙️', zh: 'AI 写稿 + AI 配音 + 自动字幕', en: 'AI script + voiceover + subtitles' },
-              { icon: '🎞️', zh: '在线视频素材 + 你的参考图', en: 'Stock video + your images' },
-              { icon: '🚀', zh: '一键发抖音/小红书/币安多家平台', en: 'One-click to Douyin / XHS / Binance & more' },
-            ].map((p, i) => (
-              <span
-                key={i}
-                className="inline-flex items-center gap-1 text-[11px] px-2.5 py-1 rounded-full border border-rose-500/20 bg-rose-500/5 text-gray-700 dark:text-gray-300"
-              >
-                {p.icon} {isZh ? p.zh : p.en}
-              </span>
-            ))}
-          </div>
+          <VideoFeaturePills isZh={isZh} />
         </section>
       </div>
     );
@@ -1820,6 +1827,10 @@ const VideoCreateFlow: React.FC<{
           descEn="Turn lists / news / data / quotes into animated vertical shorts — AI writes the animation, rendered locally, optional voice-over + subtitles. Seconds to render, stable and controllable. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`单条约 ${feeZh}(数据/写稿/合成)`} costEn={`~${feeEn} per clip (data / script / compose)`}
           btnZh="⚡ 开始生成 →" btnEn="⚡ Start →" />
+      </section>
+
+      <section className="mt-6">
+        <VideoFeaturePills isZh={isZh} />
       </section>
 
       {cinemaOpen && (
