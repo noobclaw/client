@@ -534,18 +534,26 @@ class NoobClawApiService {
     } catch { return null; }
   }
 
-  // 上传收款码(支付宝/微信),multipart 字段名 'qr' → 返 R2 URL。
-  // 【1:1 照抄 uploadAvatar(头像上传一直能用)】之前我自作聪明走 base64→主进程,实测主进程 Node
-  //   fetch+FormData 在 Electron 40 发出来是 text/plain/2字节的空请求(后端日志 ct="text/plain" len=2 坐实)。
-  //   渲染进程 formData.append(原始 File) + authedFetch 才是对的(头像就这么发、发的是正经 multipart)。
+  // File → data URL(base64)。⚠️【根因】桌面 webview(Tauri/Electron)里 fetch + FormData(File) 发 multipart
+  //   不可靠 → 后端收不到 file → "No file"(头像、收款码都中招)。改成把图读成 base64 走普通 JSON body,
+  //   任何 webview 都稳(JSON 不依赖 multipart 边界序列化)。官网普通浏览器仍可走老 multipart(后端两种都收)。
+  private fileToDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ''));
+      r.onerror = () => reject(new Error('read_failed'));
+      r.readAsDataURL(file);
+    });
+  }
+
+  // 上传收款码(支付宝/微信)→ 返 R2 URL。走 base64 JSON(见 fileToDataUrl)。
   async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
-      const formData = new FormData();
-      formData.append('qr', file);
+      const image = await this.fileToDataUrl(file);
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
         method: 'POST',
-        headers: this.getAuthHeaders(), // 不手动设 Content-Type,浏览器自带 multipart boundary
-        body: formData,
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || 'upload_failed' };
@@ -692,13 +700,11 @@ class NoobClawApiService {
   }
   async uploadAvatar(file: File): Promise<{ avatarUrl?: string; error?: string }> {
     try {
-      const formData = new FormData();
-      formData.append('avatar', file);
-      const authHeaders = this.getAuthHeaders();
+      const image = await this.fileToDataUrl(file); // base64 JSON,绕开桌面 webview multipart 不可靠的坑(见 fileToDataUrl)
       const res = await this.authedFetch(`${this.backendUrl}/api/user/avatar`, {
         method: 'POST',
-        headers: authHeaders,
-        body: formData,
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image }),
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || 'Upload failed' };
