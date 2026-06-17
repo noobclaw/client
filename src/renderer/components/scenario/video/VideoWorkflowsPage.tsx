@@ -2407,9 +2407,10 @@ const VideoConfigModal: React.FC<{
     }
     return init;
   });
-  // 自定义发布文案(选填):留空 → 出片时 AI 自动生成钩人文案;填了 → 覆盖 AI。
-  const [publishTitle, setPublishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
-  const [publishCaption, setPublishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
+  // 纯 AI / 在线素材 都不再给自定义发布文案输入框(用户要求,统一 AI 自动写)→ 只保留值(编辑老任务回填用),
+  // 不需要 setter;新建时为空 → buildInput 传 undefined → 出片时 AI 自动生成标题/正文/话题。
+  const [publishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
+  const [publishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
 
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -3397,37 +3398,17 @@ const VideoConfigModal: React.FC<{
                 platforms={platforms}
                 togglePlatform={togglePlatform}
               >
-                {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签。
-                    ⚠️ 在线素材(stock)是批量 AI 自动成片,每条独立写稿,发布文案也强制每条 AI 生成
-                    (填一个固定标题/正文会让 N 条共用同一文案,违背"每条独立")→ 不给输入框。 */}
-                {mode !== 'stock' && (
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                  <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                    {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
-                    <span className="ml-1.5 font-normal text-[11px] text-gray-400">
-                      {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
-                    </span>
-                  </div>
-                  <input
-                    value={publishTitle}
-                    onChange={(e) => setPublishTitle(e.target.value)}
-                    placeholder={isZh ? '钩人标题(如:今天这 3 个币闷声干了大事 🚀)' : 'Hook title'}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                  />
-                  <textarea
-                    value={publishCaption}
-                    onChange={(e) => setPublishCaption(e.target.value)}
-                    rows={3}
-                    placeholder={isZh ? '正文(钩子 + 看点 + 引导关注/评论)。可在文末写 #话题标签' : 'Caption body (hook + CTA). Add #hashtags at the end.'}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                  />
+                {/* 发布文案统一由 AI 自动生成 —— 纯 AI 与在线素材都【不给自定义输入框】(用户要求,跟热搜成片一致),
+                    标题/正文/话题全部 AI 自动写。 */}
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
+                  {isZh
+                    ? (mode === 'stock'
+                      ? '📝 发布文案:每条由 AI 独立生成钩人标题 + 引导互动文案 + 话题标签(批量成片不支持统一自定义文案)'
+                      : '📝 发布文案:由 AI 自动生成钩人标题 + 引导互动文案 + 话题标签(无需填写)')
+                    : (mode === 'stock'
+                      ? '📝 Caption: AI writes a unique hook title + CTA + hashtags per clip (batch mode has no shared custom caption)'
+                      : '📝 Caption: AI auto-writes a hook title + CTA + hashtags (nothing to fill in)')}
                 </div>
-                )}
-                {mode === 'stock' && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
-                    {isZh ? '📝 发布文案:每条由 AI 独立生成钩人标题 + 引导互动文案 + 话题标签(批量成片不支持统一自定义文案)' : '📝 Caption: AI writes a unique hook title + CTA + hashtags per clip (batch mode has no shared custom caption)'}
-                  </div>
-                )}
               </OutputDestination>
 
               {submitError && (
