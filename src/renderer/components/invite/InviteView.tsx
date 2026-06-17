@@ -1067,7 +1067,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                               )}
                             </span>
                             <span className={`inline-flex items-center w-fit px-1.5 py-0.5 rounded-full text-[10px] font-medium ${sent ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                              {sent ? (i18nService.currentLanguage === 'zh' ? '✓ 已入账' : '✓ Credited') : (i18nService.currentLanguage === 'zh' ? '⏳ 待入账' : '⏳ Pending')}
+                              {sent ? (i18nService.currentLanguage === 'zh' ? '✓ 已入账' : '✓ Credited') : (i18nService.currentLanguage === 'zh' ? '⏳ 待提现' : '⏳ Pending')}
                             </span>
                             <span className="dark:text-claude-darkTextSecondary text-claude-textSecondary truncate text-[10px]">
                               {formatDate(row.earned_at)}
