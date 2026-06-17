@@ -924,25 +924,37 @@ export const ScenarioView: React.FC<ScenarioViewProps> = ({
           </div>
           {/* v6.x: 「涨粉教程」入口 → 外部浏览器打开文档站。样式与「我的涨粉任务」
               页一致(琥珀渐变胶囊按钮),靠 justify-between 顶到头部右侧。 */}
-          {mode === 'create' && (
-          <button
-            type="button"
-            onClick={() => { try { window.electron?.shell?.openExternal('https://docs.noobclaw.com'); } catch { /* sandbox/无 xdg-open 时静默 */ } }}
-            className="group relative shrink-0 inline-flex items-center gap-1.5 text-xs font-medium
-                       px-3.5 py-1.5 rounded-full
-                       bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15
-                       hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25
-                       text-amber-700 dark:text-amber-300
-                       border border-amber-500/30 hover:border-amber-500/60
-                       shadow-sm hover:shadow-md hover:shadow-amber-500/20
-                       transition-all duration-200 hover:-translate-y-0.5"
-            title={i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Growth Tutorial'}
-          >
-            <span className="text-sm leading-none">📖</span>
-            <span>{i18nService.currentLanguage === 'zh' ? '涨粉教程' : 'Growth Tutorial'}</span>
-            <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
-          </button>
-          )}
+          {mode === 'create' && (() => {
+            // tab=「多平台视频创作」(currentPlatform==='video')→ 文字「视频教程」+ 视频文档链接(中文/英文分开);
+            //   其它 tab 保持原样:「涨粉教程」+ 文档首页(用户要求)。
+            const isVideoTab = currentPlatform === 'video';
+            const isZhDoc = i18nService.currentLanguage === 'zh';
+            const tutorialUrl = isVideoTab
+              ? (isZhDoc ? 'https://docs.noobclaw.com/zhong-wen-ban/kua-ping-tai-shi-pin-chuang-zuo' : 'https://docs.noobclaw.com/english/video-creation')
+              : 'https://docs.noobclaw.com';
+            const tutorialLabel = isVideoTab
+              ? (isZhDoc ? '视频教程' : 'Video Tutorial')
+              : (isZhDoc ? '涨粉教程' : 'Growth Tutorial');
+            return (
+            <button
+              type="button"
+              onClick={() => { try { window.electron?.shell?.openExternal(tutorialUrl); } catch { /* sandbox/无 xdg-open 时静默 */ } }}
+              className="group relative shrink-0 inline-flex items-center gap-1.5 text-xs font-medium
+                         px-3.5 py-1.5 rounded-full
+                         bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-rose-500/15
+                         hover:from-amber-500/25 hover:via-orange-500/25 hover:to-rose-500/25
+                         text-amber-700 dark:text-amber-300
+                         border border-amber-500/30 hover:border-amber-500/60
+                         shadow-sm hover:shadow-md hover:shadow-amber-500/20
+                         transition-all duration-200 hover:-translate-y-0.5"
+              title={tutorialLabel}
+            >
+              <span className="text-sm leading-none">📖</span>
+              <span>{tutorialLabel}</span>
+              <span className="opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200">→</span>
+            </button>
+            );
+          })()}
         </div>
       )}
 
