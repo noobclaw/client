@@ -3390,74 +3390,45 @@ const VideoConfigModal: React.FC<{
                 )}
               </Field>
 
-              <Field label={isZh ? '出片后' : 'After generation'}>
-                <div className="grid grid-cols-2 gap-2">
-                  <RadioCard
-                    active={outputMode === 'local'}
-                    onClick={() => setOutputMode('local')}
-                    title={isZh ? '存本地不上传' : 'Save locally, no upload'}
-                    desc={isZh ? '只在本机生成 mp4，自己看 / 手动发都行' : 'just produce an mp4 on this machine'}
+              <OutputDestination
+                isZh={isZh}
+                outputMode={outputMode}
+                setOutputMode={setOutputMode}
+                platforms={platforms}
+                togglePlatform={togglePlatform}
+              >
+                {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签。
+                    ⚠️ 在线素材(stock)是批量 AI 自动成片,每条独立写稿,发布文案也强制每条 AI 生成
+                    (填一个固定标题/正文会让 N 条共用同一文案,违背"每条独立")→ 不给输入框。 */}
+                {mode !== 'stock' && (
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                  <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
+                    <span className="ml-1.5 font-normal text-[11px] text-gray-400">
+                      {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
+                    </span>
+                  </div>
+                  <input
+                    value={publishTitle}
+                    onChange={(e) => setPublishTitle(e.target.value)}
+                    placeholder={isZh ? '钩人标题(如:今天这 3 个币闷声干了大事 🚀)' : 'Hook title'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
                   />
-                  <RadioCard
-                    active={outputMode === 'upload'}
-                    onClick={() => setOutputMode('upload')}
-                    title={isZh ? '上传到各大平台' : 'Upload to platforms'}
-                    desc={isZh ? '出片后自动发到选中的平台' : 'auto-publish to selected platforms after'}
+                  <textarea
+                    value={publishCaption}
+                    onChange={(e) => setPublishCaption(e.target.value)}
+                    rows={3}
+                    placeholder={isZh ? '正文(钩子 + 看点 + 引导关注/评论)。可在文末写 #话题标签' : 'Caption body (hook + CTA). Add #hashtags at the end.'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
                   />
                 </div>
-              </Field>
-
-              {outputMode === 'upload' && (
-                <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
-                  <div className="flex flex-wrap gap-2">
-                    {PUBLISH_PLATFORMS.map((m) => (
-                      <PlatformCheck
-                        key={m.id}
-                        checked={!!platforms[m.id]}
-                        onClick={() => togglePlatform(m.id)}
-                        label={`${m.emoji} ${isZh ? m.zh : m.en}`}
-                      />
-                    ))}
+                )}
+                {mode === 'stock' && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
+                    {isZh ? '📝 发布文案:每条由 AI 独立生成钩人标题 + 引导互动文案 + 话题标签(批量成片不支持统一自定义文案)' : '📝 Caption: AI writes a unique hook title + CTA + hashtags per clip (batch mode has no shared custom caption)'}
                   </div>
-                  <div className="mt-2 text-[11px] text-amber-500 leading-relaxed">
-                    {isZh
-                      ? '💡 出片后会自动登录态检查 → 已登录就发,未登录的【自动跳过】(下次登录后再跑会补传)。不强制全部登录,可以一次勾完慢慢补。'
-                      : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
-                  </div>
-
-                  {/* 自定义发布文案(选填)—— 留空 AI 自动生成钩人文案 + 话题标签。
-                      ⚠️ 在线素材(stock)是批量 AI 自动成片,每条独立写稿,发布文案也强制每条 AI 生成
-                      (填一个固定标题/正文会让 N 条共用同一文案,违背"每条独立")→ 不给输入框。 */}
-                  {mode !== 'stock' && (
-                  <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                    <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                      {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
-                      <span className="ml-1.5 font-normal text-[11px] text-gray-400">
-                        {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
-                      </span>
-                    </div>
-                    <input
-                      value={publishTitle}
-                      onChange={(e) => setPublishTitle(e.target.value)}
-                      placeholder={isZh ? '钩人标题(如:今天这 3 个币闷声干了大事 🚀)' : 'Hook title'}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                    />
-                    <textarea
-                      value={publishCaption}
-                      onChange={(e) => setPublishCaption(e.target.value)}
-                      rows={3}
-                      placeholder={isZh ? '正文(钩子 + 看点 + 引导关注/评论)。可在文末写 #话题标签' : 'Caption body (hook + CTA). Add #hashtags at the end.'}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                    />
-                  </div>
-                  )}
-                  {mode === 'stock' && (
-                    <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
-                      {isZh ? '📝 发布文案:每条由 AI 独立生成钩人标题 + 引导互动文案 + 话题标签(批量成片不支持统一自定义文案)' : '📝 Caption: AI writes a unique hook title + CTA + hashtags per clip (batch mode has no shared custom caption)'}
-                    </div>
-                  )}
-                </Field>
-              )}
+                )}
+              </OutputDestination>
 
               {submitError && (
                 <div className="rounded-lg border border-red-500/40 bg-red-500/5 p-3 text-xs text-red-500">{submitError}</div>
@@ -3639,6 +3610,56 @@ const PlatformCheck: React.FC<{
     </span>
     {label}
   </button>
+);
+
+// 四个视频任务【统一】的「出片后(存本地/上传到各大平台)+ 发布平台多选 + 登录提示」配置块(用户要求 UI 统一)。
+// 各任务专属的「发布文案」输入区作为 children 放底部(stock 仅提示、hotspot 无、ai/template 给输入框)。
+const OutputDestination: React.FC<{
+  isZh: boolean;
+  outputMode: OutputMode;
+  setOutputMode: (m: OutputMode) => void;
+  platforms: Record<Platform, boolean>;
+  togglePlatform: (p: Platform) => void;
+  children?: React.ReactNode;
+}> = ({ isZh, outputMode, setOutputMode, platforms, togglePlatform, children }) => (
+  <>
+    <Field label={isZh ? '出片后' : 'After generation'}>
+      <div className="grid grid-cols-2 gap-2">
+        <RadioCard
+          active={outputMode === 'local'}
+          onClick={() => setOutputMode('local')}
+          title={isZh ? '存本地不上传' : 'Save locally, no upload'}
+          desc={isZh ? '只在本机生成 mp4，自己看 / 手动发都行' : 'just produce an mp4 on this machine'}
+        />
+        <RadioCard
+          active={outputMode === 'upload'}
+          onClick={() => setOutputMode('upload')}
+          title={isZh ? '上传到各大平台' : 'Upload to platforms'}
+          desc={isZh ? '出片后自动发到选中的平台' : 'auto-publish to selected platforms after'}
+        />
+      </div>
+    </Field>
+    {outputMode === 'upload' && (
+      <Field label={isZh ? '发布平台（可多选）' : 'Target platforms (multi-select)'}>
+        <div className="flex flex-wrap gap-2">
+          {PUBLISH_PLATFORMS.map((m) => (
+            <PlatformCheck
+              key={m.id}
+              checked={!!platforms[m.id]}
+              onClick={() => togglePlatform(m.id)}
+              label={`${m.emoji} ${isZh ? m.zh : m.en}`}
+            />
+          ))}
+        </div>
+        <div className="mt-2 text-[11px] text-amber-500 leading-relaxed">
+          {isZh
+            ? '💡 出片后会自动登录态检查 → 已登录就发,未登录的【自动跳过】(下次登录后再跑会补传)。不强制全部登录,可以一次勾完慢慢补。'
+            : '💡 After rendering, each platform is auto-checked for login. Logged-in ones publish; others are SKIPPED (not failed). Log in later and re-run to back-fill.'}
+        </div>
+        {children}
+      </Field>
+    )}
+  </>
 );
 
 // 通用入口卡(3 张视频创作卡复用:电影级 / 在线素材 / 模板速生)。
@@ -4152,35 +4173,15 @@ export const HotspotVideoModal: React.FC<{
             </>
           )}
 
-          {/* ── Step 4:成片去向 ── */}
+          {/* ── Step 4:成片去向(统一 OutputDestination,与 ai/stock/模板 一致)── */}
           {step === 4 && (
-            <Field label={isZh ? '成片去向' : 'Output'}>
-              <div className="flex gap-2 mb-2">
-                {(['local', 'upload'] as OutputMode[]).map((m) => (
-                  <button key={m} type="button" onClick={() => setOutputMode(m)}
-                    className={`flex-1 py-2 rounded-lg text-sm border ${outputMode === m ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300'}`}>
-                    {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
-                  </button>
-                ))}
-              </div>
-              {outputMode === 'upload' && (
-                <div className="grid grid-cols-2 gap-2">
-                  {PUBLISH_PLATFORMS.map((p) => {
-                    const on = !!platforms[p.id];
-                    return (
-                      <button key={p.id} type="button" onClick={() => setPlatforms((pp) => ({ ...pp, [p.id]: !pp[p.id] }))}
-                        className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm ${on ? 'border-amber-500 bg-amber-50 dark:bg-amber-500/10' : 'border-gray-200 dark:border-gray-700'}`}>
-                        <span>{p.emoji}</span><span className="dark:text-gray-200">{isZh ? p.zh : p.en}</span>
-                        {on && <span className="ml-auto text-amber-500">✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-              {outputMode === 'upload' && (
-                <p className="text-[11px] text-gray-400 mt-2">{isZh ? '标题/正文/话题全部 AI 自动生成,无需填写;运行前会校验各平台登录态,未登录的自动跳过。' : 'Title/caption/tags auto-generated; login checked before run, not-logged-in skipped.'}</p>
-              )}
-            </Field>
+            <OutputDestination
+              isZh={isZh}
+              outputMode={outputMode}
+              setOutputMode={setOutputMode}
+              platforms={platforms}
+              togglePlatform={(p) => setPlatforms((pp) => ({ ...pp, [p]: !pp[p] }))}
+            />
           )}
 
           {/* ── Step 5:运行频率 + 每次运行条数(逐字对齐币安发帖任务) ── */}
@@ -4682,50 +4683,35 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                   <span className="text-xs text-gray-500">{brandColor}</span>
                 </div>
               </Field>
-              <Field label={isZh ? '成片去向' : 'Output'} hint={isZh ? '仅存本地,或出片后自动发布到平台(对齐热搜成片)' : 'save local only, or auto-publish after render'}>
-                <div className="flex gap-2 mb-2">
-                  {(['local', 'upload'] as OutputMode[]).map((m) => (
-                    <button key={m} type="button" onClick={() => setOutputMode(m)}
-                      className={`flex-1 py-2 rounded-lg text-sm border transition-colors ${outputMode === m ? 'border-fuchsia-500 bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 font-semibold' : 'border-gray-200 dark:border-gray-700 dark:text-gray-300 hover:border-fuchsia-500/50'}`}>
-                      {m === 'local' ? (isZh ? '📂 仅存本地' : '📂 Local only') : (isZh ? '🚀 发布到平台' : '🚀 Publish')}
-                    </button>
-                  ))}
+              <OutputDestination
+                isZh={isZh}
+                outputMode={outputMode}
+                setOutputMode={setOutputMode}
+                platforms={platforms}
+                togglePlatform={togglePlatform}
+              >
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
+                  <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
+                    {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
+                    <span className="ml-1.5 font-normal text-[11px] text-gray-400">
+                      {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
+                    </span>
+                  </div>
+                  <input
+                    value={publishTitle}
+                    onChange={(e) => setPublishTitle(e.target.value)}
+                    placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                  />
+                  <textarea
+                    value={publishCaption}
+                    onChange={(e) => setPublishCaption(e.target.value)}
+                    rows={2}
+                    placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
+                  />
                 </div>
-                {outputMode === 'upload' && (
-                  <>
-                    <div className="flex flex-wrap gap-2">
-                      {PUBLISH_PLATFORMS.map((m) => (
-                        <PlatformCheck
-                          key={m.id}
-                          checked={!!platforms[m.id]}
-                          onClick={() => togglePlatform(m.id)}
-                          label={`${m.emoji} ${isZh ? m.zh : m.en}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="mt-2 space-y-2">
-                      <div className="text-[11px] text-amber-500 leading-relaxed">
-                        {isZh
-                          ? '💡 已登录就发,未登录的自动跳过(下次登录再跑会补传)。标题/正文留空则 AI 自动写。'
-                          : '💡 Logged-in ones publish; unlogged are skipped. Title/caption auto-written if empty.'}
-                      </div>
-                      <input
-                        value={publishTitle}
-                        onChange={(e) => setPublishTitle(e.target.value)}
-                        placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                      />
-                      <textarea
-                        value={publishCaption}
-                        onChange={(e) => setPublishCaption(e.target.value)}
-                        rows={2}
-                        placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
-                        className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                      />
-                    </div>
-                  </>
-                )}
-              </Field>
+              </OutputDestination>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>
                 <RemixFreqPicker isZh={isZh} value={runInterval} onChange={(v) => setRunInterval(v as VideoRunInterval)} />
               </Field>
