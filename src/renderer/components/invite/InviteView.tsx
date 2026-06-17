@@ -611,6 +611,23 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             左 = 我的钱包(头像 / 我的钱包(BSC) / 地址 / 社媒账号),
             右 = PartnerApplyCard compact 模式(字号 + 按钮文本都精简)。
             其他情况(无社媒登录 / 已是合伙人)保持原 full-width 单卡片行为。 */}
+        {/* 收到返佣 (CNY) + 提现 —— 独立卡片,放在所有钱包卡上方,【对所有用户可见】。
+            ⚠️ 不要再塞进下面 socialEmail 那张钱包卡里:那张只在「社交登录 + 非合伙人」
+            分支渲染,钱包地址登录用户 / 合伙人都看不到,会被当成「功能没了」。 */}
+        <div className="mb-3 p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate received (CNY)'}</div>
+            <div className="text-2xl font-bold text-green-500 tabular-nums">¥{animCny.toFixed(2)}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCnyWithdraw(true)}
+            className="shrink-0 text-sm text-green-500 hover:underline flex items-center gap-0.5 font-medium"
+          >
+            {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </div>
         {profile && profile?.partner?.is_partner && (
           <PartnerHero partner={profile.partner} />
         )}
@@ -643,15 +660,6 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                   {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
                   <span className="truncate">{authState.socialEmail}</span>
                 </div>
-              </div>
-              {/* 右:收到返佣 (CNY) + 提现(放进钱包卡右侧,对齐我的充值页;原顶部单卡已撤、统计行 CNY 已移除) */}
-              <div className="shrink-0 self-stretch flex flex-col justify-center text-right border-l dark:border-claude-darkBorder border-claude-border pl-3">
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</div>
-                <div className="text-lg font-bold text-green-500 tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
-                <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-green-500 hover:underline flex items-center gap-0.5 justify-end mt-0.5">
-                  {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                </button>
               </div>
             </div>
             {/* 右:缩小版 PartnerApplyCard */}
