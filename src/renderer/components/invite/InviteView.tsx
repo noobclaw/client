@@ -607,15 +607,12 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             首屏闪一下。外层加 profile 守卫 — 只在已加载 profile 后才走二选一,
             登录前一直 hide(跟原版 `profile?.partner?.is_partner && PartnerHero`
             的行为对齐)。 */}
-        {profile && profile?.partner?.is_partner && (
-          <PartnerHero partner={profile.partner} />
-        )}
-        {/* 非合伙人(社交登录 / 钱包登录都走这一个分支)— 顶部左右双栏,【对所有非合伙人可见】:
+        {/* 顶部左右双栏 —— 合伙人 / 非合伙人【结构相同】,只是右卡样式不同:
             左 = 我的钱包卡片(头像 / 我的钱包(BSC) / 地址 / 社媒账号),【卡框右侧】= 收到返佣(CNY)+ 提现;
-            右 = PartnerApplyCard(您当前的返佣比例 / 申请合伙人)。
-            ⚠️ 别再把 CNY 拆成顶部独立全宽卡,也别用 socialEmail 把整张卡 gate 掉 ——
-            钱包登录用户没有 socialEmail,会整栏消失被当成「功能没了」(已被用户骂过两次)。 */}
-        {profile && !profile?.partner?.is_partner && (
+            右 = 合伙人 → PartnerHero(等级标志卡);非合伙人 → PartnerApplyCard(您当前的返佣比例 / 申请合伙人)。
+            ⚠️ 别再把 CNY 拆成顶部独立全宽卡,也别用 socialEmail / is_partner 把整张卡 gate 掉 ——
+            任何已登录用户都要看到这张钱包卡 + CNY 提现(已被用户骂过几次)。 */}
+        {profile && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 items-stretch">
             {/* 左:我的钱包卡片,卡框右侧带 收到返佣(CNY)+ 提现 */}
             <div className="p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center gap-3 min-w-0">
@@ -657,8 +654,10 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 </button>
               </div>
             </div>
-            {/* 右:返佣比例卡(您当前的返佣比例 / 申请合伙人)*/}
-            <PartnerApplyCard compact />
+            {/* 右:合伙人 → 等级标志卡 PartnerHero;非合伙人 → 返佣比例 / 申请合伙人卡 */}
+            {profile?.partner?.is_partner
+              ? <PartnerHero partner={profile.partner} />
+              : <PartnerApplyCard compact />}
           </div>
         )}
         {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
