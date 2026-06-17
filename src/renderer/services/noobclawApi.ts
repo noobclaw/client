@@ -497,6 +497,7 @@ class NoobClawApiService {
     total_earned: string; total_paid: string; total_pending: string;
     withdrawable: string; has_pending: boolean;
     min_amount: number; max_amount: number; fee_pct: number;
+    qr_alipay?: string | null; qr_wechat?: string | null;
   } | null> {
     try {
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/summary`, {
@@ -546,18 +547,32 @@ class NoobClawApiService {
     });
   }
 
-  // 上传收款码(支付宝/微信)→ 返 R2 URL。走 base64 JSON(见 fileToDataUrl)。
-  async uploadCnyWithdrawQr(file: File): Promise<{ ok?: boolean; url?: string; error?: string }> {
+  // 上传收款码 → 返 R2 URL。走 base64 JSON(见 fileToDataUrl)。带 kind → 后端按支付宝/微信各记住一张,下次自动回填。
+  async uploadCnyWithdrawQr(file: File, kind?: 'alipay' | 'wechat'): Promise<{ ok?: boolean; url?: string; error?: string }> {
     try {
       const image = await this.fileToDataUrl(file);
       const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/upload-qr`, {
         method: 'POST',
         headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image }),
+        body: JSON.stringify({ image, kind }),
       });
       const data = await res.json();
       if (!res.ok) return { error: data.error || 'upload_failed' };
       return { ok: true, url: data.url };
+    } catch { return { error: 'network_error' }; }
+  }
+
+  // 删除记住的收款码(按收款方式)。
+  async deleteCnyWithdrawQr(kind: 'alipay' | 'wechat'): Promise<{ ok?: boolean; error?: string }> {
+    try {
+      const res = await this.authedFetch(`${this.backendUrl}/api/me/withdraw/cny/qr-delete`, {
+        method: 'POST',
+        headers: { ...this.getAuthHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return { error: data.error || 'delete_failed' };
+      return { ok: true };
     } catch { return { error: 'network_error' }; }
   }
 

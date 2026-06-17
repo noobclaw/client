@@ -18,6 +18,7 @@ type Summary = {
   total_earned: string; total_paid: string; total_pending: string;
   withdrawable: string; has_pending: boolean;
   min_amount: number; max_amount: number; fee_pct: number;
+  qr_alipay?: string | null; qr_wechat?: string | null; // 记住的收款码(支付宝/微信各一张)
 };
 type HistItem = {
   id: string; amount_cny: string; fee_pct: number; amount_paid_cny: string;
@@ -42,7 +43,7 @@ export const CnyWithdrawModal: React.FC<{
   const [msg, setMsg] = useState<{ text: string; color: string }>({ text: '', color: '' });
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const refresh = async (): Promise<HistItem[]> => {
+  const refresh = async (): Promise<{ items: HistItem[]; summary: Summary | null }> => {
     const [s, h] = await Promise.all([
       noobClawApi.getCnyWithdrawSummary(),
       noobClawApi.getCnyWithdrawHistory(20),
@@ -51,18 +52,15 @@ export const CnyWithdrawModal: React.FC<{
     const items: HistItem[] = h.items || [];
     setHistory(items);
     setLoading(false);
-    return items;
+    return { items, summary: s };
   };
-  // 打开时预填「上次传过的收款码」(取最近一笔提现的 qr),让用户不必每次重传;
-  // 之后可点「删除」清掉再重传。只在挂载时填一次,不覆盖用户当前的选择。
+  // 收款码:支付宝/微信【各记住一张】(后端 users.cny_qr_*),开窗 + 切收款方式时自动回填,不必每次重传;删了再传就是新的。
+  const savedQrFor = (kind: 'alipay' | 'wechat', s: Summary | null): string =>
+    (kind === 'wechat' ? s?.qr_wechat : s?.qr_alipay) || '';
   useEffect(() => {
     void (async () => {
-      const items = await refresh();
-      const last = items.find((x) => x.qr_image_url);
-      if (last?.qr_image_url) {
-        setQrUrl((u) => u || last.qr_image_url || '');
-        setQrKind(last.qr_kind === 'wechat' ? 'wechat' : 'alipay');
-      }
+      const { summary: s } = await refresh();
+      setQrUrl(savedQrFor(qrKind, s)); // qrKind 默认 alipay → 回填支付宝那张(若已记住)
     })();
   }, []);
 
@@ -72,8 +70,8 @@ export const CnyWithdrawModal: React.FC<{
     setQrUploading(true);
     setMsg({ text: '', color: '' });
     try {
-      const r = await noobClawApi.uploadCnyWithdrawQr(file);
-      if (r.ok && r.url) setQrUrl(r.url);
+      const r = await noobClawApi.uploadCnyWithdrawQr(file, qrKind); // 带 kind → 后端按支付宝/微信记住
+      if (r.ok && r.url) { setQrUrl(r.url); void refresh(); } // refresh 让 summary.qr_* 更新(切收款方式时回填用)
       else setMsg({ text: (isZh ? '收款码上传失败:' : 'QR upload failed: ') + (r.error || ''), color: 'text-red-500' });
     } finally {
       setQrUploading(false);
@@ -159,7 +157,7 @@ export const CnyWithdrawModal: React.FC<{
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">{isZh ? '收款方式' : 'Receive via'}</label>
               <div className="grid grid-cols-2 gap-2 mb-3">
                 {(['alipay', 'wechat'] as const).map((k) => (
-                  <button key={k} type="button" onClick={() => setQrKind(k)}
+                  <button key={k} type="button" onClick={() => { setQrKind(k); setQrUrl(savedQrFor(k, summary)); setMsg({ text: '', color: '' }); }}
                     className={`rounded-lg border p-2 text-sm ${qrKind === k ? 'border-green-500 bg-green-500/10 text-green-600 dark:text-green-400 font-medium' : 'border-gray-300 dark:border-gray-700 dark:text-gray-300'}`}>
                     {k === 'alipay' ? (isZh ? '支付宝' : 'Alipay') : (isZh ? '微信' : 'WeChat')}
                   </button>
@@ -172,7 +170,7 @@ export const CnyWithdrawModal: React.FC<{
                 <div className="flex items-start gap-3 mb-3">
                   <div className="relative">
                     <img src={qrUrl} alt="qr" className="w-24 h-24 rounded-lg border border-gray-200 dark:border-gray-700 object-cover bg-white" />
-                    <button type="button" title={isZh ? '删除' : 'Remove'} onClick={() => setQrUrl('')}
+                    <button type="button" title={isZh ? '删除' : 'Remove'} onClick={async () => { setQrUrl(''); try { await noobClawApi.deleteCnyWithdrawQr(qrKind); void refresh(); } catch { /* 删除失败不阻塞,重传会覆盖 */ } }}
                       className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-red-500 text-white text-xs leading-none flex items-center justify-center shadow hover:bg-red-600">×</button>
                   </div>
                   <div className="flex flex-col gap-1.5">
