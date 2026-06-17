@@ -627,6 +627,20 @@ body.invite-partner-active ::-webkit-scrollbar-thumb:hover {
 .wallet-view--partner .bg-primary\/10 { background-color: color-mix(in srgb, var(--invite-partner-color) 10%, transparent) !important; }
 .wallet-view--partner .bg-primary\/15 { background-color: color-mix(in srgb, var(--invite-partner-color) 15%, transparent) !important; }
 .wallet-view--partner .bg-primary\/20 { background-color: color-mix(in srgb, var(--invite-partner-color) 20%, transparent) !important; }
+/* 充值通道 tab(USDT/BNB/CNY)激活态:默认 neon 绿用 bg-primary/15 淡底 + text-primary 绿字,
+   合伙人色(尤其 bronze)淡底 + 同色字对比度太低看不清。合伙人态下改成「亮色实底 + 近黑字」,
+   跟同面板「充值积分」按钮一致、高对比。复合选择器 .bg-primary/15.text-primary 只命中激活 tab,
+   比单独的 .text-primary(617)特异性高 → 覆盖其铜色文字。非合伙人态不受影响。 */
+.wallet-view--partner .bg-primary\/15.text-primary {
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--invite-partner-color) 100%, white 35%),
+    var(--invite-partner-color),
+    color-mix(in srgb, var(--invite-partner-color) 100%, black 35%)
+  ) !important;
+  color: #0a0a0a !important;
+  -webkit-text-fill-color: #0a0a0a !important;
+}
 .wallet-view--partner .border-primary { border-color: var(--invite-partner-color) !important; }
 .wallet-view--partner .border-primary\/20 {
   border-color: color-mix(in srgb, var(--invite-partner-color) 28%, transparent) !important;
