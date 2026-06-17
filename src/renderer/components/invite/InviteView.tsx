@@ -607,33 +607,17 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             首屏闪一下。外层加 profile 守卫 — 只在已加载 profile 后才走二选一,
             登录前一直 hide(跟原版 `profile?.partner?.is_partner && PartnerHero`
             的行为对齐)。 */}
-        {/* v6.x: 社交媒体登录的非合伙人 — 顶部从单卡片改成左右双卡片布局:
-            左 = 我的钱包(头像 / 我的钱包(BSC) / 地址 / 社媒账号),
-            右 = PartnerApplyCard compact 模式(字号 + 按钮文本都精简)。
-            其他情况(无社媒登录 / 已是合伙人)保持原 full-width 单卡片行为。 */}
-        {/* 收到返佣 (CNY) + 提现 —— 独立卡片,放在所有钱包卡上方,【对所有用户可见】。
-            ⚠️ 不要再塞进下面 socialEmail 那张钱包卡里:那张只在「社交登录 + 非合伙人」
-            分支渲染,钱包地址登录用户 / 合伙人都看不到,会被当成「功能没了」。 */}
-        <div className="mb-3 p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center justify-between">
-          <div className="min-w-0">
-            <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate received (CNY)'}</div>
-            <div className="text-2xl font-bold text-green-500 tabular-nums">¥{animCny.toFixed(2)}</div>
-          </div>
-          <button
-            type="button"
-            onClick={() => setShowCnyWithdraw(true)}
-            className="shrink-0 text-sm text-green-500 hover:underline flex items-center gap-0.5 font-medium"
-          >
-            {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-          </button>
-        </div>
         {profile && profile?.partner?.is_partner && (
           <PartnerHero partner={profile.partner} />
         )}
-        {profile && !profile?.partner?.is_partner && authState.socialEmail && (
+        {/* 非合伙人(社交登录 / 钱包登录都走这一个分支)— 顶部左右双栏,【对所有非合伙人可见】:
+            左 = 我的钱包卡片(头像 / 我的钱包(BSC) / 地址 / 社媒账号),【卡框右侧】= 收到返佣(CNY)+ 提现;
+            右 = PartnerApplyCard(您当前的返佣比例 / 申请合伙人)。
+            ⚠️ 别再把 CNY 拆成顶部独立全宽卡,也别用 socialEmail 把整张卡 gate 掉 ——
+            钱包登录用户没有 socialEmail,会整栏消失被当成「功能没了」(已被用户骂过两次)。 */}
+        {profile && !profile?.partner?.is_partner && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3 items-stretch">
-            {/* 左:我的钱包卡片(社交登录用户视觉锚点 — 把他的"我是谁" 集中展示) */}
+            {/* 左:我的钱包卡片,卡框右侧带 收到返佣(CNY)+ 提现 */}
             <div className="p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center gap-3 min-w-0">
               {/* avatar */}
               <div className="shrink-0 w-12 h-12 rounded-full overflow-hidden border dark:border-claude-darkBorder border-claude-border bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center">
@@ -653,21 +637,29 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                     ? `${authState.walletAddress.slice(0, 8)}…${authState.walletAddress.slice(-6)}`
                     : '—'}
                 </div>
-                {/* social account row (always present in this branch since socialEmail truthy) */}
-                <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">
-                  {authState.socialProvider === 'google' && <span style={{ color: '#ea4335' }}>●</span>}
-                  {authState.socialProvider === 'twitter' && <span style={{ color: '#fff' }}>𝕏</span>}
-                  {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
-                  <span className="truncate">{authState.socialEmail}</span>
-                </div>
+                {/* social account row — 仅社交登录用户有 socialEmail 时显示 */}
+                {authState.socialEmail && (
+                  <div className="flex items-center gap-1.5 mt-1 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary truncate">
+                    {authState.socialProvider === 'google' && <span style={{ color: '#ea4335' }}>●</span>}
+                    {authState.socialProvider === 'twitter' && <span style={{ color: '#fff' }}>𝕏</span>}
+                    {authState.socialProvider === 'discord' && <span style={{ color: '#5865f2' }}>●</span>}
+                    <span className="truncate">{authState.socialEmail}</span>
+                  </div>
+                )}
+              </div>
+              {/* 卡框内右侧:收到返佣(CNY)+ 提现(用户要求放在钱包框的右边) */}
+              <div className="shrink-0 self-stretch flex flex-col justify-center text-right border-l dark:border-claude-darkBorder border-claude-border pl-3">
+                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate (CNY)'}</div>
+                <div className="text-lg font-bold text-green-500 tabular-nums leading-tight">¥{animCny.toFixed(2)}</div>
+                <button type="button" onClick={() => setShowCnyWithdraw(true)} className="text-xs text-green-500 hover:underline flex items-center gap-0.5 justify-end mt-0.5">
+                  {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
               </div>
             </div>
-            {/* 右:缩小版 PartnerApplyCard */}
+            {/* 右:返佣比例卡(您当前的返佣比例 / 申请合伙人)*/}
             <PartnerApplyCard compact />
           </div>
-        )}
-        {profile && !profile?.partner?.is_partner && !authState.socialEmail && (
-          <PartnerApplyCard />
         )}
         {/* v1.x: 改 grid 是因为 flex + space-y 在右栏 flex-1 上下拉不齐(左栏内容
             高,右栏 details 容器靠 flex-1 应该撑满,实际不撑满)。grid 行内 cells
@@ -850,7 +842,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
               </div>
-              {/* v6.x→: CNY 总返佣已从这排统计移走 —— 改成「收到返佣 (CNY) + 提现」卡片放到钱包卡上面(用户要求)。 */}
+              {/* v6.x→: CNY 总返佣已从这排统计移走 —— 改成「收到返佣 (CNY) + 提现」放到顶部我的钱包卡框的右侧(用户要求)。 */}
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
