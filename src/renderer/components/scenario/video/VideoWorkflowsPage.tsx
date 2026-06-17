@@ -4352,8 +4352,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
   const togglePlatform = (p: Platform) => setPlatforms((prev) => ({ ...prev, [p]: !prev[p] }));
   // 按 PUBLISH_PLATFORMS 顺序取(不用 Object.keys)→ 发布顺序 = 列表顺序(B 站在最后),改一处列表即可
   const selectedPlatformIds = PUBLISH_PLATFORMS.map((m) => m.id).filter((p) => platforms[p]);
-  const [publishTitle, setPublishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
-  const [publishCaption, setPublishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
+  // 发布文案不再给输入框(用户要求,AI 自动写)→ 只保留值(编辑老任务回填),不需要 setter。
+  const [publishTitle] = useState<string>((editTask?.input as any)?.publishTitle || '');
+  const [publishCaption] = useState<string>((editTask?.input as any)?.publishCaption || '');
   const [submitting, setSubmitting] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -4671,26 +4672,9 @@ export const TemplateSpeedModal: React.FC<{ isZh: boolean; onClose: () => void; 
                 platforms={platforms}
                 togglePlatform={togglePlatform}
               >
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 space-y-2">
-                  <div className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                    {isZh ? '📝 发布文案（选填）' : '📝 Caption (optional)'}
-                    <span className="ml-1.5 font-normal text-[11px] text-gray-400">
-                      {isZh ? '留空 → AI 自动写钩人标题 + 引导互动文案 + 话题标签' : 'empty → AI writes a hook title + CTA caption + hashtags'}
-                    </span>
-                  </div>
-                  <input
-                    value={publishTitle}
-                    onChange={(e) => setPublishTitle(e.target.value)}
-                    placeholder={isZh ? '发布标题(选填,留空 AI 写钩人标题)' : 'Caption title (optional, AI writes if empty)'}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                  />
-                  <textarea
-                    value={publishCaption}
-                    onChange={(e) => setPublishCaption(e.target.value)}
-                    rows={2}
-                    placeholder={isZh ? '发布正文(选填,留空 AI 写引导互动文案 + 话题标签)' : 'Caption body (optional, AI writes if empty)'}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-transparent text-sm dark:text-white"
-                  />
+                {/* 发布文案统一由 AI 自动生成 —— 不给自定义输入框(用户要求,跟纯AI/在线素材/热搜成片一致)。 */}
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 text-[11px] text-gray-400">
+                  {isZh ? '📝 发布文案:由 AI 自动生成钩人标题 + 引导互动文案 + 话题标签(无需填写)' : '📝 Caption: AI auto-writes a hook title + CTA + hashtags (nothing to fill in)'}
                 </div>
               </OutputDestination>
               <Field label={isZh ? '运行频率' : 'Run frequency'}>
