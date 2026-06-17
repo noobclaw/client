@@ -611,6 +611,21 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
             左 = 我的钱包(头像 / 我的钱包(BSC) / 地址 / 社媒账号),
             右 = PartnerApplyCard compact 模式(字号 + 按钮文本都精简)。
             其他情况(无社媒登录 / 已是合伙人)保持原 full-width 单卡片行为。 */}
+        {/* 收到返佣 (CNY) + 提现入口 —— 放在钱包卡上面(用户要求;原统计行的「CNY 总返佣」已移到这)。 */}
+        <div className="mb-3 p-4 rounded-xl border dark:bg-claude-darkSurface bg-claude-surface dark:border-claude-darkBorder border-claude-border flex items-center justify-between">
+          <div className="min-w-0">
+            <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary mb-0.5">{i18nService.currentLanguage === 'zh' ? '收到返佣 (CNY)' : 'Rebate received (CNY)'}</div>
+            <div className="text-2xl font-bold text-green-500 tabular-nums">¥{animCny.toFixed(2)}</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowCnyWithdraw(true)}
+            className="shrink-0 text-sm text-green-500 hover:underline flex items-center gap-0.5 font-medium"
+          >
+            {i18nService.currentLanguage === 'zh' ? '提现' : 'Withdraw'}
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          </button>
+        </div>
         {profile && profile?.partner?.is_partner && (
           <PartnerHero partner={profile.partner} />
         )}
@@ -820,7 +835,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 USDT total comes from /api/me/rebate/summary (prefetched on
                 mount), NOOB total comes from profile.totalNoob (already
                 served by /api/user/referral). */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animDirect)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteDirectReferrals')}</div>
@@ -833,18 +848,7 @@ export const InviteView: React.FC<InviteViewProps> = ({ isSidebarCollapsed, onTo
                 <div className="text-xl font-bold text-primary tabular-nums">${animUsdt.toFixed(2)}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteUsdtTotal')}</div>
               </div>
-              {/* v6.x: CNY 总返佣 stat card — 卡密充值的人民币 6 级 cascade 累积。
-                  点击 → 内嵌 CnyWithdrawModal(三数字 + 上传收款码 + 申请 + 历史)。
-                  早期版本曾跳 cn 网页提现(顾虑 multipart 上传),但客户端头像上传已证明
-                  multipart 在 renderer 可用,故 v6.x 改为客户端内嵌,体验更顺。 */}
-              <div
-                className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center cursor-pointer hover:border-primary transition-colors"
-                onClick={() => setShowCnyWithdraw(true)}
-                title={i18nService.t('inviteCnyTotalHint')}
-              >
-                <div className="text-xl font-bold text-primary tabular-nums">¥{animCny.toFixed(2)}</div>
-                <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteCnyTotal')}</div>
-              </div>
+              {/* v6.x→: CNY 总返佣已从这排统计移走 —— 改成「收到返佣 (CNY) + 提现」卡片放到钱包卡上面(用户要求)。 */}
               <div className="p-3 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center">
                 <div className="text-xl font-bold text-primary tabular-nums">{Math.floor(animNoob).toLocaleString()}</div>
                 <div className="text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary">{i18nService.t('inviteNoobReward')}</div>
