@@ -197,11 +197,11 @@ export const CnyWithdrawModal: React.FC<{
               <label className="text-sm font-medium dark:text-gray-200 mb-1.5 block">
                 {isZh ? '本次提现金额 (¥)' : 'Withdrawal amount (¥)'}
                 <span className="text-[11px] text-gray-400 ml-1">
-                  {isZh ? `¥${summary?.min_amount ?? 50} 起,最多 ¥${summary?.withdrawable ?? '0.00'}` : `min ¥${summary?.min_amount ?? 50}, up to ¥${summary?.withdrawable ?? '0.00'}`}
+                  {isZh ? `¥${summary?.min_amount ?? 10} 起,最多 ¥${summary?.withdrawable ?? '0.00'}` : `min ¥${summary?.min_amount ?? 10}, up to ¥${summary?.withdrawable ?? '0.00'}`}
                 </span>
               </label>
               <input className={inputCls} type="number" min={summary?.min_amount} value={amount}
-                onChange={(e) => setAmount(e.target.value)} placeholder={String(summary?.min_amount || 50)} />
+                onChange={(e) => setAmount(e.target.value)} placeholder={String(summary?.min_amount || 10)} />
 
               {summary && summary.fee_pct > 0 && (
                 <p className="text-[11px] text-gray-400 mt-1">{isZh ? `手续费 ${(summary.fee_pct * 100).toFixed(0)}%` : `Fee ${(summary.fee_pct * 100).toFixed(0)}%`}</p>
