@@ -97,7 +97,7 @@ export const CnyWithdrawModal: React.FC<{
     try {
       const r = await noobClawApi.createCnyWithdraw(amt, qrUrl, qrKind);
       if (r.ok) {
-        setMsg({ text: r.message || (isZh ? '✅ 申请已提交,运营会在 1-3 个工作日内转账' : '✅ Submitted, paid in 1-3 business days'), color: 'text-green-500' });
+        setMsg({ text: r.message || (isZh ? '✅ 申请已提交,工作人员将在 1-3 个工作日内处理' : '✅ Submitted, our team will process it within 1-3 business days'), color: 'text-green-500' });
         setAmount(''); // 保留 qrUrl —— 记住收款码,下次提现直接用,省得重传
         await refresh();
         onSuccess?.();
@@ -214,7 +214,7 @@ export const CnyWithdrawModal: React.FC<{
             {msg.text && <p className={`mt-3 text-sm ${msg.color}`}>{msg.text}</p>}
 
             <p className="mt-3 text-[11px] text-gray-400 leading-relaxed">
-              {isZh ? '提交后运营会在 1-3 个工作日内手动扫码转账,转账后状态变「已转账」。' : 'Ops will scan & transfer within 1-3 business days; status turns Paid afterwards.'}
+              {isZh ? '提交后工作人员将会在 1-3 个工作日内处理。' : 'Our team will process your request within 1-3 business days.'}
             </p>
 
             {/* 历史 */}

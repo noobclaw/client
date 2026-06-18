@@ -1783,6 +1783,13 @@ const VideoCreateFlow: React.FC<{
   // 热搜成片仅简体/繁体中文显示(数据源是中文热榜;韩/日/英先不支持)。繁体也走中文文案。
   const isZhHot = i18nService.currentLanguage === 'zh' || i18nService.currentLanguage === 'zh-TW';
 
+  // v2.8: 四个视频创作任务跟币安等其它任务一样,必须先登录 NoobClaw 账号才能用。
+  //   未登录点「开始创作」→ 弹账号登录框(requireLoginUI),不打开配置弹窗。
+  const openWithLogin = (open: () => void) => () => {
+    if (!noobClawAuth.getState().isAuthenticated) { noobClawAuth.requireLoginUI(); return; }
+    open();
+  };
+
   // 价格【服务端下发】动态显示:按条区间(stock/hotspot/模板共用)+ 纯 AI 每秒价。调价改后端即生效。
   const [fee, setFee] = useState<{ min: number; max: number }>({ min: 0.02, max: 0.1 });
   const [aiUsdPerSec, setAiUsdPerSec] = useState<number>(0.04);
@@ -1798,29 +1805,29 @@ const VideoCreateFlow: React.FC<{
     <div className="p-6 max-w-5xl mx-auto">
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {isZhHot && (
-        <VideoScenarioEntryCard isZh={isZhHot} accent="rose" icon="🔥" onOpen={() => setHotspotOpen(true)} onGoTasks={onGoTasks}
+        <VideoScenarioEntryCard isZh={isZhHot} accent="rose" icon="🔥" onOpen={openWithLogin(() => setHotspotOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 热搜成片" tagEn="AI Auto · Hotspot"
           titleZh="热搜成片 · 热点全自动" titleEn="Hotspot · Auto Trend Video"
           descZh="勾选热搜榜 / Web3 / 科技源,每天自动从最新热点挑一条,联网取材、AI 紧贴事实写口播、自动配图成片。一次设置、每天蹭热点出片,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="Pick Hot-Search / Web3 / Tech sources. Each day it grabs a fresh trending topic, fetches the latest info, writes a fact-tight script and auto-composes with images. Set once — auto-publishes daily to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`单条约 ${feeZh}(写稿/联网/配图/合成)`} costEn={`~${feeEn} per clip (script / web / footage / compose)`}
-          btnZh="🔥 开始设置 →" btnEn="🔥 Set up →" />
+          btnZh="🔥 开始创作 →" btnEn="🔥 Start →" />
         )}
-        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={() => setStockOpen(true)} onGoTasks={onGoTasks}
+        <VideoScenarioEntryCard isZh={isZh} accent="sky" icon="🎞️" onOpen={openWithLogin(() => setStockOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 在线素材" tagEn="AI Auto · Stock"
           titleZh="在线素材 · AI 口播日更" titleEn="Stock · AI Voice-over"
           descZh="低成本批量日更利器:给个主题,AI 写口播稿+配音+字幕,海量正版素材库凑齐画面,一次最多 100 条(每条独立写稿+配音,失败自动跳过)。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="Batch-publish on a budget: AI writes the script, narrates and subtitles, and pulls visuals from a huge stock library — up to 100 clips per run (each a fresh AI script + voice; failures auto-skipped). Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`单条约 ${feeZh}(写稿/素材/合成)`} costEn={`~${feeEn} per clip (script / stock / compose)`}
           btnZh="🎞️ 开始创作 →" btnEn="🎞️ Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={() => setCinemaOpen(true)} onGoTasks={onGoTasks}
+        <VideoScenarioEntryCard isZh={isZh} accent="violet" icon="🎬" onOpen={openWithLogin(() => setCinemaOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 电影级" tagEn="AI Auto · Cinematic"
           titleZh="电影级 · 纯 AI 生成" titleEn="Cinematic · Pure AI"
           descZh="一句话,AI 直接造出电影感写实画面 —— 不用拍摄、不用露脸。Seedance 逐镜生成、自动配音+字幕,拍不到的镜头也能生,还能传参考图锁画风。成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
           descEn="One line → cinematic, photoreal footage. No filming, no face. Seedance generates brand-new shots with auto voice-over + subtitles — even shots you could never film; add reference images to lock the style. Auto-publishes to TikTok / YouTube / Douyin / Xiaohongshu / Channels and more."
           costZh={`按秒计费 · 约 $${aiSec}/秒(720p)`} costEn={`Per-second · ~$${aiSec}/s (720p)`}
           btnZh="🎬 开始创作 →" btnEn="🎬 Start →" />
-        <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={() => setTemplateOpen(true)} onGoTasks={onGoTasks}
+        <VideoScenarioEntryCard isZh={isZh} accent="fuchsia" icon="⚡" onOpen={openWithLogin(() => setTemplateOpen(true))} onGoTasks={onGoTasks}
           tagZh="AI自动成片 · 模板速生" tagEn="AI Auto · Template Speed"
           titleZh="模板速生 · 榜单/资讯/数据" titleEn="Template Speed · Lists & Data"
           descZh="把榜单、资讯、数据、金句一键变成带动效竖屏短视频 —— AI 现编动画、本地逐帧渲染、可选配音+字幕。秒级出片、稳定可控,成片自动发布 TikTok / YouTube / 抖音 / 小红书 / 视频号 等全平台。"
