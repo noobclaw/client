@@ -47,7 +47,7 @@ export const CnyWithdrawModal: React.FC<{
   const refresh = async (): Promise<{ items: HistItem[]; summary: Summary | null }> => {
     const [s, h] = await Promise.all([
       noobClawApi.getCnyWithdrawSummary(),
-      noobClawApi.getCnyWithdrawHistory(20),
+      noobClawApi.getCnyWithdrawHistory(10),
     ]);
     if (s) setSummary(s);
     const items: HistItem[] = h.items || [];
@@ -228,7 +228,9 @@ export const CnyWithdrawModal: React.FC<{
                   {isZh ? '暂无提现记录' : 'No withdrawals yet'}
                 </div>
               ) : (
-                <div className="space-y-1.5">
+                <>
+                {/* 固定高度滚动区:记录再多也只占这一块、内部滚动,表单和「申请提现」始终可见 */}
+                <div className="space-y-1.5 max-h-[260px] overflow-y-auto pr-1">
                   {history.map((h) => (
                     <div key={h.id} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
                       <div className="dark:text-gray-200">
@@ -241,6 +243,10 @@ export const CnyWithdrawModal: React.FC<{
                     </div>
                   ))}
                 </div>
+                {history.length >= 10 && (
+                  <div className="mt-1.5 text-center text-[10px] text-gray-400">{isZh ? '仅显示最近 10 条提现记录' : 'Showing the latest 10 records'}</div>
+                )}
+                </>
               )}
             </div>
           </>
