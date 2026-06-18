@@ -12,6 +12,7 @@
  */
 
 import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { noobClawApi } from '../../services/noobclawApi';
 
 type Summary = {
@@ -121,7 +122,9 @@ export const CnyWithdrawModal: React.FC<{
     : s;
   const hasPending = !!summary?.has_pending;
 
-  return (
+  // v2.8: 用 portal 渲染到 document.body —— 否则在「我的充值」页被合伙人金色卡片的
+  //   filter/glow 当成 position:fixed 的包含块,全屏遮罩被裁进卡片里(弹窗显示不全)。
+  return createPortal(
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 shadow-2xl p-6">
         <div className="flex items-center justify-between mb-3">
@@ -243,6 +246,7 @@ export const CnyWithdrawModal: React.FC<{
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 };
