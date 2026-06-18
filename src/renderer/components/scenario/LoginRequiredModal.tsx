@@ -444,21 +444,23 @@ export const LoginRequiredModal: React.FC<Props> = ({ mode, platform = 'xhs', se
     if (extensionStatus === 'fail') { window.open('https://microsoftedge.microsoft.com/addons/detail/laphnggbfbalnemcgjcgmdjaaehldkbd', '_blank'); return; }
     setOpening(true);
     try {
-      const res = await scenarioService.openCreatorCenter(p);
-      if (!res.ok) {
-        // ext 整个挂掉时兜底:popup window.open 保证用户至少能开 tab 完成登录
-        const creatorUrlMap: Record<string, string> = {
-          douyin: 'https://creator.douyin.com/',
-          xhs: 'https://creator.xiaohongshu.com/',
-          kuaishou: 'https://cp.kuaishou.com/article/comment',
-          bilibili: 'https://member.bilibili.com/platform/comment/article',
-        };
-        const creatorUrl = creatorUrlMap[p] || 'https://creator.xiaohongshu.com/';
-        try {
-          window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
-        } catch {
-          try { window.open(creatorUrl, '_blank'); } catch {}
-        }
+      // A 方案(回退到 PR11 之前的开法):创作中心【强制 window.open popup 独立窗】,
+      //   不走扩展 openCreatorCenter(v6 windowRegistry)。后者在 Windows 上有建窗竞态:
+      //   有时把 xhs_creator::default 和主站 xhs::default 并进同一个窗 → 一窗两 tab
+      //   (时序好时又是两个窗,所以「有时好有时坏」)。window.open popup 由浏览器直接
+      //   开一个独立窗口,Mac/Windows 都稳定两个窗。verify 仍走 tab_list/cookie probe
+      //   (不限窗口),所以登录检查照常能 pass。
+      const creatorUrlMap: Record<string, string> = {
+        douyin: 'https://creator.douyin.com/',
+        xhs: 'https://creator.xiaohongshu.com/',
+        kuaishou: 'https://cp.kuaishou.com/article/comment',
+        bilibili: 'https://member.bilibili.com/platform/comment/article',
+      };
+      const creatorUrl = creatorUrlMap[p] || 'https://creator.xiaohongshu.com/';
+      try {
+        window.open(creatorUrl, '_blank', 'popup,width=1280,height=860,noopener,noreferrer');
+      } catch {
+        try { window.open(creatorUrl, '_blank'); } catch {}
       }
       setTimeout(() => void runCheck(), 2000);
     } finally {
