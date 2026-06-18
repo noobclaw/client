@@ -22,7 +22,7 @@ export const QuickUseView: React.FC<QuickUseViewProps> = ({ isSidebarCollapsed, 
           原本只在 chat 对话框(CoworkSessionDetail) + scenario 页(ScenarioView)
           有,一键使用页漏挂导致这页用户永远抽不到红包。这里补齐,跟其他两页
           用同一份 LuckyBag 组件,行为完全一致。 */}
-      <ErrorBoundary name="LuckyBag">
+      <ErrorBoundary name="LuckyBag" fallback={null}>
         <LuckyBag />
       </ErrorBoundary>
       {/* Header */}

@@ -938,7 +938,7 @@ const App: React.FC = () => {
           SSE handler 在 _noobclaw payload 含 rebate 字段时桥接派发。点击跳邀请页。
           v2.x: ErrorBoundary fallback={null} — 浮层组件出错不显示红色错误卡,
           安静失败,避免黑屏。具体报错仍打到 console 方便排查。 */}
-      <ErrorBoundary name="RebateDrawer">
+      <ErrorBoundary name="RebateDrawer" fallback={null}>
         <RebateDrawer onShowInvite={handleShowInvite} />
       </ErrorBoundary>
       <div className="flex flex-1 min-h-0 overflow-hidden">
@@ -1136,7 +1136,7 @@ const App: React.FC = () => {
           + OS push, all from /api/me/notifications/unread. Renders only
           when authenticated.
           v2.x: 用 ErrorBoundary 包住,出错不再让整棵 React 树 unmount → 黑屏。 */}
-      <ErrorBoundary name="NotificationCenter">
+      <ErrorBoundary name="NotificationCenter" fallback={null}>
         <NotificationCenter />
       </ErrorBoundary>
     </div>

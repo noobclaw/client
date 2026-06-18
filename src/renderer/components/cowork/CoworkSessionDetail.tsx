@@ -2134,7 +2134,7 @@ const CoworkSessionDetail: React.FC<CoworkSessionDetailProps> = ({
         </div>
 
         {/* Lucky Bag */}
-        <ErrorBoundary name="LuckyBag">
+        <ErrorBoundary name="LuckyBag" fallback={null}>
           <LuckyBag />
         </ErrorBoundary>
 
