@@ -202,20 +202,10 @@ export async function checkVideoLoginByCookieBatch(
  *  返回里带 diag:把扩展 task_open_tab 的【原始返回值】抓出来 —— 主进程 console.log 在打包版里被屏蔽,
  *  所以靠返回值把诊断带回渲染层弹窗显示。绝不 fallback 开多窗。 */
 export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean; diag?: string }> {
-  // 已有检查 tab → navigate 复用(一窗一 tab)。
-  // ⚠️ 必须 await + 失败兜底:旧代码是 void fire-and-forget、catch 吞错误、无脑 return ok。
-  //   Windows 上检查窗的 tab 容易失效(被关 / tabId 过期),navigate 静默失败 → 渲染层以为成功
-  //   → 用户「点登录没反应、没打开创作中心」(Mac 上 tab 没失效所以正常)。改成 await,失败就
-  //   清掉 _checkTabId 往下重新 task_open_tab 开窗,自愈。
+  // 已有检查 tab → 直接 navigate 复用(一窗一 tab)。
   if (typeof _checkTabId === 'number') {
-    try {
-      await sendBrowserCommand('navigate', { url, tabId: _checkTabId }, 60000);
-      return { ok: true, diag: 'reuse checkTab=' + _checkTabId };
-    } catch (e) {
-      console.log('[videoLoginCheck] reuse navigate failed, reopening window: ' + String((e as any)?.message || e));
-      _checkTabId = undefined;
-      // 往下走 task_open_tab 重开窗
-    }
+    void sendBrowserCommand('navigate', { url, tabId: _checkTabId }, 60000).catch(() => {});
+    return { ok: true, diag: 'reuse checkTab=' + _checkTabId };
   }
   let diag = '';
   try {
