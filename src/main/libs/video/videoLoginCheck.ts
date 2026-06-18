@@ -202,11 +202,13 @@ export async function checkVideoLoginByCookieBatch(
  *  返回里带 diag:把扩展 task_open_tab 的【原始返回值】抓出来 —— 主进程 console.log 在打包版里被屏蔽,
  *  所以靠返回值把诊断带回渲染层弹窗显示。绝不 fallback 开多窗。 */
 export async function openLoginInCheckWindow(url: string): Promise<{ ok: boolean; diag?: string }> {
-  // 已有检查 tab → 直接 navigate 复用(一窗一 tab)。
-  if (typeof _checkTabId === 'number') {
-    void sendBrowserCommand('navigate', { url, tabId: _checkTabId }, 60000).catch(() => {});
-    return { ok: true, diag: 'reuse checkTab=' + _checkTabId };
-  }
+  // 一窗一 tab:统一走 task_open_tab(windowKey=video_check, role='checker')。扩展对 windowKey
+  //   是【幂等】的:窗口/tab 还在 → 复用同一个 tab 并 navigate 到新 url;被用户手动关了 → 自校验
+  //   失败后【自动重建】(background.js task_open_tab v6:chrome.windows.get 校验,关了就 dropEntry
+  //   重开)。所以无论检查窗是否被关都能开出来,且因 windowKey 幂等绝不会重复开窗。
+  // ⚠️ 不再用模块级 _checkTabId 缓存做 navigate 快捷路径:那个缓存在用户【手动关掉检查窗】后会变成
+  //   【死 id】,原实现 void+catch 吞掉 navigate 失败还谎报 ok:true → 关掉检查窗后再点别的「打开
+  //   登录」按钮就「点了没反应」。改成统一 task_open_tab 后,每次点击都能复用或重建出检查窗。
   let diag = '';
   try {
     const res: any = await sendBrowserCommand(
