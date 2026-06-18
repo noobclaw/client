@@ -217,10 +217,14 @@ export const CnyWithdrawModal: React.FC<{
               {isZh ? '提交后工作人员将会在 1-3 个工作日内处理。' : 'Our team will process your request within 1-3 business days.'}
             </p>
 
-            {/* 历史 */}
-            {history.length > 0 && (
-              <div className="mt-5">
-                <div className="text-sm font-medium dark:text-gray-200 mb-2">{isZh ? '提现记录' : 'History'}</div>
+            {/* 历史 —— 始终显示(空时给占位),避免用户以为「没有提现记录」 */}
+            <div className="mt-5">
+              <div className="text-sm font-medium dark:text-gray-200 mb-2">{isZh ? '提现记录' : 'History'}</div>
+              {history.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 px-3 py-4 text-center text-xs text-gray-400">
+                  {isZh ? '暂无提现记录' : 'No withdrawals yet'}
+                </div>
+              ) : (
                 <div className="space-y-1.5">
                   {history.map((h) => (
                     <div key={h.id} className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-3 py-2 text-xs">
@@ -234,8 +238,8 @@ export const CnyWithdrawModal: React.FC<{
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </>
         )}
       </div>
