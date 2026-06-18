@@ -906,81 +906,10 @@ async function probeSidecarHealth(): Promise<void> {
     if (i < attempts - 1) await new Promise((r) => setTimeout(r, intervalMs));
   }
 
-  showSidecarErrorBanner(lastDetail);
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-async function fetchSidecarLogTail(): Promise<string> {
-  try {
-    const tauri = (window as any).__TAURI__;
-    if (tauri?.core?.invoke) {
-      const tail = await tauri.core.invoke('get_sidecar_log_tail');
-      return typeof tail === 'string' ? tail : '';
-    }
-  } catch (e) {
-    console.warn('[TauriShim] get_sidecar_log_tail failed:', e);
-  }
-  return '';
-}
-
-function showSidecarErrorBanner(detail: string): void {
-  const isZh = navigator.language.startsWith('zh');
-  const existing = document.getElementById('nc-sidecar-error-banner');
-  if (existing) existing.remove();
-
-  const banner = document.createElement('div');
-  banner.id = 'nc-sidecar-error-banner';
-  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:2147483647;background:#b91c1c;color:#fff;padding:10px 16px;font-family:-apple-system,system-ui,sans-serif;font-size:13px;display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow-y:auto;';
-  const title = isZh ? '⚠️ 后台服务未启动' : '⚠️ Sidecar unreachable';
-  const safeDetail = escapeHtml(detail || (isZh ? '无响应' : 'no response'));
-  const body = isZh
-    ? `聊天与红包功能将无法工作。诊断：${safeDetail}`
-    : `Chat and lucky-bag features will not work. Diagnostic: ${safeDetail}`;
-  banner.innerHTML = `
-    <div style="display:flex;align-items:flex-start;gap:12px;">
-      <div style="flex:1;min-width:0;">
-        <strong>${title}</strong>
-        <div style="opacity:0.9;margin-top:2px;">${body}</div>
-      </div>
-      <div style="display:flex;gap:6px;flex-shrink:0;">
-        <button type="button" data-action="log" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '查看日志' : 'Show log'}</button>
-        <button type="button" data-action="retry" style="background:#fff;color:#b91c1c;border:0;border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap;">${isZh ? '重试' : 'Retry'}</button>
-      </div>
-    </div>
-    <pre id="nc-sidecar-log-tail" style="display:none;background:rgba(0,0,0,0.35);color:#ffe4e4;padding:8px;border-radius:6px;font-size:11px;line-height:1.4;white-space:pre-wrap;word-break:break-all;max-height:40vh;overflow:auto;margin:0;"></pre>
-  `;
-
-  const retryBtn = banner.querySelector('[data-action="retry"]') as HTMLButtonElement | null;
-  const logBtn = banner.querySelector('[data-action="log"]') as HTMLButtonElement | null;
-  const logPre = banner.querySelector('#nc-sidecar-log-tail') as HTMLPreElement | null;
-
-  retryBtn?.addEventListener('click', () => {
-    banner.remove();
-    probeSidecarHealth();
-  });
-  logBtn?.addEventListener('click', async () => {
-    if (!logPre) return;
-    if (logPre.style.display !== 'none') {
-      logPre.style.display = 'none';
-      return;
-    }
-    logPre.style.display = 'block';
-    logPre.textContent = isZh ? '加载中…' : 'Loading…';
-    const tail = await fetchSidecarLogTail();
-    logPre.textContent = tail || (isZh ? '(日志为空或不可读)' : '(log empty or unreadable)');
-  });
-
-  if (document.body) {
-    document.body.appendChild(banner);
-  } else {
-    window.addEventListener('DOMContentLoaded', () => document.body.appendChild(banner), { once: true });
-  }
+  // Diagnostic only — intentionally NEVER surface a UI banner to the user.
+  // The sidecar self-heals port conflicts at startup (see killPortHolders in
+  // sidecar-server.ts), so a transient failed probe must not block or alarm
+  // the user. We just log it for support; by the time the user interacts the
+  // sidecar is virtually always up.
+  console.error('[TauriShim] sidecar health probe failed after retries:', lastDetail);
 }

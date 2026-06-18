@@ -1968,10 +1968,80 @@ const server = http.createServer(async (req, res) => {
 // handles non-bridge routes via lazy getRunner() — those still wait for
 // the runner if a request lands during the boot window. Bridge traffic
 // doesn't need the runner so it gets served immediately.
+// ── Port reclaim (v2.8.1) ───────────────────────────────────────────────
+// PORT (18800) is hard-coded and shared with the renderer's BASE_URL, so we
+// cannot fall back to another port. On reinstall / crash / overlapping launch
+// a stale noobclaw-server from a previous session can still hold it → bind
+// fails EADDRINUSE → (previously) the process crashed (exit 91) and the Rust
+// supervisor crash-looped until the old holder happened to die. The Win32
+// job-object kill-on-close only covers the "main died" orphan case, not an old
+// instance still alive during reinstall, and macOS has no equivalent at all.
+// So on EADDRINUSE we forcibly kill whatever owns the port and retry — newest
+// launch wins, fully self-healing, no user-visible banner needed.
+function killPortHolders(port: number): number[] {
+  const { execFileSync } = require('child_process') as typeof import('child_process');
+  const selfPid = process.pid;
+  const pids = new Set<number>();
+  try {
+    if (process.platform === 'win32') {
+      // netstat lines: "  TCP  127.0.0.1:18800  ...  LISTENING  <pid>"
+      const out = execFileSync('netstat', ['-ano', '-p', 'tcp'], { encoding: 'utf8', windowsHide: true });
+      for (const line of out.split(/\r?\n/)) {
+        if (!new RegExp(`:${port}\\b`).test(line) || !/LISTENING/i.test(line)) continue;
+        const m = line.trim().match(/(\d+)\s*$/);
+        if (m) pids.add(parseInt(m[1], 10));
+      }
+    } else {
+      // lsof -ti tcp:18800 -sTCP:LISTEN → newline-separated PIDs (exits 1 if none)
+      const out = execFileSync('lsof', ['-ti', `tcp:${port}`, '-sTCP:LISTEN'], { encoding: 'utf8' });
+      for (const tok of out.split(/\s+/)) {
+        const n = parseInt(tok, 10);
+        if (Number.isInteger(n)) pids.add(n);
+      }
+    }
+  } catch {
+    // netstat/lsof exit non-zero when nothing matches — treat as "no holder".
+  }
+  const killed: number[] = [];
+  for (const pid of pids) {
+    if (!pid || pid === selfPid) continue;
+    try {
+      if (process.platform === 'win32') {
+        execFileSync('taskkill', ['/F', '/PID', String(pid)], { windowsHide: true });
+      } else {
+        process.kill(pid, 'SIGKILL');
+      }
+      killed.push(pid);
+    } catch {
+      // already gone or no permission — ignore
+    }
+  }
+  return killed;
+}
+
 if (!IS_NATIVE_MESSAGING_HOST) {
   try {
     attachBrowserBridge(server);
     cleanupLegacyNmResidueOnce().catch(() => {});
+
+    let reclaimAttempts = 0;
+    const MAX_RECLAIM = 3;
+    server.on('error', (err: NodeJS.ErrnoException) => {
+      if (err?.code === 'EADDRINUSE' && reclaimAttempts < MAX_RECLAIM) {
+        reclaimAttempts++;
+        const killed = killPortHolders(PORT);
+        const msg = `port ${PORT} in use — reclaimed pid(s) [${killed.join(',')}], retry ${reclaimAttempts}/${MAX_RECLAIM}`;
+        console.error(`[sidecar] ${msg}`);
+        coworkLog('WARN', 'sidecar-server', msg);
+        setTimeout(() => { try { server.listen(PORT, '127.0.0.1'); } catch { /* next error event handles it */ } }, 400);
+        return;
+      }
+      // Unrecoverable (non-EADDRINUSE, or reclaim budget exhausted) — let the
+      // supervisor see the crash and apply its own backoff/circuit-breaker.
+      console.error('[sidecar] server error:', err?.stack || err);
+      process.exit(91);
+    });
+
     server.listen(PORT, '127.0.0.1', () => {
       console.log(`NoobClaw sidecar server listening on http://127.0.0.1:${PORT}`);
       coworkLog('INFO', 'sidecar-server', `Started on port ${PORT} (bridge mounted)`);
