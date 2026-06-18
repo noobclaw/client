@@ -1026,6 +1026,11 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
               const isDouyinImageText = task.scenario_id === 'douyin_image_text';
               const isXhsImageText = task.scenario_id === 'xhs_image_text';
               const isImageTextTask = isDouyinImageText || isXhsImageText;
+              // 自动回复粉丝(各平台 *_reply_fans_comment,track=reply_fan_comment):
+              //   配置只有 引流语 + 引流概率,没有 赛道/人设/关键词 —— 详情页对齐 wizard,
+              //   隐藏 赛道行 + 空关键词,改展示 引流语 / 概率。
+              const isReplyFan = task.track === 'reply_fan_comment'
+                || (scenario?.workflow_type as any) === 'auto_reply';
               const sourceSegments: string[] = Array.isArray((task as any).source_segments) ? (task as any).source_segments : [];
               // v1.x: 配图配置 — 两个图文场景共用同一组字段,详情页统一渲染。
               const useRealPhotos = !!(task as any).use_real_photos;
@@ -1057,7 +1062,7 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                       用户根本没填 track / persona,展示出来纯属噪音。
                       v5.x+: douyin_image_text 同理 — 只有参考文案,没赛道没人设。
                       v6.x: binance 源平台 viral 搬运 — 人设是固定模板,这一行也跳过。 */}
-                  {!isLinkMode && !isImageTextTask && !isBinanceSourceViral && (
+                  {!isLinkMode && !isImageTextTask && !isBinanceSourceViral && !isReplyFan && (
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400">
                         {(isXTask || /^binance/.test(task.scenario_id)) ? (isZh ? '人设:' : 'Persona:') : (isZh ? '赛道:' : 'Track:')}
@@ -1169,7 +1174,22 @@ export const TaskDetailPage: React.FC<Props> = ({ task, scenario, onBack, onEdit
                           v5.x+: 图文创作(抖音 + 小红书)也跳过 — 只看参考文案,没关键词。
                           v6.x: 3 个 binance source-viral 搬运 — task.keywords 是搜源
                           关键词(不是 Token);Token 单独从 task.cashtags 取。 */}
-                      {!isXTask && !isImageTextTask && (() => {
+                      {/* 自动回复粉丝:展示 引流语 + 引流概率(对齐 wizard),不显示关键词 */}
+                      {isReplyFan && (() => {
+                        const funnel = String((task as any).funnel_phrase || '').trim();
+                        const prob = typeof (task as any).funnel_probability === 'number' ? (task as any).funnel_probability : 0;
+                        return (
+                          <>
+                            <div>
+                              {isZh ? '🎣 核心引流语' : '🎣 Funnel phrase'}: {funnel || (isZh ? '(未填,回复不带引流尾巴)' : '(empty — no funnel tail)')}
+                            </div>
+                            <div>
+                              {isZh ? '🎲 引流尾巴出现概率' : '🎲 Funnel tail probability'}: {funnel ? `${prob}%` : (isZh ? '— (引流语未填,概率失效)' : '— (disabled, funnel empty)')}
+                            </div>
+                          </>
+                        );
+                      })()}
+                      {!isXTask && !isImageTextTask && !isReplyFan && (() => {
                         const sid = task.scenario_id;
                         const isSourceViral = sid === 'binance_from_xhs_viral'
                                             || sid === 'binance_from_douyin_viral'
