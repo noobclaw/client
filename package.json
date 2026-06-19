@@ -6,7 +6,7 @@
     "email": "support@noobclaw.com"
   },
   "license": "MIT",
-  "version": "2.8.2",
+  "version": "2.8.3",
   "main": "dist-electron/main.js",
   "engines": {
     "node": ">=24 <25"
@@ -66,6 +66,7 @@
     "dingtalk-stream": "^2.1.4",
     "discord.js": "^14.25.1",
     "dompurify": "^3.3.1",
+    "edge-tts-universal": "^1.4.0",
     "electron-log": "^5.4.3",
     "extract-zip": "^2.0.1",
     "form-data": "^4.0.5",
@@ -94,7 +95,6 @@
   },
   "devDependencies": {
     "@tailwindcss/typography": "^0.5.16",
-    "gsap": "3.15.0",
     "@tauri-apps/cli": "^2.10.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/dompurify": "^3.0.5",
@@ -119,6 +119,7 @@
     "eslint": "^8.56.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",
+    "gsap": "3.15.0",
     "patch-package": "^8.0.1",
     "postcss": "^8.4.35",
     "rimraf": "^5.0.5",

@@ -1,36 +1,34 @@
 /**
  * tts — 文案配音 + 字幕时间轴(抄 MoneyPrinterTurbo 的离线字幕方案)。
  *
- * 首选 edge-tts(微软 Edge 在线 TTS,免费、无需 key),通过内置 Python 跑:
- *   python -m edge_tts --voice <voice> --text <文案> --write-media out.mp3 \
- *                      --write-subtitles out.vtt
- * edge-tts 没装就懒加载 pip install 一次。
+ * 配音走微软 Edge 在线 TTS(免费、无需 key)。**纯 JS 实现**:用 npm 包
+ * `edge-tts-universal`(无任何 Python 依赖),在 Electron 主进程 / Node 里直接
+ * 连微软 TTS 的 WebSocket 端点合成 —— 不再 spawn `python -m edge_tts`,因此
+ *   - Windows 不用再内置/装 Python(根治退出码 9009「找不到 python」),
+ *   - mac/Windows 共用同一条代码路径(不再有 venv / PEP 668 那套分叉)。
  *
- * 字幕:--write-subtitles 让 edge-tts 在合成的同时吐出【词边界时间戳】字幕(SRT/VTT
- * 两种格式都可能,按版本而定),完全离线、不下任何模型、国内可用。我们解析它再按 ~12 字
- * 攒成短语 cue 返回给 compose 烧字幕,字幕和旁白严丝合缝。解析失败不影响出片(compose
- * 会退回按各镜时长估算的 cue)。
+ * 字幕:edge-tts-universal 的 synthesize() 在返回 MP3 音频的同时,带回逐词
+ * 【WordBoundary】元数据(offset/duration,单位 100 纳秒 = 1e-7 秒)。我们把它
+ * 换算成秒、映射成本模块原有的 TtsCue(逐词,时间相对本次合成起点),再按 ~12 字
+ * 攒成短语 cue 返回给 compose 烧字幕,字幕和旁白严丝合缝。WordBoundary 为空 / 解析
+ * 失败不影响出片(compose 会退回按各镜时长估算的 cue)。
  *
- * 可靠性:edge-tts 在线接口偶发抖动/限流,synthesize() 内置最多 3 次重试(指数退避)。
- * 仍合成不出真人声时返回 synthesized:false(并把 stderr 诊断写进 _lastTtsError),
+ * 音频:库给的是 MP3 字节(audio-24khz-48kbitrate-mono-mp3),直接写到 outPath
+ * (消费方一直用 .mp3),时长用既有 ffprobe(probeDuration)实测,跟以前一致。
+ *
+ * 可靠性:edge-tts 在线接口偶发抖动/限流,synthesize() 内置最多 5 次重试(指数退避)。
+ * 仍合成不出真人声时返回 synthesized:false(并把诊断写进 _lastTtsError),
  * 静音 mp3 只作为占位返回 —— 由 pipeline 判定为配音失败、终止出片并退费,
  * 绝不把「无配音的视频」当成片交付。
  */
 
-import { spawn, spawnSync } from 'child_process';
 import fs from 'fs';
-import path from 'path';
-import {
-  getUserPythonRoot,
-  appendPythonRuntimeToEnv,
-  ensurePythonPipReady,
-} from '../pythonRuntime';
-import { getUserDataPath } from '../platformAdapter';
+import { EdgeTTS, type WordBoundary } from 'edge-tts-universal';
 import { runFfmpeg, probeDuration } from './ffmpegRuntime';
 import { getTtsVoice } from './config';
-import { parseSubtitleText, type TtsCue } from './ttsAlign';
+import { type TtsCue } from './ttsAlign';
 
-// TtsCue 定义已移到 ttsAlign(纯模块,便于测试);这里 re-export 保持既有 import 路径不变。
+// TtsCue 定义在 ttsAlign(纯模块,便于测试);这里 re-export 保持既有 import 路径不变。
 export type { TtsCue } from './ttsAlign';
 export { alignSentencesToCues } from './ttsAlign';
 
@@ -54,144 +52,6 @@ export function getLastTtsError(): string | null {
   return _lastTtsError;
 }
 
-function pythonEnv(): NodeJS.ProcessEnv {
-  // Windows 走内置 runtime;mac/linux 用 venv,无需改 PATH。
-  return appendPythonRuntimeToEnv({ ...process.env }) as NodeJS.ProcessEnv;
-}
-
-/** import edge_tts 能否跑通。 */
-function edgeTtsImportable(pyExe: string): boolean {
-  try {
-    const r = spawnSync(pyExe, ['-c', 'import edge_tts'], {
-      env: pythonEnv(), timeout: 20_000, stdio: 'ignore',
-    });
-    return r.status === 0;
-  } catch {
-    return false;
-  }
-}
-
-// ─────────────────────────── Windows:内置 runtime ───────────────────────────
-
-function findWinPythonExe(): string {
-  const root = getUserPythonRoot();
-  for (const name of ['python.exe', 'python3.exe']) {
-    const p = path.join(root, name);
-    if (fs.existsSync(p)) return p;
-  }
-  return 'python';
-}
-
-// ─────────────────────────── mac/linux:专用 venv ───────────────────────────
-//
-// 关键背景:本仓库的 pythonRuntime 只内置了 Windows 版 Python(python-win)。
-// mac/linux 上以前直接 `python3 -m pip install edge-tts` —— 新版 macOS / Homebrew
-// 的系统 Python 是「externally-managed-environment」,直接 pip 装会被 PEP 668 拒绝,
-// 于是 edge-tts 永远装不上 → 每句都静音兜底 → 用户看到「没有配音」。
-//
-// 修法:用系统 python3 建一个隔离 venv(userData/runtimes/edge-tts-venv),
-// 往 venv 里装 edge-tts。venv 不受 PEP 668 限制,一次装好后续复用。
-
-function venvDir(): string {
-  return path.join(getUserDataPath(), 'runtimes', 'edge-tts-venv');
-}
-
-function venvPython(): string {
-  return process.platform === 'win32'
-    ? path.join(venvDir(), 'Scripts', 'python.exe')
-    : path.join(venvDir(), 'bin', 'python3');
-}
-
-/** 找一个能跑通的系统 python3(mac/linux)。找不到返回 null。 */
-function findSystemPython(): string | null {
-  const candidates = process.platform === 'darwin'
-    ? ['/opt/homebrew/bin/python3', '/usr/local/bin/python3', '/usr/bin/python3', 'python3', 'python']
-    : ['/usr/bin/python3', '/usr/local/bin/python3', 'python3', 'python'];
-  for (const c of candidates) {
-    try {
-      const r = spawnSync(c, ['--version'], { timeout: 10_000, stdio: 'ignore' });
-      if (r.status === 0) return c;
-    } catch { /* try next */ }
-  }
-  return null;
-}
-
-/**
- * 准备 mac/linux 的 edge-tts 环境,返回可用的 venv python 路径;失败返回 null
- * 并把原因写进 _lastTtsError。
- */
-function ensureUnixEdgeTts(): string | null {
-  const vpy = venvPython();
-  // 1. venv 已就绪且能 import → 直接用
-  if (fs.existsSync(vpy) && edgeTtsImportable(vpy)) return vpy;
-
-  // 2. 找系统 python3
-  const sys = findSystemPython();
-  if (!sys) {
-    _lastTtsError = '系统未找到 python3(mac 可执行 `brew install python3` 或安装 Xcode 命令行工具)';
-    return null;
-  }
-  // 2a. 系统 python 本身就能 import edge_tts(用户已全局装过)→ 直接用
-  if (edgeTtsImportable(sys)) return sys;
-
-  // 3. 建 venv(已存在则跳过创建)
-  if (!fs.existsSync(vpy)) {
-    try { fs.mkdirSync(path.dirname(venvDir()), { recursive: true }); } catch {}
-    const mk = spawnSync(sys, ['-m', 'venv', venvDir()], { timeout: 120_000, encoding: 'utf-8' });
-    if (mk.status !== 0 || !fs.existsSync(vpy)) {
-      _lastTtsError = `创建 venv 失败:${(mk.stderr || mk.stdout || `exit ${mk.status}`).toString().slice(0, 200)}`;
-      return null;
-    }
-  }
-
-  // 4. venv 内装 edge-tts(venv 不受 PEP 668 限制)
-  spawnSync(vpy, ['-m', 'pip', 'install', '--upgrade', 'pip'], { timeout: 120_000, stdio: 'ignore' });
-  const install = spawnSync(
-    vpy,
-    ['-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', 'edge-tts'],
-    { timeout: 240_000, encoding: 'utf-8' },
-  );
-  if (install.status !== 0) {
-    _lastTtsError = `venv 内安装 edge-tts 失败:${(install.stderr || install.stdout || `exit ${install.status}`).toString().slice(0, 200)}`;
-    return null;
-  }
-  if (edgeTtsImportable(vpy)) return vpy;
-
-  _lastTtsError = '安装完成但仍无法 import edge_tts';
-  return null;
-}
-
-// venv / runtime 解析结果缓存(进程内只跑一次重活)。
-let _resolvedPython: string | null | undefined = undefined;
-
-/**
- * 解析出一个【已装好 edge-tts】的 python 可执行;失败返回 null。
- */
-async function resolveTtsPython(): Promise<string | null> {
-  if (_resolvedPython !== undefined) return _resolvedPython;
-
-  if (process.platform === 'win32') {
-    const pyExe = findWinPythonExe();
-    if (edgeTtsImportable(pyExe)) { _resolvedPython = pyExe; return pyExe; }
-    try { await ensurePythonPipReady(); } catch {}
-    const install = spawnSync(
-      pyExe,
-      ['-m', 'pip', 'install', '--no-input', '--disable-pip-version-check', 'edge-tts'],
-      { env: pythonEnv(), timeout: 180_000, encoding: 'utf-8' },
-    );
-    if (install.status === 0 && edgeTtsImportable(pyExe)) {
-      _resolvedPython = pyExe;
-      return pyExe;
-    }
-    _lastTtsError = `Windows 安装 edge-tts 失败:${(install.stderr || install.stdout || `exit ${install.status}`).toString().slice(0, 200)}`;
-    _resolvedPython = null;
-    return null;
-  }
-
-  _resolvedPython = ensureUnixEdgeTts();
-  return _resolvedPython;
-}
-
 function estimateDuration(text: string): number {
   // 中文约 4.5 字/秒,英文按词粗算;给点首尾留白。
   const chars = text.replace(/\s+/g, '').length;
@@ -211,22 +71,32 @@ async function makeSilence(outPath: string, durationSec: number): Promise<boolea
   return r.ok && fs.existsSync(outPath);
 }
 
-/** 把语速档(-50~+50,单位%)归一成 edge-tts 的 `--rate=+N%` 串;0/非法 → 不传。 */
-function normalizeRate(rate?: number): string | null {
+/** 把语速档(-50~+50,单位%)归一成 edge-tts 的 `+N%` 串;0/非法 → 不传(`+0%`)。 */
+function normalizeRate(rate?: number): string {
   const n = Math.round(Number(rate) || 0);
-  if (!Number.isFinite(n) || n === 0) return null;
+  if (!Number.isFinite(n) || n === 0) return '+0%';
   const clamped = Math.max(-50, Math.min(50, n));
   return clamped >= 0 ? `+${clamped}%` : `${clamped}%`;
 }
 
+/** 100 纳秒(edge-tts WordBoundary 单位)→ 秒。 */
+const TICKS_PER_SEC = 10_000_000;
+
 /**
- * 解析 edge-tts 写出的字幕文件 —— 同时兼容 SRT(`HH:MM:SS,mmm`)与 VTT(`HH:MM:SS.mmm`)
- * 两种格式(edge-tts 版本不同输出不同)。返回逐条词边界 cue(时间相对本句起点)。
+ * 把 edge-tts-universal 的 WordBoundary[] 换算成逐词 TtsCue[](时间相对本次合成起点,秒)。
+ * offset/duration 都是 100ns ticks。空文本 / 非法时间的条目丢弃。
  */
-function parseSubtitleFile(filePath: string): TtsCue[] {
-  let raw: string;
-  try { raw = fs.readFileSync(filePath, 'utf8'); } catch { return []; }
-  return parseSubtitleText(raw); // 解析逻辑已抽到 ttsAlign(纯函数,可单测)
+function wordBoundariesToCues(words: WordBoundary[]): TtsCue[] {
+  const out: TtsCue[] = [];
+  for (const w of words || []) {
+    const text = String(w?.text || '').replace(/\s+/g, ' ').trim();
+    if (!text) continue;
+    const start = Number(w.offset) / TICKS_PER_SEC;
+    const end = (Number(w.offset) + Number(w.duration)) / TICKS_PER_SEC;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !(end > start)) continue;
+    out.push({ text, start, end });
+  }
+  return out;
 }
 
 /**
@@ -256,38 +126,47 @@ export function groupWordCues(words: TtsCue[], maxChars = 12): TtsCue[] {
 
 interface EdgeTtsRun {
   ok: boolean;
-  /** 失败诊断(进程 stderr / 超时 / 空输出),给上层拼进 _lastTtsError。 */
+  /** 成功时的逐词 cue(相对本次合成起点);失败为空。 */
+  words: TtsCue[];
+  /** 失败诊断(异常 message / 超时 / 空输出),给上层拼进 _lastTtsError。 */
   detail: string;
 }
 
-function runEdgeTts(pyExe: string, text: string, voice: string, outPath: string, rate?: number, subtitlePath?: string): Promise<EdgeTtsRun> {
-  return new Promise((resolve) => {
-    const env = pythonEnv();
-    const args = ['-m', 'edge_tts', '--voice', voice, '--text', text, '--write-media', outPath];
-    if (subtitlePath) args.push('--write-subtitles', subtitlePath);
-    const rateArg = normalizeRate(rate);
-    if (rateArg) args.push('--rate', rateArg);
-    // 每次重试前清掉上轮可能残留的半截输出,避免「旧文件 >256 字节」骗过校验。
-    try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
-    const child = spawn(pyExe, args, { env, windowsHide: true });
-    let stderr = '';
-    try { child.stderr?.on('data', (d) => { if (stderr.length < 2000) stderr += d.toString(); }); } catch {}
-    let settled = false;
-    const timer = setTimeout(() => {
-      if (!settled) { settled = true; try { child.kill('SIGKILL'); } catch {} resolve({ ok: false, detail: '合成超时(60s,可能是网络到微软 TTS 端点不通)' }); }
-    }, 60_000);
-    child.on('error', (e) => { if (!settled) { settled = true; clearTimeout(timer); resolve({ ok: false, detail: `进程启动失败:${e instanceof Error ? e.message : String(e)}` }); } });
-    child.on('close', (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      const hasOut = fs.existsSync(outPath) && fs.statSync(outPath).size > 256;
-      if (code === 0 && hasOut) { resolve({ ok: true, detail: '' }); return; }
-      const err = stderr.trim().replace(/\s+/g, ' ').slice(-200);
-      const why = code !== 0 ? `退出码 ${code}` : '退出码 0 但无有效音频输出';
-      resolve({ ok: false, detail: err ? `${why}:${err}` : why });
+/** 合成超时(连不通微软端点 / 卡死时兜底)。 */
+const SYNTH_TIMEOUT_MS = 60_000;
+
+/**
+ * 跑一次 edge-tts-universal 合成:写 MP3 到 outPath,返回逐词 cue。
+ * 不抛异常 —— 失败把原因放进 detail,由调用方决定重试 / 兜底。
+ */
+async function runEdgeTts(text: string, voice: string, outPath: string, rate?: number): Promise<EdgeTtsRun> {
+  // 每次重试前清掉上轮可能残留的半截输出,避免「旧文件 >256 字节」骗过校验。
+  try { if (fs.existsSync(outPath)) fs.unlinkSync(outPath); } catch {}
+  let timer: NodeJS.Timeout | null = null;
+  try {
+    const tts = new EdgeTTS(text, voice, { rate: normalizeRate(rate) });
+    // synthesize() 是单次 WebSocket 往返;库本身不带超时,这里用 Promise.race 兜底,
+    // 避免端点不通时永不 resolve 卡死出片流程。
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('合成超时(60s,可能是网络到微软 TTS 端点不通)')),
+        SYNTH_TIMEOUT_MS,
+      );
     });
-  });
+    const res = await Promise.race([tts.synthesize(), timeout]);
+    const buf = Buffer.from(await res.audio.arrayBuffer());
+    if (buf.length <= 256) {
+      return { ok: false, words: [], detail: '合成返回空音频' };
+    }
+    fs.writeFileSync(outPath, buf);
+    const words = wordBoundariesToCues(res.subtitle || []);
+    return { ok: true, words, detail: '' };
+  } catch (e) {
+    const msg = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').slice(-200);
+    return { ok: false, words: [], detail: msg || '未知错误' };
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /** 重试间隔休眠(edge-tts 网络抖动,退避一下再试)。 */
@@ -305,40 +184,33 @@ export async function synthesize(text: string, outPath: string, voice?: string, 
 
   if (clean) {
     try {
-      const pyExe = await resolveTtsPython();
-      if (pyExe) {
-        // 字幕和音频同名,扩展名 .vtt(edge-tts 按版本写 VTT/SRT,我们的解析器都吃)。
-        const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
-        // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 5 次再判失败(指数退避)。
-        // 2026-04 起微软上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
-        // 单纯加重试次数仍有限,真正救场要靠调用方做 voice fallback(见 getVoiceFallbacks)。
-        const MAX_ATTEMPTS = 5;
-        let lastDetail = '';
-        for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-          const run = await runEdgeTts(pyExe, clean, useVoice, outPath, rate, subPath);
-          if (run.ok) {
-            const dur = await probeDuration(outPath);
-            let cues: TtsCue[] | undefined;
-            try {
-              const words = parseSubtitleFile(subPath);
-              if (words.length > 0) cues = groupWordCues(words);
-            } catch { /* 解析失败 → 上层估算兜底 */ }
-            try { fs.unlinkSync(subPath); } catch {}
-            return {
-              ok: true,
-              audioPath: outPath,
-              durationSec: dur > 0 ? dur : estDur,
-              synthesized: true,
-              cues,
-            };
-          }
-          lastDetail = run.detail || lastDetail;
-          if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
+      // edge-tts 走在线接口,偶发网络抖动/限流 → 重试最多 5 次再判失败(指数退避)。
+      // 2026-04 起微软上游按 voice 间歇性拒发音频(rany2/edge-tts#473),
+      // 单纯加重试次数仍有限,真正救场要靠调用方做 voice fallback(见 getVoiceFallbacks)。
+      const MAX_ATTEMPTS = 5;
+      let lastDetail = '';
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        const run = await runEdgeTts(clean, useVoice, outPath, rate);
+        if (run.ok) {
+          const dur = await probeDuration(outPath);
+          let cues: TtsCue[] | undefined;
+          try {
+            if (run.words.length > 0) cues = groupWordCues(run.words);
+          } catch { /* 解析失败 → 上层估算兜底 */ }
+          return {
+            ok: true,
+            audioPath: outPath,
+            durationSec: dur > 0 ? dur : estDur,
+            synthesized: true,
+            cues,
+          };
         }
-        _lastTtsError = lastDetail
-          ? `edge-tts 合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`
-          : `edge-tts 运行失败(已装好但合成无输出,已重试 ${MAX_ATTEMPTS} 次)`;
+        lastDetail = run.detail || lastDetail;
+        if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
       }
+      _lastTtsError = lastDetail
+        ? `edge-tts 合成失败(已重试 ${MAX_ATTEMPTS} 次):${lastDetail.slice(0, 160)}`
+        : `edge-tts 运行失败(合成无输出,已重试 ${MAX_ATTEMPTS} 次)`;
     } catch (e) {
       _lastTtsError = e instanceof Error ? e.message : String(e);
       // fall through to silence
@@ -426,20 +298,13 @@ export async function synthesizeWhole(text: string, outPath: string, voice: stri
   const clean = (text || '').trim();
   const fail = (): WholeTtsResult => ({ ok: false, audioPath: outPath, durationSec: 0, rawCues: [] });
   if (!clean) return fail();
-  let pyExe: string | null = null;
-  try { pyExe = await resolveTtsPython(); } catch (e) { _lastTtsError = e instanceof Error ? e.message : String(e); }
-  if (!pyExe) return fail();
-  const subPath = outPath.replace(/\.[^.]+$/, '') + '.vtt';
   const MAX_ATTEMPTS = 5;
   let lastDetail = '';
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    const run = await runEdgeTts(pyExe, clean, voice, outPath, rate, subPath);
+    const run = await runEdgeTts(clean, voice, outPath, rate);
     if (run.ok) {
       const dur = await probeDuration(outPath);
-      let rawCues: TtsCue[] = [];
-      try { rawCues = parseSubtitleFile(subPath); } catch { /* 对齐侧会 fallback */ }
-      try { fs.unlinkSync(subPath); } catch {}
-      return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estimateDuration(clean), rawCues };
+      return { ok: true, audioPath: outPath, durationSec: dur > 0 ? dur : estimateDuration(clean), rawCues: run.words };
     }
     lastDetail = run.detail || lastDetail;
     if (attempt < MAX_ATTEMPTS) await sleep(800 * attempt);
