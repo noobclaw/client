@@ -1842,12 +1842,12 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {isXPostCreator && (
                 <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
                   <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
-                    {isZh ? '🎲 自动发推机制（每天 1 条，机制随机）' : '🎲 Daily post mechanism (1/day, randomized)'}
+                    {isZh ? '🎲 自动发推机制（每天 1 条 · AI 深度创作）' : '🎲 Daily post mechanism (1/day · AI deep-creation)'}
                   </div>
                   <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                    <li>{isZh ? '· 40% 仿写：feed 找爆款长推（字数≥100 + 浏览≥1000） → AI 用同样钩子写一条新推' : '· 40% rewrite: find viral long tweet (≥100 chars + ≥1K views) → AI rewrites in your voice'}</li>
-                    <li>{isZh ? '· 40% 原创：按你最近的话题 + 随机钩子类型生成' : '· 40% original: AI generates based on your topic_context + random hook'}</li>
-                    <li>{isZh ? '· 20% 转推回应：feed 里挑一条 → 写带观点的 quote tweet' : '· 20% quote: pick a feed tweet → write a quote with a viewpoint'}</li>
+                    <li>{isZh ? '· 锁定近 3 周 web3 热门资讯，每天自动挑 1 条热点（已发过的自动跳过）' : '· Locks onto hot web3 news from the past 3 weeks; picks 1 fresh topic daily (auto-skips used ones)'}</li>
+                    <li>{isZh ? '· AI（Pro）按你的人设深度创作一条踩点市场快评，只写 web3，不喊单' : '· AI (Pro) writes a sharp market take in your persona — web3 only, no shilling'}</li>
+                    <li>{isZh ? '· 智能配图（源图直用或 AI 生图）→ 自动发推；蓝V 出深度长文、普通号精炼短推' : '· Smart imagery (source thumbnail or AI-generated) → auto-posted; long-form for Blue V, tight tweets for standard accounts'}</li>
                   </ul>
                 </div>
               )}
@@ -1980,9 +1980,9 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
                   ) : isXPostCreator ? (
                     <>
                       <li>{isZh
-                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条 3 种机制（仿写 40% / 原创 40% / 转推 20%）随机选；仿写要求字数≥100 且浏览≥1000`
-                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between), each randomized across 3 mechanisms (40% rewrite / 40% original / 20% quote); rewrite filters: ≥100 chars + ≥1K views`}</li>
-                      <li>{isZh ? '· 🎲 每次随机决定是否带配图（约 30% 概率），AI 自动生成插画并上传' : '· 🎲 Each post randomly gets an AI-generated image attached (~30% chance)'}</li>
+                        ? `· 每次运行 ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} 条推文（间隔 5-15 分钟），每条从近 3 周 web3 资讯里挑 1 条热点 → AI 深度创作；已发过的自动跳过`
+                        : `· ${postCountMin === postCountMax ? postCountMin : `${postCountMin}-${postCountMax}`} tweets/run (5-15 min between); each picks 1 fresh web3 news item from the past 3 weeks → AI deep-creation; used items auto-skipped`}</li>
+                      <li>{isZh ? '· 每条自动配图：源图直用，无源图则 AI 生图并上传' : '· Each post gets an image: source thumbnail when available, otherwise AI-generated'}</li>
                       <li>{isZh ? '· 运行期间请保持浏览器打开，不要关闭 x.com 标签页' : '· Keep the browser open during the run; don\'t close the x.com tab'}</li>
                       <li>{isZh ? '· 推文发布后无法撤回，建议第一次运行后人工检查' : '· Tweets cannot be unposted — review AI output after first run'}</li>
                       <li>{isZh ? '⚠️ 大陆用户：使用前请确保 VPN / 代理已开启' : '⚠️ Mainland China users: ensure VPN / proxy is on before running'}</li>
