@@ -100,6 +100,46 @@ function wordBoundariesToCues(words: WordBoundary[]): TtsCue[] {
 }
 
 /**
+ * edge-tts-universal 的 WordBoundary 词文本【不含标点】(实测:「今天，我们…」只回
+ * ["今天","我们"…])。把原文案的标点/符号按词序贴回每个词 cue —— 每个词带上它到
+ * 【下一个词起点之前】的原文片段(尾随标点归前词;首词带上句首标点)。匹配失败则
+ * 原样返回(退回无标点,不致崩)。这样 groupWordCues 出的字幕短语保留标点。
+ */
+function reattachPunctuation(original: string, words: TtsCue[]): TtsCue[] {
+  const orig = original || '';
+  const n = orig.length;
+  if (!words.length || !n) return words;
+  // 在 orig[from..] 里按词字符(忽略空白)定位该词,返回 [start, end)。
+  const findWord = (wtext: string, from: number): { start: number; end: number } | null => {
+    const wt = (wtext || '').replace(/\s+/g, '');
+    if (!wt) return null;
+    for (let i = from; i < n; i++) {
+      let j = i, k = 0;
+      while (j < n && k < wt.length) {
+        if (/\s/.test(orig[j])) { j++; continue; }
+        if (orig[j] === wt[k]) { j++; k++; } else break;
+      }
+      if (k === wt.length) return { start: i, end: j };
+    }
+    return null;
+  };
+  const spans: Array<{ start: number; end: number }> = [];
+  let from = 0;
+  for (const w of words) {
+    const m = findWord(w.text, from);
+    if (!m) return words; // 对不上 → 退回原样(无标点),不冒险错位
+    spans.push(m);
+    from = m.end;
+  }
+  return words.map((w, idx) => {
+    const start = idx === 0 ? 0 : spans[idx].start;            // 首词带句首标点
+    const end = idx + 1 < spans.length ? spans[idx + 1].start : n; // 尾随标点归前词
+    const display = orig.slice(start, end).trim();
+    return { ...w, text: display || w.text };
+  });
+}
+
+/**
  * 把逐词 cue 攒成 ~maxChars 字一段的短语 cue(用真实词级时间戳,不估算)。
  * 短语 start = 首词 start,end = 末词 end。中文按字,英文按词长累加。
  */
@@ -159,7 +199,7 @@ async function runEdgeTts(text: string, voice: string, outPath: string, rate?: n
       return { ok: false, words: [], detail: '合成返回空音频' };
     }
     fs.writeFileSync(outPath, buf);
-    const words = wordBoundariesToCues(res.subtitle || []);
+    const words = reattachPunctuation(text, wordBoundariesToCues(res.subtitle || []));
     return { ok: true, words, detail: '' };
   } catch (e) {
     const msg = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').slice(-200);
