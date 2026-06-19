@@ -33,7 +33,7 @@ const DEFAULT_MAX_CLIP_SEC = 4;
  * 撑住,音频用 adelay 延后起播 + apad 补尾;开了 BGM 时音乐会自然盖住这两段留白。
  */
 const DEFAULT_LEAD_IN_SEC = 0.4;
-const DEFAULT_TAIL_OUT_SEC = 1.2;
+const DEFAULT_TAIL_OUT_SEC = 2.0;
 
 /** 内置 CJK 字体文件名(随包 bundle 在 resources/fonts/ 下)。 */
 const BUNDLED_FONT_FILE = 'SourceHanSansSC-Bold.otf';

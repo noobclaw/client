@@ -1415,7 +1415,7 @@ async function runVideoPipeline(
       for (const [k, v] of poolByTerm) workByTerm.set(k, shuffle ? shuffled(v) : [...v]);
       const workAll = shuffle ? shuffled(allVideos) : [...allVideos];
 
-      // 取一段【本条还没用过】的素材:先本镜搜索词命中,再借全局。都没有返 undefined。
+      // 取一段【本条还没用过】的素材:先本镜搜索词命中,再借全局。新鲜素材都分完才返 undefined。
       const takeFreshClip = (i: number): string | undefined => {
         for (const term of perSceneTerms[i] || []) {
           const q = workByTerm.get(term);
@@ -1429,25 +1429,58 @@ async function runVideoPipeline(
         return undefined;
       };
 
-      // 该镜要几段素材 = ceil(时长 / maxClip),换镜节奏越快段数越多(封顶 8)。
-      // 先放用户本地素材(优先露出),再尽量取新鲜在线素材补满;都没有则上层退图片/文字卡。
-      const pickClipsForScene = (i: number): string[] => {
-        const dur = Math.max(1.2, audios[i].durationSec);
-        const want = Math.max(1, Math.min(8, Math.ceil(dur / maxClip)));
-        const clips: string[] = [];
-        for (const lc of localForScene.get(i) || []) {
-          if (clips.length >= want) break;
-          clips.push(lc);
-        }
-        while (clips.length < want) {
-          const fresh = takeFreshClip(i);
-          if (fresh) clips.push(fresh);
-          else break;
-        }
-        return clips; // 可能为空(无任何素材)→ 上层退图片/文字卡
+      // 新鲜素材分完后的循环兜底:只要下到了视频,就【绝不退在线图片】(用户要求:宁可复用视频也别补图)。
+      // 用游标轮转整池,让复用尽量错开、不老是同一段;池子真空(一段没下到)才返 undefined → 上层退图/文字卡。
+      let reuseCursor = 0;
+      const reuseClip = (): string | undefined => {
+        if (workAll.length === 0) return undefined;
+        const p = workAll[reuseCursor % workAll.length].path;
+        reuseCursor++;
+        return p;
       };
 
-      return sentences.map((_, i) => pickClipsForScene(i));
+      // want = ceil(时长/maxClip):该镜基础段数;cap = floor(时长/最短单段):该镜【最多】能放几段。
+      // 多下来的新鲜素材后面按 cap 分摊进各镜 —— 既把下载的素材尽量用满(不浪费),画面也更丰富。
+      // 用户反馈「下了几十段很多没用上、想画面再丰富点」→ 把最短单段 1.6→1.2s、每镜封顶 8→12 段:
+      //   切得更勤、剩余下载素材尽量铺进去,少浪费(1.2s 仍不至于碎到跳帧)。
+      const MIN_SEG_SEC = 1.2;
+      const wantOf = (i: number) => Math.max(1, Math.min(8, Math.ceil(Math.max(1.2, audios[i].durationSec) / maxClip)));
+      const capOf = (i: number) => Math.max(wantOf(i), Math.min(12, Math.floor(Math.max(1.2, audios[i].durationSec) / MIN_SEG_SEC)));
+
+      const clipsByScene: string[][] = sentences.map((): string[] => []);
+      // 1) 用户本地素材优先露出(封顶到本镜 want)。
+      sentences.forEach((_, i) => {
+        for (const lc of localForScene.get(i) || []) {
+          if (clipsByScene[i].length >= wantOf(i)) break;
+          clipsByScene[i].push(lc);
+        }
+      });
+      // 2) 各镜先用新鲜在线素材补到 want。
+      sentences.forEach((_, i) => {
+        while (clipsByScene[i].length < wantOf(i)) {
+          const fresh = takeFreshClip(i);
+          if (fresh) clipsByScene[i].push(fresh);
+          else break;
+        }
+      });
+      // 3) 还有没用上的新鲜素材 → 轮流多塞给各镜(到该镜 cap 为止),把下载的素材尽量用满、画面更丰富。
+      for (let guard = 0; guard < 4096 && workAll.some((a) => !usedVideo.has(a.path)); guard++) {
+        let progressed = false;
+        for (let i = 0; i < sentences.length; i++) {
+          if (clipsByScene[i].length >= capOf(i)) continue;
+          const fresh = takeFreshClip(i);
+          if (fresh) { clipsByScene[i].push(fresh); progressed = true; }
+        }
+        if (!progressed) break;
+      }
+      // 4) 仍空的镜(池子非空但本镜词没命中且新鲜素材已分完)→ 循环复用,绝不退图片。
+      sentences.forEach((_, i) => {
+        if (clipsByScene[i].length === 0) {
+          const r = reuseClip();
+          if (r) clipsByScene[i].push(r);
+        }
+      });
+      return clipsByScene;
     };
 
     // 用第一条(不打乱)的分配统计覆盖率 + 决定补位图片数量(各条覆盖率相近,算一次即可)。
