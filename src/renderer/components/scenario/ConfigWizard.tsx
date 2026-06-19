@@ -1842,12 +1842,11 @@ export const ConfigWizard: React.FC<Props> = ({ scenario, initialTask, onCancel,
               {isXPostCreator && (
                 <div className="rounded-lg border border-sky-500/30 bg-sky-500/5 p-3">
                   <div className="text-xs font-semibold text-sky-700 dark:text-sky-400 mb-2">
-                    {isZh ? '🔥 每天 1 条 · AI 蹭爆 web3 热点（深度原创）' : '🔥 1/day · AI rides web3 trends (deep original)'}
+                    {isZh ? '🎲 自动发推机制（AI 深度创作）' : '🎲 Daily post mechanism (AI deep-creation)'}
                   </div>
                   <ul className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1 leading-relaxed">
-                    <li>{isZh ? '· 🎯 实时盯紧近 3 周 web3 最热话题，每天自动挑最有爆点的一条（发过的自动跳，绝不撞车）' : '· 🎯 Tracks the hottest web3 topics from the past 3 weeks; auto-picks the freshest one daily (used ones skipped — never repeats)'}</li>
-                    <li>{isZh ? '· 🧠 Pro 大模型化身你的人设，深度原创一条有观点的市场快评——只聊 web3、不喊单、有态度' : '· 🧠 Pro model becomes your persona — a sharp, opinionated web3 take; no shilling, real attitude'}</li>
-                    <li>{isZh ? '· 🖼️ 自动配图一键发出（源图直用 / AI 生图）；蓝V 出深度长文、普通号出精炼短推，持续养号涨粉' : '· 🖼️ Auto-imaged and posted (source or AI-gen); long-form for Blue V, tight tweets for standard — steady growth on autopilot'}</li>
+                    <li>{isZh ? '· 锁定近 3 周 web3 热门资讯，每天自动挑 1 条热点（已发过的自动跳过）' : '· Locks onto hot web3 news from the past 3 weeks; picks 1 fresh topic daily (auto-skips used ones)'}</li>
+                    <li>{isZh ? '· AI（Pro）按你的人设深度创作一条踩点市场快评' : '· AI (Pro) writes a sharp market take in your persona'}</li>
                   </ul>
                 </div>
               )}

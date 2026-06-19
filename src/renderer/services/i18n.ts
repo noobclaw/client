@@ -823,8 +823,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // CNY 卡密充值
     walletRedeemTab: 'CNY 卡密',
     walletRedeemStepsTitle: '📦 充值步骤',
-    walletRedeemStep1: '1. 选择下方档位 → 前往店铺购买卡密',
-    walletRedeemStep2: '2. 收到卡密后，填入下方输入框',
+    walletRedeemStep1: '1. 选择上方档位 → 前往店铺购买卡密',
+    walletRedeemStep2: '2. 收到卡密后，填入上方输入框',
     walletRedeemStep3: '3. 点击「兑换」→ 确认面额 → 积分秒到账',
     walletRedeemCreditsUnit: '积分',
     walletRedeemBuy: '购买',
@@ -2124,8 +2124,8 @@ const translations: Record<LanguageType, Partial<Record<string, string>>> = {
     // CNY card-key redeem
     walletRedeemTab: 'CNY Card',
     walletRedeemStepsTitle: '📦 How to Recharge',
-    walletRedeemStep1: '1. Pick a tier below → buy a voucher in the shop',
-    walletRedeemStep2: '2. After receiving the code, paste it below',
+    walletRedeemStep1: '1. Pick a tier above → buy a voucher in the shop',
+    walletRedeemStep2: '2. After receiving the code, paste it above',
     walletRedeemStep3: '3. Click "Redeem" → confirm amount → credits arrive',
     walletRedeemCreditsUnit: 'credits',
     walletRedeemBuy: 'Buy',

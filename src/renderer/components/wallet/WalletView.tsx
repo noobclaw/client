@@ -1557,30 +1557,8 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                    照搬主站 cn 站交互:档位卡片(去咸鱼买)→ 收到卡密填入下方框
                    → preview 确认面额 → redeem 核销,积分秒到账。 */
                 <>
-                  <div className="mb-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
-                    <div className="font-semibold text-primary mb-1.5">{i18nService.t('walletRedeemStepsTitle')}</div>
-                    <div>{i18nService.t('walletRedeemStep1')}</div>
-                    <div>{i18nService.t('walletRedeemStep2')}</div>
-                    <div>{i18nService.t('walletRedeemStep3')}</div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(redeemInfo?.packages || []).map((pkg) => {
-                      const tokensM = (pkg.tokens / 1e6).toFixed(1);
-                      return (
-                        <div key={`CNY-${pkg.usdt}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
-                          <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">¥{pkg.rmb}</p>
-                          <p className="text-xs text-primary font-medium mb-3">{tokensM}M {i18nService.t('walletRedeemCreditsUnit')}</p>
-                          <button
-                            onClick={handleBuyOnXianyu}
-                            className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold transition-all"
-                          >
-                            {i18nService.t('walletRedeemBuy')}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-4 pt-4 border-t dark:border-claude-darkBorder border-claude-border">
+                  {/* 卡密兑换置顶 */}
+                  <div className="mb-4">
                     <p className="text-xs font-semibold dark:text-claude-darkText text-claude-text mb-2">{i18nService.t('walletRedeemHaveCode')}</p>
                     <div className="flex gap-2">
                       <input
@@ -1605,6 +1583,30 @@ export const WalletView: React.FC<WalletViewProps> = ({ isSidebarCollapsed, onTo
                     {redeemMsg.text && (
                       <p className="text-xs mt-2 leading-relaxed" style={{ color: redeemMsg.color }}>{redeemMsg.text}</p>
                     )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    {(redeemInfo?.packages || []).map((pkg) => {
+                      const tokensM = (pkg.tokens / 1e6).toFixed(1);
+                      return (
+                        <div key={`CNY-${pkg.usdt}`} className="p-4 rounded-xl dark:bg-claude-darkSurface bg-claude-surface border dark:border-claude-darkBorder border-claude-border text-center flex flex-col">
+                          <p className="font-bold dark:text-claude-darkText text-claude-text mb-1">¥{pkg.rmb}</p>
+                          <p className="text-xs text-primary font-medium mb-3">{tokensM}M {i18nService.t('walletRedeemCreditsUnit')}</p>
+                          <button
+                            onClick={handleBuyOnXianyu}
+                            className="mt-auto w-full py-2 rounded-lg bg-primary hover:bg-primary-hover text-black text-xs font-semibold transition-all"
+                          >
+                            {i18nService.t('walletRedeemBuy')}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* 充值步骤置底 */}
+                  <div className="mt-4 p-3 rounded-lg bg-primary/5 border border-primary/20 text-xs dark:text-claude-darkTextSecondary text-claude-textSecondary leading-relaxed">
+                    <div className="font-semibold text-primary mb-1.5">{i18nService.t('walletRedeemStepsTitle')}</div>
+                    <div>{i18nService.t('walletRedeemStep1')}</div>
+                    <div>{i18nService.t('walletRedeemStep2')}</div>
+                    <div>{i18nService.t('walletRedeemStep3')}</div>
                   </div>
                 </>
               ) : (
