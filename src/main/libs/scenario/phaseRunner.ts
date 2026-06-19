@@ -1131,6 +1131,29 @@ function buildContext(
     getSeenIds: (): Set<string> => {
       return taskStore.getSeenPostIds(task.id);
     },
+    // v6: AI 衍生关键词回写 — 当原关键词的新鲜内容都被搜尽(本轮所有词只返回已抓过的素材)时,
+    //   orchestrator 让 AI 按 persona/track/原词衍生几个新词,通过此方法【累积存回任务配置】,
+    //   下次运行自动纳入关键词池(长期自我扩张)。field 默认 'keywords'(string[]);图文任务的
+    //   实景图词在 'real_photo_keywords'(空格分隔字符串)。去重后写回 taskStore 持久化 + 同步内存
+    //   task 让本轮后续也能读到。返回合并后的完整列表。老客户端无此方法 → orchestrator 用可选链,
+    //   只衍生当次用、不持久化(优雅降级,不崩)。
+    appendKeywords: (words: string[], field: 'keywords' | 'real_photo_keywords' = 'keywords'): string[] => {
+      const clean = (words || []).map((w) => String(w || '').trim()).filter(Boolean);
+      const anyTask = task as any;
+      if (field === 'real_photo_keywords') {
+        const merged = String(anyTask.real_photo_keywords || '').trim().split(/\s+/).filter(Boolean);
+        for (const w of clean) if (!merged.includes(w)) merged.push(w);
+        const joined = merged.join(' ');
+        anyTask.real_photo_keywords = joined;
+        if (clean.length > 0) taskStore.updateTask(task.id, { real_photo_keywords: joined } as any);
+        return merged;
+      }
+      const merged = Array.isArray(anyTask.keywords) ? anyTask.keywords.slice() : [];
+      for (const w of clean) if (!merged.includes(w)) merged.push(w);
+      anyTask.keywords = merged;
+      if (clean.length > 0) taskStore.updateTask(task.id, { keywords: merged });
+      return merged;
+    },
 
     // Call backend API (e.g. image generation) — includes auth token,
     // abortable via progress.isAbortRequested() every 300ms.
