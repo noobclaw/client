@@ -27,7 +27,10 @@ class ScheduledTaskService {
     this.initialized = true;
 
     this.setupListeners();
-    await this.loadTasks();
+    // v6 首屏提速:不 await —— 定时任务列表后台加载,加载完 Redux 自动刷新 UI(loadTasks 内已管 loading 态)。
+    //   首屏(App.tsx isInitialized gate)不必等这次 scheduledTask:list IPC(它还会触发 sidecar 侧
+    //   ScheduledTaskStore 冷加载 DB),省下 ~100-300ms。调度在 sidecar/主进程跑,不依赖这次 renderer 加载。
+    void this.loadTasks();
   }
 
   destroy(): void {
